@@ -984,19 +984,35 @@ router.post('/autentiqueCreateDocument', authMiddleware, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Lead nao possui email cadastrado' });
     }
 
-    let fullContractUrl = contract_url;
-    if (contract_url.startsWith('/')) {
+    let pdfBuffer;
+    if (contract_url.startsWith('/uploads/')) {
+      const localPath = path.join(process.cwd(), contract_url);
+      console.log('[Autentique] Reading PDF from local file:', localPath);
+      if (!fs.existsSync(localPath)) {
+        console.log('[Autentique] File not found at:', localPath);
+        return res.status(404).json({ success: false, error: 'Arquivo do contrato nao encontrado no servidor' });
+      }
+      pdfBuffer = fs.readFileSync(localPath);
+      console.log('[Autentique] PDF read from disk, size:', pdfBuffer.length);
+    } else if (contract_url.startsWith('/')) {
       const appDomain = process.env.APP_DOMAIN || (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : `http://localhost:${process.env.PORT || 3001}`);
-      fullContractUrl = `${appDomain}${contract_url}`;
+      const fullContractUrl = `${appDomain}${contract_url}`;
+      console.log('[Autentique] Downloading PDF from:', fullContractUrl);
+      const pdfResponse = await axios.get(fullContractUrl, { 
+        responseType: 'arraybuffer',
+        timeout: 30000
+      });
+      pdfBuffer = Buffer.from(pdfResponse.data);
+      console.log('[Autentique] PDF downloaded, size:', pdfBuffer.length);
+    } else {
+      console.log('[Autentique] Downloading PDF from external URL:', contract_url);
+      const pdfResponse = await axios.get(contract_url, { 
+        responseType: 'arraybuffer',
+        timeout: 30000
+      });
+      pdfBuffer = Buffer.from(pdfResponse.data);
+      console.log('[Autentique] PDF downloaded, size:', pdfBuffer.length);
     }
-
-    console.log('[Autentique] Downloading PDF from:', fullContractUrl);
-    const pdfResponse = await axios.get(fullContractUrl, { 
-      responseType: 'arraybuffer',
-      timeout: 30000
-    });
-    console.log('[Autentique] PDF downloaded, size:', pdfResponse.data.length);
-    const pdfBuffer = Buffer.from(pdfResponse.data);
 
     const documentName = `Contrato - ${signerName} - ${new Date().toLocaleDateString('pt-BR')}`;
 
