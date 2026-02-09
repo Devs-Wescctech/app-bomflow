@@ -116,7 +116,12 @@ export default function NewLead() {
       navigate(`${createPageUrl("LeadDetail")}?id=${newLead.id}`);
     },
     onError: (error) => {
-      toast.error('Erro ao criar lead: ' + error.message);
+      const msg = error.message || 'Erro ao criar lead';
+      if (msg.includes('cadastrado') || msg.includes('duplicat')) {
+        toast.error(msg, { duration: 8000, style: { background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B' } });
+      } else {
+        toast.error('Erro ao criar lead: ' + msg);
+      }
     }
   });
 

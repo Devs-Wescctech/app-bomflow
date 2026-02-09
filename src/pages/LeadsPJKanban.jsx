@@ -827,14 +827,53 @@ export default function LeadsPJKanban() {
     return sizes[size] || size;
   };
 
+  const getTaskIcon = (type) => {
+    const icons = {
+      visit: <MapPin className="w-3.5 h-3.5" />,
+      call: <Phone className="w-3.5 h-3.5" />,
+      meeting: <Users className="w-3.5 h-3.5" />,
+      email: <Mail className="w-3.5 h-3.5" />,
+      presentation: <TrendingUp className="w-3.5 h-3.5" />,
+      proposal: <DollarSign className="w-3.5 h-3.5" />,
+      task: <AlertCircle className="w-3.5 h-3.5" />,
+    };
+    return icons[type] || <AlertCircle className="w-3.5 h-3.5" />;
+  };
+
+  const getTaskTypeLabel = (type) => {
+    const labels = {
+      visit: 'Visita',
+      call: 'Ligação',
+      meeting: 'Reunião',
+      email: 'E-mail',
+      presentation: 'Apresentação',
+      proposal: 'Proposta',
+      task: 'Tarefa',
+    };
+    return labels[type] || 'Tarefa';
+  };
+
+  const getTaskTypeColor = (type) => {
+    const colors = {
+      visit: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
+      call: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
+      meeting: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400',
+      email: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400',
+      presentation: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400',
+      proposal: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400',
+      task: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400',
+    };
+    return colors[type] || colors.task;
+  };
+
   const TasksPopover = ({ leadId, leadName }) => {
     const tasks = getPendingTasks(leadId);
 
     return (
       <PopoverContent className="w-80 p-0 glass-card border-0 shadow-soft-lg" align="start">
-        <div className="p-4 border-b border-gray-100 dark:border-gray-800 bg-gradient-to-r from-purple-50 to-violet-50 dark:from-purple-950/50 dark:to-violet-950/50 rounded-t-xl">
+        <div className="p-4 border-b border-gray-100 dark:border-gray-800 bg-gradient-to-r from-indigo-50 to-violet-50 dark:from-indigo-950/50 dark:to-violet-950/50 rounded-t-xl">
           <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-gradient-to-br from-purple-500 to-violet-500 text-white">
+            <div className="p-1.5 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 text-white">
               <Bell className="w-3 h-3" />
             </div>
             Tarefas Pendentes
@@ -859,15 +898,23 @@ export default function LeadsPJKanban() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2">
+                    <div className={`mt-0.5 p-1.5 rounded-lg flex-shrink-0 ${getTaskTypeColor(task.type)}`}>
+                      {getTaskIcon(task.type)}
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${getTaskTypeColor(task.type)}`}>
+                          {getTaskTypeLabel(task.type)}
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2 mt-1">
                         {task.title}
                       </p>
-                      {task.scheduledAt && (
+                      {(task.scheduledAt || task.scheduled_at) && (
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
                           <Clock className="w-3 h-3" />
-                          {format(new Date(task.scheduledAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                          {format(new Date(task.scheduledAt || task.scheduled_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                         </p>
                       )}
                     </div>
@@ -910,13 +957,13 @@ export default function LeadsPJKanban() {
 
         <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl">
           <Button
-            onClick={() => navigate(`${createPageUrl("LeadPJDetail")}?id=${leadId}`)}
+            onClick={(e) => { e.stopPropagation(); navigate(`${createPageUrl("LeadPJDetail")}?id=${leadId}`); }}
             variant="outline"
             size="sm"
             className="w-full"
           >
             <ExternalLink className="w-3 h-3 mr-2" />
-            Abrir Lead Completo
+            Ver Detalhes e Dar Baixa
           </Button>
         </div>
       </PopoverContent>
