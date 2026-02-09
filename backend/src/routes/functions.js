@@ -417,7 +417,9 @@ router.post('/send-proposal-whatsapp', authMiddleware, async (req, res) => {
     
     // Build public URL for the PDF
     let baseUrl;
-    if (process.env.REPLIT_DEV_DOMAIN) {
+    if (process.env.APP_DOMAIN) {
+      baseUrl = process.env.APP_DOMAIN;
+    } else if (process.env.REPLIT_DEV_DOMAIN) {
       baseUrl = `https://${process.env.REPLIT_DEV_DOMAIN}`;
     } else if (process.env.REPLIT_DOMAINS) {
       const domains = process.env.REPLIT_DOMAINS.split(',');
@@ -826,8 +828,8 @@ router.post('/signContract', async (req, res) => {
 
     fs.writeFileSync(filePath, base64Data, 'base64');
 
-    const replitDomain = process.env.REPLIT_DEV_DOMAIN || process.env.REPL_SLUG + '.repl.co';
-    const signatureUrl = `https://${replitDomain}/public/signatures/${fileName}`;
+    const appDomain = process.env.APP_DOMAIN || (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : `http://localhost:${process.env.PORT || 3001}`);
+    const signatureUrl = `${appDomain}/public/signatures/${fileName}`;
 
     await query(
       `UPDATE ${tableName} SET contract_signature_url = $1, contract_signed_at = $2 WHERE id = $3`,
@@ -888,8 +890,8 @@ router.post('/send-contract-whatsapp', authMiddleware, async (req, res) => {
       [contractToken, leadId]
     );
 
-    const replitDomain = process.env.REPLIT_DEV_DOMAIN || process.env.REPL_SLUG + '.repl.co';
-    const contractUrl = `https://${replitDomain}/PublicContractSign?token=${contractToken}`;
+    const appDomain = process.env.APP_DOMAIN || (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : `http://localhost:${process.env.PORT || 3001}`);
+    const contractUrl = `${appDomain}/PublicContractSign?token=${contractToken}`;
 
     let phone = lead.phone || lead.whatsapp;
     if (!phone) {
@@ -980,12 +982,8 @@ router.post('/autentiqueCreateDocument', authMiddleware, async (req, res) => {
 
     let fullContractUrl = contract_url;
     if (contract_url.startsWith('/')) {
-      const domain = process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS?.split(',')[0];
-      if (domain) {
-        fullContractUrl = `https://${domain}${contract_url}`;
-      } else {
-        fullContractUrl = `http://localhost:3001${contract_url}`;
-      }
+      const appDomain = process.env.APP_DOMAIN || (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : `http://localhost:${process.env.PORT || 3001}`);
+      fullContractUrl = `${appDomain}${contract_url}`;
     }
 
     const pdfResponse = await axios.get(fullContractUrl, { 
