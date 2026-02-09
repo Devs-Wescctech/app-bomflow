@@ -759,10 +759,12 @@ export default function LeadsPJKanban() {
     }
   }, [leadsPJ, handleStageChange, getOrderedLeadsByStage]);
 
+  const actionableTypes = ['task', 'visit', 'call', 'meeting', 'email', 'presentation', 'proposal'];
+
   const getPendingTasksCount = (leadId) => {
     return allActivitiesPJ.filter(a =>
       a.leadPjId === leadId &&
-      a.type === 'task' &&
+      actionableTypes.includes(a.type) &&
       !a.completed
     ).length;
   };
@@ -770,7 +772,7 @@ export default function LeadsPJKanban() {
   const getPendingTasks = (leadId) => {
     return allActivitiesPJ.filter(a =>
       a.leadPjId === leadId &&
-      a.type === 'task' &&
+      actionableTypes.includes(a.type) &&
       !a.completed
     );
   };

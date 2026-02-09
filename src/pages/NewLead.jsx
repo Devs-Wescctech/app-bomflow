@@ -65,6 +65,7 @@ export default function NewLead() {
   const [reverseGeocoding, setReverseGeocoding] = useState(false);
   const [searchingCep, setSearchingCep] = useState(false);
   const [whatsappValidation, setWhatsappValidation] = useState(null);
+  const [duplicateError, setDuplicateError] = useState(null);
 
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
@@ -118,6 +119,7 @@ export default function NewLead() {
     onError: (error) => {
       const msg = error.message || 'Erro ao criar lead';
       if (msg.includes('cadastrado') || msg.includes('duplicat')) {
+        setDuplicateError(msg);
         toast.error(msg, { duration: 8000, style: { background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B' } });
       } else {
         toast.error('Erro ao criar lead: ' + msg);
@@ -236,8 +238,8 @@ export default function NewLead() {
   const handlePhoneChange = (e) => {
     const formatted = formatPhone(e.target.value);
     setFormData({ ...formData, phone: formatted });
+    setDuplicateError(null);
     
-    // 🆕 Validar WhatsApp após digitar
     debouncedValidateWhatsApp(formatted);
   };
 
@@ -488,6 +490,15 @@ export default function NewLead() {
                     )}
                     {!whatsappValidation?.checking && whatsappValidation?.valid === false && (
                       <p className="text-xs text-red-600 mt-1">❌ Este número não possui WhatsApp ativo</p>
+                    )}
+                    {duplicateError && (
+                      <div className="mt-2 p-3 bg-red-50 border border-red-300 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <XCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                          <p className="text-sm font-semibold text-red-700">WhatsApp Duplicado!</p>
+                        </div>
+                        <p className="text-xs text-red-600 mt-1">{duplicateError}</p>
+                      </div>
                     )}
                   </div>
 

@@ -796,10 +796,12 @@ export default function LeadsKanban() {
     }
   }, [leads, handleStageChange, getOrderedLeadsByStage]);
 
+  const actionableTypes = ['task', 'visit', 'call', 'meeting', 'email', 'presentation', 'proposal'];
+
   const getPendingTasksCount = (leadId) => {
     return allActivities.filter(a =>
       a.lead_id === leadId &&
-      a.type === 'task' &&
+      actionableTypes.includes(a.type) &&
       !a.completed
     ).length;
   };
@@ -807,7 +809,7 @@ export default function LeadsKanban() {
   const getPendingTasks = (leadId) => {
     return allActivities.filter(a =>
       a.lead_id === leadId &&
-      a.type === 'task' &&
+      actionableTypes.includes(a.type) &&
       !a.completed
     );
   };

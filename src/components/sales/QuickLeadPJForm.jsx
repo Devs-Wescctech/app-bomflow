@@ -35,6 +35,7 @@ export default function QuickLeadPJForm({ onSuccess, onCancel }) {
   const queryClient = useQueryClient();
   const [searchingCNPJ, setSearchingCNPJ] = useState(false);
   const [cnpjFound, setCnpjFound] = useState(false);
+  const [duplicateError, setDuplicateError] = useState(null);
   const [formData, setFormData] = useState({
     cnpj: "",
     razaoSocial: "",
@@ -86,6 +87,7 @@ export default function QuickLeadPJForm({ onSuccess, onCancel }) {
       console.error('Erro ao criar lead PJ:', error);
       const msg = error.message || 'Erro ao criar lead PJ';
       if (msg.includes('cadastrado') || msg.includes('duplicat')) {
+        setDuplicateError(msg);
         toast.error(msg, { duration: 8000, style: { background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B' } });
       } else {
         toast.error(msg);
@@ -338,10 +340,18 @@ export default function QuickLeadPJForm({ onSuccess, onCancel }) {
             <Label>Telefone Principal</Label>
             <Input
               value={formData.phone}
-              onChange={(e) => setFormData({...formData, phone: e.target.value})}
+              onChange={(e) => { setFormData({...formData, phone: e.target.value}); setDuplicateError(null); }}
               placeholder="(00) 00000-0000"
               className="mt-1"
             />
+            {duplicateError && (
+              <div className="mt-2 p-3 bg-red-50 border border-red-300 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <span className="text-red-600 font-bold text-sm">⚠️ WhatsApp Duplicado!</span>
+                </div>
+                <p className="text-xs text-red-600 mt-1">{duplicateError}</p>
+              </div>
+            )}
           </div>
 
           <div>
