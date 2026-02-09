@@ -25,19 +25,26 @@ const formatDuration = (start, end) => {
 };
 
 export default function LeadPipelineHistory({ lead, onStageChange }) {
-  const stageHistory = lead.stage_history || [];
+  const stageHistory = lead.stageHistory || lead.stage_history || [];
   const currentStage = lead.stage;
 
   const stageVisits = {};
   stageHistory.forEach((entry) => {
-    if (entry.to && !stageVisits[entry.to]) {
-      stageVisits[entry.to] = { enteredAt: entry.changed_at, exitedAt: null };
+    const toStage = entry.to || entry.stage;
+    const fromStage = entry.from || entry.previousStage || entry.previous_stage;
+    const changedAt = entry.changed_at || entry.changedAt;
+
+    if (toStage && !stageVisits[toStage]) {
+      stageVisits[toStage] = { enteredAt: changedAt, exitedAt: null };
     }
-    if (entry.from && stageVisits[entry.from] && !stageVisits[entry.from].exitedAt) {
-      stageVisits[entry.from].exitedAt = entry.changed_at;
+    if (fromStage && stageVisits[fromStage] && !stageVisits[fromStage].exitedAt) {
+      stageVisits[fromStage].exitedAt = changedAt;
     }
   });
 
+  if (currentStage && !stageVisits[currentStage]) {
+    stageVisits[currentStage] = { enteredAt: lead.created_at || lead.created_date || lead.createdAt || lead.createdDate, exitedAt: null };
+  }
   if (currentStage && stageVisits[currentStage]) {
     stageVisits[currentStage].exitedAt = null;
   }

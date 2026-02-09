@@ -41,6 +41,8 @@ import {
   FileSignature,
   ExternalLink,
   Download,
+  Presentation,
+  AlertCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -593,8 +595,23 @@ export default function LeadPJDetail() {
   }
 
   const currentStage = STAGES_PJ.find(s => s.value === (editedLead.stage !== undefined ? editedLead.stage : lead.stage));
-  const pendingTasks = activities.filter(a => a.type === 'task' && !a.completed);
+  const actionableTypes = ['task', 'visit', 'call', 'meeting', 'email', 'presentation', 'proposal'];
+  const pendingTasks = activities.filter(a => actionableTypes.includes(a.type) && !a.completed);
   const hasPendingTasks = pendingTasks.length > 0;
+
+  const getTaskTypeConfig = (type) => {
+    const configs = {
+      task: { icon: AlertCircle, label: 'Tarefa', color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-100 dark:bg-purple-900/50' },
+      visit: { icon: MapPin, label: 'Visita', color: 'text-orange-600 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/50' },
+      call: { icon: Phone, label: 'Ligacao', color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-100 dark:bg-blue-900/50' },
+      meeting: { icon: Users, label: 'Reuniao', color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-100 dark:bg-emerald-900/50' },
+      email: { icon: Mail, label: 'E-mail', color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-100 dark:bg-purple-900/50' },
+      presentation: { icon: Presentation, label: 'Apresentacao', color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-100 dark:bg-indigo-900/50' },
+      proposal: { icon: DollarSign, label: 'Proposta', color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900/50' },
+    };
+    return configs[type] || configs.task;
+  };
+
   const temperature = getLeadTemperature();
   const leadAgent = agents.find(a => String(a.id) === String(leadAgentId));
 
@@ -940,27 +957,31 @@ export default function LeadPJDetail() {
                     <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
                       <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Tarefas Pendentes</h3>
                       <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                        {pendingTasks.map((task) => (
-                          <div key={task.id} className="p-3 bg-purple-50 dark:bg-purple-950 rounded-lg border border-purple-200 dark:border-purple-800 hover:shadow-md transition-all">
+                        {pendingTasks.map((task) => {
+                          const typeConfig = getTaskTypeConfig(task.type);
+                          const TypeIcon = typeConfig.icon;
+                          return (
+                          <div key={task.id} className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all">
                             <div className="flex items-start gap-3">
-                              <Checkbox
-                                id={`task-${task.id}`}
-                                checked={false}
-                                onCheckedChange={() => completeTaskMutation.mutate(task.id)}
-                                disabled={completeTaskMutation.isPending}
-                                className="mt-1 h-5 w-5 border-purple-400 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
-                              />
+                              <div className={`mt-0.5 p-1.5 rounded-lg ${typeConfig.bg}`}>
+                                <TypeIcon className={`w-4 h-4 ${typeConfig.color}`} />
+                              </div>
                               <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${typeConfig.bg} ${typeConfig.color}`}>
+                                    {typeConfig.label}
+                                  </span>
+                                </div>
                                 <label htmlFor={`task-${task.id}`} className="font-medium text-gray-900 dark:text-gray-100 cursor-pointer">
                                   {task.title}
                                 </label>
                                 {task.description && (
                                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{task.description}</p>
                                 )}
-                                {task.scheduledAt && (
+                                {(task.scheduledAt || task.scheduled_at) && (
                                   <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                                     <Clock className="w-3 h-3 inline mr-1" />
-                                    {format(new Date(task.scheduledAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                                    {format(new Date(task.scheduledAt || task.scheduled_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                                   </p>
                                 )}
                               </div>
@@ -976,7 +997,8 @@ export default function LeadPJDetail() {
                               </Button>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                         {pendingTasks.length === 0 && (
                           <p className="text-center text-gray-500 dark:text-gray-400 py-8">
                             Nenhuma tarefa pendente
