@@ -539,10 +539,12 @@ export default function ReferralPipeline() {
     refetchInterval: 30000,
   });
 
+  const actionableTypes = ['task', 'visit', 'call', 'meeting', 'email', 'presentation', 'proposal'];
+
   const getPendingTasksCount = (referralId) => {
     return allReferralActivities.filter(a =>
       (a.referralId === referralId || a.referral_id === referralId) &&
-      a.type === 'task' &&
+      actionableTypes.includes(a.type) &&
       !a.completed
     ).length;
   };
@@ -550,7 +552,7 @@ export default function ReferralPipeline() {
   const getPendingTasks = (referralId) => {
     return allReferralActivities.filter(a =>
       (a.referralId === referralId || a.referral_id === referralId) &&
-      a.type === 'task' &&
+      actionableTypes.includes(a.type) &&
       !a.completed
     );
   };
