@@ -447,6 +447,15 @@ O sistema utiliza controle de acesso baseado em funcoes (RBAC) com 7 tipos de ag
 
 ---
 
+INFOS UTEIS
+
+sup_wescc@srvappsprod:/var/www/html/app-bomflow$ sudo cat .env 
+DATABASE_URL=postgresql://auth_bd:4uth%401307BD@172.17.0.1:5432/bomflow
+JWT_SECRET=2Iz5EHu2ZKRnebbtxV+R/e1JcPxjX/zcF68Xt5q/mXo=
+SESSION_SECRET=2Iz5EHu2ZKRnebbtxV+R/e1JcPxjX/zcF68Xt5q/mXo=
+RUDO_WHATSAPP_TOKEN=696a6cad4817bd38a8efd6b9
+sup_wescc@srvappsprod:/var/www/html/app-bomflow$ 
+
 ## Licenca
 
 Projeto proprietario - Wescctech. Todos os direitos reservados.
