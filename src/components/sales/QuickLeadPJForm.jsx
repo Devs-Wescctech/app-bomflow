@@ -84,7 +84,12 @@ export default function QuickLeadPJForm({ onSuccess, onCancel }) {
     },
     onError: (error) => {
       console.error('Erro ao criar lead PJ:', error);
-      toast.error(error.message || 'Erro ao criar lead PJ');
+      const msg = error.message || 'Erro ao criar lead PJ';
+      if (msg.includes('cadastrado') || msg.includes('duplicat')) {
+        toast.error(msg, { duration: 8000, style: { background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B' } });
+      } else {
+        toast.error(msg);
+      }
     },
   });
 

@@ -30,7 +30,17 @@ import {
   RefreshCw,
   CheckCircle2,
   Star,
+  Bell,
+  AlertCircle,
+  MapPin,
+  ExternalLink,
+  Trash2,
 } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useNavigate, Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import {
@@ -189,7 +199,7 @@ function DroppableColumnRef({ id, stage, children, overId, activeId }) {
   );
 }
 
-function SortableReferralCard({ referral, stage, referrerData, agentData, navigate, formatCurrency, formatDate, updateReferralMutation }) {
+function SortableReferralCard({ referral, stage, referrerData, agentData, navigate, formatCurrency, formatDate, updateReferralMutation, pendingTasksCount, TasksPopover }) {
   const {
     attributes,
     listeners,
@@ -242,6 +252,22 @@ function SortableReferralCard({ referral, stage, referrerData, agentData, naviga
                 </span>
               </div>
             </div>
+
+            {pendingTasksCount > 0 && (
+              <Popover>
+                <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
+                  <button className="relative flex-shrink-0 group/btn">
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/40 dark:to-orange-900/40 flex items-center justify-center shadow-sm group-hover/btn:shadow-md transition-shadow">
+                      <Bell className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <span className="absolute -top-1.5 -right-1.5 bg-gradient-to-r from-rose-500 to-red-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold shadow-lg">
+                      {pendingTasksCount}
+                    </span>
+                  </button>
+                </PopoverTrigger>
+                <TasksPopover referralId={referral.id} referralName={referral.referredName || referral.referred_name} />
+              </Popover>
+            )}
           </div>
 
           {(referral.value || referral.estimatedValue || referral.estimated_value || referral.monthlyValue || referral.monthly_value) > 0 && (
@@ -506,6 +532,29 @@ export default function ReferralPipeline() {
 
   const referralsQueryKey = ['referrals', isAdmin ? 'admin' : currentAgentId];
 
+  const { data: allReferralActivities = [] } = useQuery({
+    queryKey: ['allReferralActivities'],
+    queryFn: () => base44.entities.ReferralActivity.list(),
+    staleTime: 15000,
+    refetchInterval: 30000,
+  });
+
+  const getPendingTasksCount = (referralId) => {
+    return allReferralActivities.filter(a =>
+      (a.referralId === referralId || a.referral_id === referralId) &&
+      a.type === 'task' &&
+      !a.completed
+    ).length;
+  };
+
+  const getPendingTasks = (referralId) => {
+    return allReferralActivities.filter(a =>
+      (a.referralId === referralId || a.referral_id === referralId) &&
+      a.type === 'task' &&
+      !a.completed
+    );
+  };
+
   const updateReferralMutation = useMutation({
     mutationFn: async ({ id, data }) => {
       const currentReferral = referrals.find(r => String(r.id) === String(id));
@@ -553,6 +602,25 @@ export default function ReferralPipeline() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: referralsQueryKey });
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
+    },
+  });
+
+  const completeTaskMutation = useMutation({
+    mutationFn: ({ taskId }) => base44.entities.ReferralActivity.update(taskId, {
+      completed: true,
+      completedAt: new Date().toISOString(),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['allReferralActivities'] });
+      toast.success('Tarefa concluída!');
+    },
+  });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: ({ taskId }) => base44.entities.ReferralActivity.delete(taskId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['allReferralActivities'] });
+      toast.success('Tarefa excluída!');
     },
   });
 
@@ -752,6 +820,154 @@ export default function ReferralPipeline() {
   const formatDate = (dateString) => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString('pt-BR');
+  };
+
+  const getReferrerData = (referrerId) => {
+    if (!referrerId) return null;
+    return agents.find(a => String(a.id) === String(referrerId));
+  };
+
+  const getTaskIcon = (type) => {
+    const icons = {
+      visit: <MapPin className="w-3.5 h-3.5" />,
+      call: <Phone className="w-3.5 h-3.5" />,
+      meeting: <Users className="w-3.5 h-3.5" />,
+      email: <Mail className="w-3.5 h-3.5" />,
+      presentation: <TrendingUp className="w-3.5 h-3.5" />,
+      proposal: <DollarSign className="w-3.5 h-3.5" />,
+      task: <AlertCircle className="w-3.5 h-3.5" />,
+    };
+    return icons[type] || <AlertCircle className="w-3.5 h-3.5" />;
+  };
+
+  const getTaskTypeLabel = (type) => {
+    const labels = {
+      visit: 'Visita',
+      call: 'Ligação',
+      meeting: 'Reunião',
+      email: 'E-mail',
+      presentation: 'Apresentação',
+      proposal: 'Proposta',
+      task: 'Tarefa',
+    };
+    return labels[type] || 'Tarefa';
+  };
+
+  const getTaskTypeColor = (type) => {
+    const colors = {
+      visit: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
+      call: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
+      meeting: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400',
+      email: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400',
+      presentation: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400',
+      proposal: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400',
+      task: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400',
+    };
+    return colors[type] || colors.task;
+  };
+
+  const TasksPopover = ({ referralId, referralName }) => {
+    const tasks = getPendingTasks(referralId);
+
+    return (
+      <PopoverContent className="w-80 p-0 glass-card border-0 shadow-soft-lg" align="start">
+        <div className="p-4 border-b border-gray-100 dark:border-gray-800 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/50 dark:to-orange-950/50 rounded-t-xl">
+          <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 text-white">
+              <Bell className="w-3 h-3" />
+            </div>
+            Tarefas Pendentes
+          </h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{referralName}</p>
+        </div>
+
+        <div className="max-h-80 overflow-y-auto">
+          {tasks.length === 0 ? (
+            <div className="p-6 text-center">
+              <CheckCircle2 className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+              <p className="text-gray-500 dark:text-gray-400 text-sm">
+                Nenhuma tarefa pendente
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              {tasks.map((task) => (
+                <motion.div
+                  key={task.id}
+                  className="p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                >
+                  <div className="flex items-start gap-2">
+                    <div className={`mt-0.5 p-1.5 rounded-lg flex-shrink-0 ${getTaskTypeColor(task.type)}`}>
+                      {getTaskIcon(task.type)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${getTaskTypeColor(task.type)}`}>
+                          {getTaskTypeLabel(task.type)}
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2 mt-1">
+                        {task.title}
+                      </p>
+                      {(task.scheduledAt || task.scheduled_at) && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {format(new Date(task.scheduledAt || task.scheduled_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 hover:bg-emerald-100 dark:hover:bg-emerald-950 hover:text-emerald-700 dark:hover:text-emerald-400"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          completeTaskMutation.mutate({ taskId: task.id });
+                        }}
+                        disabled={completeTaskMutation.isPending}
+                        title="Marcar como concluída"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 hover:bg-red-100 dark:hover:bg-red-950 hover:text-red-700 dark:hover:text-red-400"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm('Deseja excluir esta tarefa?')) {
+                            deleteTaskMutation.mutate({ taskId: task.id });
+                          }
+                        }}
+                        disabled={deleteTaskMutation.isPending}
+                        title="Excluir tarefa"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl">
+          <Button
+            onClick={(e) => { e.stopPropagation(); navigate(`${createPageUrl("ReferralDetail")}?id=${referralId}`); }}
+            variant="outline"
+            size="sm"
+            className="w-full"
+          >
+            <ExternalLink className="w-3 h-3 mr-2" />
+            Ver Detalhes e Dar Baixa
+          </Button>
+        </div>
+      </PopoverContent>
+    );
   };
 
   return (
@@ -1036,6 +1252,7 @@ export default function ReferralPipeline() {
                           {stageReferrals.map((referral) => {
                             const agentData = !isLoadingAgents && agents.length > 0 ? getAgentData(referral.agentId) : null;
                             const referrerData = referral.referrerName ? { name: referral.referrerName } : null;
+                            const pendingTasksCountVal = getPendingTasksCount(referral.id);
 
                             return (
                               <SortableReferralCard
@@ -1048,6 +1265,8 @@ export default function ReferralPipeline() {
                                 formatCurrency={formatCurrency}
                                 formatDate={formatDate}
                                 updateReferralMutation={updateReferralMutation}
+                                pendingTasksCount={pendingTasksCountVal}
+                                TasksPopover={TasksPopover}
                               />
                             );
                           })}

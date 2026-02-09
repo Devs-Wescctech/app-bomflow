@@ -292,7 +292,12 @@ export default function QuickLeadForm({ onSuccess, onCancel }) {
       if (onSuccess) onSuccess();
     } catch (error) {
       console.error('Erro ao criar lead:', error);
-      toast.error(error.message || 'Erro ao criar lead');
+      const msg = error.message || 'Erro ao criar lead';
+      if (msg.includes('cadastrado') || msg.includes('duplicat')) {
+        toast.error(msg, { duration: 8000, style: { background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#991B1B' } });
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setSubmitting(false);
     }
