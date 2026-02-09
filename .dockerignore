@@ -14,7 +14,6 @@ attached_assets
 *.md
 !backend/**/*.md
 .npm
-.npmrc
 *.log
 uploads/*
 !uploads/.gitkeep
