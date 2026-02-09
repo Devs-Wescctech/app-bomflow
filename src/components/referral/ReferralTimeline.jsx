@@ -90,7 +90,7 @@ export default function ReferralTimeline({ activities = [] }) {
   }
 
   const sortedActivities = [...activities].sort((a, b) => 
-    new Date(b.createdAt || b.created_date) - new Date(a.createdAt || a.created_date)
+    new Date(b.createdAt || b.created_at || b.created_date || '') - new Date(a.createdAt || a.created_at || a.created_date || '')
   );
 
   return (
@@ -132,7 +132,7 @@ export default function ReferralTimeline({ activities = [] }) {
                     )}
                   </div>
                   <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                    {formatDate(activity.createdAt || activity.created_date)}
+                    {formatDate(activity.createdAt || activity.created_at || activity.created_date)}
                   </span>
                 </div>
                 
