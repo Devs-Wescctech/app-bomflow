@@ -82,6 +82,10 @@ export default function QuickLeadPJForm({ onSuccess, onCancel }) {
       queryClient.invalidateQueries({ queryKey: ['leadsPJ'] });
       if (onSuccess) onSuccess();
     },
+    onError: (error) => {
+      console.error('Erro ao criar lead PJ:', error);
+      toast.error(error.message || 'Erro ao criar lead PJ');
+    },
   });
 
   const formatCNPJ = (value) => {

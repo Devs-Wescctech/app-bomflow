@@ -64,11 +64,7 @@ export default function NewLead() {
   const [gettingLocation, setGettingLocation] = useState(false);
   const [reverseGeocoding, setReverseGeocoding] = useState(false);
   const [searchingCep, setSearchingCep] = useState(false);
-  const [checkingDuplicate, setCheckingDuplicate] = useState(false);
-  const [duplicateFound, setDuplicateFound] = useState(null);
-  const [duplicateType, setDuplicateType] = useState(null);
-  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
-  const [whatsappValidation, setWhatsappValidation] = useState(null); // { valid: boolean, checking: boolean, message?: string, error?: boolean }
+  const [whatsappValidation, setWhatsappValidation] = useState(null);
 
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
@@ -82,12 +78,6 @@ export default function NewLead() {
   });
 
   const activeAgents = agents.filter(a => a.active !== false);
-
-  const { data: allLeads = [] } = useQuery({
-    queryKey: ['allLeads'],
-    queryFn: () => base44.entities.Lead.list(),
-    initialData: [],
-  });
 
   const currentAgentType = user?.agent?.agentType || user?.agent?.agent_type;
   const canSelectAgent = currentAgentType === 'admin' || currentAgentType === 'supervisor';
@@ -329,61 +319,6 @@ export default function NewLead() {
     setSearchingCep(false);
   };
 
-  const checkForDuplicates = async (phone, cpf) => {
-    if (!phone && !cpf) {
-      setDuplicateFound(null);
-      setDuplicateType(null);
-      return null;
-    }
-
-    const activeLeads = allLeads.filter(l => !l.concluded && !l.lost);
-
-    let duplicateByPhone = null;
-    if (phone) {
-      const phoneNumbers = phone.replace(/\D/g, '');
-      if (phoneNumbers.length >= 10) {
-        duplicateByPhone = activeLeads.find(l => {
-          const leadPhone = l.phone?.replace(/\D/g, '');
-          return leadPhone === phoneNumbers;
-        });
-      }
-    }
-
-    let duplicateByCPF = null;
-    if (cpf) {
-      const cpfNumbers = cpf.replace(/\D/g, '');
-      if (cpfNumbers.length === 11) {
-        duplicateByCPF = activeLeads.find(l => {
-          const leadCPF = l.cpf?.replace(/\D/g, '');
-          return leadCPF && leadCPF === cpfNumbers;
-        });
-      }
-    }
-
-    const duplicate = duplicateByPhone || duplicateByCPF;
-    setDuplicateFound(duplicate);
-    setDuplicateType(duplicateByPhone ? 'phone' : duplicateByCPF ? 'cpf' : null);
-    
-    return duplicate;
-  };
-
-  // Debounced real-time validation
-  const debouncedCheckDuplicates = debounce((phone, cpf) => {
-    setCheckingDuplicate(true);
-    checkForDuplicates(phone, cpf).finally(() => {
-      setCheckingDuplicate(false);
-    });
-  }, 800);
-
-  useEffect(() => {
-    if (formData.phone || formData.cpf) {
-      debouncedCheckDuplicates(formData.phone, formData.cpf);
-    } else {
-      setDuplicateFound(null);
-      setDuplicateType(null);
-    }
-  }, [formData.phone, formData.cpf]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -404,11 +339,6 @@ export default function NewLead() {
 
     if (!formData.lgpd_consent) {
       toast.error('É necessário o consentimento LGPD!');
-      return;
-    }
-
-    if (duplicateFound) {
-      setShowDuplicateModal(true);
       return;
     }
 
@@ -477,54 +407,6 @@ export default function NewLead() {
 
         <form onSubmit={handleSubmit}>
           <div className="space-y-6">
-            {/* Alerta de Duplicata em Tempo Real */}
-            {checkingDuplicate && (
-              <Alert className="border-blue-200 bg-blue-50">
-                <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-                <AlertDescription className="text-blue-800">
-                  Verificando se este lead já existe...
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {duplicateFound && (
-              <Alert className="border-orange-200 bg-orange-50">
-                <AlertTriangle className="w-4 h-4 text-orange-600" />
-                <AlertDescription className="text-orange-900">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-semibold mb-1">⚠️ Lead já cadastrado!</p>
-                      <p className="text-sm">
-                        <strong>{duplicateFound.name || 'Sem nome'}</strong> - {duplicateFound.phone}
-                      </p>
-                      <p className="text-xs text-orange-700 mt-1">
-                        Stage: {duplicateFound.stage} • Criado em {new Date(duplicateFound.created_date).toLocaleDateString('pt-BR')}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setShowDuplicateModal(true)}
-                      className="border-orange-300 text-orange-700 hover:bg-orange-100"
-                    >
-                      <ExternalLink className="w-4 h-4 mr-1" />
-                      Ver Detalhes
-                    </Button>
-                  </div>
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {!duplicateFound && formData.phone && formData.phone.replace(/\D/g, '').length >= 10 && !checkingDuplicate && (
-              <Alert className="border-green-200 bg-green-50">
-                <CheckCircle className="w-4 h-4 text-green-600" />
-                <AlertDescription className="text-green-800">
-                  ✅ Nenhuma duplicata encontrada
-                </AlertDescription>
-              </Alert>
-            )}
-
             {/* Dados Pessoais */}
             <Card>
               <CardHeader>
@@ -549,11 +431,8 @@ export default function NewLead() {
                       onChange={handleCPFChange}
                       placeholder="000.000.000-00"
                       maxLength={14}
-                      className={`mt-1 ${duplicateFound && duplicateType === 'cpf' ? 'border-orange-400 focus:ring-orange-400' : ''}`}
+                      className="mt-1"
                     />
-                    {duplicateType === 'cpf' && (
-                      <p className="text-xs text-orange-600 mt-1">⚠️ CPF já cadastrado</p>
-                    )}
                   </div>
 
                   <div>
@@ -575,7 +454,6 @@ export default function NewLead() {
                         placeholder="(11) 99999-9999"
                         maxLength={15}
                         className={`mt-1 pr-10 ${
-                          duplicateFound && duplicateType === 'phone' ? 'border-orange-400 focus:ring-orange-400' : 
                           whatsappValidation?.valid === true ? 'border-green-400 focus:ring-green-400' :
                           whatsappValidation?.valid === false ? 'border-red-400 focus:ring-red-400' : ''
                         }`}
@@ -597,9 +475,6 @@ export default function NewLead() {
                         </div>
                       )}
                     </div>
-                    {duplicateType === 'phone' && (
-                      <p className="text-xs text-orange-600 mt-1">⚠️ Telefone já cadastrado</p>
-                    )}
                     {whatsappValidation?.checking && (
                       <p className="text-xs text-blue-600 mt-1">🔍 Verificando WhatsApp...</p>
                     )}
@@ -1024,102 +899,6 @@ export default function NewLead() {
         </form>
       </div>
 
-      {/* Modal de Lead Duplicado */}
-      <Dialog open={showDuplicateModal} onOpenChange={setShowDuplicateModal}>
-        <DialogContent className="max-w-2xl">
-          <CardHeader className="bg-orange-50 dark:bg-orange-950">
-            <CardTitle className="text-orange-900 dark:text-orange-100 flex items-center gap-2">
-              <AlertTriangle className="w-6 h-6" />
-              ⚠️ Lead Já Existe
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-6 space-y-4">
-            <Alert className="border-orange-200 bg-orange-50 dark:bg-orange-950">
-              <AlertTriangle className="w-4 h-4 text-orange-600" />
-              <AlertDescription className="text-orange-900 dark:text-orange-100">
-                <strong>Este lead já está sendo trabalhado por outro agente.</strong>
-                <br />
-                Por questões de segurança e organização, você pode visualizar os dados mas não pode editar.
-              </AlertDescription>
-            </Alert>
-
-            {duplicateFound && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                  <div>
-                    <Label className="text-xs text-gray-500">Nome</Label>
-                    <p className="font-medium">{duplicateFound.name || 'Sem nome'}</p>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-gray-500">Telefone</Label>
-                    <p className="font-medium">{duplicateFound.phone}</p>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-gray-500">CPF</Label>
-                    <p className="font-medium">{duplicateFound.cpf || 'Não informado'}</p>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-gray-500">Stage</Label>
-                    <Badge className="bg-blue-100 text-blue-800">
-                      {duplicateFound.stage}
-                    </Badge>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-gray-500">Agente Responsável</Label>
-                    <p className="font-medium text-blue-600">
-                      {getAgentName(duplicateFound.agent_id)}
-                    </p>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-gray-500">Criado em</Label>
-                    <p className="font-medium">
-                      {format(new Date(duplicateFound.created_date), "dd/MM/yyyy", { locale: ptBR })}
-                    </p>
-                  </div>
-                </div>
-
-                {duplicateFound.notes && (
-                  <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                    <Label className="text-xs text-gray-500">Observações</Label>
-                    <p className="text-sm mt-1">{duplicateFound.notes}</p>
-                  </div>
-                )}
-
-                <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
-                  <p className="text-sm text-blue-900 dark:text-blue-100">
-                    <strong>💡 O que fazer?</strong>
-                    <br />
-                    • Entre em contato com <strong>{getAgentName(duplicateFound.agent_id)}</strong> para mais informações
-                    <br />
-                    • Se for um cliente diferente, verifique os dados antes de cadastrar
-                    <br />
-                    • Em caso de dúvidas, consulte seu supervisor
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="flex gap-3 pt-4">
-              <Button
-                variant="outline"
-                onClick={() => setShowDuplicateModal(false)}
-                className="flex-1"
-              >
-                Fechar
-              </Button>
-              {canSelectAgent && (
-                <Button
-                  onClick={() => navigate(`${createPageUrl("LeadDetail")}?id=${duplicateFound.id}`)}
-                  className="flex-1"
-                >
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  Ver Detalhes
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

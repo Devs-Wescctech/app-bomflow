@@ -52,9 +52,90 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { toast } from "sonner";
 import StatsCard from "@/components/dashboard/StatsCard";
-import { format } from "date-fns";
+import { format, differenceInDays, differenceInHours, differenceInMinutes } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { canViewAll, canViewTeam } from "@/components/utils/permissions";
+
+function safeDate(val) {
+  if (!val) return null;
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function getSortedHistory(item) {
+  const history = [...(item.stage_history || item.stageHistory || [])];
+  return history
+    .filter(e => safeDate(e.changed_at || e.changedAt))
+    .sort((a, b) => {
+      const da = new Date(a.changed_at || a.changedAt);
+      const db = new Date(b.changed_at || b.changedAt);
+      return da - db;
+    });
+}
+
+function formatDuration(fromDate, toDate) {
+  const days = differenceInDays(toDate, fromDate);
+  const hours = differenceInHours(toDate, fromDate) % 24;
+  const mins = differenceInMinutes(toDate, fromDate) % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${mins}min`;
+  return `${mins}min`;
+}
+
+function getTimeInStage(item) {
+  const history = getSortedHistory(item);
+  let enteredAt = null;
+  if (history.length > 0) {
+    const lastEntry = history[history.length - 1];
+    enteredAt = safeDate(lastEntry.changed_at || lastEntry.changedAt);
+  }
+  if (!enteredAt) {
+    enteredAt = safeDate(item.createdDate || item.createdAt || item.created_at);
+  }
+  if (!enteredAt) return { label: '-', days: 0, color: 'gray' };
+  const now = new Date();
+  const totalMinutes = differenceInMinutes(now, enteredAt);
+  const totalHours = differenceInHours(now, enteredAt);
+  const totalDays = differenceInDays(now, enteredAt);
+  let label;
+  if (totalMinutes < 60) label = `${totalMinutes}min`;
+  else if (totalHours < 24) label = `${totalHours}h`;
+  else if (totalDays < 30) label = `${totalDays}d`;
+  else label = `${Math.floor(totalDays / 30)}m`;
+  let color;
+  if (totalDays <= 2) color = 'green';
+  else if (totalDays <= 7) color = 'yellow';
+  else if (totalDays <= 14) color = 'orange';
+  else color = 'red';
+  return { label, days: totalDays, hours: totalHours, minutes: totalMinutes, color, enteredAt };
+}
+
+function getStageHistoryTimeline(item, stages) {
+  const history = getSortedHistory(item);
+  if (history.length === 0) return [];
+  const createdDate = safeDate(item.createdDate || item.createdAt || item.created_at);
+  const timeline = [];
+  for (let i = 0; i < history.length; i++) {
+    const entry = history[i];
+    const changedAt = safeDate(entry.changed_at || entry.changedAt);
+    if (!changedAt) continue;
+    let prevDate;
+    if (i === 0) prevDate = createdDate || changedAt;
+    else prevDate = safeDate(history[i - 1].changed_at || history[i - 1].changedAt) || changedAt;
+    const durationLabel = formatDuration(prevDate, changedAt);
+    const fromId = entry.from || entry.previousStage || entry.from_stage;
+    const toId = entry.to || entry.stage || entry.to_stage;
+    const fromStage = stages.find(s => s.id === fromId);
+    const toStage = stages.find(s => s.id === toId);
+    timeline.push({
+      from: fromStage?.label || fromId || item.stage || '-',
+      to: toStage?.label || toId || '-',
+      duration: durationLabel,
+      date: changedAt,
+    });
+  }
+  return timeline;
+}
 
 const STAGES = [
   { id: 'novo', label: 'Novo', color: 'from-purple-500 to-purple-600', lightBg: 'bg-purple-50 dark:bg-purple-950/30', gradient: 'from-purple-500 to-purple-600', borderColor: 'border-purple-500', shadowColor: 'shadow-purple-200/50 dark:shadow-purple-900/30', textColor: 'text-purple-500 dark:text-purple-400' },
@@ -208,28 +289,57 @@ function SortableReferralCard({ referral, stage, referrerData, agentData, naviga
             </div>
           )}
 
-          <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
-            <div className="flex items-center gap-2">
-              {agentData ? (
-                <>
-                  <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center overflow-hidden shadow-sm">
-                    {agentData.photo_url ? (
-                      <img src={agentData.photo_url} alt={agentData.name} className="w-full h-full object-cover" />
+          {(() => {
+            const timeInfo = getTimeInStage(referral);
+            const timeline = getStageHistoryTimeline(referral, STAGES);
+            const colorClasses = {
+              green: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400',
+              yellow: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
+              orange: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400',
+              red: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
+              gray: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+            };
+            return (
+              <>
+                {timeline.length > 0 && (
+                  <div className="mt-3 space-y-1">
+                    {timeline.slice(-2).map((entry, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500">
+                        <TrendingUp className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">{entry.from} → {entry.to}</span>
+                        <span className="ml-auto font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">{entry.duration}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+                  <div className="flex items-center gap-2">
+                    {agentData ? (
+                      <>
+                        <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center overflow-hidden shadow-sm">
+                          {agentData.photo_url ? (
+                            <img src={agentData.photo_url} alt={agentData.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-white text-[10px] font-semibold">{agentData.name?.charAt(0)}</span>
+                          )}
+                        </div>
+                        <span className="text-xs font-medium text-gray-600 dark:text-gray-400 truncate max-w-[70px]">{agentData.name?.split(' ')[0]}</span>
+                      </>
                     ) : (
-                      <span className="text-white text-[10px] font-semibold">{agentData.name?.charAt(0)}</span>
+                      <span className="text-xs text-gray-400 italic">Não atribuído</span>
                     )}
                   </div>
-                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400 truncate max-w-[70px]">{agentData.name?.split(' ')[0]}</span>
-                </>
-              ) : (
-                <span className="text-xs text-gray-400 italic">Não atribuído</span>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500">
-              <Clock className="w-3 h-3" />
-              <span className="text-xs">{formatDate(referral.created_at)}</span>
-            </div>
-          </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${colorClasses[timeInfo.color]}`}>
+                      <Clock className="w-3 h-3" />
+                      {timeInfo.label}
+                    </span>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
     </div>

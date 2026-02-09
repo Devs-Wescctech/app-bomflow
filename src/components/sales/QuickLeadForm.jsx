@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,7 @@ const INTERESTS = [
 ];
 
 export default function QuickLeadForm({ onSuccess, onCancel }) {
+  const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     name: "",
     cpf: "",
@@ -54,7 +55,7 @@ export default function QuickLeadForm({ onSuccess, onCancel }) {
   const [reverseGeocoding, setReverseGeocoding] = useState(false);
   const [photo, setPhoto] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [checkingDuplicate, setCheckingDuplicate] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [whatsappValidation, setWhatsappValidation] = useState(null);
 
   const { data: user } = useQuery({
@@ -226,50 +227,6 @@ export default function QuickLeadForm({ onSuccess, onCancel }) {
     setFormData({ ...formData, cep: formatted });
   };
 
-  const checkForDuplicates = async () => {
-    if (!formData.phone && !formData.cpf) {
-      return null;
-    }
-
-    setCheckingDuplicate(true);
-
-    try {
-      // Buscar todos os leads
-      const allLeads = await base44.entities.Lead.list();
-
-      // Filtrar leads ativos (não concluídos e não perdidos)
-      const activeLeads = allLeads.filter(l => !l.concluded && !l.lost);
-
-      // Verificar por telefone
-      let duplicateByPhone = null;
-      if (formData.phone) {
-        const phoneNumbers = formData.phone.replace(/\D/g, '');
-        duplicateByPhone = activeLeads.find(l => {
-          const leadPhone = l.phone?.replace(/\D/g, '');
-          return leadPhone === phoneNumbers;
-        });
-      }
-
-      // Verificar por CPF
-      let duplicateByCPF = null;
-      if (formData.cpf) {
-        const cpfNumbers = formData.cpf.replace(/\D/g, '');
-        duplicateByCPF = activeLeads.find(l => {
-          const leadCPF = l.cpf?.replace(/\D/g, '');
-          return leadCPF && leadCPF === cpfNumbers;
-        });
-      }
-
-      setCheckingDuplicate(false);
-      return duplicateByPhone || duplicateByCPF;
-    } catch (error) {
-      console.error("Erro ao verificar duplicatas:", error);
-      toast.error("Erro ao verificar duplicatas.");
-      setCheckingDuplicate(false);
-      return null;
-    }
-  };
-
   const handleSubmit = async () => {
     if (!formData.phone || !formData.lgpd_consent) {
       toast.error("Telefone e consentimento LGPD são obrigatórios!");
@@ -281,23 +238,10 @@ export default function QuickLeadForm({ onSuccess, onCancel }) {
       return;
     }
 
-    // Verificar duplicatas
-    const duplicate = await checkForDuplicates();
-
-    if (duplicate) {
-      const identifier = formData.phone ? 'telefone' : 'CPF';
-      toast.error(
-        `⚠️ Lead já existe!\n\n` +
-        `Já existe um lead ativo com este ${identifier}:\n` +
-        `${duplicate.name || 'Sem nome'} - ${duplicate.phone}\n` +
-        `Stage: ${duplicate.stage}`
-      );
-      return;
-    }
+    setSubmitting(true);
 
     const now = new Date().toISOString();
 
-    // Montar endereço completo
     let fullAddress = '';
     if (formData.street) {
       fullAddress = formData.street;
@@ -309,24 +253,13 @@ export default function QuickLeadForm({ onSuccess, onCancel }) {
       if (formData.cep) fullAddress += ` - CEP: ${formData.cep}`;
     }
 
-    // 🔥 CALCULAR value = monthly_value + adhesion_value (SEM multiplicar por 12)
     const monthlyValue = formData.monthly_value ? parseFloat(formData.monthly_value) : 0;
     const adhesionValue = formData.adhesion_value ? parseFloat(formData.adhesion_value) : 0;
     const calculatedEstimatedValue = monthlyValue + adhesionValue;
 
-    // Se o usuário preencheu value manualmente, usar esse valor
-    // Caso contrário, usar o calculado
     const finalEstimatedValue = formData.value && parseFloat(formData.value) > 0
       ? parseFloat(formData.value)
       : calculatedEstimatedValue;
-
-    console.log('💰 Valores do lead:', {
-      monthlyValue,
-      adhesionValue,
-      calculatedEstimatedValue,
-      manualEstimatedValue: formData.value,
-      finalEstimatedValue
-    });
 
     const leadData = {
       ...formData,
@@ -351,7 +284,18 @@ export default function QuickLeadForm({ onSuccess, onCancel }) {
       ],
     };
 
-    onSuccess(leadData);
+    try {
+      await base44.entities.Lead.create(leadData);
+      toast.success('Lead criado com sucesso!');
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['allLeads'] });
+      if (onSuccess) onSuccess();
+    } catch (error) {
+      console.error('Erro ao criar lead:', error);
+      toast.error(error.message || 'Erro ao criar lead');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -784,13 +728,13 @@ export default function QuickLeadForm({ onSuccess, onCancel }) {
         {/* Botão Salvar */}
         <Button
           onClick={handleSubmit}
-          disabled={!formData.phone || !formData.agent_id || !formData.lgpd_consent || checkingDuplicate}
+          disabled={!formData.phone || !formData.agent_id || !formData.lgpd_consent || submitting}
           className="w-full bg-green-600 hover:bg-green-700 text-white text-lg py-6"
         >
-          {checkingDuplicate ? (
+          {submitting ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Verificando...
+              Salvando...
             </>
           ) : (
             'Salvar Lead'
