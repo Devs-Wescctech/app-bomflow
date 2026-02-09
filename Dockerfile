@@ -30,7 +30,9 @@ COPY backend/ ./backend/
 COPY --from=backend-deps /app/backend/node_modules ./backend/node_modules
 COPY --from=frontend-build /app/dist ./dist
 
-RUN mkdir -p /app/uploads /app/backend/public/proposals && chown -R appuser:appgroup /app
+RUN mkdir -p /app/uploads /app/backend/public/proposals /app/backend/public/signatures \
+    && chown -R appuser:appgroup /app \
+    && chmod -R 777 /app/uploads /app/backend/public/proposals /app/backend/public/signatures
 
 USER appuser
 
