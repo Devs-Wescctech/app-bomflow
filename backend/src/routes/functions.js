@@ -949,16 +949,20 @@ Qualquer duvida, estamos a disposicao!`;
 
 router.post('/autentiqueCreateDocument', authMiddleware, async (req, res) => {
   try {
+    console.log('[Autentique] Creating document, body:', JSON.stringify(req.body));
     const { lead_id, contract_url, send_method = 'email', lead_type = 'pf' } = req.body;
     
     if (!lead_id || !contract_url) {
+      console.log('[Autentique] Missing required fields');
       return res.status(400).json({ success: false, error: 'lead_id e contract_url sao obrigatorios' });
     }
 
     const AUTENTIQUE_TOKEN = process.env.AUTENTIQUE_TOKEN;
     if (!AUTENTIQUE_TOKEN) {
+      console.log('[Autentique] Token not configured');
       return res.status(500).json({ success: false, error: 'Token Autentique nao configurado' });
     }
+    console.log('[Autentique] Token found, length:', AUTENTIQUE_TOKEN.length);
 
     let tableName = 'leads';
     if (lead_type === 'pj') {
@@ -986,10 +990,12 @@ router.post('/autentiqueCreateDocument', authMiddleware, async (req, res) => {
       fullContractUrl = `${appDomain}${contract_url}`;
     }
 
+    console.log('[Autentique] Downloading PDF from:', fullContractUrl);
     const pdfResponse = await axios.get(fullContractUrl, { 
       responseType: 'arraybuffer',
       timeout: 30000
     });
+    console.log('[Autentique] PDF downloaded, size:', pdfResponse.data.length);
     const pdfBuffer = Buffer.from(pdfResponse.data);
 
     const documentName = `Contrato - ${signerName} - ${new Date().toLocaleDateString('pt-BR')}`;
@@ -1085,7 +1091,11 @@ router.post('/autentiqueCreateDocument', authMiddleware, async (req, res) => {
       message: send_method === 'email' ? 'Contrato enviado para assinatura via e-mail' : 'Link de assinatura gerado'
     });
   } catch (error) {
-    console.error('Erro ao criar documento Autentique:', error);
+    console.error('[Autentique] Error creating document:', error.message);
+    if (error.response) {
+      console.error('[Autentique] Response status:', error.response.status);
+      console.error('[Autentique] Response data:', JSON.stringify(error.response.data));
+    }
     res.status(500).json({ success: false, error: error.message || 'Erro ao processar documento' });
   }
 });
