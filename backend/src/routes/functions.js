@@ -980,9 +980,11 @@ router.post('/autentiqueCreateDocument', authMiddleware, async (req, res) => {
     const signerEmail = lead.email;
     const signerName = lead.name || lead.company_name || lead.contact_name || 'Cliente';
 
-    if (!signerEmail) {
-      return res.status(400).json({ success: false, error: 'Lead nao possui email cadastrado' });
+    if (!signerEmail && send_method === 'email') {
+      console.log('[Autentique] Lead has no email and send_method is email');
+      return res.status(400).json({ success: false, error: 'Lead nao possui email cadastrado. Cadastre o email ou use o metodo "link".' });
     }
+    console.log('[Autentique] Signer:', signerName, '| Email:', signerEmail || '(none - link mode)', '| Method:', send_method);
 
     let pdfBuffer;
     if (contract_url.startsWith('/uploads/')) {
@@ -1032,15 +1034,19 @@ router.post('/autentiqueCreateDocument', authMiddleware, async (req, res) => {
       }
     }`;
 
+    const signerData = {
+      action: 'SIGN',
+      name: signerName
+    };
+    if (signerEmail) {
+      signerData.email = signerEmail;
+    }
+
     const variables = {
       document: {
         name: documentName
       },
-      signers: [{
-        email: signerEmail,
-        action: 'SIGN',
-        name: signerName
-      }],
+      signers: [signerData],
       file: null
     };
 
