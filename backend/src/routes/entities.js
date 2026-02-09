@@ -395,10 +395,39 @@ router.post('/leads', authMiddleware, async (req, res) => {
         data[field] = null;
       }
     });
+
+    const phoneToCheck = data.whatsapp || data.phone;
+    if (phoneToCheck) {
+      const cleanPhone = phoneToCheck.replace(/\D/g, '');
+      const dupCheck = await query(
+        `SELECT l.id, l.name, a.name as agent_name FROM leads l LEFT JOIN agents a ON l.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(l.whatsapp, l.phone, ''), '[^0-9]', '', 'g') = $1`,
+        [cleanPhone]
+      );
+      if (dupCheck.rows.length > 0) {
+        const dup = dupCheck.rows[0];
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PF. Lead "${dup.name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+      }
+      const dupPJ = await query(
+        `SELECT l.id, l.company_name, a.name as agent_name FROM leads_pj l LEFT JOIN agents a ON l.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(l.phone, ''), '[^0-9]', '', 'g') = $1`,
+        [cleanPhone]
+      );
+      if (dupPJ.rows.length > 0) {
+        const dup = dupPJ.rows[0];
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PJ. Lead "${dup.company_name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+      }
+      const dupRef = await query(
+        `SELECT r.id, r.referred_name, a.name as agent_name FROM referrals r LEFT JOIN agents a ON r.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(r.referred_phone, ''), '[^0-9]', '', 'g') = $1`,
+        [cleanPhone]
+      );
+      if (dupRef.rows.length > 0) {
+        const dup = dupRef.rows[0];
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Indicacoes. Lead "${dup.referred_name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+      }
+    }
+
     const keys = Object.keys(data).filter(k => data[k] !== null && data[k] !== undefined && data[k] !== '');
     const values = keys.map(k => {
       const val = data[k];
-      // Serialize both objects and arrays as JSON for JSONB fields
       if (typeof val === 'object' && val !== null) return JSON.stringify(val);
       return val;
     });
@@ -543,10 +572,39 @@ router.post('/leads-pj', authMiddleware, async (req, res) => {
         data[field] = null;
       }
     });
+
+    const phoneToCheck = data.phone;
+    if (phoneToCheck) {
+      const cleanPhone = phoneToCheck.replace(/\D/g, '');
+      const dupPF = await query(
+        `SELECT l.id, l.name, a.name as agent_name FROM leads l LEFT JOIN agents a ON l.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(l.whatsapp, l.phone, ''), '[^0-9]', '', 'g') = $1`,
+        [cleanPhone]
+      );
+      if (dupPF.rows.length > 0) {
+        const dup = dupPF.rows[0];
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PF. Lead "${dup.name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+      }
+      const dupPJ = await query(
+        `SELECT l.id, l.company_name, a.name as agent_name FROM leads_pj l LEFT JOIN agents a ON l.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(l.phone, ''), '[^0-9]', '', 'g') = $1`,
+        [cleanPhone]
+      );
+      if (dupPJ.rows.length > 0) {
+        const dup = dupPJ.rows[0];
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PJ. Lead "${dup.company_name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+      }
+      const dupRef = await query(
+        `SELECT r.id, r.referred_name, a.name as agent_name FROM referrals r LEFT JOIN agents a ON r.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(r.referred_phone, ''), '[^0-9]', '', 'g') = $1`,
+        [cleanPhone]
+      );
+      if (dupRef.rows.length > 0) {
+        const dup = dupRef.rows[0];
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Indicacoes. Lead "${dup.referred_name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+      }
+    }
+
     const keys = Object.keys(data).filter(k => data[k] !== null && data[k] !== undefined && data[k] !== '');
     const values = keys.map(k => {
       const val = data[k];
-      // Serialize both objects and arrays as JSON for JSONB fields
       if (typeof val === 'object' && val !== null) return JSON.stringify(val);
       return val;
     });
@@ -677,10 +735,39 @@ router.post('/referrals', authMiddleware, async (req, res) => {
         data[field] = null;
       }
     });
+
+    const phoneToCheck = data.referred_phone;
+    if (phoneToCheck) {
+      const cleanPhone = phoneToCheck.replace(/\D/g, '');
+      const dupPF = await query(
+        `SELECT l.id, l.name, a.name as agent_name FROM leads l LEFT JOIN agents a ON l.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(l.whatsapp, l.phone, ''), '[^0-9]', '', 'g') = $1`,
+        [cleanPhone]
+      );
+      if (dupPF.rows.length > 0) {
+        const dup = dupPF.rows[0];
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PF. Lead "${dup.name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+      }
+      const dupPJ = await query(
+        `SELECT l.id, l.company_name, a.name as agent_name FROM leads_pj l LEFT JOIN agents a ON l.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(l.phone, ''), '[^0-9]', '', 'g') = $1`,
+        [cleanPhone]
+      );
+      if (dupPJ.rows.length > 0) {
+        const dup = dupPJ.rows[0];
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PJ. Lead "${dup.company_name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+      }
+      const dupRef = await query(
+        `SELECT r.id, r.referred_name, a.name as agent_name FROM referrals r LEFT JOIN agents a ON r.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(r.referred_phone, ''), '[^0-9]', '', 'g') = $1`,
+        [cleanPhone]
+      );
+      if (dupRef.rows.length > 0) {
+        const dup = dupRef.rows[0];
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Indicacoes. Lead "${dup.referred_name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+      }
+    }
+
     const keys = Object.keys(data).filter(k => data[k] !== null && data[k] !== undefined && data[k] !== '');
     const values = keys.map(k => {
       const val = data[k];
-      // Serialize both objects and arrays as JSON for JSONB fields
       if (typeof val === 'object' && val !== null) return JSON.stringify(val);
       return val;
     });
@@ -802,7 +889,7 @@ router.post('/activities/filter', authMiddleware, async (req, res) => {
       const conditions = keys.map((key, i) => `${key} = $${i + 1}`).join(' AND ');
       sql += ` WHERE ${conditions}`;
     }
-    sql += ' ORDER BY scheduled_at DESC';
+    sql += ' ORDER BY created_at DESC';
     const result = await query(sql, values);
     res.json(result.rows.map(convertKeysToCamel));
   } catch (error) {

@@ -112,7 +112,7 @@ export default function LeadPJTimeline({ activities }) {
   }
 
   const sortedActivities = [...activities].sort((a, b) => 
-    new Date(b.created_date || b.createdAt) - new Date(a.created_date || a.createdAt)
+    new Date(b.createdAt || b.created_at || b.created_date || '') - new Date(a.createdAt || a.created_at || a.created_date || '')
   );
 
   return (
@@ -156,7 +156,7 @@ export default function LeadPJTimeline({ activities }) {
                   </div>
                   <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {formatDate(activity.created_date || activity.createdAt)}
+                    {formatDate(activity.createdAt || activity.created_at || activity.created_date)}
                   </span>
                 </div>
                 

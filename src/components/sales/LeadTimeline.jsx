@@ -77,6 +77,10 @@ const getActivityConfig = (type) => {
 };
 
 export default function LeadTimeline({ activities = [], visits = [] }) {
+  const getItemDate = (item) => {
+    return item.createdAt || item.created_at || item.created_date || item.scheduledAt || item.scheduled_at || '';
+  };
+
   const timelineItems = [
     ...activities.map(a => ({ ...a, itemType: 'activity' })),
     ...visits.map(v => ({ 
@@ -87,7 +91,7 @@ export default function LeadTimeline({ activities = [], visits = [] }) {
       description: v.notes,
       created_date: v.visitedAt 
     }))
-  ].sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
+  ].sort((a, b) => new Date(getItemDate(b)) - new Date(getItemDate(a)));
 
   if (timelineItems.length === 0) {
     return (
@@ -140,7 +144,7 @@ export default function LeadTimeline({ activities = [], visits = [] }) {
                     )}
                   </div>
                   <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                    {formatDate(item.created_date || item.createdDate || item.createdAt)}
+                    {formatDate(item.createdAt || item.created_at || item.created_date || item.createdDate)}
                   </span>
                 </div>
                 
