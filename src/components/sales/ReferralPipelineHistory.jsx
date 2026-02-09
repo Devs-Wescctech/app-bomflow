@@ -26,19 +26,26 @@ const formatDuration = (start, end) => {
 };
 
 export default function ReferralPipelineHistory({ referral, onStageChange }) {
-  const stageHistory = referral.stageHistory || [];
+  const stageHistory = referral.stageHistory || referral.stage_history || [];
   const currentStage = referral.stage;
 
   const stageVisits = {};
   stageHistory.forEach((entry) => {
-    if (entry.stage && !stageVisits[entry.stage]) {
-      stageVisits[entry.stage] = { enteredAt: entry.changedAt, exitedAt: null };
+    const toStage = entry.to || entry.stage;
+    const fromStage = entry.from || entry.previousStage || entry.previous_stage;
+    const changedAt = entry.changed_at || entry.changedAt;
+
+    if (toStage && !stageVisits[toStage]) {
+      stageVisits[toStage] = { enteredAt: changedAt, exitedAt: null };
     }
-    if (entry.previousStage && stageVisits[entry.previousStage] && !stageVisits[entry.previousStage].exitedAt) {
-      stageVisits[entry.previousStage].exitedAt = entry.changedAt;
+    if (fromStage && stageVisits[fromStage] && !stageVisits[fromStage].exitedAt) {
+      stageVisits[fromStage].exitedAt = changedAt;
     }
   });
 
+  if (currentStage && !stageVisits[currentStage]) {
+    stageVisits[currentStage] = { enteredAt: referral.createdAt || referral.created_date || referral.created_at, exitedAt: null };
+  }
   if (currentStage && stageVisits[currentStage]) {
     stageVisits[currentStage].exitedAt = null;
   }
