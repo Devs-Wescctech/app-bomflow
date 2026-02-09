@@ -1,0 +1,60 @@
+Failed to load resource: the server responded with a status of 500 (Internal Server Error)Understand this error
+base44Client.js:15 [API] POST /notifications/filter Object
+base44Client.js:15 [API] POST /notifications/filter Object
+base44Client.js:15 [API] GET /auth/me Object
+base44Client.js:15 [API] POST /whatsapp/test-connection Object
+base44Client.js:15 [API] POST /notifications/filter Object
+base44Client.js:15 [API] GET /agents Object
+base44Client.js:15 [API] GET /leads Object
+base44Client.js:15 [API] GET /activities?sort=-scheduledAt&limit=1000 Object
+base44Client.js:15 [API] GET /visits?sort=-visitedAt&limit=1000 Object
+chunk-SXRIVT2P.js?v=752f66dc:521 Warning: Received `true` for a non-boolean attribute `jsx`.
+
+If you want to write it to the DOM, pass a string instead: jsx="true" or jsx={value.toString()}.
+    at style
+    at div
+    at SalesRoutes (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/src/pages/SalesRoutes.jsx:129:43)
+    at RenderedRoute (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/node_modules/.vite/deps/react-router-dom.js?v=752f66dc:6284:26)
+    at Routes (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/node_modules/.vite/deps/react-router-dom.js?v=752f66dc:7133:3)
+    at div
+    at MotionDOMComponent (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/node_modules/.vite/deps/framer-motion.js?v=752f66dc:5455:40)
+    at main
+    at div
+    at MotionDOMComponent (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/node_modules/.vite/deps/framer-motion.js?v=752f66dc:5455:40)
+    at div
+    at LayoutContent (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/src/pages/Layout.jsx:994:26)
+    at ThemeProvider (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/src/components/ui/theme-provider.jsx:23:33)
+    at Layout (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/src/pages/Layout.jsx:1247:34)
+    at PagesContent (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/src/pages/index.jsx:205:20)
+    at Router (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/node_modules/.vite/deps/react-router-dom.js?v=752f66dc:7074:13)
+    at BrowserRouter (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/node_modules/.vite/deps/react-router-dom.js?v=752f66dc:10191:3)
+    at Pages
+    at App
+    at QueryClientProvider (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/node_modules/.vite/deps/@tanstack_react-query.js?v=752f66dc:3096:3)
+printWarning @ chunk-SXRIVT2P.js?v=752f66dc:521Understand this error
+chunk-SXRIVT2P.js?v=752f66dc:521 Warning: Received `true` for a non-boolean attribute `global`.
+
+If you want to write it to the DOM, pass a string instead: global="true" or global={value.toString()}.
+    at style
+    at div
+    at SalesRoutes (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/src/pages/SalesRoutes.jsx:129:43)
+    at RenderedRoute (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/node_modules/.vite/deps/react-router-dom.js?v=752f66dc:6284:26)
+    at Routes (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/node_modules/.vite/deps/react-router-dom.js?v=752f66dc:7133:3)
+    at div
+    at MotionDOMComponent (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/node_modules/.vite/deps/framer-motion.js?v=752f66dc:5455:40)
+    at main
+    at div
+    at MotionDOMComponent (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/node_modules/.vite/deps/framer-motion.js?v=752f66dc:5455:40)
+    at div
+    at LayoutContent (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/src/pages/Layout.jsx:994:26)
+    at ThemeProvider (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/src/components/ui/theme-provider.jsx:23:33)
+    at Layout (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/src/pages/Layout.jsx:1247:34)
+    at PagesContent (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/src/pages/index.jsx:205:20)
+    at Router (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/node_modules/.vite/deps/react-router-dom.js?v=752f66dc:7074:13)
+    at BrowserRouter (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/node_modules/.vite/deps/react-router-dom.js?v=752f66dc:10191:3)
+    at Pages
+    at App
+    at QueryClientProvider (https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/node_modules/.vite/deps/@tanstack_react-query.js?v=752f66dc:3096:3)
+printWarning @ chunk-SXRIVT2P.js?v=752f66dc:521Understand this error
+base44Client.js:15 [API] POST /notifications/filter Object
+api/whatsapp/test-automation:1  Failed to load resource: the server responded with a status of 500 (Internal Server Error)

@@ -1,0 +1,70 @@
+modules = ["nodejs-20", "web", "postgresql-16"]
+[agent]
+expertMode = true
+integrations = ["javascript_openai_ai_integrations:2.0.0"]
+
+[nix]
+channel = "stable-25_05"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Frontend Dev Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Backend API Server"
+
+[[workflows.workflow]]
+name = "Frontend Dev Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow]]
+name = "Backend API Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd backend && npm start"
+waitForPort = 3001
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[ports]]
+localPort = 3001
+externalPort = 3001
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 5001
+externalPort = 3000
+
+[deployment]
+deploymentTarget = "autoscale"
+build = ["bash", "build.sh"]
+run = ["bash", "start.sh"]
+
+[userenv]
+
+[userenv.shared]
+JWT_SECRET = "wescctech-crm-jwt-secret-change-in-production-2024"
+BACKEND_PORT = "3001"

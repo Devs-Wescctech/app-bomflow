@@ -1,0 +1,626 @@
+{
+  "info": {
+    "_postman_id": "0a11daf0-8aae-4309-9a60-aac024994bf0",
+    "name": "API DE INTEGRAÇÃO - AUTOMAÇÕES BP",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "28756041",
+    "_collection_link": "https://go.postman.co/collection/28756041-0a11daf0-8aae-4309-9a60-aac024994bf0?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Lista os templates de mensagem do canal de tipo WhatsAppCloud Copy",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "access-token",
+            "value": "696a6cad4817bd38a8efd6b9",
+            "description": "Token do canal"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "https://api.wescctech.com.br/core/v2/api/action-cards/templates",
+          "protocol": "https",
+          "host": [
+            "api",
+            "wescctech",
+            "com",
+            "br"
+          ],
+          "path": [
+            "core",
+            "v2",
+            "api",
+            "action-cards",
+            "templates"
+          ]
+        }
+      },
+      "response": [
+        {
+          "name": "Success",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "description": "Token do canal",
+                "key": "access-token",
+                "value": "<string>"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/core/v2/api/action-cards/templates",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "core",
+                "v2",
+                "api",
+                "action-cards",
+                "templates"
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "[\n  {\n    \"id\": \"<string>\",\n    \"description\": \"<string>\",\n    \"organizationId\": \"<string>\",\n    \"canEdit\": \"<boolean>\",\n    \"messages\": [\n      {\n        \"id\": \"<string>\",\n        \"typeMessage\": \"<integer>\",\n        \"typeFile\": \"<integer>\",\n        \"text\": \"<string>\",\n        \"extension\": \"<string>\",\n        \"file\": \"<string>\",\n        \"order\": \"<integer>\",\n        \"scriptId\": \"<string>\",\n        \"typeEvent\": \"<integer>\"\n      },\n      {\n        \"id\": \"<string>\",\n        \"typeMessage\": \"<integer>\",\n        \"typeFile\": \"<integer>\",\n        \"text\": \"<string>\",\n        \"extension\": \"<string>\",\n        \"file\": \"<string>\",\n        \"order\": \"<integer>\",\n        \"scriptId\": \"<string>\",\n        \"typeEvent\": \"<integer>\"\n      }\n    ],\n    \"staticComponents\": [\n      {\n        \"type\": \"<string>\",\n        \"text\": \"<string>\",\n        \"format\": \"<string>\",\n        \"buttons\": [\n          {\n            \"type\": \"<string>\",\n            \"text\": \"<string>\",\n            \"url\": \"<string>\",\n            \"phone_number\": \"<string>\"\n          },\n          {\n            \"type\": \"<string>\",\n            \"text\": \"<string>\",\n            \"url\": \"<string>\",\n            \"phone_number\": \"<string>\"\n          }\n        ]\n      },\n      {\n        \"type\": \"<string>\",\n        \"text\": \"<string>\",\n        \"format\": \"<string>\",\n        \"buttons\": [\n          {\n            \"type\": \"<string>\",\n            \"text\": \"<string>\",\n            \"url\": \"<string>\",\n            \"phone_number\": \"<string>\"\n          },\n          {\n            \"type\": \"<string>\",\n            \"text\": \"<string>\",\n            \"url\": \"<string>\",\n            \"phone_number\": \"<string>\"\n          }\n        ]\n      }\n    ],\n    \"dynamicComponents\": [\n      {\n        \"type\": \"<string>\",\n        \"text\": \"<string>\",\n        \"format\": \"<string>\",\n        \"buttons\": [\n          {\n            \"type\": \"<string>\",\n            \"text\": \"<string>\",\n            \"url\": \"<string>\",\n            \"phone_number\": \"<string>\"\n          },\n          {\n            \"type\": \"<string>\",\n            \"text\": \"<string>\",\n            \"url\": \"<string>\",\n            \"phone_number\": \"<string>\"\n          }\n        ]\n      },\n      {\n        \"type\": \"<string>\",\n        \"text\": \"<string>\",\n        \"format\": \"<string>\",\n        \"buttons\": [\n          {\n            \"type\": \"<string>\",\n            \"text\": \"<string>\",\n            \"url\": \"<string>\",\n            \"phone_number\": \"<string>\"\n          },\n          {\n            \"type\": \"<string>\",\n            \"text\": \"<string>\",\n            \"url\": \"<string>\",\n            \"phone_number\": \"<string>\"\n          }\n        ]\n      }\n    ]\n  },\n  {\n    \"id\": \"<string>\",\n    \"description\": \"<string>\",\n    \"organizationId\": \"<string>\",\n    \"canEdit\": \"<boolean>\",\n    \"messages\": [\n      {\n        \"id\": \"<string>\",\n        \"typeMessage\": \"<integer>\",\n        \"typeFile\": \"<integer>\",\n        \"text\": \"<string>\",\n        \"extension\": \"<string>\",\n        \"file\": \"<string>\",\n        \"order\": \"<integer>\",\n        \"scriptId\": \"<string>\",\n        \"typeEvent\": \"<integer>\"\n      },\n      {\n        \"id\": \"<string>\",\n        \"typeMessage\": \"<integer>\",\n        \"typeFile\": \"<integer>\",\n        \"text\": \"<string>\",\n        \"extension\": \"<string>\",\n        \"file\": \"<string>\",\n        \"order\": \"<integer>\",\n        \"scriptId\": \"<string>\",\n        \"typeEvent\": \"<integer>\"\n      }\n    ],\n    \"staticComponents\": [\n      {\n        \"type\": \"<string>\",\n        \"text\": \"<string>\",\n        \"format\": \"<string>\",\n        \"buttons\": [\n          {\n            \"type\": \"<string>\",\n            \"text\": \"<string>\",\n            \"url\": \"<string>\",\n            \"phone_number\": \"<string>\"\n          },\n          {\n            \"type\": \"<string>\",\n            \"text\": \"<string>\",\n            \"url\": \"<string>\",\n            \"phone_number\": \"<string>\"\n          }\n        ]\n      },\n      {\n        \"type\": \"<string>\",\n        \"text\": \"<string>\",\n        \"format\": \"<string>\",\n        \"buttons\": [\n          {\n            \"type\": \"<string>\",\n            \"text\": \"<string>\",\n            \"url\": \"<string>\",\n            \"phone_number\": \"<string>\"\n          },\n          {\n            \"type\": \"<string>\",\n            \"text\": \"<string>\",\n            \"url\": \"<string>\",\n            \"phone_number\": \"<string>\"\n          }\n        ]\n      }\n    ],\n    \"dynamicComponents\": [\n      {\n        \"type\": \"<string>\",\n        \"text\": \"<string>\",\n        \"format\": \"<string>\",\n        \"buttons\": [\n          {\n            \"type\": \"<string>\",\n            \"text\": \"<string>\",\n            \"url\": \"<string>\",\n            \"phone_number\": \"<string>\"\n          },\n          {\n            \"type\": \"<string>\",\n            \"text\": \"<string>\",\n            \"url\": \"<string>\",\n            \"phone_number\": \"<string>\"\n          }\n        ]\n      },\n      {\n        \"type\": \"<string>\",\n        \"text\": \"<string>\",\n        \"format\": \"<string>\",\n        \"buttons\": [\n          {\n            \"type\": \"<string>\",\n            \"text\": \"<string>\",\n            \"url\": \"<string>\",\n            \"phone_number\": \"<string>\"\n          },\n          {\n            \"type\": \"<string>\",\n            \"text\": \"<string>\",\n            \"url\": \"<string>\",\n            \"phone_number\": \"<string>\"\n          }\n        ]\n      }\n    ]\n  }\n]"
+        },
+        {
+          "name": "Possíveis erros [auth_*,channel_01]",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "description": "Token do canal",
+                "key": "access-token",
+                "value": "<string>"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/core/v2/api/action-cards/templates",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "core",
+                "v2",
+                "api",
+                "action-cards",
+                "templates"
+              ]
+            }
+          },
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"status\": \"<string>\",\n  \"msg\": \"<string>\",\n  \"errorCode\": \"<string>\"\n}"
+        },
+        {
+          "name": "Possíveis erros [fatal_01]",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "description": "Token do canal",
+                "key": "access-token",
+                "value": "<string>"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/core/v2/api/action-cards/templates",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "core",
+                "v2",
+                "api",
+                "action-cards",
+                "templates"
+              ]
+            }
+          },
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"status\": \"<string>\",\n  \"msg\": \"<string>\",\n  \"errorCode\": \"<string>\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "Setar atributos no contato",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "access-token",
+            "value": "https://api.wescctech.com.br",
+            "description": "Token do canal"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "[\n  {\n    \"key\": \"<string>\",\n    \"value\": \"<string>\",\n    \"description\": \"<string>\"\n  },\n  {\n    \"key\": \"<string>\",\n    \"value\": \"<string>\",\n    \"description\": \"<string>\"\n  }\n]",
+          "options": {
+            "raw": {
+              "headerFamily": "json",
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/core/v2/api/contacts/:id/set-attributes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "core",
+            "v2",
+            "api",
+            "contacts",
+            ":id",
+            "set-attributes"
+          ],
+          "variable": [
+            {
+              "key": "id",
+              "value": "<string>"
+            }
+          ]
+        }
+      },
+      "response": [
+        {
+          "name": "Success",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "access-token",
+                "value": "65b969dfbf563b1cfdd22917",
+                "description": "Token do canal"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"key\": \"idteste\",\n    \"value\": \"55555555\",\n    \"description\": \"teste\"\n  }\n]",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://api.wescctech.com.br/core/v2/api/contacts/:id/set-attributes",
+              "protocol": "https",
+              "host": [
+                "api",
+                "wescctech",
+                "com",
+                "br"
+              ],
+              "path": [
+                "core",
+                "v2",
+                "api",
+                "contacts",
+                ":id",
+                "set-attributes"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"status\": \"<string>\",\n  \"msg\": \"<string>\"\n}"
+        },
+        {
+          "name": "Possíveis erros [auth_*,body_*,cont_01,cont_02,cont_03]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "description": "Token do canal",
+                "key": "access-token",
+                "value": "<string>"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"key\": \"<string>\",\n    \"value\": \"<string>\",\n    \"description\": \"<string>\"\n  },\n  {\n    \"key\": \"<string>\",\n    \"value\": \"<string>\",\n    \"description\": \"<string>\"\n  }\n]",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/core/v2/api/contacts/:id/set-attributes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "core",
+                "v2",
+                "api",
+                "contacts",
+                ":id",
+                "set-attributes"
+              ],
+              "variable": [
+                {
+                  "key": "id"
+                }
+              ]
+            }
+          },
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"status\": \"<string>\",\n  \"msg\": \"<string>\",\n  \"errorCode\": \"<string>\"\n}"
+        },
+        {
+          "name": "Possíveis erros [fatal_01]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "description": "Token do canal",
+                "key": "access-token",
+                "value": "<string>"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"key\": \"<string>\",\n    \"value\": \"<string>\",\n    \"description\": \"<string>\"\n  },\n  {\n    \"key\": \"<string>\",\n    \"value\": \"<string>\",\n    \"description\": \"<string>\"\n  }\n]",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/core/v2/api/contacts/:id/set-attributes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "core",
+                "v2",
+                "api",
+                "contacts",
+                ":id",
+                "set-attributes"
+              ],
+              "variable": [
+                {
+                  "key": "id"
+                }
+              ]
+            }
+          },
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"status\": \"<string>\",\n  \"msg\": \"<string>\",\n  \"errorCode\": \"<string>\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "Cria um novo atendimento",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "access-token",
+            "value": "696a6cad4817bd38a8efd6b9",
+            "description": "Token do canal"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"number\": \"5551991777183\",\n  \"quickAnswerId\": \"6973d5184440c6fe0394dd2e\",\n  \"quickAnswerComponents\": [\n    {\n      \"type\": \"BODY\",\n      \"parameters\": [\n        {\n          \"type\": \"text\",\n          \"text\": \"Deve pegar o nome do operador\"\n        },\n        \n        {\n          \"type\": \"text\",\n          \"text\": \"iDeve pegar o nome do operador\"\n        }\n      ]\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "headerFamily": "json",
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://api.wescctech.com.br/core/v2/api/chats/create-new",
+          "protocol": "https",
+          "host": [
+            "api",
+            "wescctech",
+            "com",
+            "br"
+          ],
+          "path": [
+            "core",
+            "v2",
+            "api",
+            "chats",
+            "create-new"
+          ]
+        }
+      },
+      "response": [
+        {
+          "name": "Accepted",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "description": "Token do canal",
+                "key": "access-token",
+                "value": "<string>"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contactId\": \"<string>\",\n  \"number\": \"<string>\",\n  \"sectorId\": \"<string>\",\n  \"message\": \"<string>\",\n  \"quickAnswerId\": \"<string>\",\n  \"quickAnswerComponents\": [\n    {\n      \"type\": \"<string>\",\n      \"sub_type\": \"<string>\",\n      \"parameters\": [\n        {\n          \"type\": \"<string>\",\n          \"image\": {\n            \"link\": \"<string>\"\n          },\n          \"video\": {\n            \"link\": \"<string>\"\n          },\n          \"document\": {\n            \"link\": \"<string>\"\n          },\n          \"currency\": {\n            \"fallback_value\": \"<string>\",\n            \"code\": \"<string>\",\n            \"amount_1000\": \"<string>\"\n          },\n          \"date_time\": {\n            \"fallback_value\": \"<string>\"\n          },\n          \"text\": \"<string>\"\n        },\n        {\n          \"type\": \"<string>\",\n          \"image\": {\n            \"link\": \"<string>\"\n          },\n          \"video\": {\n            \"link\": \"<string>\"\n          },\n          \"document\": {\n            \"link\": \"<string>\"\n          },\n          \"currency\": {\n            \"fallback_value\": \"<string>\",\n            \"code\": \"<string>\",\n            \"amount_1000\": \"<string>\"\n          },\n          \"date_time\": {\n            \"fallback_value\": \"<string>\"\n          },\n          \"text\": \"<string>\"\n        }\n      ],\n      \"index\": \"<integer>\"\n    },\n    {\n      \"type\": \"<string>\",\n      \"sub_type\": \"<string>\",\n      \"parameters\": [\n        {\n          \"type\": \"<string>\",\n          \"image\": {\n            \"link\": \"<string>\"\n          },\n          \"video\": {\n            \"link\": \"<string>\"\n          },\n          \"document\": {\n            \"link\": \"<string>\"\n          },\n          \"currency\": {\n            \"fallback_value\": \"<string>\",\n            \"code\": \"<string>\",\n            \"amount_1000\": \"<string>\"\n          },\n          \"date_time\": {\n            \"fallback_value\": \"<string>\"\n          },\n          \"text\": \"<string>\"\n        },\n        {\n          \"type\": \"<string>\",\n          \"image\": {\n            \"link\": \"<string>\"\n          },\n          \"video\": {\n            \"link\": \"<string>\"\n          },\n          \"document\": {\n            \"link\": \"<string>\"\n          },\n          \"currency\": {\n            \"fallback_value\": \"<string>\",\n            \"code\": \"<string>\",\n            \"amount_1000\": \"<string>\"\n          },\n          \"date_time\": {\n            \"fallback_value\": \"<string>\"\n          },\n          \"text\": \"<string>\"\n        }\n      ],\n      \"index\": \"<integer>\"\n    }\n  ],\n  \"userId\": \"<string>\"\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/core/v2/api/chats/create-new",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "core",
+                "v2",
+                "api",
+                "chats",
+                "create-new"
+              ]
+            }
+          },
+          "status": "Accepted",
+          "code": 202,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"status\": \"<string>\",\n  \"msg\": \"<string>\",\n  \"chatId\": \"<string>\",\n  \"contactId\": \"<string>\"\n}"
+        },
+        {
+          "name": "Possíveis erros [auth_*,num_*,body_*,start_*,chat_10,chat_11,chat_13,channel_01,wacloud_01]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "description": "Token do canal",
+                "key": "access-token",
+                "value": "<string>"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contactId\": \"<string>\",\n  \"number\": \"<string>\",\n  \"sectorId\": \"<string>\",\n  \"message\": \"<string>\",\n  \"quickAnswerId\": \"<string>\",\n  \"quickAnswerComponents\": [\n    {\n      \"type\": \"<string>\",\n      \"sub_type\": \"<string>\",\n      \"parameters\": [\n        {\n          \"type\": \"<string>\",\n          \"image\": {\n            \"link\": \"<string>\"\n          },\n          \"video\": {\n            \"link\": \"<string>\"\n          },\n          \"document\": {\n            \"link\": \"<string>\"\n          },\n          \"currency\": {\n            \"fallback_value\": \"<string>\",\n            \"code\": \"<string>\",\n            \"amount_1000\": \"<string>\"\n          },\n          \"date_time\": {\n            \"fallback_value\": \"<string>\"\n          },\n          \"text\": \"<string>\"\n        },\n        {\n          \"type\": \"<string>\",\n          \"image\": {\n            \"link\": \"<string>\"\n          },\n          \"video\": {\n            \"link\": \"<string>\"\n          },\n          \"document\": {\n            \"link\": \"<string>\"\n          },\n          \"currency\": {\n            \"fallback_value\": \"<string>\",\n            \"code\": \"<string>\",\n            \"amount_1000\": \"<string>\"\n          },\n          \"date_time\": {\n            \"fallback_value\": \"<string>\"\n          },\n          \"text\": \"<string>\"\n        }\n      ],\n      \"index\": \"<integer>\"\n    },\n    {\n      \"type\": \"<string>\",\n      \"sub_type\": \"<string>\",\n      \"parameters\": [\n        {\n          \"type\": \"<string>\",\n          \"image\": {\n            \"link\": \"<string>\"\n          },\n          \"video\": {\n            \"link\": \"<string>\"\n          },\n          \"document\": {\n            \"link\": \"<string>\"\n          },\n          \"currency\": {\n            \"fallback_value\": \"<string>\",\n            \"code\": \"<string>\",\n            \"amount_1000\": \"<string>\"\n          },\n          \"date_time\": {\n            \"fallback_value\": \"<string>\"\n          },\n          \"text\": \"<string>\"\n        },\n        {\n          \"type\": \"<string>\",\n          \"image\": {\n            \"link\": \"<string>\"\n          },\n          \"video\": {\n            \"link\": \"<string>\"\n          },\n          \"document\": {\n            \"link\": \"<string>\"\n          },\n          \"currency\": {\n            \"fallback_value\": \"<string>\",\n            \"code\": \"<string>\",\n            \"amount_1000\": \"<string>\"\n          },\n          \"date_time\": {\n            \"fallback_value\": \"<string>\"\n          },\n          \"text\": \"<string>\"\n        }\n      ],\n      \"index\": \"<integer>\"\n    }\n  ],\n  \"userId\": \"<string>\"\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/core/v2/api/chats/create-new",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "core",
+                "v2",
+                "api",
+                "chats",
+                "create-new"
+              ]
+            }
+          },
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"status\": \"<string>\",\n  \"msg\": \"<string>\",\n  \"errorCode\": \"<string>\"\n}"
+        },
+        {
+          "name": "Possíveis erros [fatal_01]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "description": "Token do canal",
+                "key": "access-token",
+                "value": "<string>"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contactId\": \"<string>\",\n  \"number\": \"<string>\",\n  \"sectorId\": \"<string>\",\n  \"message\": \"<string>\",\n  \"quickAnswerId\": \"<string>\",\n  \"quickAnswerComponents\": [\n    {\n      \"type\": \"<string>\",\n      \"sub_type\": \"<string>\",\n      \"parameters\": [\n        {\n          \"type\": \"<string>\",\n          \"image\": {\n            \"link\": \"<string>\"\n          },\n          \"video\": {\n            \"link\": \"<string>\"\n          },\n          \"document\": {\n            \"link\": \"<string>\"\n          },\n          \"currency\": {\n            \"fallback_value\": \"<string>\",\n            \"code\": \"<string>\",\n            \"amount_1000\": \"<string>\"\n          },\n          \"date_time\": {\n            \"fallback_value\": \"<string>\"\n          },\n          \"text\": \"<string>\"\n        },\n        {\n          \"type\": \"<string>\",\n          \"image\": {\n            \"link\": \"<string>\"\n          },\n          \"video\": {\n            \"link\": \"<string>\"\n          },\n          \"document\": {\n            \"link\": \"<string>\"\n          },\n          \"currency\": {\n            \"fallback_value\": \"<string>\",\n            \"code\": \"<string>\",\n            \"amount_1000\": \"<string>\"\n          },\n          \"date_time\": {\n            \"fallback_value\": \"<string>\"\n          },\n          \"text\": \"<string>\"\n        }\n      ],\n      \"index\": \"<integer>\"\n    },\n    {\n      \"type\": \"<string>\",\n      \"sub_type\": \"<string>\",\n      \"parameters\": [\n        {\n          \"type\": \"<string>\",\n          \"image\": {\n            \"link\": \"<string>\"\n          },\n          \"video\": {\n            \"link\": \"<string>\"\n          },\n          \"document\": {\n            \"link\": \"<string>\"\n          },\n          \"currency\": {\n            \"fallback_value\": \"<string>\",\n            \"code\": \"<string>\",\n            \"amount_1000\": \"<string>\"\n          },\n          \"date_time\": {\n            \"fallback_value\": \"<string>\"\n          },\n          \"text\": \"<string>\"\n        },\n        {\n          \"type\": \"<string>\",\n          \"image\": {\n            \"link\": \"<string>\"\n          },\n          \"video\": {\n            \"link\": \"<string>\"\n          },\n          \"document\": {\n            \"link\": \"<string>\"\n          },\n          \"currency\": {\n            \"fallback_value\": \"<string>\",\n            \"code\": \"<string>\",\n            \"amount_1000\": \"<string>\"\n          },\n          \"date_time\": {\n            \"fallback_value\": \"<string>\"\n          },\n          \"text\": \"<string>\"\n        }\n      ],\n      \"index\": \"<integer>\"\n    }\n  ],\n  \"userId\": \"<string>\"\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/core/v2/api/chats/create-new",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "core",
+                "v2",
+                "api",
+                "chats",
+                "create-new"
+              ]
+            }
+          },
+          "status": "Internal Server Error",
+          "code": 500,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"status\": \"<string>\",\n  \"msg\": \"<string>\",\n  \"errorCode\": \"<string>\"\n}"
+        }
+      ]
+    }
+  ]
+}

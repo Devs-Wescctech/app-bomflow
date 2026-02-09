@@ -1,0 +1,90 @@
+[
+    {
+        "id": "6973d5184440c6fe0394dd2e",
+        "description": "apresentacao (pt_BR)",
+        "canEdit": true,
+        "staticComponents": [
+            {
+                "type": "BUTTONS",
+                "buttons": [
+                    {
+                        "type": "QUICK_REPLY",
+                        "text": "Falar com o consultor"
+                    }
+                ]
+            }
+        ],
+        "dynamicComponents": [
+            {
+                "type": "BODY",
+                "text": "Olá, {{1}}\nAqui é {{2}}, consultor de vendas do Grupo Bom Pastor!\nFico à disposição para tirar qualquer dúvida sobre o plano e te ajudar no que precisar 😊"
+            }
+        ]
+    },
+    {
+        "id": "6973d5184440c6fe0394dd2d",
+        "description": "alguma_duvida (pt_BR)",
+        "canEdit": true,
+        "staticComponents": [
+            {
+                "type": "BUTTONS",
+                "buttons": [
+                    {
+                        "type": "QUICK_REPLY",
+                        "text": "Sim, tenho dúvidas"
+                    }
+                ]
+            }
+        ],
+        "dynamicComponents": [
+            {
+                "type": "BODY",
+                "text": "Oi, {{1}}!\nPassando para saber se conseguiu analisar as informações que te enviei.\nPosso te ajudar em algo ou esclarecer alguma dúvida?"
+            }
+        ]
+    },
+    {
+        "id": "6973d5184440c6fe0394dd2c",
+        "description": "agendar_horario (pt_BR)",
+        "canEdit": true,
+        "staticComponents": [
+            {
+                "type": "BUTTONS",
+                "buttons": [
+                    {
+                        "type": "QUICK_REPLY",
+                        "text": "Agendar horário"
+                    }
+                ]
+            }
+        ],
+        "dynamicComponents": [
+            {
+                "type": "BODY",
+                "text": "Olá, {{1}}, tudo bem?\nEstou organizando meus retornos e não queria deixar você sem resposta.\nSe preferir, posso passar aí em um horário melhor pra você"
+            }
+        ]
+    },
+    {
+        "id": "6973d850410e71e5bea6b291",
+        "description": "reforco_importante (pt_BR)",
+        "canEdit": true,
+        "staticComponents": [
+            {
+                "type": "BUTTONS",
+                "buttons": [
+                    {
+                        "type": "QUICK_REPLY",
+                        "text": "Escolher horário"
+                    }
+                ]
+            }
+        ],
+        "dynamicComponents": [
+            {
+                "type": "BODY",
+                "text": "Olá, {{1}}, só reforçando:\nO plano garante tranquilidade para sua família e evita custos inesperados no futuro.\nGostaria muito de lhe ajudar, qual horário podemos conversar?"
+            }
+        ]
+    }
+]

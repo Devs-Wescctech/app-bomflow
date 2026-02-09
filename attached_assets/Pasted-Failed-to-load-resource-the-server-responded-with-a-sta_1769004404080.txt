@@ -1,0 +1,53 @@
+Failed to load resource: the server responded with a status of 500 (Internal Server Error)Understand this error
+base44Client.js:24 [API] Error 500: undefined
+fetchAPI @ base44Client.js:24Understand this error
+ReferralCreate.jsx:163 ❌ Erro ao buscar cliente: Error: API Error
+    at fetchAPI (base44Client.js:25:11)
+    at async Object.invoke (base44Client.js:171:24)
+    at async handleSearchReferrer (ReferralCreate.jsx:105:24)
+handleSearchReferrer @ ReferralCreate.jsx:163Understand this error
+ReferralCreate.jsx:101 🔍 Buscando cliente indicador no ERP...
+base44Client.js:15 [API] POST /functions/get-customer-from-erp {hasAuth: true}
+base44Client.js:17  POST https://6e81cbdc-eb1e-41b1-b78b-3aa46cba291b-00-1w26sbzxqpmjz.riker.replit.dev/api/functions/get-customer-from-erp 500 (Internal Server Error)
+fetchAPI @ base44Client.js:17
+invoke @ base44Client.js:171
+handleSearchReferrer @ ReferralCreate.jsx:105
+callCallback2 @ chunk-SXRIVT2P.js?v=a841e566:3680
+invokeGuardedCallbackDev @ chunk-SXRIVT2P.js?v=a841e566:3705
+invokeGuardedCallback @ chunk-SXRIVT2P.js?v=a841e566:3739
+invokeGuardedCallbackAndCatchFirstError @ chunk-SXRIVT2P.js?v=a841e566:3742
+executeDispatch @ chunk-SXRIVT2P.js?v=a841e566:7046
+processDispatchQueueItemsInOrder @ chunk-SXRIVT2P.js?v=a841e566:7066
+processDispatchQueue @ chunk-SXRIVT2P.js?v=a841e566:7075
+dispatchEventsForPlugins @ chunk-SXRIVT2P.js?v=a841e566:7083
+(anonymous) @ chunk-SXRIVT2P.js?v=a841e566:7206
+batchedUpdates$1 @ chunk-SXRIVT2P.js?v=a841e566:18966
+batchedUpdates @ chunk-SXRIVT2P.js?v=a841e566:3585
+dispatchEventForPluginEventSystem @ chunk-SXRIVT2P.js?v=a841e566:7205
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-SXRIVT2P.js?v=a841e566:5484
+dispatchEvent @ chunk-SXRIVT2P.js?v=a841e566:5478
+dispatchDiscreteEvent @ chunk-SXRIVT2P.js?v=a841e566:5455Understand this error
+base44Client.js:24 [API] Error 500: undefined
+fetchAPI @ base44Client.js:24
+await in fetchAPI
+invoke @ base44Client.js:171
+handleSearchReferrer @ ReferralCreate.jsx:105
+callCallback2 @ chunk-SXRIVT2P.js?v=a841e566:3680
+invokeGuardedCallbackDev @ chunk-SXRIVT2P.js?v=a841e566:3705
+invokeGuardedCallback @ chunk-SXRIVT2P.js?v=a841e566:3739
+invokeGuardedCallbackAndCatchFirstError @ chunk-SXRIVT2P.js?v=a841e566:3742
+executeDispatch @ chunk-SXRIVT2P.js?v=a841e566:7046
+processDispatchQueueItemsInOrder @ chunk-SXRIVT2P.js?v=a841e566:7066
+processDispatchQueue @ chunk-SXRIVT2P.js?v=a841e566:7075
+dispatchEventsForPlugins @ chunk-SXRIVT2P.js?v=a841e566:7083
+(anonymous) @ chunk-SXRIVT2P.js?v=a841e566:7206
+batchedUpdates$1 @ chunk-SXRIVT2P.js?v=a841e566:18966
+batchedUpdates @ chunk-SXRIVT2P.js?v=a841e566:3585
+dispatchEventForPluginEventSystem @ chunk-SXRIVT2P.js?v=a841e566:7205
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-SXRIVT2P.js?v=a841e566:5484
+dispatchEvent @ chunk-SXRIVT2P.js?v=a841e566:5478
+dispatchDiscreteEvent @ chunk-SXRIVT2P.js?v=a841e566:5455Understand this error
+ReferralCreate.jsx:163 ❌ Erro ao buscar cliente: Error: API Error
+    at fetchAPI (base44Client.js:25:11)
+    at async Object.invoke (base44Client.js:171:24)
+    at async handleSearchReferrer (ReferralCreate.jsx:105:24)

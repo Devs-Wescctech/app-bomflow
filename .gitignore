@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.cache/
+.config/
+.local/
+.upm/
+uploads/*
+!uploads/.gitkeep
+*.log
+.env
+.env.*
+!.env.example
+attached_assets/
+.replit_integration_files/
