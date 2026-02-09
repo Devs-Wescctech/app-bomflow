@@ -1,20 +1,26 @@
-# Base44 App
+# Bom Flow CRM
 
+Sistema CRM desenvolvido pela Wescctech para gestão de vendas, atendimento e cobranças.
 
-This app was created automatically by Base44.
-It's a Vite+React app that communicates with the Base44 API.
+## Stack
 
-## Running the app
+- **Frontend**: React 18 + Vite + Tailwind CSS
+- **Backend**: Node.js + Express
+- **Banco de Dados**: PostgreSQL
+
+## Desenvolvimento
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Building the app
+## Build
 
 ```bash
 npm run build
 ```
 
-For more information and support, please contact Base44 support at app@base44.com.
+## Deploy
+
+Consulte o arquivo `README-MIGRACAO.md` para instruções de deploy com Docker.
