@@ -408,12 +408,12 @@ router.post('/leads', authMiddleware, async (req, res) => {
         return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PF. Lead "${dup.name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
       }
       const dupPJ = await query(
-        `SELECT l.id, l.company_name, a.name as agent_name FROM leads_pj l LEFT JOIN agents a ON l.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(l.phone, ''), '[^0-9]', '', 'g') = $1`,
+        `SELECT l.id, COALESCE(l.nome_fantasia, l.razao_social, l.contact_name) as display_name, a.name as agent_name FROM leads_pj l LEFT JOIN agents a ON l.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(l.phone, l.contact_phone, ''), '[^0-9]', '', 'g') = $1`,
         [cleanPhone]
       );
       if (dupPJ.rows.length > 0) {
         const dup = dupPJ.rows[0];
-        return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PJ. Lead "${dup.company_name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PJ. Lead "${dup.display_name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
       }
       const dupRef = await query(
         `SELECT r.id, r.referred_name, a.name as agent_name FROM referrals r LEFT JOIN agents a ON r.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(r.referred_phone, ''), '[^0-9]', '', 'g') = $1`,
@@ -585,12 +585,12 @@ router.post('/leads-pj', authMiddleware, async (req, res) => {
         return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PF. Lead "${dup.name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
       }
       const dupPJ = await query(
-        `SELECT l.id, l.company_name, a.name as agent_name FROM leads_pj l LEFT JOIN agents a ON l.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(l.phone, ''), '[^0-9]', '', 'g') = $1`,
+        `SELECT l.id, COALESCE(l.nome_fantasia, l.razao_social, l.contact_name) as display_name, a.name as agent_name FROM leads_pj l LEFT JOIN agents a ON l.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(l.phone, l.contact_phone, ''), '[^0-9]', '', 'g') = $1`,
         [cleanPhone]
       );
       if (dupPJ.rows.length > 0) {
         const dup = dupPJ.rows[0];
-        return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PJ. Lead "${dup.company_name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PJ. Lead "${dup.display_name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
       }
       const dupRef = await query(
         `SELECT r.id, r.referred_name, a.name as agent_name FROM referrals r LEFT JOIN agents a ON r.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(r.referred_phone, ''), '[^0-9]', '', 'g') = $1`,
@@ -748,12 +748,12 @@ router.post('/referrals', authMiddleware, async (req, res) => {
         return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PF. Lead "${dup.name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
       }
       const dupPJ = await query(
-        `SELECT l.id, l.company_name, a.name as agent_name FROM leads_pj l LEFT JOIN agents a ON l.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(l.phone, ''), '[^0-9]', '', 'g') = $1`,
+        `SELECT l.id, COALESCE(l.nome_fantasia, l.razao_social, l.contact_name) as display_name, a.name as agent_name FROM leads_pj l LEFT JOIN agents a ON l.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(l.phone, l.contact_phone, ''), '[^0-9]', '', 'g') = $1`,
         [cleanPhone]
       );
       if (dupPJ.rows.length > 0) {
         const dup = dupPJ.rows[0];
-        return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PJ. Lead "${dup.company_name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PJ. Lead "${dup.display_name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
       }
       const dupRef = await query(
         `SELECT r.id, r.referred_name, a.name as agent_name FROM referrals r LEFT JOIN agents a ON r.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(r.referred_phone, ''), '[^0-9]', '', 'g') = $1`,
