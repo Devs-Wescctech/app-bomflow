@@ -155,9 +155,13 @@ export default function SalesDashboard() {
   const perdidos = leads.filter(l => isLostStage(l.stage)).length;
   const taxaConversao = totalLeads > 0 ? ((vendas / totalLeads) * 100).toFixed(1) : 0;
   
+  const getLeadValue = (lead) => {
+    return parseFloat(lead.value) || parseFloat(lead.monthlyValue) || parseFloat(lead.monthly_value) || 0;
+  };
+
   const receitaTotal = leads
     .filter(l => isWonStage(l.stage))
-    .reduce((sum, l) => sum + (parseFloat(l.value) || 0), 0);
+    .reduce((sum, l) => sum + getLeadValue(l), 0);
 
   const ticketMedio = vendas > 0 ? (receitaTotal / vendas).toFixed(2) : 0;
   const atividadesPendentes = activities.filter(a => !a.completed && a.type === 'task').length;
