@@ -175,7 +175,7 @@ export default function PortalReferralList() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-green-600 font-medium">Comissões Pagas</p>
-                  <p className="text-2xl font-bold text-green-700">R$ {totalPaid.toFixed(0)}</p>
+                  <p className="text-2xl font-bold text-green-700">R$ {totalPaid.toFixed(2)}</p>
                   <p className="text-xs text-green-600 mt-1">
                     {paidCommissions.length} pagamento(s)
                   </p>
@@ -190,7 +190,7 @@ export default function PortalReferralList() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-blue-600 font-medium">A Receber</p>
-                  <p className="text-2xl font-bold text-blue-700">R$ {totalPending.toFixed(0)}</p>
+                  <p className="text-2xl font-bold text-blue-700">R$ {totalPending.toFixed(2)}</p>
                   <p className="text-xs text-blue-600 mt-1">
                     {pendingCommissions.length} pendente(s)
                   </p>

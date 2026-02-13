@@ -622,7 +622,7 @@ export default function LeadsPJKanban() {
     const currentStage = fromStage || lead.stage;
     if (currentStage === newStage) return;
 
-    const stageHistory = [...(lead.stageHistory || [])];
+    const stageHistory = [...(lead.stageHistory || lead.stage_history || [])];
     stageHistory.push({
       from: currentStage,
       to: newStage,
@@ -1214,7 +1214,7 @@ export default function LeadsPJKanban() {
                                 <DollarSign className="w-3 h-3" />
                                 Valor:
                               </span>
-                              <span className="font-semibold">R$ {stageValue.toFixed(0)}</span>
+                              <span className="font-semibold">{formatCurrency(stageValue)}</span>
                             </div>
                           </div>
                         </div>

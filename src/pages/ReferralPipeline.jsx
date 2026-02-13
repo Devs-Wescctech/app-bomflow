@@ -563,7 +563,7 @@ export default function ReferralPipeline() {
       
       if (data.stage && currentReferral && data.stage !== currentReferral.stage) {
         const currentUser = await base44.auth.me();
-        const stageHistory = currentReferral.stageHistory || [];
+        const stageHistory = [...(currentReferral.stageHistory || currentReferral.stage_history || [])];
         
         stageHistory.push({
           stage: data.stage,

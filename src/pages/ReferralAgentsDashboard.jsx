@@ -277,8 +277,8 @@ export default function ReferralAgentsDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-purple-600 dark:text-purple-400 font-medium">Comissões Pagas</p>
-                <p className="text-3xl font-bold text-purple-700 dark:text-purple-300">R$ {totalGeralComissao.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</p>
-                <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">Média: R$ {totalGeralConversoes > 0 ? (totalGeralComissao / totalGeralConversoes).toFixed(0) : 0}</p>
+                <p className="text-3xl font-bold text-purple-700 dark:text-purple-300">R$ {totalGeralComissao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">Média: R$ {totalGeralConversoes > 0 ? (totalGeralComissao / totalGeralConversoes).toFixed(2) : 0}</p>
               </div>
               <DollarSign className="w-10 h-10 text-purple-500 dark:text-purple-400 opacity-50" />
             </div>
@@ -340,7 +340,7 @@ export default function ReferralAgentsDashboard() {
                           </div>
                           <div className="bg-orange-100 dark:bg-orange-950 p-2 rounded">
                             <p className="text-xs text-gray-600 dark:text-gray-400">Comissão</p>
-                            <p className="text-sm font-bold text-orange-600 dark:text-orange-400">R$ {stat.comissao.toFixed(0)}</p>
+                            <p className="text-sm font-bold text-orange-600 dark:text-orange-400">R$ {stat.comissao.toFixed(2)}</p>
                           </div>
                         </div>
                       </div>
@@ -394,7 +394,7 @@ export default function ReferralAgentsDashboard() {
                     </div>
                     <div>
                       <p className="text-xs text-gray-500 dark:text-gray-400">Comissão</p>
-                      <p className="font-bold text-orange-600 dark:text-orange-400">R$ {stat.comissao.toFixed(0)}</p>
+                      <p className="font-bold text-orange-600 dark:text-orange-400">R$ {stat.comissao.toFixed(2)}</p>
                     </div>
                   </div>
                 </div>

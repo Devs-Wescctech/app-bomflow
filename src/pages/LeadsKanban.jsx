@@ -140,6 +140,10 @@ function getTimeInStage(lead) {
   return { label, days: totalDays, hours: totalHours, minutes: totalMinutes, color, enteredAt };
 }
 
+function getLeadValue(lead) {
+  return parseFloat(lead.value) || parseFloat(lead.monthlyValue) || parseFloat(lead.monthly_value) || 0;
+}
+
 function getStageHistoryTimeline(lead, stages) {
   const history = getSortedHistory(lead);
   if (history.length === 0) return [];
@@ -299,13 +303,13 @@ function SortableLeadCard({ lead, stage, pendingTasksCount, agentData, navigate,
             )}
           </div>
 
-          {lead.value > 0 && (
+          {getLeadValue(lead) > 0 && (
             <div className="mt-3 inline-flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-900/30 dark:to-green-900/30 rounded-xl border border-emerald-100 dark:border-emerald-800/50">
               <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center">
                 <DollarSign className="w-3.5 h-3.5 text-white" />
               </div>
               <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
-                {formatCurrency(lead.value)}
+                {formatCurrency(getLeadValue(lead))}
               </span>
             </div>
           )}
@@ -637,7 +641,7 @@ export default function LeadsKanban() {
     const currentStage = fromStage || lead.stage;
     if (currentStage === newStage) return;
 
-    const stageHistory = lead.stage_history || [];
+    const stageHistory = [...(lead.stageHistory || lead.stage_history || [])];
     stageHistory.push({
       from: currentStage,
       to: newStage,
@@ -822,13 +826,13 @@ export default function LeadsKanban() {
   
   // Valor total em pipeline (apenas leads ativos, não ganhos/perdidos)
   const totalValue = activeLeads.reduce((sum, lead) => {
-    const val = parseFloat(lead.value) || 0;
+    const val = getLeadValue(lead);
     return sum + val;
   }, 0);
   
   // Valor ganho (leads fechados com sucesso)
   const wonValue = wonLeads.reduce((sum, lead) => {
-    const val = parseFloat(lead.value) || 0;
+    const val = getLeadValue(lead);
     return sum + val;
   }, 0);
   
@@ -1221,7 +1225,7 @@ export default function LeadsKanban() {
               <div className="flex gap-4" style={{ minWidth: 'max-content' }}>
                 {STAGES.map((stage) => {
                   const stageLeads = getOrderedLeadsByStage(stage.id);
-                  const stageValue = stageLeads.reduce((sum, lead) => sum + (parseFloat(lead.value) || 0), 0);
+                  const stageValue = stageLeads.reduce((sum, lead) => sum + getLeadValue(lead), 0);
                   const stageTimes = stageLeads.map(l => getTimeInStage(l));
                   const avgDays = stageTimes.length > 0 
                     ? Math.round(stageTimes.reduce((sum, t) => sum + (t.days || 0), 0) / stageTimes.length) 
@@ -1241,7 +1245,7 @@ export default function LeadsKanban() {
                               <DollarSign className="w-3 h-3" />
                               Valor:
                             </span>
-                            <span className="font-semibold">R$ {stageValue.toFixed(0)}</span>
+                            <span className="font-semibold">{formatCurrency(stageValue)}</span>
                           </div>
                           <div className="flex items-center justify-between">
                             <span className="flex items-center gap-1">
@@ -1432,7 +1436,7 @@ export default function LeadsKanban() {
                               </td>
                               <td className="px-4 py-3">
                                 <span className="font-semibold text-sm text-emerald-600 dark:text-emerald-400">
-                                  {formatCurrency(lead.value)}
+                                  {formatCurrency(getLeadValue(lead))}
                                 </span>
                               </td>
                               <td className="px-4 py-3">
