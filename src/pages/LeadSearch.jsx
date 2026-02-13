@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Search, 
   Phone, 
@@ -25,7 +26,9 @@ import {
   AlertCircle,
   Info,
   Download,
-  Filter
+  Filter,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -36,7 +39,12 @@ export default function LeadSearch() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchType, setSearchType] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [stageFilter, setStageFilter] = useState("all");
+  const [agentFilter, setAgentFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
@@ -86,73 +94,93 @@ export default function LeadSearch() {
     enabled: !!user && (!needsTeamFilter || agentsReady),
   });
 
-  const agents = allAgents;
-
   const normalizeString = (str) => {
     if (!str) return '';
     return str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   };
 
-  // Aplicar filtro de status primeiro
-  const getLeadsByStatus = () => {
-    if (statusFilter === 'all') return allLeads;
-    if (statusFilter === 'active') return allLeads.filter(l => l.stage && !['fechado_ganho', 'fechado_perdido'].includes(l.stage));
-    if (statusFilter === 'won') return allLeads.filter(l => l.stage === 'fechado_ganho');
-    if (statusFilter === 'lost') return allLeads.filter(l => l.stage === 'fechado_perdido');
-    return allLeads;
-  };
-
-  const leadsAfterStatusFilter = getLeadsByStatus();
-
   const getFilteredLeads = () => {
-    if (!searchQuery.trim()) {
-      return leadsAfterStatusFilter.slice(0, 50);
+    let leads = [...allLeads];
+
+    if (stageFilter !== 'all') {
+      leads = leads.filter(l => l.stage === stageFilter);
     }
 
-    const query = normalizeString(searchQuery);
-    const queryNumbers = searchQuery.replace(/\D/g, '');
+    if (agentFilter !== 'all') {
+      leads = leads.filter(l => (l.agentId || l.agent_id) === agentFilter);
+    }
 
-    return leadsAfterStatusFilter.filter(lead => {
-      // Busca por telefone
-      if (searchType === 'all' || searchType === 'phone') {
-        const leadPhone = lead.phone?.replace(/\D/g, '') || '';
-        if (leadPhone.includes(queryNumbers)) return true;
-      }
+    if (dateFrom) {
+      const from = new Date(dateFrom);
+      from.setHours(0, 0, 0, 0);
+      leads = leads.filter(l => {
+        const d = new Date(l.createdDate || l.createdAt);
+        return !isNaN(d) && d >= from;
+      });
+    }
 
-      // Busca por CPF
-      if (searchType === 'all' || searchType === 'cpf') {
-        const leadCPF = lead.cpf?.replace(/\D/g, '') || '';
-        if (leadCPF.includes(queryNumbers)) return true;
-      }
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setHours(23, 59, 59, 999);
+      leads = leads.filter(l => {
+        const d = new Date(l.createdDate || l.createdAt);
+        return !isNaN(d) && d <= to;
+      });
+    }
 
-      // Busca por nome
-      if (searchType === 'all' || searchType === 'name') {
-        const leadName = normalizeString(lead.name || '');
-        if (leadName.includes(query)) return true;
-      }
+    if (searchQuery.trim()) {
+      const query = normalizeString(searchQuery);
+      const queryNumbers = searchQuery.replace(/\D/g, '');
 
-      // Busca por email
-      if (searchType === 'all') {
-        const leadEmail = normalizeString(lead.email || '');
-        if (leadEmail.includes(query)) return true;
-      }
+      leads = leads.filter(lead => {
+        if (searchType === 'all' || searchType === 'phone') {
+          const leadPhone = lead.phone?.replace(/\D/g, '') || '';
+          if (leadPhone.includes(queryNumbers) && queryNumbers) return true;
+        }
+        if (searchType === 'all' || searchType === 'cpf') {
+          const leadCPF = lead.cpf?.replace(/\D/g, '') || '';
+          if (leadCPF.includes(queryNumbers) && queryNumbers) return true;
+        }
+        if (searchType === 'all' || searchType === 'name') {
+          const leadName = normalizeString(lead.name || '');
+          if (leadName.includes(query)) return true;
+        }
+        if (searchType === 'all') {
+          const leadEmail = normalizeString(lead.email || '');
+          if (leadEmail.includes(query)) return true;
+        }
+        return false;
+      });
+    }
 
-      return false;
-    });
+    return leads;
   };
 
   const filteredLeads = getFilteredLeads();
+  const totalResults = filteredLeads.length;
+  const totalPages = Math.max(1, Math.ceil(totalResults / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedLeads = filteredLeads.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  // Função de exportação CSV
+  const handleFilterChange = (setter) => (value) => {
+    setter(value);
+    setCurrentPage(1);
+  };
+
+  const getAgentName = (agentId) => {
+    const agent = allAgents.find(a => a.id === agentId);
+    return agent?.name || agent?.fullName || agent?.full_name || '-';
+  };
+
   const exportToCSV = () => {
-    const dataToExport = filteredLeads.length > 0 ? filteredLeads : leadsAfterStatusFilter;
+    const dataToExport = filteredLeads;
     
     if (dataToExport.length === 0) {
       alert('Nenhum lead para exportar');
       return;
     }
 
-    const headers = ['Nome', 'Telefone', 'CPF', 'Email', 'Estágio', 'Valor Mensal', 'Valor Adesão', 'Valor Total', 'Interesse', 'Endereço', 'Cidade', 'UF', 'Data Criação'];
+    const headers = ['Nome', 'Telefone', 'CPF', 'Email', 'Estágio', 'Valor Mensal', 'Valor Adesão', 'Valor Total', 'Interesse', 'Endereço', 'Cidade', 'UF', 'Agente', 'Data Criação'];
     
     const rows = dataToExport.map(lead => [
       lead.name || '',
@@ -167,6 +195,7 @@ export default function LeadSearch() {
       lead.address || '',
       lead.city || '',
       lead.state || '',
+      getAgentName(lead.agentId || lead.agent_id),
       lead.createdDate ? format(new Date(lead.createdDate), 'dd/MM/yyyy', { locale: ptBR }) : ''
     ]);
 
@@ -179,9 +208,8 @@ export default function LeadSearch() {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     
-    const statusLabel = statusFilter === 'all' ? 'todos' : statusFilter === 'won' ? 'ganhos' : statusFilter === 'lost' ? 'perdidos' : 'ativos';
     link.setAttribute('href', url);
-    link.setAttribute('download', `leads_${statusLabel}_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    link.setAttribute('download', `leads_export_${format(new Date(), 'yyyy-MM-dd')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -210,10 +238,9 @@ export default function LeadSearch() {
       fechado_perdido: 'Fechado - Perdido',
       reengajar: 'Reengajar',
     };
-    return labels[stage] || stage;
+    return labels[stage] || stage || '-';
   };
 
-  // KPIs baseados no stage (fonte de verdade) - allLeads já está filtrado por permissões
   const stats = {
     total: allLeads.length,
     active: allLeads.filter(l => l.stage && !['fechado_ganho', 'fechado_perdido'].includes(l.stage)).length,
@@ -224,7 +251,6 @@ export default function LeadSearch() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
             <Search className="w-8 h-8 text-blue-600 dark:text-blue-400" />
@@ -235,7 +261,6 @@ export default function LeadSearch() {
           </p>
         </div>
 
-        {/* Alerta Informativo */}
         <Alert className="mb-6 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950">
           <Info className="w-4 h-4 text-blue-600 dark:text-blue-400" />
           <AlertDescription className="text-blue-800 dark:text-blue-200">
@@ -245,277 +270,316 @@ export default function LeadSearch() {
           </AlertDescription>
         </Alert>
 
-        {/* Stats */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="p-3 bg-blue-100 rounded-lg">
-                  <FileText className="w-6 h-6 text-blue-600" />
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <FileText className="w-5 h-5 text-blue-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Total de Leads</p>
-                  <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.total}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{isAdmin ? 'Todos os leads' : 'Seus leads'}</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Total</p>
+                  <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{stats.total}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="p-3 bg-green-100 rounded-lg">
-                  <TrendingUp className="w-6 h-6 text-green-600" />
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <TrendingUp className="w-5 h-5 text-green-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Leads Ativos</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{stats.active}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">No pipeline</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Ativos</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{stats.active}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="p-3 bg-green-100 rounded-lg">
-                  <CheckCircle className="w-6 h-6 text-green-600" />
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <CheckCircle className="w-5 h-5 text-green-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Vendas Fechadas</p>
-                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.won}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Ganhos</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Ganhos</p>
+                  <p className="text-xl font-bold text-green-600 dark:text-green-400">{stats.won}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="p-3 bg-red-100 rounded-lg">
-                  <XCircle className="w-6 h-6 text-red-600" />
+                <div className="p-2 bg-red-100 rounded-lg">
+                  <XCircle className="w-5 h-5 text-red-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Leads Perdidos</p>
-                  <p className="text-2xl font-bold text-red-600 dark:text-red-400">{stats.lost}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Sem conversão</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Perdidos</p>
+                  <p className="text-xl font-bold text-red-600 dark:text-red-400">{stats.lost}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Busca e Filtros */}
         <Card className="mb-6">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Buscar Lead no Pipeline Comercial</CardTitle>
-            <Button onClick={exportToCSV} variant="outline" className="gap-2">
-              <Download className="w-4 h-4" />
-              Exportar CSV
-            </Button>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Filter className="w-5 h-5" />
+              Filtros e Busca
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid md:grid-cols-6 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
               <div className="md:col-span-3">
                 <Label>Buscar por</Label>
                 <div className="relative mt-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <Input
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Digite telefone, CPF, nome ou e-mail do lead..."
+                    onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                    placeholder="Digite telefone, CPF, nome ou e-mail..."
                     className="pl-10"
                   />
                 </div>
               </div>
-
               <div>
                 <Label>Campo</Label>
-                <select
-                  value={searchType}
-                  onChange={(e) => setSearchType(e.target.value)}
-                  className="w-full mt-1 h-10 px-3 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">Todos os campos</option>
-                  <option value="phone">Apenas Telefone</option>
-                  <option value="cpf">Apenas CPF</option>
-                  <option value="name">Apenas Nome</option>
-                </select>
+                <Select value={searchType} onValueChange={handleFilterChange(setSearchType)}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="phone">Telefone</SelectItem>
+                    <SelectItem value="cpf">CPF</SelectItem>
+                    <SelectItem value="name">Nome</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-
               <div className="md:col-span-2">
-                <Label>Status do Lead</Label>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full mt-1 h-10 px-3 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">Todos os status</option>
-                  <option value="active">Ativos (no pipeline)</option>
-                  <option value="won">Fechados - Ganhos</option>
-                  <option value="lost">Fechados - Perdidos</option>
-                </select>
+                <Label>Estágio</Label>
+                <Select value={stageFilter} onValueChange={handleFilterChange(setStageFilter)}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os estágios</SelectItem>
+                    <SelectItem value="novo">Novo</SelectItem>
+                    <SelectItem value="abordado">Abordado</SelectItem>
+                    <SelectItem value="qualificado">Qualificado</SelectItem>
+                    <SelectItem value="proposta_enviada">Proposta Enviada</SelectItem>
+                    <SelectItem value="fechado_ganho">Fechado - Ganho</SelectItem>
+                    <SelectItem value="fechado_perdido">Fechado - Perdido</SelectItem>
+                    <SelectItem value="reengajar">Reengajar</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+              <div className="md:col-span-2">
+                <Label>Agente</Label>
+                <Select value={agentFilter} onValueChange={handleFilterChange(setAgentFilter)}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os agentes</SelectItem>
+                    {allAgents.map(agent => (
+                      <SelectItem key={agent.id} value={agent.id}>
+                        {agent.name || agent.fullName || agent.full_name || agent.userEmail || agent.user_email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Data de</Label>
+                <Input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Data até</Label>
+                <Input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Por página</Label>
+                <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Button onClick={exportToCSV} variant="outline" className="w-full gap-2 mt-1">
+                  <Download className="w-4 h-4" />
+                  Exportar CSV
+                </Button>
               </div>
             </div>
 
             <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
               <div className="flex items-center gap-2">
                 <Filter className="w-4 h-4" />
-                <span>
-                  {leadsAfterStatusFilter.length} lead(s) com filtro de status
-                </span>
+                <span>{totalResults} lead(s) encontrado(s)</span>
               </div>
-              {searchQuery && (
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>
-                    {filteredLeads.length} lead(s) encontrado(s) na busca
-                  </span>
-                </div>
+              {(stageFilter !== 'all' || agentFilter !== 'all' || dateFrom || dateTo || searchQuery) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setStageFilter('all');
+                    setAgentFilter('all');
+                    setDateFrom('');
+                    setDateTo('');
+                    setSearchQuery('');
+                    setSearchType('all');
+                    setCurrentPage(1);
+                  }}
+                  className="text-xs"
+                >
+                  Limpar filtros
+                </Button>
               )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Resultados */}
         {isLoading ? (
           <div className="flex items-center justify-center h-64">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
+        ) : paginatedLeads.length === 0 ? (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <Search className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                Nenhum lead encontrado
+              </h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
+                Ajuste os filtros ou a busca para encontrar leads no pipeline comercial.
+              </p>
+            </CardContent>
+          </Card>
         ) : (
-          <div className="space-y-4">
-            {filteredLeads.length === 0 ? (
-              <Card>
-                <CardContent className="p-12 text-center">
-                  <Search className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                    {searchQuery ? 'Nenhum lead encontrado' : 'Digite algo para buscar'}
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400 mb-4">
-                    {searchQuery 
-                      ? 'Nenhum lead no pipeline comercial corresponde à sua busca'
-                      : 'Use a busca acima para encontrar leads do pipeline de vendas'
-                    }
-                  </p>
-                  <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg inline-block">
-                    <p className="text-sm text-blue-800 dark:text-blue-200">
-                      <strong>Dica:</strong> Se está procurando tickets de Pré-Venda ou Pós-Venda, 
-                      acesse "Pré e Pós Vendas" → "Tickets de Vendas"
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              filteredLeads.map(lead => (
-                <Card 
-                  key={lead.id} 
-                  className="hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => navigate(`${createPageUrl("LeadDetail")}?id=${lead.id}`)}
-                >
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-start gap-4">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                {lead.name || 'Sem nome'}
-                              </h3>
-                              <Badge className={getStageColor(lead.stage)}>
-                                {getStageLabel(lead.stage)}
-                              </Badge>
-                              {lead.concluded && (
-                                <Badge className="bg-green-100 text-green-700">
-                                  ✅ Venda Fechada
-                                </Badge>
-                              )}
-                              {lead.lost && (
-                                <Badge className="bg-red-100 text-red-700">
-                                  ❌ Lead Perdido
-                                </Badge>
-                              )}
-                            </div>
-
-                            <div className="grid md:grid-cols-2 gap-4 text-sm">
-                              {lead.phone && (
-                                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                                  <Phone className="w-4 h-4" />
-                                  <span>{lead.phone}</span>
-                                </div>
-                              )}
-
-                              {lead.cpf && (
-                                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                                  <User className="w-4 h-4" />
-                                  <span>{lead.cpf}</span>
-                                </div>
-                              )}
-
-                              {lead.email && (
-                                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                                  <Mail className="w-4 h-4" />
-                                  <span>{lead.email}</span>
-                                </div>
-                              )}
-
-                              {lead.interest && (
-                                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                                  <FileText className="w-4 h-4" />
-                                  <span>{lead.interest}</span>
-                                </div>
-                              )}
-
-                              {lead.address && (
-                                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400 md:col-span-2">
-                                  <MapPin className="w-4 h-4" />
-                                  <span className="truncate">{lead.address}</span>
-                                </div>
-                              )}
-
-                              <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                                <Calendar className="w-4 h-4" />
-                                <span>
-                                  Criado em {(lead.createdDate || lead.createdAt) && !isNaN(new Date(lead.createdDate || lead.createdAt))
-                                    ? format(new Date(lead.createdDate || lead.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
-                                    : 'data não disponível'}
-                                </span>
-                              </div>
-                            </div>
-
-                            {lead.notes && (
-                              <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">{lead.notes}</p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`${createPageUrl("LeadDetail")}?id=${lead.id}`);
-                        }}
+          <>
+            <Card>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-gray-100 dark:bg-gray-800">
+                      <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Nome</th>
+                      <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Telefone</th>
+                      <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300 hidden lg:table-cell">Email</th>
+                      <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Estágio</th>
+                      <th className="text-right p-3 font-semibold text-gray-700 dark:text-gray-300 hidden md:table-cell">Valor</th>
+                      <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300 hidden lg:table-cell">Agente</th>
+                      <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300 hidden md:table-cell">Data Criação</th>
+                      <th className="text-center p-3 font-semibold text-gray-700 dark:text-gray-300">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedLeads.map((lead, idx) => (
+                      <tr
+                        key={lead.id}
+                        className={`border-b cursor-pointer hover:bg-blue-50 dark:hover:bg-gray-800 transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-950'}`}
+                        onClick={() => navigate(`${createPageUrl("LeadDetail")}?id=${lead.id}`)}
                       >
-                        <ExternalLink className="w-5 h-5" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
-        )}
+                        <td className="p-3 font-medium text-gray-900 dark:text-gray-100">
+                          {lead.name || 'Sem nome'}
+                        </td>
+                        <td className="p-3 text-gray-600 dark:text-gray-400">
+                          {lead.phone || '-'}
+                        </td>
+                        <td className="p-3 text-gray-600 dark:text-gray-400 hidden lg:table-cell">
+                          <span className="truncate max-w-[180px] inline-block">{lead.email || '-'}</span>
+                        </td>
+                        <td className="p-3">
+                          <Badge className={`${getStageColor(lead.stage)} text-xs`}>
+                            {getStageLabel(lead.stage)}
+                          </Badge>
+                        </td>
+                        <td className="p-3 text-right text-gray-700 dark:text-gray-300 hidden md:table-cell">
+                          {lead.value ? `R$ ${Number(lead.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '-'}
+                        </td>
+                        <td className="p-3 text-gray-600 dark:text-gray-400 hidden lg:table-cell">
+                          {getAgentName(lead.agentId || lead.agent_id)}
+                        </td>
+                        <td className="p-3 text-gray-600 dark:text-gray-400 hidden md:table-cell">
+                          {(lead.createdDate || lead.createdAt) && !isNaN(new Date(lead.createdDate || lead.createdAt))
+                            ? format(new Date(lead.createdDate || lead.createdAt), "dd/MM/yyyy", { locale: ptBR })
+                            : '-'}
+                        </td>
+                        <td className="p-3 text-center">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`${createPageUrl("LeadDetail")}?id=${lead.id}`);
+                            }}
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
 
-        {!searchQuery && filteredLeads.length === 20 && (
-          <div className="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
-            Mostrando os 20 leads mais recentes do pipeline comercial. Use a busca para encontrar outros.
-          </div>
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Mostrando {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, totalResults)} de {totalResults} lead(s)
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={safePage <= 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  className="gap-1"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Anterior
+                </Button>
+                <span className="text-sm text-gray-700 dark:text-gray-300 px-2">
+                  Página {safePage} de {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={safePage >= totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  className="gap-1"
+                >
+                  Próxima
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>

@@ -121,6 +121,8 @@ export default function SalesTasks() {
   const [taskToDelete, setTaskToDelete] = useState(null);
   const [leadPopoverOpen, setLeadPopoverOpen] = useState(false);
   const [leadSearchQuery, setLeadSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -316,6 +318,8 @@ export default function SalesTasks() {
   };
 
   const filteredTasks = getFilteredTasks();
+  const totalPages = Math.ceil(filteredTasks.length / pageSize) || 1;
+  const paginatedTasks = filteredTasks.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const formatTaskDate = (dateString) => {
     if (!dateString) return null;
@@ -444,7 +448,7 @@ export default function SalesTasks() {
               <Input
                 placeholder="Buscar tarefas..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
                 className="pl-10 bg-white dark:bg-gray-900"
               />
             </div>
@@ -457,7 +461,7 @@ export default function SalesTasks() {
                     key={opt.id}
                     variant={isActive ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setFilter(opt.id)}
+                    onClick={() => { setFilter(opt.id); setCurrentPage(1); }}
                     className={isActive ? "bg-blue-600 hover:bg-blue-700" : ""}
                   >
                     <Icon className="w-4 h-4 mr-1" />
@@ -497,7 +501,7 @@ export default function SalesTasks() {
           ) : (
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
               <AnimatePresence>
-                {filteredTasks.map((task, index) => {
+                {paginatedTasks.map((task, index) => {
                   const lead = getLeadById(task.leadId);
                   const status = getTaskStatus(task);
                   const priorityConfig = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.media;
@@ -623,6 +627,35 @@ export default function SalesTasks() {
                   );
                 })}
               </AnimatePresence>
+            </div>
+          )}
+          {filteredTasks.length > 0 && (
+            <div className="flex items-center justify-between mt-4 px-4 pb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">Itens por página:</span>
+                <Select value={String(pageSize)} onValueChange={(val) => { setPageSize(Number(val)); setCurrentPage(1); }}>
+                  <SelectTrigger className="w-20 h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">
+                  {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, filteredTasks.length)} de {filteredTasks.length}
+                </span>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>
+                  Anterior
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>
+                  Próximo
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>

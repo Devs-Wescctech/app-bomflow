@@ -206,9 +206,12 @@ export default function AgentMyDashboard() {
     const won = filtered.filter(l => l.stage === 'fechado_ganho').length;
     const lost = filtered.filter(l => l.stage === 'fechado_perdido').length;
     const active = filtered.filter(l => l.stage !== 'fechado_ganho' && l.stage !== 'fechado_perdido').length;
-    const wonValue = filtered.filter(l => l.stage === 'fechado_ganho').reduce((sum, l) => sum + (parseFloat(l.value) || 0), 0);
-    const lostValue = filtered.filter(l => l.stage === 'fechado_perdido').reduce((sum, l) => sum + (parseFloat(l.value) || 0), 0);
-    const pipelineValue = filtered.filter(l => l.stage !== 'fechado_ganho' && l.stage !== 'fechado_perdido').reduce((sum, l) => sum + (parseFloat(l.value) || 0), 0);
+    const getLeadValue = (lead) => {
+      return parseFloat(lead.value) || parseFloat(lead.monthlyValue) || parseFloat(lead.monthly_value) || 0;
+    };
+    const wonValue = filtered.filter(l => l.stage === 'fechado_ganho').reduce((sum, l) => sum + getLeadValue(l), 0);
+    const lostValue = filtered.filter(l => l.stage === 'fechado_perdido').reduce((sum, l) => sum + getLeadValue(l), 0);
+    const pipelineValue = filtered.filter(l => l.stage !== 'fechado_ganho' && l.stage !== 'fechado_perdido').reduce((sum, l) => sum + getLeadValue(l), 0);
     const conversionRate = total > 0 ? ((won / total) * 100).toFixed(1) : 0;
     
     console.log('[AgentMyDashboard] PF Stats Debug:', {
@@ -396,7 +399,7 @@ export default function AgentMyDashboard() {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL',
-      minimumFractionDigits: 0
+      minimumFractionDigits: 2
     }).format(value || 0);
   };
 

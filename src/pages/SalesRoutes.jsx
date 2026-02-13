@@ -273,8 +273,8 @@ export default function SalesRoutes() {
     return true;
   });
   
-  // Leads with scheduled visits for selected date
-  const leadsWithScheduledVisit = allOpenLeadsWithGeo.filter(lead => {
+  // Leads with scheduled visits for selected date (check ALL leads with geo, not just open ones)
+  const leadsWithScheduledVisit = leadsWithGeo.filter(lead => {
     return activities.some(act => {
       const actLeadId = act.leadId || act.lead_id;
       const actType = act.type || act.activity_type;
@@ -287,7 +287,7 @@ export default function SalesRoutes() {
   // Final list based on filter
   const leadsForRoute = showOnlyScheduled ? leadsWithScheduledVisit : allOpenLeadsWithGeo;
 
-  // Leads with scheduled visits that DON'T have geolocation (to show warning)
+  // Leads with scheduled visits that DON'T have geolocation (to show warning) - checks ALL leads regardless of stage/status
   const scheduledLeadsWithoutGeo = leads.filter(lead => {
     // Check if lead has a scheduled visit for selected date
     const hasScheduledVisit = allActivities.some(act => {
