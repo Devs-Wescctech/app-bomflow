@@ -373,7 +373,7 @@ export default function ReferralReports() {
               <div>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Comissões Pagas</p>
                 <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                  R$ {stats.comissaoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
+                  R$ {stats.comissaoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </p>
               </div>
               <div className="p-3 bg-orange-100 dark:bg-orange-950 rounded-xl">
@@ -395,7 +395,7 @@ export default function ReferralReports() {
                 <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">TOP PERFORMER DO PERÍODO</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{topPerformer.name}</p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {topPerformer.conversoes} conversões • {topPerformer.taxa}% taxa • R$ {topPerformer.comissao.toLocaleString('pt-BR', { minimumFractionDigits: 0 })} em comissões
+                  {topPerformer.conversoes} conversões • {topPerformer.taxa}% taxa • R$ {topPerformer.comissao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} em comissões
                 </p>
               </div>
             </div>
@@ -483,7 +483,7 @@ export default function ReferralReports() {
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right font-semibold text-purple-600 dark:text-purple-400">
-                            R$ {agent.comissao.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
+                            R$ {agent.comissao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                           </td>
                         </tr>
                       ))

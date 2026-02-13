@@ -286,7 +286,7 @@ export default function ProposalTemplates() {
               <div>
                 <p className="text-xs text-amber-100">Valor Médio</p>
                 <p className="text-2xl font-bold">
-                  R$ {templates.length > 0 ? (templates.reduce((acc, t) => acc + (parseFloat(t.price) || 0), 0) / templates.length).toFixed(0) : '0'}
+                  R$ {templates.length > 0 ? (templates.reduce((acc, t) => acc + (parseFloat(t.price) || 0), 0) / templates.length).toFixed(2) : '0'}
                 </p>
               </div>
             </div>

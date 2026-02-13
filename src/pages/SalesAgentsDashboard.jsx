@@ -309,10 +309,10 @@ export default function SalesAgentsDashboard() {
               <div>
                 <p className="text-sm text-purple-600 dark:text-purple-400 font-medium">Receita Total</p>
                 <p className="text-3xl font-bold text-purple-700 dark:text-purple-300">
-                  R$ {totalGeralReceita.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
+                  R$ {totalGeralReceita.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </p>
                 <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
-                  Ticket médio: R$ {totalGeralVendas > 0 ? (totalGeralReceita / totalGeralVendas).toFixed(0) : 0}
+                  Ticket médio: R$ {totalGeralVendas > 0 ? (totalGeralReceita / totalGeralVendas).toFixed(2) : 0}
                 </p>
               </div>
               <DollarSign className="w-10 h-10 text-purple-500 dark:text-purple-400 opacity-50" />
@@ -405,7 +405,7 @@ export default function SalesAgentsDashboard() {
                           <div className="bg-orange-100 dark:bg-orange-950 p-2 rounded">
                             <p className="text-xs text-gray-600 dark:text-gray-400">Receita</p>
                             <p className="text-sm font-bold text-orange-600 dark:text-orange-400">
-                              R$ {stat.receita.toFixed(0)}
+                              R$ {stat.receita.toFixed(2)}
                             </p>
                           </div>
                         </div>
@@ -485,7 +485,7 @@ export default function SalesAgentsDashboard() {
                     </div>
                     <div>
                       <p className="text-xs text-gray-500 dark:text-gray-400">Receita</p>
-                      <p className="font-bold text-orange-600 dark:text-orange-400">R$ {stat.receita.toFixed(0)}</p>
+                      <p className="font-bold text-orange-600 dark:text-orange-400">R$ {stat.receita.toFixed(2)}</p>
                     </div>
                   </div>
                 </div>
