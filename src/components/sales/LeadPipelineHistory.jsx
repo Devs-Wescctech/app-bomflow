@@ -28,12 +28,17 @@ export default function LeadPipelineHistory({ lead, onStageChange }) {
   const stageHistory = lead.stageHistory || lead.stage_history || [];
   const currentStage = lead.stage;
 
+  const leadCreatedAt = lead.createdAt || lead.createdDate || lead.created_at || lead.created_date;
+
   const stageVisits = {};
   stageHistory.forEach((entry) => {
     const toStage = entry.to || entry.stage;
     const fromStage = entry.from || entry.previousStage || entry.previous_stage;
     const changedAt = entry.changed_at || entry.changedAt;
 
+    if (fromStage && !stageVisits[fromStage]) {
+      stageVisits[fromStage] = { enteredAt: leadCreatedAt, exitedAt: changedAt };
+    }
     if (toStage && !stageVisits[toStage]) {
       stageVisits[toStage] = { enteredAt: changedAt, exitedAt: null };
     }
@@ -43,7 +48,7 @@ export default function LeadPipelineHistory({ lead, onStageChange }) {
   });
 
   if (currentStage && !stageVisits[currentStage]) {
-    stageVisits[currentStage] = { enteredAt: lead.created_at || lead.created_date || lead.createdAt || lead.createdDate, exitedAt: null };
+    stageVisits[currentStage] = { enteredAt: leadCreatedAt, exitedAt: null };
   }
   if (currentStage && stageVisits[currentStage]) {
     stageVisits[currentStage].exitedAt = null;
@@ -59,7 +64,7 @@ export default function LeadPipelineHistory({ lead, onStageChange }) {
   };
 
   const currentIndex = STAGES.findIndex(s => s.id === currentStage);
-  const totalTime = formatDuration(lead.created_date, lead.concluded_at || lead.lost_at);
+  const totalTime = formatDuration(leadCreatedAt, lead.concludedAt || lead.concluded_at || lead.lostAt || lead.lost_at);
 
   return (
     <div className="space-y-6">

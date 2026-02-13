@@ -1252,7 +1252,7 @@ export default function LeadsKanban() {
                               <Clock className="w-3 h-3" />
                               Tempo médio:
                             </span>
-                            <span className="font-semibold">{avgDays === 0 ? '<1d' : `${avgDays}d`}</span>
+                            <span className="font-semibold">{avgDays === 0 ? (stageTimes.length > 0 ? `${Math.round(stageTimes.reduce((sum, t) => sum + (t.hours || 0), 0) / stageTimes.length)}h` : '<1d') : `${avgDays}d`}</span>
                           </div>
                         </div>
                       </div>

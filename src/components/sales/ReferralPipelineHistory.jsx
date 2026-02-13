@@ -29,12 +29,17 @@ export default function ReferralPipelineHistory({ referral, onStageChange }) {
   const stageHistory = referral.stageHistory || referral.stage_history || [];
   const currentStage = referral.stage;
 
+  const referralCreatedAt = referral.createdAt || referral.createdDate || referral.created_at || referral.created_date;
+
   const stageVisits = {};
   stageHistory.forEach((entry) => {
     const toStage = entry.to || entry.stage;
     const fromStage = entry.from || entry.previousStage || entry.previous_stage;
     const changedAt = entry.changed_at || entry.changedAt;
 
+    if (fromStage && !stageVisits[fromStage]) {
+      stageVisits[fromStage] = { enteredAt: referralCreatedAt, exitedAt: changedAt };
+    }
     if (toStage && !stageVisits[toStage]) {
       stageVisits[toStage] = { enteredAt: changedAt, exitedAt: null };
     }
@@ -44,7 +49,7 @@ export default function ReferralPipelineHistory({ referral, onStageChange }) {
   });
 
   if (currentStage && !stageVisits[currentStage]) {
-    stageVisits[currentStage] = { enteredAt: referral.createdAt || referral.created_date || referral.created_at, exitedAt: null };
+    stageVisits[currentStage] = { enteredAt: referralCreatedAt, exitedAt: null };
   }
   if (currentStage && stageVisits[currentStage]) {
     stageVisits[currentStage].exitedAt = null;
@@ -61,7 +66,7 @@ export default function ReferralPipelineHistory({ referral, onStageChange }) {
 
   const activeStages = STAGES.filter(s => s.value !== 'fechado_perdido');
   const currentIndex = activeStages.findIndex(s => s.value === currentStage);
-  const totalTime = formatDuration(referral.createdAt || referral.created_date, referral.convertedAt || referral.lostAt);
+  const totalTime = formatDuration(referralCreatedAt, referral.convertedAt || referral.converted_at || referral.lostAt || referral.lost_at);
 
   return (
     <div className="space-y-6">
