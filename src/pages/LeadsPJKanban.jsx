@@ -201,7 +201,7 @@ function DroppableColumnPJ({ id, stage, children, overId, activeId }) {
   );
 }
 
-function SortableLeadPJCard({ lead, stage, pendingTasksCount, agentData, navigate, formatCurrency, formatDate, updateLeadMutation, TasksPopover, onStageChange, allStages }) {
+function SortableLeadPJCard({ lead, stage, pendingTasksCount, agentData, navigate, formatCurrency, formatDate, updateLeadMutation, TasksPopover }) {
   const {
     attributes,
     listeners,
@@ -367,51 +367,6 @@ function SortableLeadPJCard({ lead, stage, pendingTasksCount, agentData, navigat
               </>
             );
           })()}
-
-          {onStageChange && allStages && (
-            <div className="flex items-center gap-1 mt-3 pt-2 border-t border-gray-100 dark:border-gray-800">
-              {(() => {
-                const currentIndex = allStages.findIndex(s => s.id === stage.id);
-                const prevStage = currentIndex > 0 ? allStages[currentIndex - 1] : null;
-                const nextStage = currentIndex < allStages.length - 1 ? allStages[currentIndex + 1] : null;
-                return (
-                  <>
-                    <button
-                      disabled={!prevStage}
-                      onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (prevStage) onStageChange(lead.id, prevStage.id, stage.id); }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onTouchStart={(e) => e.stopPropagation()}
-                      className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all touch-target ${
-                        prevStage 
-                          ? 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 active:scale-95' 
-                          : 'bg-gray-50 dark:bg-gray-900 text-gray-300 dark:text-gray-600 cursor-not-allowed'
-                      }`}
-                    >
-                      <ChevronLeft className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline truncate max-w-[60px]">{prevStage?.label || ''}</span>
-                    </button>
-                    <span className="flex-1 text-center text-[10px] text-gray-400 dark:text-gray-500 select-none">Mover</span>
-                    <button
-                      disabled={!nextStage}
-                      onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (nextStage) onStageChange(lead.id, nextStage.id, stage.id); }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onTouchStart={(e) => e.stopPropagation()}
-                      className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all touch-target ${
-                        nextStage 
-                          ? 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 active:scale-95' 
-                          : 'bg-gray-50 dark:bg-gray-900 text-gray-300 dark:text-gray-600 cursor-not-allowed'
-                      }`}
-                    >
-                      <span className="hidden sm:inline truncate max-w-[60px]">{nextStage?.label || ''}</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </>
-                );
-              })()}
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -1324,8 +1279,7 @@ export default function LeadsPJKanban() {
                                 formatDate={formatDate}
                                 updateLeadMutation={updateLeadMutation}
                                 TasksPopover={TasksPopover}
-                                onStageChange={handleStageChange}
-                                allStages={STAGES_PJ}
+
                               />
                             );
                           })}
