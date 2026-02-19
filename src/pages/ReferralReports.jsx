@@ -296,7 +296,7 @@ export default function ReferralReports() {
         showPeriodFilter={true}
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
         <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-lg transition-shadow">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -306,6 +306,23 @@ export default function ReferralReports() {
               </div>
               <div className="p-3 bg-pink-100 dark:bg-pink-950 rounded-xl">
                 <Gift className="w-8 h-8 text-pink-600 dark:text-pink-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-2 border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/50 dark:to-teal-950/50 hover:shadow-lg transition-shadow">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">Vendas Fechadas</p>
+                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                  R$ {stats.valorGanho.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70 mt-1">{stats.conversoes} convertidas</p>
+              </div>
+              <div className="p-3 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl">
+                <Trophy className="w-8 h-8 text-white" />
               </div>
             </div>
           </CardContent>

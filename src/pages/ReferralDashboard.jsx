@@ -246,7 +246,7 @@ export default function ReferralDashboard() {
 
       <motion.div 
         variants={itemVariants}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+        className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4"
       >
         <StatsCard
           title="Total de Indicações"
@@ -257,19 +257,26 @@ export default function ReferralDashboard() {
           delay={0}
         />
         <StatsCard
-          title="Conversões"
-          value={conversoes}
-          icon={CheckCircle}
+          title="Vendas Fechadas"
+          value={`R$ ${valorGanho.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+          icon={Trophy}
           color="green"
-          trend={`${taxaConversao}%`}
-          trendUp={parseFloat(taxaConversao) > 0}
+          subtitle={`${conversoes} convertidas • ${taxaConversao}% conversão`}
+          delay={0.05}
+        />
+        <StatsCard
+          title="Em Andamento"
+          value={referralsAtivos}
+          icon={Activity}
+          color="purple"
+          subtitle={`${perdidos} perdidas`}
           delay={0.1}
         />
         <StatsCard
-          title="Comissões Pagas"
+          title="Comissões"
           value={`R$ ${comissaoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-          icon={DollarSign}
-          color="purple"
+          icon={Gift}
+          color="orange"
           subtitle={`Média: R$ ${comissaoMedia}`}
           delay={0.2}
         />
@@ -277,7 +284,7 @@ export default function ReferralDashboard() {
           title="Tarefas Pendentes"
           value={atividadesPendentes}
           icon={Clock}
-          color="orange"
+          color="blue"
           delay={0.3}
         />
       </motion.div>
