@@ -174,6 +174,8 @@ import QualityChecklists from "./QualityChecklists";
 
 import AgentMyDashboard from "./AgentMyDashboard";
 
+import BomAutoConsulta from "./BomAutoConsulta";
+
 import Login from "./Login";
 
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
@@ -353,6 +355,8 @@ const PAGES = {
     QualityChecklists: QualityChecklists,
     
     AgentMyDashboard: AgentMyDashboard,
+    
+    BomAutoConsulta: BomAutoConsulta,
     
 }
 
@@ -559,6 +563,8 @@ function PagesContent() {
                 <Route path="/QualityChecklists" element={<QualityChecklists />} />
                 
                 <Route path="/AgentMyDashboard" element={<AgentMyDashboard />} />
+                
+                <Route path="/BomAutoConsulta" element={<BomAutoConsulta />} />
                 
             </Routes>
         </Layout>

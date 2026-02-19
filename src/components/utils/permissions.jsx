@@ -2,7 +2,7 @@
 
 export const AGENT_PERMISSIONS = {
   admin: {
-    modules: ['my_dashboard', 'support', 'presales', 'sales', 'sales_pj', 'referral', 'collection', 'config'],
+    modules: ['my_dashboard', 'support', 'presales', 'sales', 'sales_pj', 'referral', 'collection', 'bom_auto', 'config'],
     canViewAllTickets: true,
     canViewAllLeads: true,
     canAccessReports: true,
