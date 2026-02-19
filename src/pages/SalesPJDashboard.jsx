@@ -237,7 +237,7 @@ export default function SalesPJDashboard() {
 
       <motion.div 
         variants={itemVariants}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+        className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4"
       >
         <StatsCard
           title="Total de Leads PJ"
@@ -249,19 +249,25 @@ export default function SalesPJDashboard() {
         />
         <StatsCard
           title="Vendas Fechadas"
-          value={vendas}
-          icon={CheckCircle}
+          value={`R$ ${receitaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+          icon={Trophy}
           color="green"
-          trend={`${taxaConversao}%`}
-          trendUp={parseFloat(taxaConversao) > 0}
+          subtitle={`${vendas} vendas • ${taxaConversao}% conversão`}
+          delay={0.05}
+        />
+        <StatsCard
+          title="Leads Ativos"
+          value={leadsAtivos}
+          icon={Activity}
+          color="purple"
+          subtitle={`${perdidos} perdidos`}
           delay={0.1}
         />
         <StatsCard
-          title="Receita Total"
-          value={`R$ ${receitaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-          icon={DollarSign}
-          color="purple"
-          subtitle={`Ticket médio: R$ ${ticketMedio}`}
+          title="Ticket Médio"
+          value={`R$ ${parseFloat(ticketMedio).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+          icon={Target}
+          color="blue"
           delay={0.2}
         />
         <StatsCard
