@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import {
   Car, Search, CheckCircle, XCircle, AlertTriangle,
-  Loader2, User, Wrench, FileText
+  Loader2, User, Wrench, FileText, Phone, Hash,
+  ClipboardCheck, Calendar, Shield
 } from "lucide-react";
 
 const API_BASE = '/api';
@@ -50,14 +51,22 @@ function stripHTML(str) {
   return str.replace(/<[^>]*>/g, '');
 }
 
+function formatDateTime(dateStr) {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr);
+  return d.toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
+}
+
 const TIPOS_SERVICO = [
-  "Alinhamento e Balanceamento",
-  "Funilaria e Pintura",
-  "Reparo Mecanico",
-  "Revisao Completa",
-  "Troca de Oleo",
-  "Troca de Pneus",
-  "Outros",
+  "Chaveiro",
+  "Guincho",
+  "Pane elétrica",
+  "Pane seca",
+  "Serviços de táxi",
+  "Troca de pneu",
 ];
 
 export default function BomAutoConsulta() {
@@ -76,6 +85,7 @@ export default function BomAutoConsulta() {
   const [tipoServico, setTipoServico] = useState('');
   const [observacoes, setObservacoes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [atendimentoFinalizado, setAtendimentoFinalizado] = useState(null);
 
   useEffect(() => {
     async function fetchUser() {
@@ -106,16 +116,16 @@ export default function BomAutoConsulta() {
     const veiculos = Array.isArray(data.veiculos) ? data.veiculos : (data.data?.veiculos || []);
 
     if (!contrato.includes('ativo')) {
-      reasons.push('Contrato nao esta ativo');
+      reasons.push('Contrato não está ativo');
     }
     if (!financeira.includes('adimplente') && !financeira.includes('em dia')) {
-      reasons.push('Situacao financeira nao esta adimplente');
+      reasons.push('Situação financeira não está adimplente');
     }
     if (veiculos.length > 3) {
-      reasons.push(`Numero de veiculos (${veiculos.length}) excede o limite de 3`);
+      reasons.push(`Número de veículos (${veiculos.length}) excede o limite de 3`);
     }
     if (utilizacoesCount > 3) {
-      reasons.push(`Utilizacoes no mes (${utilizacoesCount}) excede o limite de 3`);
+      reasons.push(`Utilizações no mês (${utilizacoesCount}) excede o limite de 3`);
     }
 
     return { eligible: reasons.length === 0, reasons };
@@ -131,6 +141,7 @@ export default function BomAutoConsulta() {
     setSelectedVehicle('');
     setTipoServico('');
     setObservacoes('');
+    setAtendimentoFinalizado(null);
 
     const cpfDigits = searchCPF.replace(/\D/g, '');
     const placaClean = searchPlaca.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
@@ -140,11 +151,11 @@ export default function BomAutoConsulta() {
       return;
     }
     if (cpfDigits && !validateCPF(searchCPF)) {
-      setError('CPF invalido. Informe 11 digitos.');
+      setError('CPF inválido. Informe 11 dígitos.');
       return;
     }
     if (placaClean && !validatePlaca(searchPlaca)) {
-      setError('Placa invalida. Formatos aceitos: ABC-1234 ou ABC1D23.');
+      setError('Placa inválida. Formatos aceitos: ABC-1234 ou ABC1D23.');
       return;
     }
 
@@ -195,17 +206,17 @@ export default function BomAutoConsulta() {
 
     const vehicles = getVehicles();
     if (!selectedVehicle) {
-      toast({ title: "Erro", description: "Selecione um veiculo.", variant: "destructive" });
+      toast({ title: "Erro", description: "Selecione um veículo.", variant: "destructive" });
       return;
     }
     if (!tipoServico) {
-      toast({ title: "Erro", description: "Selecione o tipo de servico.", variant: "destructive" });
+      toast({ title: "Erro", description: "Selecione o tipo de serviço.", variant: "destructive" });
       return;
     }
 
     const vehicle = vehicles.find(v => v.placa === selectedVehicle);
     if (!vehicle) {
-      toast({ title: "Erro", description: "Veiculo nao encontrado.", variant: "destructive" });
+      toast({ title: "Erro", description: "Veículo não encontrado.", variant: "destructive" });
       return;
     }
 
@@ -238,11 +249,10 @@ export default function BomAutoConsulta() {
         throw new Error(errData.error || errData.message || 'Erro ao registrar atendimento.');
       }
 
-      toast({ title: "Sucesso", description: "Atendimento registrado com sucesso!" });
+      const atendimento = await res.json();
+      setAtendimentoFinalizado(atendimento);
       setShowForm(false);
-      setSelectedVehicle('');
-      setTipoServico('');
-      setObservacoes('');
+      toast({ title: "Sucesso", description: `Atendimento registrado! Protocolo: ${atendimento.protocolo}` });
     } catch (err) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
     } finally {
@@ -257,11 +267,26 @@ export default function BomAutoConsulta() {
     setObservacoes('');
   }
 
+  function handleNovaConsulta() {
+    setSearchCPF('');
+    setSearchPlaca('');
+    setClientData(null);
+    setUtilizacoes(null);
+    setEligibility(null);
+    setShowForm(false);
+    setSelectedVehicle('');
+    setTipoServico('');
+    setObservacoes('');
+    setAtendimentoFinalizado(null);
+    setError('');
+  }
+
   const vehicles = getVehicles();
   const clientNome = clientData?.contratante || clientData?.data?.contratante || '-';
   const clientDoc = clientData?.documento || clientData?.data?.documento || '-';
   const clientContrato = clientData?.situacao_contrato || clientData?.data?.situacao_contrato || '-';
   const clientFinanceira = clientData?.situacao_financeira || clientData?.data?.situacao_financeira || '-';
+  const clientCelular = clientData?.celular || clientData?.data?.celular || '';
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-gray-50 dark:bg-gray-950 min-h-screen">
@@ -271,7 +296,7 @@ export default function BomAutoConsulta() {
             <div className="p-2 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 shadow-lg">
               <Car className="w-5 h-5 text-white" />
             </div>
-            Bom Auto - Consulta Cliente
+            Bom Auto - Consulta de Cliente
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -327,7 +352,7 @@ export default function BomAutoConsulta() {
         </CardContent>
       </Card>
 
-      {clientData && (
+      {clientData && !atendimentoFinalizado && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-3">
@@ -352,21 +377,39 @@ export default function BomAutoConsulta() {
                 <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{clientContrato}</p>
               </div>
               <div className="space-y-1">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Situacao Financeira</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Situação Financeira</p>
                 <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{clientFinanceira}</p>
               </div>
+              {clientCelular && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Celular</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-gray-400" />
+                    {clientCelular}
+                  </p>
+                </div>
+              )}
             </div>
 
             {vehicles.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
-                  Veiculos ({vehicles.length})
+              <div className="mt-5 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                  <Car className="w-3.5 h-3.5" />
+                  Veículos ({vehicles.length})
                 </p>
-                <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {vehicles.map((v, i) => (
-                    <Badge key={i} variant="secondary">
-                      {v.placa} - {v.descricao_veiculo_limpa || v.descricao_veiculo || 'Sem descricao'}
-                    </Badge>
+                    <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800">
+                      <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900">
+                        <Car className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-blue-700 dark:text-blue-300 tracking-wide">{v.placa}</p>
+                        <p className="text-xs text-blue-600/70 dark:text-blue-400/70 truncate">
+                          {v.descricao_veiculo_limpa || v.descricao_veiculo || 'Sem descrição'}
+                        </p>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -375,7 +418,7 @@ export default function BomAutoConsulta() {
             {utilizacoes !== null && (
               <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
-                  Utilizacoes no mes
+                  Utilizações no mês
                 </p>
                 <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{utilizacoes} / 3</p>
               </div>
@@ -384,7 +427,7 @@ export default function BomAutoConsulta() {
         </Card>
       )}
 
-      {eligibility && (
+      {eligibility && !atendimentoFinalizado && (
         <Card className={eligibility.eligible
           ? "border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/30"
           : "border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/30"
@@ -398,10 +441,10 @@ export default function BomAutoConsulta() {
                   </div>
                   <div>
                     <h3 className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
-                      Cliente Elegivel
+                      Cliente Elegível
                     </h3>
                     <p className="text-sm text-emerald-600 dark:text-emerald-400 mt-1">
-                      Todas as condicoes foram atendidas. O cliente pode ser atendido.
+                      Todas as condições foram atendidas. O cliente pode ser atendido.
                     </p>
                   </div>
                 </>
@@ -412,7 +455,7 @@ export default function BomAutoConsulta() {
                   </div>
                   <div>
                     <h3 className="text-lg font-bold text-red-700 dark:text-red-300">
-                      Cliente Nao Elegivel
+                      Cliente Não Elegível
                     </h3>
                     <ul className="mt-2 space-y-1">
                       {eligibility.reasons.map((reason, i) => (
@@ -443,11 +486,11 @@ export default function BomAutoConsulta() {
         </Card>
       )}
 
-      {showForm && (
+      {showForm && !atendimentoFinalizado && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 shadow-lg">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg">
                 <FileText className="w-5 h-5 text-white" />
               </div>
               Registrar Atendimento
@@ -456,19 +499,25 @@ export default function BomAutoConsulta() {
           <CardContent>
             <form onSubmit={handleSubmitAtendimento} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="veiculo">Veiculo *</Label>
+                <Label htmlFor="veiculo" className="flex items-center gap-1.5">
+                  <Car className="w-4 h-4 text-blue-500" />
+                  Veículo *
+                </Label>
                 {vehicles.length > 0 ? (
                   <Select value={selectedVehicle} onValueChange={setSelectedVehicle}>
-                    <SelectTrigger id="veiculo">
-                      <SelectValue placeholder="Selecione o veiculo" />
+                    <SelectTrigger id="veiculo" className="border-blue-200 dark:border-blue-800 focus:ring-blue-500">
+                      <SelectValue placeholder="Selecione o veículo" />
                     </SelectTrigger>
                     <SelectContent>
                       {vehicles.map((v, i) => (
                         <SelectItem key={i} value={v.placa}>
-                          <span className="font-bold">{v.placa}</span>
-                          <span className="ml-2 text-gray-500">
-                            {v.descricao_veiculo_limpa || v.descricao_veiculo || ''}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <Car className="w-4 h-4 text-blue-500" />
+                            <span className="font-bold text-blue-700 dark:text-blue-300">{v.placa}</span>
+                            <span className="text-gray-500 dark:text-gray-400">
+                              {v.descricao_veiculo_limpa || v.descricao_veiculo || ''}
+                            </span>
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -476,16 +525,38 @@ export default function BomAutoConsulta() {
                 ) : (
                   <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-sm">
                     <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                    Nenhum veiculo cadastrado para este cliente
+                    Nenhum veículo cadastrado para este cliente
+                  </div>
+                )}
+
+                {selectedVehicle && (
+                  <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900">
+                        <Car className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-blue-700 dark:text-blue-300">
+                          {selectedVehicle}
+                        </p>
+                        <p className="text-xs text-blue-600/70 dark:text-blue-400/70">
+                          {vehicles.find(v => v.placa === selectedVehicle)?.descricao_veiculo_limpa ||
+                           vehicles.find(v => v.placa === selectedVehicle)?.descricao_veiculo || 'Sem descrição'}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="tipoServico">Tipo de Servico *</Label>
+                <Label htmlFor="tipoServico" className="flex items-center gap-1.5">
+                  <Wrench className="w-4 h-4 text-blue-500" />
+                  Tipo de Serviço *
+                </Label>
                 <Select value={tipoServico} onValueChange={setTipoServico}>
-                  <SelectTrigger id="tipoServico">
-                    <SelectValue placeholder="Selecione o tipo de servico" />
+                  <SelectTrigger id="tipoServico" className="border-blue-200 dark:border-blue-800 focus:ring-blue-500">
+                    <SelectValue placeholder="Selecione o tipo de serviço" />
                   </SelectTrigger>
                   <SelectContent>
                     {TIPOS_SERVICO.map((tipo) => (
@@ -498,7 +569,7 @@ export default function BomAutoConsulta() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="observacoes">Observacoes</Label>
+                <Label htmlFor="observacoes">Observações</Label>
                 <Textarea
                   id="observacoes"
                   placeholder="Detalhes adicionais (opcional)"
@@ -536,6 +607,103 @@ export default function BomAutoConsulta() {
                 </Button>
               </div>
             </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {atendimentoFinalizado && (
+        <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/40 dark:to-green-950/40">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-500 to-green-500 shadow-lg">
+                <ClipboardCheck className="w-5 h-5 text-white" />
+              </div>
+              Atendimento Registrado com Sucesso
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="flex items-center gap-3 p-4 rounded-xl bg-white dark:bg-gray-900 border border-emerald-200 dark:border-emerald-800 shadow-sm">
+              <div className="p-3 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 shadow">
+                <Hash className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Número do Protocolo</p>
+                <p className="text-xl font-bold text-blue-700 dark:text-blue-300 tracking-wider">
+                  {atendimentoFinalizado.protocolo}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
+                  <User className="w-3 h-3" /> Cliente
+                </p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {atendimentoFinalizado.nome_cliente}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
+                  <Shield className="w-3 h-3" /> CPF
+                </p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {atendimentoFinalizado.documento_cliente}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
+                  <Car className="w-3 h-3" /> Veículo
+                </p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {atendimentoFinalizado.placa}
+                  {atendimentoFinalizado.descricao_veiculo && (
+                    <span className="text-gray-500 dark:text-gray-400 font-normal"> - {atendimentoFinalizado.descricao_veiculo}</span>
+                  )}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
+                  <Wrench className="w-3 h-3" /> Tipo de Serviço
+                </p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {atendimentoFinalizado.tipo_servico}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> Data/Hora
+                </p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {formatDateTime(atendimentoFinalizado.data_hora)}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
+                  <User className="w-3 h-3" /> Atendente
+                </p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {atendimentoFinalizado.usuario}
+                </p>
+              </div>
+              {atendimentoFinalizado.observacoes && (
+                <div className="space-y-1 md:col-span-2">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
+                    <FileText className="w-3 h-3" /> Observações
+                  </p>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    {atendimentoFinalizado.observacoes}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2">
+              <Button onClick={handleNovaConsulta} className="w-full md:w-auto">
+                <Search className="w-4 h-4" />
+                Nova Consulta
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

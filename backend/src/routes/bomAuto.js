@@ -117,9 +117,19 @@ router.post('/atendimentos', authMiddleware, async (req, res) => {
       : null;
 
     const result = await query(
-      `INSERT INTO bom_auto_atendimentos
-       (documento_cliente, nome_cliente, placa, descricao_veiculo, tipo_servico, observacoes, usuario)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `WITH next_seq AS (
+        SELECT COALESCE(MAX(
+          CASE WHEN protocolo LIKE 'BA' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || '%'
+          THEN CAST(RIGHT(protocolo, 4) AS INTEGER) ELSE 0 END
+        ), 0) + 1 AS seq
+        FROM bom_auto_atendimentos
+      )
+      INSERT INTO bom_auto_atendimentos
+       (protocolo, documento_cliente, nome_cliente, placa, descricao_veiculo, tipo_servico, observacoes, usuario)
+       VALUES (
+         'BA' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || LPAD((SELECT seq FROM next_seq)::text, 4, '0'),
+         $1, $2, $3, $4, $5, $6, $7
+       )
        RETURNING *`,
       [documento_cliente, nome_cliente, placa, descricao_veiculo || null, tipo_servico, sanitizedObs, usuario]
     );

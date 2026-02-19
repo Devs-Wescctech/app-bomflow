@@ -763,6 +763,7 @@ ON CONFLICT (name) DO NOTHING;
 -- =====================
 CREATE TABLE IF NOT EXISTS bom_auto_atendimentos (
   id SERIAL PRIMARY KEY,
+  protocolo VARCHAR(20) NOT NULL UNIQUE,
   documento_cliente VARCHAR(20) NOT NULL,
   nome_cliente VARCHAR(255) NOT NULL,
   placa VARCHAR(20) NOT NULL,
