@@ -247,6 +247,7 @@ function SortableLeadCard({ lead, stage, pendingTasksCount, agentData, navigate,
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+    touchAction: 'none',
   };
 
   return (
@@ -462,8 +463,8 @@ export default function LeadsKanban() {
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 200,
-        tolerance: 6,
+        delay: 250,
+        tolerance: 8,
       },
     }),
     useSensor(KeyboardSensor, {
@@ -516,6 +517,38 @@ export default function LeadsKanban() {
       if (container) container.style.cursor = 'grab';
       if (headers) headers.style.cursor = 'grab';
     }
+  }, []);
+
+  const handleCanvasTouchStart = useCallback((e) => {
+    if (activeId) return;
+    if (e.target.closest('[data-sortable-id]')) return;
+    const touch = e.touches[0];
+    const container = kanbanContainerRef.current;
+    const headers = headersRef.current;
+    if (!container && !headers) return;
+    isDraggingCanvasRef.current = true;
+    const ref = container || headers;
+    dragStartX.current = touch.pageX - ref.offsetLeft;
+    dragScrollLeft.current = container?.scrollLeft || headers?.scrollLeft || 0;
+  }, [activeId]);
+
+  const handleCanvasTouchMove = useCallback((e) => {
+    if (!isDraggingCanvasRef.current) return;
+    if (activeId) return;
+    const touch = e.touches[0];
+    const container = kanbanContainerRef.current;
+    const headers = headersRef.current;
+    if (!container && !headers) return;
+    const ref = container || headers;
+    const x = touch.pageX - ref.offsetLeft;
+    const walk = (x - dragStartX.current) * 1.5;
+    const newScrollLeft = dragScrollLeft.current - walk;
+    if (container) container.scrollLeft = newScrollLeft;
+    if (headers) headers.scrollLeft = newScrollLeft;
+  }, [activeId]);
+
+  const handleCanvasTouchEnd = useCallback(() => {
+    isDraggingCanvasRef.current = false;
   }, []);
 
   useEffect(() => {
@@ -1228,6 +1261,9 @@ export default function LeadsKanban() {
               onMouseMove={handleCanvasMouseMove}
               onMouseUp={handleCanvasMouseUp}
               onMouseLeave={handleCanvasMouseLeave}
+              onTouchStart={handleCanvasTouchStart}
+              onTouchMove={handleCanvasTouchMove}
+              onTouchEnd={handleCanvasTouchEnd}
             >
               <div className="flex gap-4" style={{ minWidth: 'max-content' }}>
                 {STAGES.map((stage) => {
@@ -1278,6 +1314,9 @@ export default function LeadsKanban() {
               onMouseMove={handleCanvasMouseMove}
               onMouseUp={handleCanvasMouseUp}
               onMouseLeave={handleCanvasMouseLeave}
+              onTouchStart={handleCanvasTouchStart}
+              onTouchMove={handleCanvasTouchMove}
+              onTouchEnd={handleCanvasTouchEnd}
               onScroll={(e) => {
                 if (headersRef.current) {
                   headersRef.current.scrollLeft = e.target.scrollLeft;
