@@ -211,10 +211,11 @@ function SortableReferralCard({ referral, stage, referrerData, agentData, naviga
   } = useSortable({ id: referral.id });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
+    transform: CSS.Translate.toString(transform),
+    transition: isDragging ? 'none' : (transition || 'transform 150ms ease'),
+    opacity: isDragging ? 0.7 : 1,
     touchAction: 'none',
+    willChange: isDragging ? 'transform' : undefined,
   };
 
   return (
@@ -224,7 +225,7 @@ function SortableReferralCard({ referral, stage, referrerData, agentData, naviga
       {...attributes}
       {...listeners}
       data-sortable-id={referral.id}
-      className={`transition-all ${isDragging ? 'rotate-2 scale-105' : ''}`}
+      className={isDragging ? 'rotate-1 scale-[1.03] z-50' : ''}
     >
       <div 
         onClick={() => navigate(`${createPageUrl("ReferralDetail")}?id=${referral.id}`)}
