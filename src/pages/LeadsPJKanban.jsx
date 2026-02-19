@@ -34,7 +34,8 @@ import {
   ChevronLeft,
   ChevronRight,
   User,
-  Calendar
+  Calendar,
+  Trophy
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -1152,7 +1153,7 @@ export default function LeadsPJKanban() {
         </AnimatePresence>
 
         <motion.div
-          className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4"
+          className="grid grid-cols-2 md:grid-cols-5 gap-2 md:gap-4"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
@@ -1167,13 +1168,21 @@ export default function LeadsPJKanban() {
             helpText="Quantidade de leads PJ em andamento no pipeline (exclui ganhos e perdidos já baixados)"
           />
           <StatsCard
+            title="Vendas Fechadas"
+            value={formatCurrency(wonValue)}
+            subtitle={`${wonLeads.length} vendas ganhas`}
+            icon={Trophy}
+            color="green"
+            delay={0.05}
+            helpText="Valor total de todas as vendas PJ já fechadas (leads com status Ganho)"
+          />
+          <StatsCard
             title="Valor em Pipeline"
             value={formatCurrency(totalValue)}
-            subtitle={wonValue > 0 ? `${formatCurrency(wonValue)} ganho` : undefined}
             icon={DollarSign}
-            color="green"
+            color="blue"
             delay={0.1}
-            helpText="Soma dos valores de todos os leads PJ ativos. O subtítulo mostra o valor total já ganho."
+            helpText="Soma dos valores de todos os leads PJ ativos no pipeline"
           />
           <StatsCard
             title="Ticket Médio"
