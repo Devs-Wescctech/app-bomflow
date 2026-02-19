@@ -21,7 +21,13 @@ router.get('/consulta', authMiddleware, async (req, res) => {
     }
 
     const params = new URLSearchParams();
-    if (documento) params.append('documento', documento);
+    if (documento) {
+      const digits = documento.replace(/\D/g, '');
+      const formatted = digits.length === 11
+        ? `${digits.slice(0,3)}.${digits.slice(3,6)}.${digits.slice(6,9)}-${digits.slice(9)}`
+        : documento;
+      params.append('documento', formatted);
+    }
     if (placa) params.append('placa_ajustada', placa);
 
     const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_TESTE_BOM_AUTO?${params.toString()}`;
@@ -41,8 +47,38 @@ router.get('/consulta', authMiddleware, async (req, res) => {
       });
     }
 
-    const data = await erpResponse.json();
-    res.json(data);
+    const rawData = await erpResponse.json();
+
+    if (!Array.isArray(rawData) || rawData.length === 0) {
+      return res.status(404).json({ message: 'Cliente não encontrado no ERP.' });
+    }
+
+    const first = rawData[0];
+    const veiculos = rawData.map(item => ({
+      placa: item.placa_ajustada || '',
+      descricao_veiculo: item.descricao_veiculo_limpa || '',
+      descricao_veiculo_limpa: item.descricao_veiculo_limpa || '',
+      ano: item.ano_ajustado || '',
+    }));
+
+    const situacaoContratoRaw = first.situacao_contrato || '';
+    let situacao_contrato = situacaoContratoRaw;
+    if (situacaoContratoRaw.toUpperCase() === 'A') situacao_contrato = 'ATIVO';
+    else if (situacaoContratoRaw.toUpperCase() === 'I') situacao_contrato = 'INATIVO';
+    else if (situacaoContratoRaw.toUpperCase() === 'C') situacao_contrato = 'CANCELADO';
+
+    const normalized = {
+      contratante: first.contratante || '',
+      documento: first.documento || '',
+      celular: first.celular || '',
+      situacao_contrato,
+      situacao_financeira: first.situacao_financeira || '',
+      pedido: first.pedido || '',
+      contrato_id: first.contrato_id || '',
+      veiculos,
+    };
+
+    res.json(normalized);
   } catch (error) {
     console.error('Error in bom-auto consulta:', error);
     res.status(500).json({ message: error.message });
