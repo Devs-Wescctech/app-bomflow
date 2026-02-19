@@ -35,6 +35,7 @@ import {
   MapPin,
   ExternalLink,
   Trash2,
+  Trophy,
 } from "lucide-react";
 import {
   Popover,
@@ -1138,7 +1139,7 @@ export default function ReferralPipeline() {
         </AnimatePresence>
 
         <motion.div 
-          className="grid grid-cols-1 md:grid-cols-4 gap-4"
+          className="grid grid-cols-2 md:grid-cols-5 gap-2 md:gap-4"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
@@ -1146,20 +1147,28 @@ export default function ReferralPipeline() {
           <StatsCard
             title="Indicações Ativas"
             value={activeReferrals.length}
-            subtitle={`${wonReferrals.length} ganhos, ${lostReferrals.length} perdidos`}
+            subtitle={`${wonReferrals.length} convertidas, ${lostReferrals.length} perdidas`}
             icon={Users}
             color="purple"
             delay={0}
             helpText="Quantidade de indicações em andamento no pipeline (exclui convertidas e perdidas)"
           />
           <StatsCard
+            title="Vendas Fechadas"
+            value={formatCurrency(wonValue)}
+            subtitle={`${wonReferrals.length} indicações convertidas`}
+            icon={Trophy}
+            color="green"
+            delay={0.05}
+            helpText="Valor total de todas as indicações já convertidas em vendas"
+          />
+          <StatsCard
             title="Valor em Pipeline"
             value={formatCurrency(totalValue)}
-            subtitle={wonValue > 0 ? `${formatCurrency(wonValue)} ganho` : undefined}
             icon={DollarSign}
-            color="green"
+            color="blue"
             delay={0.1}
-            helpText="Soma dos valores de todas as indicações ativas. O subtítulo mostra o valor total já convertido."
+            helpText="Soma dos valores de todas as indicações ativas no pipeline"
           />
           <StatsCard
             title="Comissões"
