@@ -410,6 +410,7 @@ export default function ReferralPipeline() {
   const isDraggingCanvasRef = useRef(false);
   const dragStartX = useRef(0);
   const dragScrollLeft = useRef(0);
+  const savedScrollPosition = useRef(null);
 
   const headersRef = useRef(null);
   const [activeId, setActiveId] = useState(null);
@@ -610,8 +611,25 @@ export default function ReferralPipeline() {
       toast.error('Erro ao mover indicação');
     },
     onSettled: () => {
+      const scrollPos = savedScrollPosition.current;
       queryClient.invalidateQueries({ queryKey: referralsQueryKey });
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
+      if (scrollPos) {
+        requestAnimationFrame(() => {
+          const container = kanbanContainerRef.current;
+          const headers = headersRef.current;
+          const pageEl = container?.closest('.overflow-y-auto, .overflow-auto, main');
+          if (container) container.scrollLeft = scrollPos.scrollLeft;
+          if (headers) headers.scrollLeft = scrollPos.scrollLeft;
+          if (pageEl) pageEl.scrollTop = scrollPos.scrollTop;
+          requestAnimationFrame(() => {
+            if (container) container.scrollLeft = scrollPos.scrollLeft;
+            if (headers) headers.scrollLeft = scrollPos.scrollLeft;
+            if (pageEl) pageEl.scrollTop = scrollPos.scrollTop;
+            savedScrollPosition.current = null;
+          });
+        });
+      }
     },
   });
 
@@ -738,6 +756,13 @@ export default function ReferralPipeline() {
     setActiveId(null);
     setIsDraggingCard(false);
     setOverId(null);
+
+    const containerEl = kanbanContainerRef.current;
+    const pageEl = containerEl?.closest('.overflow-y-auto, .overflow-auto, main');
+    savedScrollPosition.current = {
+      scrollLeft: containerEl?.scrollLeft || 0,
+      scrollTop: pageEl?.scrollTop || window.scrollY || 0,
+    };
 
     if (!over) return;
 

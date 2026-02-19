@@ -451,6 +451,7 @@ export default function LeadsKanban() {
   const isDraggingCanvasRef = useRef(false);
   const dragStartX = useRef(0);
   const dragScrollLeft = useRef(0);
+  const savedScrollPosition = useRef(null);
   const [activeId, setActiveId] = useState(null);
   const [overId, setOverId] = useState(null);
 
@@ -619,8 +620,25 @@ export default function LeadsKanban() {
       toast.error('Erro ao mover lead');
     },
     onSettled: () => {
+      const scrollPos = savedScrollPosition.current;
       queryClient.invalidateQueries({ queryKey: leadsQueryKey });
       queryClient.invalidateQueries({ queryKey: ['leads'] });
+      if (scrollPos) {
+        requestAnimationFrame(() => {
+          const container = kanbanContainerRef.current;
+          const headers = headersRef.current;
+          const pageEl = document.querySelector('[data-kanban-scroll-container]') || container?.closest('.overflow-y-auto, .overflow-auto, main');
+          if (container) container.scrollLeft = scrollPos.scrollLeft;
+          if (headers) headers.scrollLeft = scrollPos.scrollLeft;
+          if (pageEl) pageEl.scrollTop = scrollPos.scrollTop;
+          requestAnimationFrame(() => {
+            if (container) container.scrollLeft = scrollPos.scrollLeft;
+            if (headers) headers.scrollLeft = scrollPos.scrollLeft;
+            if (pageEl) pageEl.scrollTop = scrollPos.scrollTop;
+            savedScrollPosition.current = null;
+          });
+        });
+      }
     },
   });
 
@@ -764,6 +782,13 @@ export default function LeadsKanban() {
     setActiveId(null);
     setIsDraggingCard(false);
     setOverId(null);
+
+    const container = kanbanContainerRef.current;
+    const pageEl = container?.closest('.overflow-y-auto, .overflow-auto, main');
+    savedScrollPosition.current = {
+      scrollLeft: container?.scrollLeft || 0,
+      scrollTop: pageEl?.scrollTop || window.scrollY || 0,
+    };
 
     if (!over) return;
 

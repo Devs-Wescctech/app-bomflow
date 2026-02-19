@@ -412,6 +412,7 @@ export default function LeadsPJKanban() {
   const headersRef = useRef(null);
   const isDraggingCanvasRef = useRef(false);
   const dragStartX = useRef(0);
+  const savedScrollPosition = useRef(null);
   const dragScrollLeft = useRef(0);
   const [activeId, setActiveId] = useState(null);
   const [overId, setOverId] = useState(null);
@@ -599,8 +600,25 @@ export default function LeadsPJKanban() {
       toast.error('Erro ao mover lead');
     },
     onSettled: () => {
+      const scrollPos = savedScrollPosition.current;
       queryClient.invalidateQueries({ queryKey: leadsQueryKey });
       queryClient.invalidateQueries({ queryKey: ['leadsPJ'] });
+      if (scrollPos) {
+        requestAnimationFrame(() => {
+          const container = kanbanContainerRef.current;
+          const headers = headersRef.current;
+          const pageEl = container?.closest('.overflow-y-auto, .overflow-auto, main');
+          if (container) container.scrollLeft = scrollPos.scrollLeft;
+          if (headers) headers.scrollLeft = scrollPos.scrollLeft;
+          if (pageEl) pageEl.scrollTop = scrollPos.scrollTop;
+          requestAnimationFrame(() => {
+            if (container) container.scrollLeft = scrollPos.scrollLeft;
+            if (headers) headers.scrollLeft = scrollPos.scrollLeft;
+            if (pageEl) pageEl.scrollTop = scrollPos.scrollTop;
+            savedScrollPosition.current = null;
+          });
+        });
+      }
     },
   });
 
@@ -722,6 +740,13 @@ export default function LeadsPJKanban() {
     setActiveId(null);
     setIsDraggingCard(false);
     setOverId(null);
+
+    const containerEl = kanbanContainerRef.current;
+    const pageEl = containerEl?.closest('.overflow-y-auto, .overflow-auto, main');
+    savedScrollPosition.current = {
+      scrollLeft: containerEl?.scrollLeft || 0,
+      scrollTop: pageEl?.scrollTop || window.scrollY || 0,
+    };
 
     if (!over) return;
 
