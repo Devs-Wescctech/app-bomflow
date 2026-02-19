@@ -10,6 +10,7 @@ import entityRoutes from './routes/entities.js';
 import uploadRoutes from './routes/upload.js';
 import functionRoutes from './routes/functions.js';
 import whatsappRoutes from './routes/whatsapp.js';
+import bomAutoRoutes from './routes/bomAuto.js';
 import { runAllAutomations } from './services/automationService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -56,6 +57,7 @@ app.use('/api', entityRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/functions', functionRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/bom-auto', bomAutoRoutes);
 
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api')) {

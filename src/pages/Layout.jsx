@@ -228,6 +228,15 @@ const menuModules = [
     ]
   },
   {
+    id: "bom_auto",
+    title: "Bom Auto",
+    icon: Navigation,
+    gradient: "from-sky-500 to-cyan-500",
+    items: [
+      { title: "Consulta Cliente", url: createPageUrl("BomAutoConsulta"), icon: Search },
+    ]
+  },
+  {
     id: "config",
     title: "Configurações",
     icon: Settings,

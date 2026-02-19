@@ -757,3 +757,19 @@ ON CONFLICT (name) DO NOTHING;
 INSERT INTO queues (name, default_priority) VALUES 
     ('Geral', 'P3')
 ON CONFLICT (name) DO NOTHING;
+
+-- =====================
+-- BOM AUTO
+-- =====================
+CREATE TABLE IF NOT EXISTS bom_auto_atendimentos (
+  id SERIAL PRIMARY KEY,
+  documento_cliente VARCHAR(20) NOT NULL,
+  nome_cliente VARCHAR(255) NOT NULL,
+  placa VARCHAR(20) NOT NULL,
+  descricao_veiculo VARCHAR(255),
+  tipo_servico VARCHAR(100) NOT NULL,
+  observacoes TEXT,
+  data_hora TIMESTAMP DEFAULT NOW(),
+  usuario VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
