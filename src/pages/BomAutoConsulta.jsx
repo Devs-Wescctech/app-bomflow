@@ -670,7 +670,7 @@ export default function BomAutoConsulta() {
                 </Label>
                 {vehicles.length > 0 ? (
                   <Select value={selectedVehicle} onValueChange={setSelectedVehicle}>
-                    <SelectTrigger id="veiculo" className="border-blue-200 dark:border-blue-800 focus:ring-blue-500 bg-blue-600 text-white data-[placeholder]:text-blue-200 [&>span]:text-white">
+                    <SelectTrigger id="veiculo" className="border-blue-200 dark:border-blue-800 focus:ring-blue-500">
                       <SelectValue placeholder="Selecione o veículo" />
                     </SelectTrigger>
                     <SelectContent>
