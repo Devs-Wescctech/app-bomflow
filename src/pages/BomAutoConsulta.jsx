@@ -10,7 +10,8 @@ import { useToast } from "@/components/ui/use-toast";
 import {
   Car, Search, CheckCircle, XCircle, AlertTriangle,
   Loader2, User, Wrench, FileText, Phone, Hash,
-  ClipboardCheck, Calendar, Shield
+  ClipboardCheck, Calendar, Shield, ImagePlus, X,
+  Copy, RefreshCw, Clock, Eye
 } from "lucide-react";
 
 const API_BASE = '/api';
@@ -69,6 +70,23 @@ const TIPOS_SERVICO = [
   "Troca de pneu",
 ];
 
+function StatusBadge({ status }) {
+  if (!status) return null;
+  const s = status.toLowerCase();
+  let variant = "default";
+  let className = "";
+  if (s === "pendente") {
+    className = "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-700";
+  } else if (s === "concluído" || s === "concluido" || s === "finalizado") {
+    className = "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-700";
+  } else if (s === "cancelado") {
+    className = "bg-red-100 text-red-800 border-red-300 dark:bg-red-900/50 dark:text-red-300 dark:border-red-700";
+  } else {
+    className = "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/50 dark:text-blue-300 dark:border-blue-700";
+  }
+  return <Badge variant="outline" className={className}>{status}</Badge>;
+}
+
 export default function BomAutoConsulta() {
   const { toast } = useToast();
 
@@ -84,6 +102,8 @@ export default function BomAutoConsulta() {
   const [selectedVehicle, setSelectedVehicle] = useState('');
   const [tipoServico, setTipoServico] = useState('');
   const [observacoes, setObservacoes] = useState('');
+  const [selectedImages, setSelectedImages] = useState([]);
+  const [imagePreviews, setImagePreviews] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [atendimentoFinalizado, setAtendimentoFinalizado] = useState(null);
 
@@ -101,6 +121,12 @@ export default function BomAutoConsulta() {
     }
     fetchUser();
   }, []);
+
+  useEffect(() => {
+    return () => {
+      imagePreviews.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [imagePreviews]);
 
   function getVehicles() {
     if (!clientData) return [];
@@ -124,8 +150,8 @@ export default function BomAutoConsulta() {
     if (veiculos.length > 3) {
       reasons.push(`Número de veículos (${veiculos.length}) excede o limite de 3`);
     }
-    if (utilizacoesCount > 3) {
-      reasons.push(`Utilizações no mês (${utilizacoesCount}) excede o limite de 3`);
+    if (utilizacoesCount >= 3) {
+      reasons.push(`Utilizações no ano (${utilizacoesCount}) excede o limite de 3`);
     }
 
     return { eligible: reasons.length === 0, reasons };
@@ -141,6 +167,8 @@ export default function BomAutoConsulta() {
     setSelectedVehicle('');
     setTipoServico('');
     setObservacoes('');
+    setSelectedImages([]);
+    setImagePreviews([]);
     setAtendimentoFinalizado(null);
 
     const cpfDigits = searchCPF.replace(/\D/g, '');
@@ -178,7 +206,7 @@ export default function BomAutoConsulta() {
       setClientData(data);
 
       const doc = data.documento || data.data?.documento || cpfDigits;
-      let utilizacoesCount = 0;
+      let utilizacoesData = { count: 0, atendimentos: [] };
       if (doc) {
         try {
           const utilRes = await fetch(`${API_BASE}/bom-auto/utilizacoes/${doc}`, {
@@ -186,19 +214,74 @@ export default function BomAutoConsulta() {
           });
           if (utilRes.ok) {
             const utilData = await utilRes.json();
-            utilizacoesCount = utilData.count ?? utilData.utilizacoes ?? utilData.total ?? 0;
+            utilizacoesData = {
+              count: utilData.count ?? utilData.utilizacoes ?? utilData.total ?? 0,
+              atendimentos: utilData.atendimentos || [],
+            };
           }
         } catch (e) {}
       }
-      setUtilizacoes(utilizacoesCount);
+      setUtilizacoes(utilizacoesData);
 
-      const elig = checkEligibility(data, utilizacoesCount);
+      const elig = checkEligibility(data, utilizacoesData.count);
       setEligibility(elig);
     } catch (err) {
       setError(err.message || 'Erro ao consultar cliente.');
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleImageSelect(e) {
+    const files = Array.from(e.target.files || []);
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    const maxSize = 5 * 1024 * 1024;
+
+    const validFiles = [];
+    const errors = [];
+
+    for (const file of files) {
+      if (!validTypes.includes(file.type)) {
+        errors.push(`${file.name}: tipo não suportado. Use JPEG, PNG, GIF ou WebP.`);
+        continue;
+      }
+      if (file.size > maxSize) {
+        errors.push(`${file.name}: excede o limite de 5MB.`);
+        continue;
+      }
+      validFiles.push(file);
+    }
+
+    if (errors.length > 0) {
+      toast({
+        title: "Arquivos inválidos",
+        description: errors.join('\n'),
+        variant: "destructive",
+      });
+    }
+
+    const totalAllowed = 10 - selectedImages.length;
+    const filesToAdd = validFiles.slice(0, totalAllowed);
+
+    if (validFiles.length > totalAllowed) {
+      toast({
+        title: "Limite de imagens",
+        description: `Máximo de 10 imagens. Apenas ${totalAllowed} foram adicionadas.`,
+        variant: "destructive",
+      });
+    }
+
+    const newPreviews = filesToAdd.map(f => URL.createObjectURL(f));
+    setSelectedImages(prev => [...prev, ...filesToAdd]);
+    setImagePreviews(prev => [...prev, ...newPreviews]);
+
+    e.target.value = '';
+  }
+
+  function handleRemoveImage(index) {
+    URL.revokeObjectURL(imagePreviews[index]);
+    setSelectedImages(prev => prev.filter((_, i) => i !== index));
+    setImagePreviews(prev => prev.filter((_, i) => i !== index));
   }
 
   async function handleSubmitAtendimento(e) {
@@ -250,6 +333,27 @@ export default function BomAutoConsulta() {
       }
 
       const atendimento = await res.json();
+
+      if (selectedImages.length > 0 && atendimento.id) {
+        try {
+          const formData = new FormData();
+          selectedImages.forEach(file => {
+            formData.append('imagens', file);
+          });
+          await fetch(`${API_BASE}/bom-auto/atendimentos/${atendimento.id}/imagens`, {
+            method: 'POST',
+            headers: { ...getAuthHeaders() },
+            body: formData,
+          });
+        } catch (imgErr) {
+          toast({
+            title: "Aviso",
+            description: "Atendimento registrado, mas houve erro ao enviar as imagens.",
+            variant: "destructive",
+          });
+        }
+      }
+
       setAtendimentoFinalizado(atendimento);
       setShowForm(false);
       toast({ title: "Sucesso", description: `Atendimento registrado! Protocolo: ${atendimento.protocolo}` });
@@ -265,6 +369,9 @@ export default function BomAutoConsulta() {
     setSelectedVehicle('');
     setTipoServico('');
     setObservacoes('');
+    setSelectedImages([]);
+    imagePreviews.forEach(url => URL.revokeObjectURL(url));
+    setImagePreviews([]);
   }
 
   function handleNovaConsulta() {
@@ -277,8 +384,31 @@ export default function BomAutoConsulta() {
     setSelectedVehicle('');
     setTipoServico('');
     setObservacoes('');
+    setSelectedImages([]);
+    imagePreviews.forEach(url => URL.revokeObjectURL(url));
+    setImagePreviews([]);
     setAtendimentoFinalizado(null);
     setError('');
+  }
+
+  function buildCommunicationMessage() {
+    if (!atendimentoFinalizado || !clientData) return '';
+    const cliente = clientData.contratante || clientData.data?.contratante || '';
+    const tipoServ = atendimentoFinalizado.tipo_servico || '';
+    const dataHora = formatDateTime(atendimentoFinalizado.data_hora || atendimentoFinalizado.created_at);
+    const protocolo = atendimentoFinalizado.protocolo || '';
+
+    return `Olá, ${cliente}. Tudo bem?\n\nGostaria de informar que o registro do seu atendimento referente a ${tipoServ}, realizado no dia ${dataHora}, foi formalizado.\n\nO seu número de protocolo é: ${protocolo}.\n\nCaso precise de mais alguma informação, estamos à disposição. Tenha um excelente dia!`;
+  }
+
+  async function handleCopyMessage() {
+    const msg = buildCommunicationMessage();
+    try {
+      await navigator.clipboard.writeText(msg);
+      toast({ title: "Mensagem copiada!", description: "Texto copiado para a área de transferência." });
+    } catch {
+      toast({ title: "Erro", description: "Não foi possível copiar a mensagem.", variant: "destructive" });
+    }
   }
 
   const vehicles = getVehicles();
@@ -417,10 +547,43 @@ export default function BomAutoConsulta() {
 
             {utilizacoes !== null && (
               <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
-                  Utilizações no mês
-                </p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{utilizacoes} / 3</p>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5" />
+                    Utilizações no Ano
+                  </p>
+                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-900/50 dark:text-blue-300 dark:border-blue-700">
+                    {utilizacoes.count} / 3
+                  </Badge>
+                </div>
+
+                {utilizacoes.atendimentos && utilizacoes.atendimentos.length > 0 ? (
+                  <div className="space-y-2">
+                    {utilizacoes.atendimentos.map((at, i) => (
+                      <div key={at.id || i} className="p-3 rounded-lg bg-gray-100 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 text-sm text-gray-900 dark:text-gray-100">
+                              <Clock className="w-3.5 h-3.5 text-gray-400" />
+                              {formatDateTime(at.data_hora || at.created_at)}
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                              <User className="w-3.5 h-3.5 text-gray-400" />
+                              {at.usuario || '-'}
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                              <Wrench className="w-3.5 h-3.5 text-gray-400" />
+                              {at.tipo_servico || '-'}
+                            </div>
+                          </div>
+                          <StatusBadge status={at.status_atendimento || 'Pendente'} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Nenhuma utilização registrada neste ano.</p>
+                )}
               </div>
             )}
           </CardContent>
@@ -575,24 +738,58 @@ export default function BomAutoConsulta() {
                   placeholder="Detalhes adicionais (opcional)"
                   value={observacoes}
                   onChange={(e) => setObservacoes(e.target.value)}
-                  rows={4}
+                  rows={3}
+                  className="border-blue-200 dark:border-blue-800 focus:ring-blue-500"
                 />
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleCancelForm}
-                  disabled={submitting}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  type="submit"
-                  variant="success"
-                  disabled={submitting || vehicles.length === 0}
-                >
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1.5">
+                  <ImagePlus className="w-4 h-4 text-blue-500" />
+                  Imagens (opcional, até 10)
+                </Label>
+                <div className="flex items-center gap-2">
+                  <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors text-sm font-medium">
+                    <ImagePlus className="w-4 h-4" />
+                    Selecionar Imagens
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/jpeg,image/png,image/gif,image/webp"
+                      onChange={handleImageSelect}
+                      className="hidden"
+                      disabled={selectedImages.length >= 10}
+                    />
+                  </label>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    {selectedImages.length}/10 · JPEG, PNG, GIF, WebP · Máx. 5MB cada
+                  </span>
+                </div>
+
+                {imagePreviews.length > 0 && (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 mt-3">
+                    {imagePreviews.map((preview, idx) => (
+                      <div key={idx} className="relative group">
+                        <img
+                          src={preview}
+                          alt={`Preview ${idx + 1}`}
+                          className="w-full h-24 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveImage(idx)}
+                          className="absolute -top-2 -right-2 p-1 rounded-full bg-red-500 text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button type="submit" disabled={submitting} className="bg-blue-600 hover:bg-blue-700 text-white">
                   {submitting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -600,10 +797,13 @@ export default function BomAutoConsulta() {
                     </>
                   ) : (
                     <>
-                      <CheckCircle className="w-4 h-4" />
-                      Finalizar Atendimento
+                      <ClipboardCheck className="w-4 h-4" />
+                      Registrar Atendimento
                     </>
                   )}
+                </Button>
+                <Button type="button" variant="outline" onClick={handleCancelForm}>
+                  Cancelar
                 </Button>
               </div>
             </form>
@@ -612,100 +812,136 @@ export default function BomAutoConsulta() {
       )}
 
       {atendimentoFinalizado && (
-        <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/40 dark:to-green-950/40">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-500 to-green-500 shadow-lg">
-                <ClipboardCheck className="w-5 h-5 text-white" />
-              </div>
-              Atendimento Registrado com Sucesso
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="flex items-center gap-3 p-4 rounded-xl bg-white dark:bg-gray-900 border border-emerald-200 dark:border-emerald-800 shadow-sm">
-              <div className="p-3 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 shadow">
-                <Hash className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Número do Protocolo</p>
-                <p className="text-xl font-bold text-blue-700 dark:text-blue-300 tracking-wider">
-                  {atendimentoFinalizado.protocolo}
+        <div className="space-y-6">
+          <Card className="border-blue-200 dark:border-blue-800">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg">
+                  <Hash className="w-5 h-5 text-white" />
+                </div>
+                Protocolo do Atendimento
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center py-4">
+                <p className="text-3xl font-bold text-blue-700 dark:text-blue-300 tracking-wider">
+                  {atendimentoFinalizado.protocolo || '-'}
                 </p>
+                <div className="mt-3">
+                  <StatusBadge status={atendimentoFinalizado.status_atendimento || 'Pendente'} />
+                </div>
               </div>
-            </div>
+            </CardContent>
+          </Card>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
-                  <User className="w-3 h-3" /> Cliente
-                </p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  {atendimentoFinalizado.nome_cliente}
-                </p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
-                  <Shield className="w-3 h-3" /> CPF
-                </p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  {atendimentoFinalizado.documento_cliente}
-                </p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
-                  <Car className="w-3 h-3" /> Veículo
-                </p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  {atendimentoFinalizado.placa}
-                  {atendimentoFinalizado.descricao_veiculo && (
-                    <span className="text-gray-500 dark:text-gray-400 font-normal"> - {atendimentoFinalizado.descricao_veiculo}</span>
-                  )}
-                </p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
-                  <Wrench className="w-3 h-3" /> Tipo de Serviço
-                </p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  {atendimentoFinalizado.tipo_servico}
-                </p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
-                  <Calendar className="w-3 h-3" /> Data/Hora
-                </p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  {formatDateTime(atendimentoFinalizado.data_hora)}
-                </p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
-                  <User className="w-3 h-3" /> Atendente
-                </p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  {atendimentoFinalizado.usuario}
-                </p>
-              </div>
-              {atendimentoFinalizado.observacoes && (
-                <div className="space-y-1 md:col-span-2">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
-                    <FileText className="w-3 h-3" /> Observações
-                  </p>
-                  <p className="text-sm text-gray-700 dark:text-gray-300">
-                    {atendimentoFinalizado.observacoes}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 shadow-lg">
+                  <FileText className="w-5 h-5 text-white" />
+                </div>
+                Detalhes do Atendimento
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Cliente</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{clientNome}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">CPF</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{clientDoc}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Veículo</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                    <Car className="w-4 h-4 text-blue-500" />
+                    {atendimentoFinalizado.placa || '-'} — {atendimentoFinalizado.descricao_veiculo || '-'}
                   </p>
                 </div>
-              )}
-            </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Tipo de Serviço</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{atendimentoFinalizado.tipo_servico || '-'}</p>
+                </div>
+                {atendimentoFinalizado.observacoes && (
+                  <div className="space-y-1 md:col-span-2">
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Observações</p>
+                    <p className="text-sm text-gray-900 dark:text-gray-100">{atendimentoFinalizado.observacoes}</p>
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Status</p>
+                  <StatusBadge status={atendimentoFinalizado.status_atendimento || 'Pendente'} />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Protocolo</p>
+                  <p className="text-sm font-bold text-blue-700 dark:text-blue-300">{atendimentoFinalizado.protocolo || '-'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Registrado por</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{atendimentoFinalizado.usuario || '-'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Data/Hora</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    {formatDateTime(atendimentoFinalizado.data_hora || atendimentoFinalizado.created_at)}
+                  </p>
+                </div>
+              </div>
 
-            <div className="pt-2">
-              <Button onClick={handleNovaConsulta} className="w-full md:w-auto">
-                <Search className="w-4 h-4" />
-                Nova Consulta
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+              {imagePreviews.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                    <Eye className="w-3.5 h-3.5" />
+                    Imagens ({imagePreviews.length})
+                  </p>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                    {imagePreviews.map((preview, idx) => (
+                      <img
+                        key={idx}
+                        src={preview}
+                        alt={`Imagem ${idx + 1}`}
+                        className="w-full h-24 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/30">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 shadow-lg">
+                  <Copy className="w-5 h-5 text-white" />
+                </div>
+                Mensagem de Comunicação
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-sans leading-relaxed">
+                  {buildCommunicationMessage()}
+                </pre>
+              </div>
+              <div className="mt-4">
+                <Button onClick={handleCopyMessage} className="bg-blue-600 hover:bg-blue-700 text-white">
+                  <Copy className="w-4 h-4" />
+                  Copiar Mensagem
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex justify-center">
+            <Button onClick={handleNovaConsulta} variant="outline" size="lg">
+              <RefreshCw className="w-4 h-4" />
+              Nova Consulta
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );

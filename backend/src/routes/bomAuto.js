@@ -1,8 +1,39 @@
 import { Router } from 'express';
 import { query } from '../config/database.js';
 import { authMiddleware } from '../middleware/auth.js';
+import multer from 'multer';
+import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
+import fs from 'fs';
 
 const router = Router();
+
+const uploadDir = path.join(process.cwd(), 'uploads', 'bom-auto');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const sanitized = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+    cb(null, `${uuidv4()}${ext}`);
+  }
+});
+
+const imageUpload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Apenas imagens são permitidas (JPEG, PNG, GIF, WebP)'), false);
+    }
+  }
+});
 
 router.get('/consulta', authMiddleware, async (req, res) => {
   try {
@@ -88,16 +119,23 @@ router.get('/consulta', authMiddleware, async (req, res) => {
 router.get('/utilizacoes/:documento', authMiddleware, async (req, res) => {
   try {
     const { documento } = req.params;
-
-    const result = await query(
+    const countResult = await query(
       `SELECT COUNT(*) FROM bom_auto_atendimentos
        WHERE documento_cliente = $1
-       AND data_hora >= date_trunc('month', CURRENT_DATE)
-       AND data_hora < date_trunc('month', CURRENT_DATE) + interval '1 month'`,
+       AND data_hora >= date_trunc('year', CURRENT_DATE)
+       AND data_hora < date_trunc('year', CURRENT_DATE) + interval '1 year'`,
       [documento]
     );
-
-    res.json({ count: parseInt(result.rows[0].count, 10) });
+    const listResult = await query(
+      `SELECT id, protocolo, tipo_servico, status_atendimento, usuario, data_hora
+       FROM bom_auto_atendimentos
+       WHERE documento_cliente = $1
+       AND data_hora >= date_trunc('year', CURRENT_DATE)
+       AND data_hora < date_trunc('year', CURRENT_DATE) + interval '1 year'
+       ORDER BY data_hora DESC`,
+      [documento]
+    );
+    res.json({ count: parseInt(countResult.rows[0].count, 10), atendimentos: listResult.rows });
   } catch (error) {
     console.error('Error in bom-auto utilizacoes:', error);
     res.status(500).json({ message: error.message });
@@ -125,10 +163,10 @@ router.post('/atendimentos', authMiddleware, async (req, res) => {
         FROM bom_auto_atendimentos
       )
       INSERT INTO bom_auto_atendimentos
-       (protocolo, documento_cliente, nome_cliente, placa, descricao_veiculo, tipo_servico, observacoes, usuario)
+       (protocolo, documento_cliente, nome_cliente, placa, descricao_veiculo, tipo_servico, observacoes, usuario, status_atendimento)
        VALUES (
          'BA' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || LPAD((SELECT seq FROM next_seq)::text, 4, '0'),
-         $1, $2, $3, $4, $5, $6, $7
+         $1, $2, $3, $4, $5, $6, $7, 'Pendente'
        )
        RETURNING *`,
       [documento_cliente, nome_cliente, placa, descricao_veiculo || null, tipo_servico, sanitizedObs, usuario]
@@ -137,6 +175,24 @@ router.post('/atendimentos', authMiddleware, async (req, res) => {
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Error in bom-auto create atendimento:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/atendimentos/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const atendResult = await query('SELECT * FROM bom_auto_atendimentos WHERE id = $1', [id]);
+    if (atendResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Atendimento não encontrado.' });
+    }
+    const imagensResult = await query(
+      'SELECT * FROM bom_auto_imagens WHERE atendimento_id = $1 ORDER BY created_at ASC',
+      [id]
+    );
+    res.json({ ...atendResult.rows[0], imagens: imagensResult.rows });
+  } catch (error) {
+    console.error('Error fetching bom-auto atendimento detail:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -159,6 +215,29 @@ router.get('/atendimentos', authMiddleware, async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error('Error in bom-auto list atendimentos:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/atendimentos/:id/imagens', authMiddleware, imageUpload.array('imagens', 10), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: 'Nenhuma imagem enviada.' });
+    }
+    const inserted = [];
+    for (const file of req.files) {
+      const url = `/uploads/bom-auto/${file.filename}`;
+      const result = await query(
+        `INSERT INTO bom_auto_imagens (atendimento_id, filename, original_name, mimetype, size, url)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [id, file.filename, file.originalname, file.mimetype, file.size, url]
+      );
+      inserted.push(result.rows[0]);
+    }
+    res.status(201).json(inserted);
+  } catch (error) {
+    console.error('Error uploading bom-auto images:', error);
     res.status(500).json({ message: error.message });
   }
 });

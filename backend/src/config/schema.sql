@@ -772,5 +772,17 @@ CREATE TABLE IF NOT EXISTS bom_auto_atendimentos (
   observacoes TEXT,
   data_hora TIMESTAMP DEFAULT NOW(),
   usuario VARCHAR(255) NOT NULL,
+  status_atendimento VARCHAR(50) NOT NULL DEFAULT 'Pendente',
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS bom_auto_imagens (
+  id SERIAL PRIMARY KEY,
+  atendimento_id INTEGER NOT NULL REFERENCES bom_auto_atendimentos(id) ON DELETE CASCADE,
+  filename VARCHAR(255) NOT NULL,
+  original_name VARCHAR(255) NOT NULL,
+  mimetype VARCHAR(100) NOT NULL,
+  size INTEGER NOT NULL,
+  url VARCHAR(500) NOT NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );
