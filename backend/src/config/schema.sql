@@ -786,3 +786,17 @@ CREATE TABLE IF NOT EXISTS bom_auto_imagens (
   url VARCHAR(500) NOT NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+ALTER TABLE bom_auto_atendimentos ADD COLUMN IF NOT EXISTS data_hora_inicio_tratamento TIMESTAMP;
+ALTER TABLE bom_auto_atendimentos ADD COLUMN IF NOT EXISTS usuario_responsavel_tratamento VARCHAR(255);
+ALTER TABLE bom_auto_atendimentos ADD COLUMN IF NOT EXISTS observacoes_tratamento TEXT;
+
+CREATE TABLE IF NOT EXISTS bom_auto_historico_alteracoes (
+  id SERIAL PRIMARY KEY,
+  atendimento_id INTEGER NOT NULL REFERENCES bom_auto_atendimentos(id) ON DELETE CASCADE,
+  status_anterior VARCHAR(50),
+  status_novo VARCHAR(50),
+  usuario VARCHAR(255) NOT NULL,
+  data_hora TIMESTAMP DEFAULT NOW(),
+  observacao TEXT
+);

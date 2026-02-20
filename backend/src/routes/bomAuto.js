@@ -205,17 +205,42 @@ router.get('/atendimentos/:id', authMiddleware, async (req, res) => {
 
 router.get('/atendimentos', authMiddleware, async (req, res) => {
   try {
-    const { documento } = req.query;
+    const { documento, status, data_inicio, data_fim, nome, placa, tipo_servico } = req.query;
 
-    let sql = 'SELECT * FROM bom_auto_atendimentos';
+    let sql = 'SELECT * FROM bom_auto_atendimentos WHERE 1=1';
     const params = [];
+    let paramIndex = 1;
 
+    if (status) {
+      sql += ` AND status_atendimento = $${paramIndex++}`;
+      params.push(status);
+    }
     if (documento) {
-      sql += ' WHERE documento_cliente = $1';
-      params.push(documento);
+      sql += ` AND documento_cliente ILIKE $${paramIndex++}`;
+      params.push(`%${documento.replace(/\D/g, '')}%`);
+    }
+    if (nome) {
+      sql += ` AND nome_cliente ILIKE $${paramIndex++}`;
+      params.push(`%${nome}%`);
+    }
+    if (placa) {
+      sql += ` AND placa ILIKE $${paramIndex++}`;
+      params.push(`%${placa.replace(/[^a-zA-Z0-9]/g, '')}%`);
+    }
+    if (tipo_servico) {
+      sql += ` AND tipo_servico = $${paramIndex++}`;
+      params.push(tipo_servico);
+    }
+    if (data_inicio) {
+      sql += ` AND data_hora >= $${paramIndex++}`;
+      params.push(data_inicio);
+    }
+    if (data_fim) {
+      sql += ` AND data_hora <= $${paramIndex++}`;
+      params.push(data_fim + ' 23:59:59');
     }
 
-    sql += ' ORDER BY data_hora DESC LIMIT 100';
+    sql += ` ORDER BY CASE WHEN status_atendimento = 'Pendente' THEN 0 ELSE 1 END, data_hora DESC LIMIT 500`;
 
     const result = await query(sql, params);
     res.json(result.rows);
@@ -244,6 +269,87 @@ router.post('/atendimentos/:id/imagens', authMiddleware, imageUpload.array('imag
     res.status(201).json(inserted);
   } catch (error) {
     console.error('Error uploading bom-auto images:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.put('/atendimentos/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status_atendimento, observacoes_tratamento, usuario } = req.body;
+
+    if (!usuario) {
+      return res.status(400).json({ message: 'Usuário é obrigatório.' });
+    }
+
+    const current = await query('SELECT * FROM bom_auto_atendimentos WHERE id = $1', [id]);
+    if (current.rows.length === 0) {
+      return res.status(404).json({ message: 'Atendimento não encontrado.' });
+    }
+
+    const atendimento = current.rows[0];
+    const statusAnterior = atendimento.status_atendimento;
+
+    if (status_atendimento === 'Solucionado') {
+      const imgCount = await query(
+        'SELECT COUNT(*) FROM bom_auto_imagens WHERE atendimento_id = $1',
+        [id]
+      );
+      if (parseInt(imgCount.rows[0].count, 10) === 0) {
+        return res.status(400).json({ message: 'Para marcar como Solucionado, é obrigatório anexar pelo menos uma imagem.' });
+      }
+    }
+
+    let updateSql = `UPDATE bom_auto_atendimentos SET status_atendimento = $1`;
+    let updateParams = [status_atendimento || statusAnterior];
+    let paramIdx = 2;
+
+    if (observacoes_tratamento !== undefined && observacoes_tratamento !== null) {
+      const sanitized = observacoes_tratamento.replace(/<[^>]*>/g, '').trim();
+      updateSql += `, observacoes_tratamento = $${paramIdx++}`;
+      updateParams.push(sanitized);
+    }
+
+    if (!atendimento.data_hora_inicio_tratamento) {
+      updateSql += `, data_hora_inicio_tratamento = NOW(), usuario_responsavel_tratamento = $${paramIdx++}`;
+      updateParams.push(usuario);
+    }
+
+    updateSql += ` WHERE id = $${paramIdx++} RETURNING *`;
+    updateParams.push(id);
+
+    const result = await query(updateSql, updateParams);
+
+    const statusChanged = status_atendimento && status_atendimento !== statusAnterior;
+    const hasObs = observacoes_tratamento && observacoes_tratamento.replace(/<[^>]*>/g, '').trim();
+    if (statusChanged || hasObs) {
+      const sanitizedObs = hasObs || null;
+      await query(
+        `INSERT INTO bom_auto_historico_alteracoes (atendimento_id, status_anterior, status_novo, usuario, observacao)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [id, statusAnterior, statusChanged ? status_atendimento : statusAnterior, usuario, sanitizedObs]
+      );
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating bom-auto atendimento:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/atendimentos/:id/historico', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await query(
+      `SELECT * FROM bom_auto_historico_alteracoes
+       WHERE atendimento_id = $1
+       ORDER BY data_hora DESC`,
+      [id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching bom-auto historico:', error);
     res.status(500).json({ message: error.message });
   }
 });

@@ -234,6 +234,7 @@ const menuModules = [
     gradient: "from-sky-500 to-cyan-500",
     items: [
       { title: "Consulta Cliente", url: createPageUrl("BomAutoConsulta"), icon: Search },
+      { title: "Painel Operacional", url: createPageUrl("BomAutoPainel"), icon: ClipboardList },
     ]
   },
   {
