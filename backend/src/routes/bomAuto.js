@@ -5,10 +5,13 @@ import multer from 'multer';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 
 const router = Router();
 
-const uploadDir = path.join(process.cwd(), 'uploads', 'bom-auto');
+const __filename2 = fileURLToPath(import.meta.url);
+const __dirname2 = path.dirname(__filename2);
+const uploadDir = path.join(__dirname2, '../../../data/bom-auto-images');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
@@ -258,7 +261,7 @@ router.post('/atendimentos/:id/imagens', authMiddleware, imageUpload.array('imag
     }
     const inserted = [];
     for (const file of req.files) {
-      const url = `/uploads/bom-auto/${file.filename}`;
+      const url = `/data/bom-auto-images/${file.filename}`;
       const result = await query(
         `INSERT INTO bom_auto_imagens (atendimento_id, filename, original_name, mimetype, size, url)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
