@@ -98,12 +98,18 @@ router.get('/consulta', authMiddleware, async (req, res) => {
     else if (situacaoContratoRaw.toUpperCase() === 'I') situacao_contrato = 'INATIVO';
     else if (situacaoContratoRaw.toUpperCase() === 'C') situacao_contrato = 'CANCELADO';
 
+    const situacaoFinanceiraRaw = first.situacao_financeira || '';
+    let situacao_financeira = situacaoFinanceiraRaw;
+    const sfUpper = situacaoFinanceiraRaw.toUpperCase().trim();
+    if (sfUpper === 'I' || sfUpper.includes('INADIMPLENTE')) situacao_financeira = 'INADIMPLENTE';
+    else if (sfUpper === 'A' || sfUpper.includes('ADIMPLENTE') || sfUpper.includes('EM DIA')) situacao_financeira = 'ADIMPLENTE';
+
     const normalized = {
       contratante: first.contratante || '',
       documento: first.documento || '',
       celular: first.celular || '',
       situacao_contrato,
-      situacao_financeira: first.situacao_financeira || '',
+      situacao_financeira,
       pedido: first.pedido || '',
       contrato_id: first.contrato_id || '',
       veiculos,

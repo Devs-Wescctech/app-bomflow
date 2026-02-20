@@ -141,11 +141,13 @@ export default function BomAutoConsulta() {
     const financeira = (data.situacao_financeira || data.data?.situacao_financeira || '').toLowerCase();
     const veiculos = Array.isArray(data.veiculos) ? data.veiculos : (data.data?.veiculos || []);
 
-    if (!contrato.includes('ativo')) {
-      reasons.push('Contrato não está ativo');
+    const isAtivo = contrato.includes('ativo') && !contrato.includes('inativo');
+    if (!isAtivo) {
+      reasons.push(`Contrato não está ativo (${(data.situacao_contrato || data.data?.situacao_contrato || 'N/A').toUpperCase()})`);
     }
-    if (!financeira.includes('adimplente') && !financeira.includes('em dia')) {
-      reasons.push('Situação financeira não está adimplente');
+    const isAdimplente = (financeira.includes('adimplente') && !financeira.includes('inadimplente')) || financeira.includes('em dia');
+    if (!isAdimplente) {
+      reasons.push(`Situação financeira não está adimplente (${(data.situacao_financeira || data.data?.situacao_financeira || 'N/A').toUpperCase()})`);
     }
     if (veiculos.length > 3) {
       reasons.push(`Número de veículos (${veiculos.length}) excede o limite de 3`);
@@ -668,7 +670,7 @@ export default function BomAutoConsulta() {
                 </Label>
                 {vehicles.length > 0 ? (
                   <Select value={selectedVehicle} onValueChange={setSelectedVehicle}>
-                    <SelectTrigger id="veiculo" className="border-blue-200 dark:border-blue-800 focus:ring-blue-500">
+                    <SelectTrigger id="veiculo" className="border-blue-200 dark:border-blue-800 focus:ring-blue-500 bg-blue-600 text-white data-[placeholder]:text-blue-200 [&>span]:text-white">
                       <SelectValue placeholder="Selecione o veículo" />
                     </SelectTrigger>
                     <SelectContent>
@@ -676,7 +678,7 @@ export default function BomAutoConsulta() {
                         <SelectItem key={i} value={v.placa}>
                           <div className="flex items-center gap-2">
                             <Car className="w-4 h-4 text-blue-500" />
-                            <span className="font-bold text-blue-700 dark:text-blue-300">{v.placa}</span>
+                            <span className="font-bold">{v.placa}</span>
                             <span className="text-gray-500 dark:text-gray-400">
                               {v.descricao_veiculo_limpa || v.descricao_veiculo || ''}
                             </span>
