@@ -18,6 +18,10 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
       },
+      '/data/bom-auto-images': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
       '/proposals': {
         target: 'http://localhost:3001',
         changeOrigin: true,
