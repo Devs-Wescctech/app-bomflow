@@ -625,6 +625,15 @@ export default function BomAutoPainel() {
                           src={img.url || img.caminho}
                           alt={`Imagem ${i + 1}`}
                           className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.style.display = 'none';
+                            e.target.parentElement.classList.add('flex', 'items-center', 'justify-center', 'bg-gray-100', 'dark:bg-gray-800');
+                            const span = document.createElement('span');
+                            span.className = 'text-[10px] text-gray-400 text-center px-1';
+                            span.textContent = 'Imagem indisponível';
+                            e.target.parentElement.appendChild(span);
+                          }}
                         />
                       </div>
                     ))}
@@ -799,6 +808,15 @@ export default function BomAutoPainel() {
             alt="Imagem ampliada"
             className="max-w-full max-h-[90vh] object-contain rounded-lg"
             onClick={(e) => e.stopPropagation()}
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = '';
+              e.target.style.display = 'none';
+              const div = document.createElement('div');
+              div.className = 'text-white text-center p-8';
+              div.innerHTML = '<p class="text-lg font-semibold">Imagem indisponível</p><p class="text-sm text-gray-300 mt-2">O arquivo não foi encontrado no servidor.</p>';
+              e.target.parentElement.appendChild(div);
+            }}
           />
         </div>
       )}
