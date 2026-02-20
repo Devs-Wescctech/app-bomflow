@@ -396,11 +396,14 @@ export default function BomAutoConsulta() {
   function buildCommunicationMessage() {
     if (!atendimentoFinalizado || !clientData) return '';
     const cliente = clientData.contratante || clientData.data?.contratante || '';
+    const documento = clientData.documento || clientData.data?.documento || '';
+    const placa = atendimentoFinalizado.placa || '';
+    const descricaoVeiculo = atendimentoFinalizado.descricao_veiculo || '';
     const tipoServ = atendimentoFinalizado.tipo_servico || '';
     const dataHora = formatDateTime(atendimentoFinalizado.data_hora || atendimentoFinalizado.created_at);
     const protocolo = atendimentoFinalizado.protocolo || '';
 
-    return `Olá, ${cliente}. Tudo bem?\n\nGostaria de informar que o registro do seu atendimento referente a ${tipoServ}, realizado no dia ${dataHora}, foi formalizado.\n\nO seu número de protocolo é: ${protocolo}.\n\nCaso precise de mais alguma informação, estamos à disposição. Tenha um excelente dia!`;
+    return `Solicitação de Serviço\nProtocolo: ${protocolo}\n\nNome Completo: ${cliente}\nCPF: ${documento}\nPlaca: ${placa}\nDescrição Veículo: ${descricaoVeiculo}\nTipo Serviço: ${tipoServ}\nData solicitação: ${dataHora}`;
   }
 
   async function handleCopyMessage() {
