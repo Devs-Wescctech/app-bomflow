@@ -679,7 +679,7 @@ export default function BomAutoConsulta() {
                           <div className="flex items-center gap-2">
                             <Car className="w-4 h-4 text-blue-500" />
                             <span className="font-bold">{v.placa}</span>
-                            <span className="text-gray-500 dark:text-gray-400">
+                            <span>
                               {v.descricao_veiculo_limpa || v.descricao_veiculo || ''}
                             </span>
                           </div>
@@ -704,7 +704,7 @@ export default function BomAutoConsulta() {
                         <p className="text-sm font-bold text-blue-700 dark:text-blue-300">
                           {selectedVehicle}
                         </p>
-                        <p className="text-xs text-blue-600/70 dark:text-blue-400/70">
+                        <p className="text-xs text-blue-700 dark:text-blue-300">
                           {vehicles.find(v => v.placa === selectedVehicle)?.descricao_veiculo_limpa ||
                            vehicles.find(v => v.placa === selectedVehicle)?.descricao_veiculo || 'Sem descrição'}
                         </p>
