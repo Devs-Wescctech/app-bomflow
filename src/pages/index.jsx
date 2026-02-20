@@ -176,6 +176,8 @@ import AgentMyDashboard from "./AgentMyDashboard";
 
 import BomAutoConsulta from "./BomAutoConsulta";
 
+import BomAutoPainel from "./BomAutoPainel";
+
 import Login from "./Login";
 
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
@@ -357,6 +359,8 @@ const PAGES = {
     AgentMyDashboard: AgentMyDashboard,
     
     BomAutoConsulta: BomAutoConsulta,
+    
+    BomAutoPainel: BomAutoPainel,
     
 }
 
@@ -565,6 +569,8 @@ function PagesContent() {
                 <Route path="/AgentMyDashboard" element={<AgentMyDashboard />} />
                 
                 <Route path="/BomAutoConsulta" element={<BomAutoConsulta />} />
+                
+                <Route path="/BomAutoPainel" element={<BomAutoPainel />} />
                 
             </Routes>
         </Layout>
