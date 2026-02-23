@@ -12,7 +12,7 @@ import {
   Clock, CheckCircle, XCircle, BarChart3, Search, Filter,
   Loader2, User, Wrench, Car, Hash, Calendar, ImagePlus, X,
   ChevronDown, ChevronUp, Eye, ArrowRight, FileText, Shield,
-  AlertTriangle, RefreshCw, Zap, Activity
+  AlertTriangle, RefreshCw, Zap
 } from "lucide-react";
 
 const API_BASE = '/api';
@@ -86,7 +86,7 @@ export default function BomAutoPainel() {
   const [allAtendimentos, setAllAtendimentos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [counts, setCounts] = useState({ pendentes: 0, emTratamento: 0, solucionados: 0, cancelados: 0, total: 0 });
+  const [counts, setCounts] = useState({ pendentes: 0, solucionados: 0, cancelados: 0, total: 0 });
 
   const [filterStatus, setFilterStatus] = useState("Pendente");
   const [filterDataInicio, setFilterDataInicio] = useState("");
@@ -159,12 +159,13 @@ export default function BomAutoPainel() {
     } catch (e) {}
   }
 
-  async function fetchAtendimentos(silent = false) {
+  async function fetchAtendimentos(silent = false, statusOverride) {
     if (!silent) setLoading(true);
     fetchContadores();
     try {
       const params = new URLSearchParams();
-      if (filterStatus && filterStatus !== "todos") params.set('status', filterStatus);
+      const effectiveStatus = statusOverride !== undefined ? statusOverride : filterStatus;
+      if (effectiveStatus && effectiveStatus !== "todos") params.set('status', effectiveStatus);
       if (filterDataInicio) params.set('data_inicio', filterDataInicio);
       if (filterDataFim) params.set('data_fim', filterDataFim);
       if (filterCliente) {
@@ -236,12 +237,9 @@ export default function BomAutoPainel() {
   };
 
   function handleCounterClick(status) {
-    if (status === filterStatus) {
-      setFilterStatus("todos");
-    } else {
-      setFilterStatus(status);
-    }
-    setTimeout(() => fetchAtendimentos(), 0);
+    const newStatus = status === filterStatus ? "todos" : status;
+    setFilterStatus(newStatus);
+    fetchAtendimentos(false, newStatus);
   }
 
   async function openDetail(atendimento) {
@@ -465,7 +463,7 @@ export default function BomAutoPainel() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card
           className={`cursor-pointer transition-all hover:shadow-md ${filterStatus === 'Pendente' ? 'ring-2 ring-amber-400 shadow-md' : ''}`}
           onClick={() => handleCounterClick('Pendente')}
@@ -478,26 +476,6 @@ export default function BomAutoPainel() {
               <div className="min-w-0">
                 <p className="text-2xl md:text-3xl font-extrabold text-amber-600 dark:text-amber-400">{counts.pendentes}</p>
                 <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Pendentes</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card
-          className={`cursor-pointer transition-all hover:shadow-md ${filterStatus === 'Pendente' && filtersOpen ? 'ring-2 ring-blue-400 shadow-md' : ''}`}
-          onClick={() => {
-            setFilterStatus('todos');
-            setTimeout(() => fetchAtendimentos(), 0);
-          }}
-        >
-          <CardContent className="p-3 md:p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20">
-                <Activity className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-2xl md:text-3xl font-extrabold text-blue-600 dark:text-blue-400">{counts.emTratamento}</p>
-                <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Em tratamento</p>
               </div>
             </div>
           </CardContent>
@@ -538,7 +516,7 @@ export default function BomAutoPainel() {
         </Card>
 
         <Card
-          className={`cursor-pointer transition-all hover:shadow-md col-span-2 md:col-span-1 ${filterStatus === 'todos' ? 'ring-2 ring-gray-400 shadow-md' : ''}`}
+          className={`cursor-pointer transition-all hover:shadow-md ${filterStatus === 'todos' ? 'ring-2 ring-gray-400 shadow-md' : ''}`}
           onClick={() => handleCounterClick('todos')}
         >
           <CardContent className="p-3 md:p-4">
@@ -690,7 +668,7 @@ export default function BomAutoPainel() {
                     </>
                   )}
                 </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => { handleClearFilters(); setTimeout(() => fetchAtendimentos(), 0); }}>
+                <Button type="button" variant="outline" size="sm" onClick={() => { handleClearFilters(); fetchAtendimentos(false, 'todos'); }}>
                   Limpar Filtros
                 </Button>
               </div>
@@ -718,7 +696,7 @@ export default function BomAutoPainel() {
             <FileText className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
             <p className="text-gray-500 dark:text-gray-400">Nenhum atendimento encontrado.</p>
             {filterStatus !== "todos" && (
-              <Button variant="link" className="mt-2 text-sm" onClick={() => { handleClearFilters(); setTimeout(() => fetchAtendimentos(), 0); }}>
+              <Button variant="link" className="mt-2 text-sm" onClick={() => { handleClearFilters(); fetchAtendimentos(false, 'todos'); }}>
                 Limpar filtros e buscar todos
               </Button>
             )}

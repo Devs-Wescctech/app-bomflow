@@ -192,8 +192,7 @@ router.get('/atendimentos/contadores', authMiddleware, async (req, res) => {
   try {
     const result = await query(
       `SELECT
-        COUNT(*) FILTER (WHERE status_atendimento = 'Pendente' AND data_hora_inicio_tratamento IS NULL) AS pendentes,
-        COUNT(*) FILTER (WHERE status_atendimento = 'Pendente' AND data_hora_inicio_tratamento IS NOT NULL) AS em_tratamento,
+        COUNT(*) FILTER (WHERE status_atendimento = 'Pendente') AS pendentes,
         COUNT(*) FILTER (WHERE status_atendimento = 'Solucionado') AS solucionados,
         COUNT(*) FILTER (WHERE status_atendimento = 'Cancelado') AS cancelados,
         COUNT(*) AS total
@@ -202,7 +201,6 @@ router.get('/atendimentos/contadores', authMiddleware, async (req, res) => {
     const row = result.rows[0];
     res.json({
       pendentes: parseInt(row.pendentes, 10),
-      emTratamento: parseInt(row.em_tratamento, 10),
       solucionados: parseInt(row.solucionados, 10),
       cancelados: parseInt(row.cancelados, 10),
       total: parseInt(row.total, 10),
