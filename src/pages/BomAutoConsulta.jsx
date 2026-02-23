@@ -961,101 +961,101 @@ export default function BomAutoConsulta() {
 
       {atendimentoFinalizado && (
         <div className="space-y-6">
-          <Card className="border-blue-200 dark:border-blue-800">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg">
-                  <Hash className="w-5 h-5 text-white" />
-                </div>
-                Protocolo do Atendimento
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-4">
-                <p className="text-3xl font-bold text-blue-700 dark:text-blue-300 tracking-wider">
+          <Card className="border-emerald-300 dark:border-emerald-700 shadow-lg overflow-hidden">
+            <div className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 px-6 py-5 text-center">
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <CheckCircle className="w-6 h-6 text-white" />
+                <h2 className="text-lg font-bold text-white tracking-wide">Atendimento Registrado com Sucesso</h2>
+              </div>
+              <p className="text-emerald-100 text-sm">Comprovante gerado automaticamente pelo sistema</p>
+            </div>
+
+            <CardContent className="p-0">
+              <div className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700 px-6 py-6 text-center">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 mb-2">Protocolo de Atendimento</p>
+                <p className="text-4xl sm:text-5xl font-extrabold text-gray-900 dark:text-white tracking-widest font-mono">
                   {atendimentoFinalizado.protocolo || '-'}
                 </p>
-                <div className="mt-3">
-                  <StatusBadge status={atendimentoFinalizado.status_atendimento || 'Pendente'} />
+                <div className="mt-4">
+                  {(() => {
+                    const st = (atendimentoFinalizado.status_atendimento || 'Pendente').toLowerCase();
+                    const isPend = st === 'pendente';
+                    const isSoluc = st === 'solucionado' || st === 'concluído' || st === 'concluido' || st === 'finalizado';
+                    const statusClass = isPend
+                      ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/60 dark:text-amber-200 dark:border-amber-700'
+                      : isSoluc
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/60 dark:text-emerald-200 dark:border-emerald-700'
+                        : 'bg-red-100 text-red-800 border-red-300 dark:bg-red-900/60 dark:text-red-200 dark:border-red-700';
+                    return (
+                      <span className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-bold border ${statusClass}`}>
+                        {isPend && <Clock className="w-4 h-4" />}
+                        {isSoluc && <CheckCircle className="w-4 h-4" />}
+                        {!isPend && !isSoluc && <XCircle className="w-4 h-4" />}
+                        {atendimentoFinalizado.status_atendimento || 'Pendente'}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 shadow-lg">
-                  <FileText className="w-5 h-5 text-white" />
+              <div className="px-6 py-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400 dark:text-gray-500">Cliente</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{clientNome}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400 dark:text-gray-500">CPF</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 font-mono">{clientDoc}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400 dark:text-gray-500">Veículo</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                      <Car className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                      {atendimentoFinalizado.placa || '-'} — {atendimentoFinalizado.descricao_veiculo || '-'}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400 dark:text-gray-500">Tipo de Serviço</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{atendimentoFinalizado.tipo_servico || '-'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400 dark:text-gray-500">Registrado por</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{atendimentoFinalizado.usuario || '-'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400 dark:text-gray-500">Data / Hora</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      {formatDateTime(atendimentoFinalizado.data_hora || atendimentoFinalizado.created_at)}
+                    </p>
+                  </div>
+                  {atendimentoFinalizado.observacoes && (
+                    <div className="space-y-1 sm:col-span-2">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400 dark:text-gray-500">Observações</p>
+                      <p className="text-sm text-gray-900 dark:text-gray-100">{atendimentoFinalizado.observacoes}</p>
+                    </div>
+                  )}
                 </div>
-                Detalhes do Atendimento
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Cliente</p>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{clientNome}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">CPF</p>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{clientDoc}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Veículo</p>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                    <Car className="w-4 h-4 text-blue-500" />
-                    {atendimentoFinalizado.placa || '-'} — {atendimentoFinalizado.descricao_veiculo || '-'}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Tipo de Serviço</p>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{atendimentoFinalizado.tipo_servico || '-'}</p>
-                </div>
-                {atendimentoFinalizado.observacoes && (
-                  <div className="space-y-1 md:col-span-2">
-                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Observações</p>
-                    <p className="text-sm text-gray-900 dark:text-gray-100">{atendimentoFinalizado.observacoes}</p>
+
+                {imagePreviews.length > 0 && (
+                  <div className="mt-5 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400 dark:text-gray-500 mb-3 flex items-center gap-1.5">
+                      <Eye className="w-3.5 h-3.5" />
+                      Imagens ({imagePreviews.length})
+                    </p>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                      {imagePreviews.map((preview, idx) => (
+                        <img
+                          key={idx}
+                          src={preview}
+                          alt={`Imagem ${idx + 1}`}
+                          className="w-full h-24 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                        />
+                      ))}
+                    </div>
                   </div>
                 )}
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Status</p>
-                  <StatusBadge status={atendimentoFinalizado.status_atendimento || 'Pendente'} />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Protocolo</p>
-                  <p className="text-sm font-bold text-blue-700 dark:text-blue-300">{atendimentoFinalizado.protocolo || '-'}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Registrado por</p>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{atendimentoFinalizado.usuario || '-'}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Data/Hora</p>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                    {formatDateTime(atendimentoFinalizado.data_hora || atendimentoFinalizado.created_at)}
-                  </p>
-                </div>
               </div>
-
-              {imagePreviews.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                    <Eye className="w-3.5 h-3.5" />
-                    Imagens ({imagePreviews.length})
-                  </p>
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-                    {imagePreviews.map((preview, idx) => (
-                      <img
-                        key={idx}
-                        src={preview}
-                        alt={`Imagem ${idx + 1}`}
-                        className="w-full h-24 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
             </CardContent>
           </Card>
 
