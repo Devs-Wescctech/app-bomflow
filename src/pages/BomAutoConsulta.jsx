@@ -507,13 +507,35 @@ export default function BomAutoConsulta() {
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">CPF</p>
                 <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{clientDoc}</p>
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Status do Plano</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{clientContrato}</p>
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold tracking-wide ${
+                  clientContrato.toLowerCase().includes('ativo') && !clientContrato.toLowerCase().includes('cancelado') && !clientContrato.toLowerCase().includes('inativo')
+                    ? 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300 dark:bg-emerald-900/50 dark:text-emerald-300 dark:ring-emerald-700'
+                    : 'bg-red-100 text-red-800 ring-1 ring-red-300 dark:bg-red-900/50 dark:text-red-300 dark:ring-red-700'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    clientContrato.toLowerCase().includes('ativo') && !clientContrato.toLowerCase().includes('cancelado') && !clientContrato.toLowerCase().includes('inativo')
+                      ? 'bg-emerald-500 dark:bg-emerald-400'
+                      : 'bg-red-500 dark:bg-red-400'
+                  }`} />
+                  {clientContrato.toUpperCase()}
+                </span>
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Situação Financeira</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{clientFinanceira}</p>
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold tracking-wide ${
+                  clientFinanceira.toLowerCase().includes('adimplente') && !clientFinanceira.toLowerCase().includes('inadimplente')
+                    ? 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300 dark:bg-emerald-900/50 dark:text-emerald-300 dark:ring-emerald-700'
+                    : 'bg-red-100 text-red-800 ring-1 ring-red-300 dark:bg-red-900/50 dark:text-red-300 dark:ring-red-700'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    clientFinanceira.toLowerCase().includes('adimplente') && !clientFinanceira.toLowerCase().includes('inadimplente')
+                      ? 'bg-emerald-500 dark:bg-emerald-400'
+                      : 'bg-red-500 dark:bg-red-400'
+                  }`} />
+                  {clientFinanceira.toUpperCase()}
+                </span>
               </div>
               {clientCelular && (
                 <div className="space-y-1">
