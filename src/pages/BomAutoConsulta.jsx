@@ -633,6 +633,111 @@ export default function BomAutoConsulta() {
         </Card>
       )}
 
+      {clientData && !atendimentoFinalizado && utilizacoes !== null && utilizacoes.atendimentos && utilizacoes.atendimentos.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-violet-500 to-purple-500 shadow-lg">
+                <Clock className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <span>Histórico de Utilizações</span>
+                <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
+                  ({utilizacoes.atendimentos.length} {utilizacoes.atendimentos.length === 1 ? 'registro' : 'registros'})
+                </span>
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="relative">
+              <div className="absolute left-[15px] top-2 bottom-2 w-0.5 bg-gradient-to-b from-violet-300 via-purple-200 to-gray-200 dark:from-violet-700 dark:via-purple-800 dark:to-gray-700" />
+
+              <div className="space-y-4">
+                {utilizacoes.atendimentos.map((at, i) => {
+                  const s = (at.status_atendimento || 'Pendente').toLowerCase();
+                  const isPendente = s === 'pendente';
+                  const isSolucionado = s === 'solucionado' || s === 'concluído' || s === 'concluido' || s === 'finalizado';
+                  const isCancelado = s === 'cancelado';
+
+                  const dotColor = isPendente
+                    ? 'bg-amber-500 ring-amber-200 dark:ring-amber-900'
+                    : isSolucionado
+                      ? 'bg-emerald-500 ring-emerald-200 dark:ring-emerald-900'
+                      : isCancelado
+                        ? 'bg-gray-400 ring-gray-200 dark:ring-gray-700'
+                        : 'bg-blue-500 ring-blue-200 dark:ring-blue-900';
+
+                  const cardBorder = isPendente
+                    ? 'border-amber-200 dark:border-amber-800/50'
+                    : isSolucionado
+                      ? 'border-emerald-200 dark:border-emerald-800/50'
+                      : isCancelado
+                        ? 'border-gray-200 dark:border-gray-700'
+                        : 'border-blue-200 dark:border-blue-800/50';
+
+                  const cardBg = isPendente
+                    ? 'bg-amber-50/50 dark:bg-amber-950/20'
+                    : isSolucionado
+                      ? 'bg-emerald-50/50 dark:bg-emerald-950/20'
+                      : isCancelado
+                        ? 'bg-gray-50/50 dark:bg-gray-800/20'
+                        : 'bg-blue-50/50 dark:bg-blue-950/20';
+
+                  return (
+                    <div key={at.id || i} className="relative pl-10">
+                      <div className={`absolute left-[9px] top-4 w-3 h-3 rounded-full ring-4 ${dotColor} z-10`} />
+
+                      <div className={`rounded-xl border ${cardBorder} ${cardBg} shadow-sm overflow-hidden`}>
+                        <div className="p-4">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+                            <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                              <Calendar className="w-3.5 h-3.5" />
+                              <span className="font-medium">{formatDateTime(at.data_hora)}</span>
+                              {i === 0 && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300">
+                                  Mais recente
+                                </span>
+                              )}
+                            </div>
+                            <StatusBadge status={at.status_atendimento || 'Pendente'} />
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div className="flex items-center gap-2">
+                              <User className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-semibold">Atendente</p>
+                                <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{at.usuario || '-'}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Wrench className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-semibold">Serviço</p>
+                                <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{at.tipo_servico || '-'}</p>
+                              </div>
+                            </div>
+                            {at.protocolo && (
+                              <div className="flex items-center gap-2">
+                                <Hash className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                                <div className="min-w-0">
+                                  <p className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-semibold">Protocolo</p>
+                                  <p className="text-sm font-mono font-medium text-gray-800 dark:text-gray-200">{at.protocolo}</p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {eligibility && !atendimentoFinalizado && (
         <Card className={eligibility.eligible
           ? "border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/30"
