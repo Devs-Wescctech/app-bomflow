@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,10 +11,14 @@ import { useToast } from "@/components/ui/use-toast";
 import {
   Clock, CheckCircle, XCircle, BarChart3, Search, Filter,
   Loader2, User, Wrench, Car, Hash, Calendar, ImagePlus, X,
-  ChevronDown, ChevronUp, Eye, ArrowRight, FileText, Shield
+  ChevronDown, ChevronUp, Eye, ArrowRight, FileText, Shield,
+  AlertTriangle, RefreshCw, Zap, Activity
 } from "lucide-react";
 
 const API_BASE = '/api';
+const AUTO_REFRESH_INTERVAL = 60000;
+const ALERT_HOURS_OLD = 24;
+const ALERT_HOURS_NEW = 2;
 
 function getAuthHeaders() {
   const token = localStorage.getItem('accessToken');
@@ -28,6 +32,11 @@ function formatDateTime(dateStr) {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
   });
+}
+
+function getHoursAgo(dateStr) {
+  if (!dateStr) return Infinity;
+  return (Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60);
 }
 
 const TIPOS_SERVICO = [
@@ -45,6 +54,8 @@ function StatusBadge({ status }) {
   let className = "";
   if (s === "pendente") {
     className = "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-700";
+  } else if (s === "em tratamento") {
+    className = "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/50 dark:text-blue-300 dark:border-blue-700";
   } else if (s === "solucionado" || s === "concluído" || s === "concluido" || s === "finalizado") {
     className = "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-700";
   } else if (s === "cancelado") {
@@ -55,20 +66,36 @@ function StatusBadge({ status }) {
   return <Badge variant="outline" className={className}>{status}</Badge>;
 }
 
+function getAlertInfo(at) {
+  const status = (at.status_atendimento || '').toLowerCase();
+  if (status !== 'pendente') return null;
+  const hoursAgo = getHoursAgo(at.data_hora || at.created_at);
+  if (hoursAgo >= ALERT_HOURS_OLD) {
+    return { type: 'old', label: `Sem atualização há ${Math.floor(hoursAgo)}h`, color: 'red' };
+  }
+  if (hoursAgo <= ALERT_HOURS_NEW) {
+    return { type: 'new', label: 'Recém-criado', color: 'blue' };
+  }
+  return null;
+}
+
 export default function BomAutoPainel() {
   const { toast } = useToast();
 
   const [currentUser, setCurrentUser] = useState(null);
-  const [atendimentos, setAtendimentos] = useState([]);
+  const [allAtendimentos, setAllAtendimentos] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [counts, setCounts] = useState({ pendentes: 0, emTratamento: 0, solucionados: 0, cancelados: 0, total: 0 });
 
-  const [filterStatus, setFilterStatus] = useState("todos");
+  const [filterStatus, setFilterStatus] = useState("Pendente");
   const [filterDataInicio, setFilterDataInicio] = useState("");
   const [filterDataFim, setFilterDataFim] = useState("");
   const [filterCliente, setFilterCliente] = useState("");
   const [filterPlaca, setFilterPlaca] = useState("");
   const [filterTipoServico, setFilterTipoServico] = useState("todos");
+
+  const [universalSearch, setUniversalSearch] = useState("");
 
   const [selectedAtendimento, setSelectedAtendimento] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -82,6 +109,9 @@ export default function BomAutoPainel() {
   const [saving, setSaving] = useState(false);
 
   const [lightboxImage, setLightboxImage] = useState(null);
+  const [lastRefresh, setLastRefresh] = useState(null);
+
+  const refreshTimerRef = useRef(null);
 
   useEffect(() => {
     async function fetchUser() {
@@ -103,13 +133,35 @@ export default function BomAutoPainel() {
   }, []);
 
   useEffect(() => {
+    refreshTimerRef.current = setInterval(() => {
+      fetchAtendimentos(true);
+    }, AUTO_REFRESH_INTERVAL);
+    return () => {
+      if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
+    };
+  }, [filterStatus, filterDataInicio, filterDataFim, filterCliente, filterPlaca, filterTipoServico]);
+
+  useEffect(() => {
     return () => {
       imagePreviews.forEach(url => URL.revokeObjectURL(url));
     };
   }, [imagePreviews]);
 
-  async function fetchAtendimentos() {
-    setLoading(true);
+  async function fetchContadores() {
+    try {
+      const res = await fetch(`${API_BASE}/bom-auto/atendimentos/contadores`, {
+        headers: { ...getAuthHeaders() },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCounts(data);
+      }
+    } catch (e) {}
+  }
+
+  async function fetchAtendimentos(silent = false) {
+    if (!silent) setLoading(true);
+    fetchContadores();
     try {
       const params = new URLSearchParams();
       if (filterStatus && filterStatus !== "todos") params.set('status', filterStatus);
@@ -135,13 +187,27 @@ export default function BomAutoPainel() {
       }
 
       const data = await res.json();
-      setAtendimentos(Array.isArray(data) ? data : data.atendimentos || []);
+      setAllAtendimentos(Array.isArray(data) ? data : data.atendimentos || []);
+      setLastRefresh(new Date());
     } catch (err) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
+      if (!silent) {
+        toast({ title: "Erro", description: err.message, variant: "destructive" });
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
+
+  const atendimentos = allAtendimentos.filter(at => {
+    if (!universalSearch.trim()) return true;
+    const q = universalSearch.trim().toLowerCase();
+    const nome = (at.nome_cliente || '').toLowerCase();
+    const doc = (at.documento_cliente || '').replace(/\D/g, '');
+    const docQ = q.replace(/\D/g, '');
+    const placa = (at.placa || '').toLowerCase();
+    const protocolo = (at.protocolo || '').toLowerCase();
+    return nome.includes(q) || (docQ && doc.includes(docQ)) || placa.includes(q) || protocolo.includes(q);
+  });
 
   function handleFilter(e) {
     e.preventDefault();
@@ -155,14 +221,28 @@ export default function BomAutoPainel() {
     setFilterCliente("");
     setFilterPlaca("");
     setFilterTipoServico("todos");
+    setUniversalSearch("");
   }
 
-  const counts = {
-    pendentes: atendimentos.filter(a => (a.status_atendimento || '').toLowerCase() === 'pendente').length,
-    solucionados: atendimentos.filter(a => (a.status_atendimento || '').toLowerCase() === 'solucionado').length,
-    cancelados: atendimentos.filter(a => (a.status_atendimento || '').toLowerCase() === 'cancelado').length,
-    total: atendimentos.length,
+  const alertCounts = {
+    old: allAtendimentos.filter(a => {
+      const alert = getAlertInfo(a);
+      return alert && alert.type === 'old';
+    }).length,
+    recent: allAtendimentos.filter(a => {
+      const alert = getAlertInfo(a);
+      return alert && alert.type === 'new';
+    }).length,
   };
+
+  function handleCounterClick(status) {
+    if (status === filterStatus) {
+      setFilterStatus("todos");
+    } else {
+      setFilterStatus(status);
+    }
+    setTimeout(() => fetchAtendimentos(), 0);
+  }
 
   async function openDetail(atendimento) {
     setModalOpen(true);
@@ -335,78 +415,204 @@ export default function BomAutoPainel() {
     }
   }
 
-  return (
-    <div className="p-4 md:p-6 space-y-6 bg-gray-50 dark:bg-gray-950 min-h-screen">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 shadow-lg">
-              <Shield className="w-5 h-5 text-white" />
-            </div>
-            Bom Auto - Painel Operacional
-          </CardTitle>
-        </CardHeader>
-      </Card>
+  function handleUniversalSearchKeyDown(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+    }
+  }
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/50">
-              <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{counts.pendentes}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Pendentes</p>
+  const sortedAtendimentos = [...atendimentos].sort((a, b) => {
+    const statusOrder = (s) => {
+      const sl = (s || '').toLowerCase();
+      if (sl === 'pendente') return 0;
+      if (sl === 'solucionado') return 2;
+      if (sl === 'cancelado') return 3;
+      return 1;
+    };
+    const diff = statusOrder(a.status_atendimento) - statusOrder(b.status_atendimento);
+    if (diff !== 0) return diff;
+    return new Date(b.data_hora || b.created_at) - new Date(a.data_hora || a.created_at);
+  });
+
+  return (
+    <div className="p-4 md:p-6 space-y-5 bg-gray-50 dark:bg-gray-950 min-h-screen">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 shadow-lg">
+            <Shield className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Painel Operacional</h1>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Bom Auto - Centro de Comando</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {lastRefresh && (
+            <span className="text-[11px] text-gray-400 dark:text-gray-500 hidden sm:block">
+              Atualizado {lastRefresh.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchAtendimentos()}
+            disabled={loading}
+            className="gap-1.5"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Atualizar</span>
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <Card
+          className={`cursor-pointer transition-all hover:shadow-md ${filterStatus === 'Pendente' ? 'ring-2 ring-amber-400 shadow-md' : ''}`}
+          onClick={() => handleCounterClick('Pendente')}
+        >
+          <CardContent className="p-3 md:p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-amber-500/10 ring-1 ring-amber-500/20">
+                <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-2xl md:text-3xl font-extrabold text-amber-600 dark:text-amber-400">{counts.pendentes}</p>
+                <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Pendentes</p>
+              </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/50">
-              <CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{counts.solucionados}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Solucionados</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/50">
-              <XCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{counts.cancelados}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Cancelados</p>
+
+        <Card
+          className={`cursor-pointer transition-all hover:shadow-md ${filterStatus === 'Pendente' && filtersOpen ? 'ring-2 ring-blue-400 shadow-md' : ''}`}
+          onClick={() => {
+            setFilterStatus('todos');
+            setTimeout(() => fetchAtendimentos(), 0);
+          }}
+        >
+          <CardContent className="p-3 md:p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20">
+                <Activity className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-2xl md:text-3xl font-extrabold text-blue-600 dark:text-blue-400">{counts.emTratamento}</p>
+                <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Em tratamento</p>
+              </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/50">
-              <BarChart3 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+
+        <Card
+          className={`cursor-pointer transition-all hover:shadow-md ${filterStatus === 'Solucionado' ? 'ring-2 ring-emerald-400 shadow-md' : ''}`}
+          onClick={() => handleCounterClick('Solucionado')}
+        >
+          <CardContent className="p-3 md:p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/20">
+                <CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-2xl md:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">{counts.solucionados}</p>
+                <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Solucionados</p>
+              </div>
             </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{counts.total}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Total no período</p>
+          </CardContent>
+        </Card>
+
+        <Card
+          className={`cursor-pointer transition-all hover:shadow-md ${filterStatus === 'Cancelado' ? 'ring-2 ring-red-400 shadow-md' : ''}`}
+          onClick={() => handleCounterClick('Cancelado')}
+        >
+          <CardContent className="p-3 md:p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-red-500/10 ring-1 ring-red-500/20">
+                <XCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-2xl md:text-3xl font-extrabold text-red-600 dark:text-red-400">{counts.cancelados}</p>
+                <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Cancelados</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card
+          className={`cursor-pointer transition-all hover:shadow-md col-span-2 md:col-span-1 ${filterStatus === 'todos' ? 'ring-2 ring-gray-400 shadow-md' : ''}`}
+          onClick={() => handleCounterClick('todos')}
+        >
+          <CardContent className="p-3 md:p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-gray-500/10 ring-1 ring-gray-500/20">
+                <BarChart3 className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-2xl md:text-3xl font-extrabold text-gray-700 dark:text-gray-300">{counts.total}</p>
+                <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total</p>
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader className="cursor-pointer" onClick={() => setFiltersOpen(!filtersOpen)}>
-          <CardTitle className="flex items-center justify-between text-base">
-            <span className="flex items-center gap-2">
-              <Filter className="w-4 h-4" />
-              Filtros
+      {(alertCounts.old > 0 || alertCounts.recent > 0) && (
+        <div className="flex flex-wrap gap-2">
+          {alertCounts.old > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-sm">
+              <AlertTriangle className="w-4 h-4 text-red-500" />
+              <span className="text-red-700 dark:text-red-300 font-medium">
+                {alertCounts.old} atendimento{alertCounts.old > 1 ? 's' : ''} sem atualização há mais de {ALERT_HOURS_OLD}h
+              </span>
+            </div>
+          )}
+          {alertCounts.recent > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-sm">
+              <Zap className="w-4 h-4 text-blue-500" />
+              <span className="text-blue-700 dark:text-blue-300 font-medium">
+                {alertCounts.recent} atendimento{alertCounts.recent > 1 ? 's' : ''} recém-criado{alertCounts.recent > 1 ? 's' : ''}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <Input
+          placeholder="Buscar por nome, CPF, placa ou protocolo..."
+          value={universalSearch}
+          onChange={(e) => setUniversalSearch(e.target.value)}
+          onKeyDown={handleUniversalSearchKeyDown}
+          className="pl-10 h-11 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 shadow-sm"
+        />
+        {universalSearch && (
+          <button
+            onClick={() => setUniversalSearch("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          >
+            <X className="w-3.5 h-3.5 text-gray-400" />
+          </button>
+        )}
+      </div>
+
+      <Card className="border-gray-200 dark:border-gray-800">
+        <CardHeader
+          className="cursor-pointer py-3 px-4"
+          onClick={() => setFiltersOpen(!filtersOpen)}
+        >
+          <CardTitle className="flex items-center justify-between text-sm font-medium">
+            <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+              <Filter className="w-3.5 h-3.5" />
+              Filtros Avançados
+              {(filterDataInicio || filterDataFim || filterCliente || filterPlaca || (filterTipoServico && filterTipoServico !== 'todos')) && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Ativos</Badge>
+              )}
             </span>
-            {filtersOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            {filtersOpen ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
           </CardTitle>
         </CardHeader>
         {filtersOpen && (
-          <CardContent>
+          <CardContent className="pt-0 pb-4">
             <form onSubmit={handleFilter} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
@@ -471,7 +677,7 @@ export default function BomAutoPainel() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <Button type="submit" disabled={loading}>
+                <Button type="submit" disabled={loading} size="sm">
                   {loading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -484,7 +690,7 @@ export default function BomAutoPainel() {
                     </>
                   )}
                 </Button>
-                <Button type="button" variant="outline" onClick={handleClearFilters}>
+                <Button type="button" variant="outline" size="sm" onClick={() => { handleClearFilters(); setTimeout(() => fetchAtendimentos(), 0); }}>
                   Limpar Filtros
                 </Button>
               </div>
@@ -493,60 +699,117 @@ export default function BomAutoPainel() {
         )}
       </Card>
 
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          {loading ? 'Carregando...' : `${sortedAtendimentos.length} atendimento${sortedAtendimentos.length !== 1 ? 's' : ''}`}
+          {universalSearch && ` para "${universalSearch}"`}
+        </p>
+      </div>
+
       {loading && (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
         </div>
       )}
 
-      {!loading && atendimentos.length === 0 && (
+      {!loading && sortedAtendimentos.length === 0 && (
         <Card>
           <CardContent className="p-8 text-center">
             <FileText className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
             <p className="text-gray-500 dark:text-gray-400">Nenhum atendimento encontrado.</p>
+            {filterStatus !== "todos" && (
+              <Button variant="link" className="mt-2 text-sm" onClick={() => { handleClearFilters(); setTimeout(() => fetchAtendimentos(), 0); }}>
+                Limpar filtros e buscar todos
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {!loading && atendimentos.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {atendimentos.map((at) => (
-            <Card
-              key={at.id}
-              className="cursor-pointer hover:shadow-lg transition-shadow border-l-4"
-              style={{
-                borderLeftColor:
-                  (at.status_atendimento || '').toLowerCase() === 'pendente' ? '#f59e0b' :
-                  (at.status_atendimento || '').toLowerCase() === 'solucionado' ? '#10b981' :
-                  (at.status_atendimento || '').toLowerCase() === 'cancelado' ? '#ef4444' : '#3b82f6'
-              }}
-              onClick={() => openDetail(at)}
-            >
-              <CardContent className="p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                    <Calendar className="w-3.5 h-3.5" />
-                    {formatDateTime(at.data_hora || at.created_at)}
+      {!loading && sortedAtendimentos.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {sortedAtendimentos.map((at) => {
+            const status = (at.status_atendimento || '').toLowerCase();
+            const alert = getAlertInfo(at);
+            const isPendente = status === 'pendente';
+            const isSolucionado = status === 'solucionado' || status === 'concluído' || status === 'concluido' || status === 'finalizado';
+            const isCancelado = status === 'cancelado';
+
+            let cardBorder = 'border-gray-200 dark:border-gray-800';
+            let cardBg = '';
+            let borderLeftColor = '#3b82f6';
+
+            if (isPendente && alert?.type === 'old') {
+              cardBorder = 'border-red-300 dark:border-red-800';
+              cardBg = 'bg-red-50/50 dark:bg-red-950/20';
+              borderLeftColor = '#ef4444';
+            } else if (isPendente) {
+              cardBorder = 'border-amber-200 dark:border-amber-900';
+              cardBg = 'bg-amber-50/50 dark:bg-amber-950/20';
+              borderLeftColor = '#f59e0b';
+            } else if (isSolucionado) {
+              borderLeftColor = '#10b981';
+            } else if (isCancelado) {
+              cardBg = 'bg-gray-50/50 dark:bg-gray-900/50';
+              borderLeftColor = '#9ca3af';
+            }
+
+            return (
+              <Card
+                key={at.id}
+                className={`cursor-pointer hover:shadow-lg transition-all border-l-4 ${cardBorder} ${cardBg}`}
+                style={{ borderLeftColor }}
+                onClick={() => openDetail(at)}
+              >
+                <CardContent className="p-4 space-y-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                      <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                      {formatDateTime(at.data_hora || at.created_at)}
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {alert && (
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] px-1.5 py-0 ${
+                            alert.color === 'red'
+                              ? 'bg-red-100 text-red-700 border-red-300 dark:bg-red-900/50 dark:text-red-300 dark:border-red-700 animate-pulse'
+                              : 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/50 dark:text-blue-300 dark:border-blue-700'
+                          }`}
+                        >
+                          {alert.type === 'old' ? <AlertTriangle className="w-2.5 h-2.5 mr-0.5 inline" /> : <Zap className="w-2.5 h-2.5 mr-0.5 inline" />}
+                          {alert.label}
+                        </Badge>
+                      )}
+                      <StatusBadge status={at.status_atendimento} />
+                    </div>
                   </div>
-                  <StatusBadge status={at.status_atendimento} />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-gray-400" />
-                    {at.nome_cliente || '-'}
-                  </p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1.5">
-                    <Wrench className="w-3.5 h-3.5 text-gray-400" />
-                    {at.tipo_servico || '-'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-                  <Hash className="w-3 h-3" />
-                  Protocolo: {at.protocolo || '-'}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5 truncate">
+                      <User className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                      {at.nome_cliente || '-'}
+                    </p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1.5">
+                      <Wrench className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                      {at.tipo_servico || '-'}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-gray-100 dark:border-gray-800">
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      <Hash className="w-3 h-3" />
+                      {at.protocolo || '-'}
+                    </div>
+                    {at.placa && (
+                      <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                        <Car className="w-3 h-3" />
+                        {at.placa}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 

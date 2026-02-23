@@ -32,7 +32,7 @@ Wescctech CRM is a comprehensive Customer Relationship Management system designe
 - **Knowledge Base**: Categorized articles, versioning.
 - **Quality Assurance**: Monitoring, evaluation checklists, call auditing.
 - **Collections**: Collection tickets, delinquency dashboard, contact scheduling.
-- **Bom Auto**: Vehicle service consultation module with ERP integration, client eligibility check, and service attendance registration.
+- **Bom Auto**: Vehicle service consultation module with ERP integration, client eligibility check, service attendance registration, and full Operational Dashboard (command center) with real-time counters, operational alerts, universal search, advanced collapsible filters, status-based visual differentiation, and auto-refresh.
 
 ### UI/UX Design
 - **Kanban Boards**: Implemented using `@dnd-kit` for simultaneous vertical and horizontal scrolling. Features include sticky headers, canvas drag blocking, auto-scroll, and specific sensor configurations.
