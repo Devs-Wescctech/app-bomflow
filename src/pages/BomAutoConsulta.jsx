@@ -507,36 +507,6 @@ export default function BomAutoConsulta() {
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">CPF</p>
                 <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{clientDoc}</p>
               </div>
-              <div className="space-y-1.5">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Status do Plano</p>
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold tracking-wide ${
-                  clientContrato.toLowerCase().includes('ativo') && !clientContrato.toLowerCase().includes('cancelado') && !clientContrato.toLowerCase().includes('inativo')
-                    ? 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300 dark:bg-emerald-900/50 dark:text-emerald-300 dark:ring-emerald-700'
-                    : 'bg-red-100 text-red-800 ring-1 ring-red-300 dark:bg-red-900/50 dark:text-red-300 dark:ring-red-700'
-                }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${
-                    clientContrato.toLowerCase().includes('ativo') && !clientContrato.toLowerCase().includes('cancelado') && !clientContrato.toLowerCase().includes('inativo')
-                      ? 'bg-emerald-500 dark:bg-emerald-400'
-                      : 'bg-red-500 dark:bg-red-400'
-                  }`} />
-                  {clientContrato.toUpperCase()}
-                </span>
-              </div>
-              <div className="space-y-1.5">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Situação Financeira</p>
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold tracking-wide ${
-                  clientFinanceira.toLowerCase().includes('adimplente') && !clientFinanceira.toLowerCase().includes('inadimplente')
-                    ? 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300 dark:bg-emerald-900/50 dark:text-emerald-300 dark:ring-emerald-700'
-                    : 'bg-red-100 text-red-800 ring-1 ring-red-300 dark:bg-red-900/50 dark:text-red-300 dark:ring-red-700'
-                }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${
-                    clientFinanceira.toLowerCase().includes('adimplente') && !clientFinanceira.toLowerCase().includes('inadimplente')
-                      ? 'bg-emerald-500 dark:bg-emerald-400'
-                      : 'bg-red-500 dark:bg-red-400'
-                  }`} />
-                  {clientFinanceira.toUpperCase()}
-                </span>
-              </div>
               {clientCelular && (
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Celular</p>
@@ -547,6 +517,91 @@ export default function BomAutoConsulta() {
                 </div>
               )}
             </div>
+
+            {(() => {
+              const isContratoAtivo = clientContrato.toLowerCase().includes('ativo') && !clientContrato.toLowerCase().includes('cancelado') && !clientContrato.toLowerCase().includes('inativo');
+              const isAdimplente = clientFinanceira.toLowerCase().includes('adimplente') && !clientFinanceira.toLowerCase().includes('inadimplente');
+              const utilizacoesCount = utilizacoes?.count ?? 0;
+              const utilizacoesColor = utilizacoesCount >= 3 ? 'red' : utilizacoesCount >= 2 ? 'amber' : 'emerald';
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+                  <div className={`relative overflow-hidden rounded-xl border p-4 shadow-sm ${
+                    isContratoAtivo
+                      ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
+                      : 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800'
+                  }`}>
+                    <div className={`absolute top-0 right-0 w-16 h-16 rounded-bl-full opacity-10 ${
+                      isContratoAtivo ? 'bg-emerald-500' : 'bg-red-500'
+                    }`} />
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-2">Status do Plano</p>
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2.5 h-2.5 rounded-full ${isContratoAtivo ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                      <span className={`text-sm font-bold ${isContratoAtivo ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
+                        {clientContrato.toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className={`relative overflow-hidden rounded-xl border p-4 shadow-sm ${
+                    isAdimplente
+                      ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
+                      : 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800'
+                  }`}>
+                    <div className={`absolute top-0 right-0 w-16 h-16 rounded-bl-full opacity-10 ${
+                      isAdimplente ? 'bg-emerald-500' : 'bg-red-500'
+                    }`} />
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-2">Situação Financeira</p>
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2.5 h-2.5 rounded-full ${isAdimplente ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                      <span className={`text-sm font-bold ${isAdimplente ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
+                        {clientFinanceira.toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {utilizacoes !== null && (
+                    <div className={`relative overflow-hidden rounded-xl border p-4 shadow-sm ${
+                      utilizacoesColor === 'red'
+                        ? 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800'
+                        : utilizacoesColor === 'amber'
+                          ? 'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800'
+                          : 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
+                    }`}>
+                      <div className={`absolute top-0 right-0 w-16 h-16 rounded-bl-full opacity-10 ${
+                        utilizacoesColor === 'red' ? 'bg-red-500' : utilizacoesColor === 'amber' ? 'bg-amber-500' : 'bg-emerald-500'
+                      }`} />
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-2">Utilizações no Ano</p>
+                      <div className="flex items-baseline gap-1">
+                        <span className={`text-2xl font-extrabold ${
+                          utilizacoesColor === 'red' ? 'text-red-700 dark:text-red-300'
+                            : utilizacoesColor === 'amber' ? 'text-amber-700 dark:text-amber-300'
+                              : 'text-emerald-700 dark:text-emerald-300'
+                        }`}>{utilizacoesCount}</span>
+                        <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">/ 3 utilizações</span>
+                      </div>
+                      <div className="flex gap-1 mt-2">
+                        {[0, 1, 2].map(i => (
+                          <div key={i} className={`h-1.5 flex-1 rounded-full ${
+                            i < utilizacoesCount
+                              ? (utilizacoesColor === 'red' ? 'bg-red-400 dark:bg-red-500'
+                                : utilizacoesColor === 'amber' ? 'bg-amber-400 dark:bg-amber-500'
+                                  : 'bg-emerald-400 dark:bg-emerald-500')
+                              : 'bg-gray-200 dark:bg-gray-700'
+                          }`} />
+                        ))}
+                      </div>
+                      {utilizacoesCount >= 3 && (
+                        <p className="text-[11px] font-bold text-red-600 dark:text-red-400 mt-2 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" />
+                          Limite anual atingido
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {vehicles.length > 0 && (
               <div className="mt-5 pt-4 border-t border-gray-200 dark:border-gray-700">
@@ -572,47 +627,8 @@ export default function BomAutoConsulta() {
               </div>
             )}
 
-            {utilizacoes !== null && (
-              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5" />
-                    Utilizações no Ano
-                  </p>
-                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-900/50 dark:text-blue-300 dark:border-blue-700">
-                    {utilizacoes.count} / 3
-                  </Badge>
-                </div>
 
-                {utilizacoes.atendimentos && utilizacoes.atendimentos.length > 0 ? (
-                  <div className="space-y-2">
-                    {utilizacoes.atendimentos.map((at, i) => (
-                      <div key={at.id || i} className="p-3 rounded-lg bg-gray-100 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2 text-sm text-gray-900 dark:text-gray-100">
-                              <Clock className="w-3.5 h-3.5 text-gray-400" />
-                              {formatDateTime(at.data_hora || at.created_at)}
-                            </div>
-                            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                              <User className="w-3.5 h-3.5 text-gray-400" />
-                              {at.usuario || '-'}
-                            </div>
-                            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                              <Wrench className="w-3.5 h-3.5 text-gray-400" />
-                              {at.tipo_servico || '-'}
-                            </div>
-                          </div>
-                          <StatusBadge status={at.status_atendimento || 'Pendente'} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Nenhuma utilização registrada neste ano.</p>
-                )}
-              </div>
-            )}
+
           </CardContent>
         </Card>
       )}
