@@ -250,7 +250,7 @@ router.get('/atendimentos', authMiddleware, async (req, res) => {
       params.push(`%${nome}%`);
     }
     if (placa) {
-      sql += ` AND placa ILIKE $${paramIndex++}`;
+      sql += ` AND REPLACE(REPLACE(placa, '-', ''), ' ', '') ILIKE $${paramIndex++}`;
       params.push(`%${placa.replace(/[^a-zA-Z0-9]/g, '')}%`);
     }
     if (tipo_servico) {

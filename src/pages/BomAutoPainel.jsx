@@ -169,11 +169,13 @@ export default function BomAutoPainel() {
       if (filterDataInicio) params.set('data_inicio', filterDataInicio);
       if (filterDataFim) params.set('data_fim', filterDataFim);
       if (filterCliente) {
-        const isDigits = /^\d+$/.test(filterCliente.replace(/\D/g, ''));
-        if (filterCliente.replace(/\D/g, '').length >= 3 && isDigits && filterCliente.replace(/\D/g, '').length <= 14) {
-          params.set('documento', filterCliente.replace(/\D/g, ''));
+        const digitsOnly = filterCliente.replace(/\D/g, '');
+        const isDigits = /^\d+$/.test(digitsOnly);
+        if (digitsOnly.length >= 3 && isDigits && digitsOnly.length <= 14) {
+          params.set('documento', digitsOnly);
+        } else {
+          params.set('nome', filterCliente);
         }
-        params.set('nome', filterCliente);
       }
       if (filterPlaca) params.set('placa', filterPlaca.replace(/[^a-zA-Z0-9]/g, '').toUpperCase());
       if (filterTipoServico && filterTipoServico !== "todos") params.set('tipo_servico', filterTipoServico);
