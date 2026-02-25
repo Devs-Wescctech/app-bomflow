@@ -201,8 +201,9 @@ export default function BomAutoPainel() {
     }
   }
 
-  const isRestrictedAgent = currentUser?.agentType === 'vendas' || currentUser?.agentType === 'bom_auto_atendente';
-  const currentUserIdentifier = currentUser?.email || currentUser?.name || currentUser?.username || '';
+  const userAgentType = currentUser?.agent?.agentType || currentUser?.agentType || '';
+  const isRestrictedAgent = userAgentType === 'vendas' || userAgentType === 'bom_auto_atendente';
+  const currentUserIdentifier = currentUser?.agent?.email || currentUser?.email || currentUser?.agent?.name || currentUser?.name || '';
 
   const atendimentos = allAtendimentos.filter(at => {
     if (isRestrictedAgent && currentUserIdentifier) {
@@ -377,7 +378,7 @@ export default function BomAutoPainel() {
       return;
     }
 
-    const usuario = currentUser?.email || currentUser?.name || currentUser?.username || '';
+    const usuario = currentUser?.agent?.email || currentUser?.email || currentUser?.agent?.name || currentUser?.name || '';
 
     setSaving(true);
     try {
