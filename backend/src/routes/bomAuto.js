@@ -260,7 +260,7 @@ router.get('/atendimentos', authMiddleware, async (req, res) => {
       params.push(status);
     }
     if (documento) {
-      sql += ` AND documento_cliente ILIKE $${paramIndex++}`;
+      sql += ` AND REPLACE(REPLACE(REPLACE(documento_cliente, '.', ''), '-', ''), ' ', '') ILIKE $${paramIndex++}`;
       params.push(`%${documento.replace(/\D/g, '')}%`);
     }
     if (nome) {
