@@ -235,6 +235,7 @@ const menuModules = [
     items: [
       { title: "Consulta Cliente", url: createPageUrl("BomAutoConsulta"), icon: Search },
       { title: "Painel Operacional", url: createPageUrl("BomAutoPainel"), icon: ClipboardList },
+      { title: "Relatório de Utilizações", url: createPageUrl("BomAutoRelatorio"), icon: FileBarChart },
     ]
   },
   {
