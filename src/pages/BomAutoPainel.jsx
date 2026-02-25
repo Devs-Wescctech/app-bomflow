@@ -201,7 +201,16 @@ export default function BomAutoPainel() {
     }
   }
 
+  const isVendas = currentUser?.agentType === 'vendas';
+  const currentUserIdentifier = currentUser?.email || currentUser?.name || currentUser?.username || '';
+
   const atendimentos = allAtendimentos.filter(at => {
+    if (isVendas && currentUserIdentifier) {
+      const atUsuario = (at.usuario || '').toLowerCase();
+      const identifier = currentUserIdentifier.toLowerCase();
+      if (atUsuario !== identifier) return false;
+    }
+
     if (!universalSearch.trim()) return true;
     const q = universalSearch.trim().toLowerCase();
     const nome = (at.nome_cliente || '').toLowerCase();
@@ -773,6 +782,12 @@ export default function BomAutoPainel() {
                       <Wrench className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                       {at.tipo_servico || '-'}
                     </p>
+                    {at.usuario && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                        <Shield className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                        Atendente: {at.usuario}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center justify-between pt-1 border-t border-gray-100 dark:border-gray-800">
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
