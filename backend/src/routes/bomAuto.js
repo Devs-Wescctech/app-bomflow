@@ -115,6 +115,7 @@ router.get('/consulta', authMiddleware, async (req, res) => {
       situacao_financeira,
       pedido: first.pedido || '',
       contrato_id: first.contrato_id || '',
+      contratos_servicos: first.contratos_servicos || '',
       veiculos,
     };
 
@@ -154,7 +155,7 @@ router.get('/utilizacoes/:documento', authMiddleware, async (req, res) => {
 
 router.post('/atendimentos', authMiddleware, async (req, res) => {
   try {
-    const { documento_cliente, nome_cliente, placa, descricao_veiculo, tipo_servico, observacoes, usuario, telefone_contato } = req.body;
+    const { documento_cliente, nome_cliente, placa, descricao_veiculo, tipo_servico, observacoes, usuario, telefone_contato, contratos_servicos } = req.body;
 
     if (!documento_cliente || !nome_cliente || !placa || !tipo_servico || !usuario) {
       return res.status(400).json({ message: 'Campos obrigatórios: documento_cliente, nome_cliente, placa, tipo_servico, usuario' });
@@ -177,13 +178,13 @@ router.post('/atendimentos', authMiddleware, async (req, res) => {
         FROM bom_auto_atendimentos
       )
       INSERT INTO bom_auto_atendimentos
-       (protocolo, documento_cliente, nome_cliente, placa, descricao_veiculo, tipo_servico, observacoes, usuario, status_atendimento, telefone_contato)
+       (protocolo, documento_cliente, nome_cliente, placa, descricao_veiculo, tipo_servico, observacoes, usuario, status_atendimento, telefone_contato, contratos_servicos)
        VALUES (
          'BA' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || LPAD((SELECT seq FROM next_seq)::text, 4, '0'),
-         $1, $2, $3, $4, $5, $6, $7, 'Pendente', $8
+         $1, $2, $3, $4, $5, $6, $7, 'Pendente', $8, $9
        )
        RETURNING *`,
-      [documento_cliente, nome_cliente, placa, descricao_veiculo || null, tipo_servico, sanitizedObs, usuario, sanitizedTelefone]
+      [documento_cliente, nome_cliente, placa, descricao_veiculo || null, tipo_servico, sanitizedObs, usuario, sanitizedTelefone, contratos_servicos || null]
     );
 
     res.status(201).json(result.rows[0]);
