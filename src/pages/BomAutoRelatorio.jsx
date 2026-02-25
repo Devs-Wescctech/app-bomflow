@@ -24,7 +24,6 @@ const TIPOS_SERVICO = [
 
 const STATUS_OPTIONS = [
   "Pendente",
-  "Em Tratamento",
   "Solucionado",
   "Cancelado",
 ];
