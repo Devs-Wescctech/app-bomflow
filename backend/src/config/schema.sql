@@ -787,6 +787,7 @@ CREATE TABLE IF NOT EXISTS bom_auto_imagens (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+ALTER TABLE bom_auto_atendimentos ADD COLUMN IF NOT EXISTS telefone_contato VARCHAR(20);
 ALTER TABLE bom_auto_atendimentos ADD COLUMN IF NOT EXISTS data_hora_inicio_tratamento TIMESTAMP;
 ALTER TABLE bom_auto_atendimentos ADD COLUMN IF NOT EXISTS usuario_responsavel_tratamento VARCHAR(255);
 ALTER TABLE bom_auto_atendimentos ADD COLUMN IF NOT EXISTS observacoes_tratamento TEXT;

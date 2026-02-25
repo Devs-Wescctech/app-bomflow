@@ -827,6 +827,14 @@ export default function BomAutoPainel() {
                   <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Veículo</p>
                   <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{selectedAtendimento.descricao_veiculo || '-'}</p>
                 </div>
+                {selectedAtendimento.telefone_contato && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Telefone de Contato</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      {selectedAtendimento.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3')}
+                    </p>
+                  </div>
+                )}
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Tipo de Serviço</p>
                   <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{selectedAtendimento.tipo_servico || '-'}</p>

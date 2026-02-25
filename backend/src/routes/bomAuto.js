@@ -132,7 +132,8 @@ router.get('/utilizacoes/:documento', authMiddleware, async (req, res) => {
       `SELECT COUNT(*) FROM bom_auto_atendimentos
        WHERE documento_cliente = $1
        AND data_hora >= date_trunc('year', CURRENT_DATE)
-       AND data_hora < date_trunc('year', CURRENT_DATE) + interval '1 year'`,
+       AND data_hora < date_trunc('year', CURRENT_DATE) + interval '1 year'
+       AND status_atendimento != 'Cancelado'`,
       [documento]
     );
     const listResult = await query(
@@ -141,6 +142,7 @@ router.get('/utilizacoes/:documento', authMiddleware, async (req, res) => {
        WHERE documento_cliente = $1
        AND data_hora >= date_trunc('year', CURRENT_DATE)
        AND data_hora < date_trunc('year', CURRENT_DATE) + interval '1 year'
+       AND status_atendimento != 'Cancelado'
        ORDER BY data_hora DESC`,
       [documento]
     );
@@ -153,7 +155,7 @@ router.get('/utilizacoes/:documento', authMiddleware, async (req, res) => {
 
 router.post('/atendimentos', authMiddleware, async (req, res) => {
   try {
-    const { documento_cliente, nome_cliente, placa, descricao_veiculo, tipo_servico, observacoes, usuario } = req.body;
+    const { documento_cliente, nome_cliente, placa, descricao_veiculo, tipo_servico, observacoes, usuario, telefone_contato } = req.body;
 
     if (!documento_cliente || !nome_cliente || !placa || !tipo_servico || !usuario) {
       return res.status(400).json({ message: 'Campos obrigatórios: documento_cliente, nome_cliente, placa, tipo_servico, usuario' });
@@ -161,6 +163,10 @@ router.post('/atendimentos', authMiddleware, async (req, res) => {
 
     const sanitizedObs = observacoes
       ? observacoes.replace(/<[^>]*>/g, '').trim()
+      : null;
+
+    const sanitizedTelefone = telefone_contato
+      ? telefone_contato.replace(/\D/g, '').slice(0, 15)
       : null;
 
     const result = await query(
@@ -172,13 +178,13 @@ router.post('/atendimentos', authMiddleware, async (req, res) => {
         FROM bom_auto_atendimentos
       )
       INSERT INTO bom_auto_atendimentos
-       (protocolo, documento_cliente, nome_cliente, placa, descricao_veiculo, tipo_servico, observacoes, usuario, status_atendimento)
+       (protocolo, documento_cliente, nome_cliente, placa, descricao_veiculo, tipo_servico, observacoes, usuario, status_atendimento, telefone_contato)
        VALUES (
          'BA' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || LPAD((SELECT seq FROM next_seq)::text, 4, '0'),
-         $1, $2, $3, $4, $5, $6, $7, 'Pendente'
+         $1, $2, $3, $4, $5, $6, $7, 'Pendente', $8
        )
        RETURNING *`,
-      [documento_cliente, nome_cliente, placa, descricao_veiculo || null, tipo_servico, sanitizedObs, usuario]
+      [documento_cliente, nome_cliente, placa, descricao_veiculo || null, tipo_servico, sanitizedObs, usuario, sanitizedTelefone]
     );
 
     res.status(201).json(result.rows[0]);
