@@ -10,8 +10,8 @@ import { useToast } from "@/components/ui/use-toast";
 import {
   Car, Search, CheckCircle, XCircle, AlertTriangle,
   Loader2, User, Wrench, FileText, Phone, Hash,
-  ClipboardCheck, Calendar, Shield, ImagePlus, X,
-  Copy, RefreshCw, Clock, Eye
+  ClipboardCheck, Calendar, Shield,
+  Copy, RefreshCw, Clock
 } from "lucide-react";
 
 const API_BASE = '/api';
@@ -102,8 +102,7 @@ export default function BomAutoConsulta() {
   const [selectedVehicle, setSelectedVehicle] = useState('');
   const [tipoServico, setTipoServico] = useState('');
   const [observacoes, setObservacoes] = useState('');
-  const [selectedImages, setSelectedImages] = useState([]);
-  const [imagePreviews, setImagePreviews] = useState([]);
+  const [telefoneContato, setTelefoneContato] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [atendimentoFinalizado, setAtendimentoFinalizado] = useState(null);
 
@@ -169,8 +168,7 @@ export default function BomAutoConsulta() {
     setSelectedVehicle('');
     setTipoServico('');
     setObservacoes('');
-    setSelectedImages([]);
-    setImagePreviews([]);
+    setTelefoneContato('');
     setAtendimentoFinalizado(null);
 
     const cpfDigits = searchCPF.replace(/\D/g, '');
@@ -234,58 +232,6 @@ export default function BomAutoConsulta() {
     }
   }
 
-  function handleImageSelect(e) {
-    const files = Array.from(e.target.files || []);
-    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    const maxSize = 5 * 1024 * 1024;
-
-    const validFiles = [];
-    const errors = [];
-
-    for (const file of files) {
-      if (!validTypes.includes(file.type)) {
-        errors.push(`${file.name}: tipo não suportado. Use JPEG, PNG, GIF ou WebP.`);
-        continue;
-      }
-      if (file.size > maxSize) {
-        errors.push(`${file.name}: excede o limite de 5MB.`);
-        continue;
-      }
-      validFiles.push(file);
-    }
-
-    if (errors.length > 0) {
-      toast({
-        title: "Arquivos inválidos",
-        description: errors.join('\n'),
-        variant: "destructive",
-      });
-    }
-
-    const totalAllowed = 10 - selectedImages.length;
-    const filesToAdd = validFiles.slice(0, totalAllowed);
-
-    if (validFiles.length > totalAllowed) {
-      toast({
-        title: "Limite de imagens",
-        description: `Máximo de 10 imagens. Apenas ${totalAllowed} foram adicionadas.`,
-        variant: "destructive",
-      });
-    }
-
-    const newPreviews = filesToAdd.map(f => URL.createObjectURL(f));
-    setSelectedImages(prev => [...prev, ...filesToAdd]);
-    setImagePreviews(prev => [...prev, ...newPreviews]);
-
-    e.target.value = '';
-  }
-
-  function handleRemoveImage(index) {
-    URL.revokeObjectURL(imagePreviews[index]);
-    setSelectedImages(prev => prev.filter((_, i) => i !== index));
-    setImagePreviews(prev => prev.filter((_, i) => i !== index));
-  }
-
   async function handleSubmitAtendimento(e) {
     e.preventDefault();
 
@@ -296,6 +242,11 @@ export default function BomAutoConsulta() {
     }
     if (!tipoServico) {
       toast({ title: "Erro", description: "Selecione o tipo de serviço.", variant: "destructive" });
+      return;
+    }
+    const telefoneDigits = telefoneContato.replace(/\D/g, '');
+    if (!telefoneDigits || telefoneDigits.length < 10) {
+      toast({ title: "Erro", description: "Informe um telefone de contato válido (mínimo 10 dígitos).", variant: "destructive" });
       return;
     }
 
@@ -326,6 +277,7 @@ export default function BomAutoConsulta() {
           tipo_servico: tipoServico,
           observacoes: sanitizedObs,
           usuario: usuario,
+          telefone_contato: telefoneDigits,
         }),
       });
 
@@ -335,26 +287,6 @@ export default function BomAutoConsulta() {
       }
 
       const atendimento = await res.json();
-
-      if (selectedImages.length > 0 && atendimento.id) {
-        try {
-          const formData = new FormData();
-          selectedImages.forEach(file => {
-            formData.append('imagens', file);
-          });
-          await fetch(`${API_BASE}/bom-auto/atendimentos/${atendimento.id}/imagens`, {
-            method: 'POST',
-            headers: { ...getAuthHeaders() },
-            body: formData,
-          });
-        } catch (imgErr) {
-          toast({
-            title: "Aviso",
-            description: "Atendimento registrado, mas houve erro ao enviar as imagens.",
-            variant: "destructive",
-          });
-        }
-      }
 
       setAtendimentoFinalizado(atendimento);
       setShowForm(false);
@@ -371,9 +303,7 @@ export default function BomAutoConsulta() {
     setSelectedVehicle('');
     setTipoServico('');
     setObservacoes('');
-    setSelectedImages([]);
-    imagePreviews.forEach(url => URL.revokeObjectURL(url));
-    setImagePreviews([]);
+    setTelefoneContato('');
   }
 
   function handleNovaConsulta() {
@@ -386,9 +316,7 @@ export default function BomAutoConsulta() {
     setSelectedVehicle('');
     setTipoServico('');
     setObservacoes('');
-    setSelectedImages([]);
-    imagePreviews.forEach(url => URL.revokeObjectURL(url));
-    setImagePreviews([]);
+    setTelefoneContato('');
     setAtendimentoFinalizado(null);
     setError('');
   }
@@ -880,6 +808,30 @@ export default function BomAutoConsulta() {
               </div>
 
               <div className="space-y-2">
+                <Label htmlFor="telefoneContato" className="flex items-center gap-1.5">
+                  <Phone className="w-4 h-4 text-blue-500" />
+                  Telefone de Contato *
+                </Label>
+                <Input
+                  id="telefoneContato"
+                  placeholder="(DDD) Telefone"
+                  value={telefoneContato}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, '').slice(0, 11);
+                    let formatted = digits;
+                    if (digits.length > 2) {
+                      formatted = `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+                    } else if (digits.length > 0) {
+                      formatted = `(${digits}`;
+                    }
+                    setTelefoneContato(formatted);
+                  }}
+                  maxLength={15}
+                  className="border-blue-200 dark:border-blue-800 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="observacoes">Observações</Label>
                 <Textarea
                   id="observacoes"
@@ -889,51 +841,6 @@ export default function BomAutoConsulta() {
                   rows={3}
                   className="border-blue-200 dark:border-blue-800 focus:ring-blue-500"
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1.5">
-                  <ImagePlus className="w-4 h-4 text-blue-500" />
-                  Imagens (opcional, até 10)
-                </Label>
-                <div className="flex items-center gap-2">
-                  <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors text-sm font-medium">
-                    <ImagePlus className="w-4 h-4" />
-                    Selecionar Imagens
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/jpeg,image/png,image/gif,image/webp"
-                      onChange={handleImageSelect}
-                      className="hidden"
-                      disabled={selectedImages.length >= 10}
-                    />
-                  </label>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {selectedImages.length}/10 · JPEG, PNG, GIF, WebP · Máx. 5MB cada
-                  </span>
-                </div>
-
-                {imagePreviews.length > 0 && (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 mt-3">
-                    {imagePreviews.map((preview, idx) => (
-                      <div key={idx} className="relative group">
-                        <img
-                          src={preview}
-                          alt={`Preview ${idx + 1}`}
-                          className="w-full h-24 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveImage(idx)}
-                          className="absolute -top-2 -right-2 p-1 rounded-full bg-red-500 text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
 
               <div className="flex gap-3 pt-2">
@@ -1019,6 +926,15 @@ export default function BomAutoConsulta() {
                     <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400 dark:text-gray-500">Tipo de Serviço</p>
                     <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{atendimentoFinalizado.tipo_servico || '-'}</p>
                   </div>
+                  {atendimentoFinalizado.telefone_contato && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400 dark:text-gray-500">Telefone de Contato</p>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        <Phone className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                        {atendimentoFinalizado.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3')}
+                      </p>
+                    </div>
+                  )}
                   <div className="space-y-1">
                     <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400 dark:text-gray-500">Registrado por</p>
                     <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{atendimentoFinalizado.usuario || '-'}</p>
@@ -1037,24 +953,6 @@ export default function BomAutoConsulta() {
                   )}
                 </div>
 
-                {imagePreviews.length > 0 && (
-                  <div className="mt-5 pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400 dark:text-gray-500 mb-3 flex items-center gap-1.5">
-                      <Eye className="w-3.5 h-3.5" />
-                      Imagens ({imagePreviews.length})
-                    </p>
-                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-                      {imagePreviews.map((preview, idx) => (
-                        <img
-                          key={idx}
-                          src={preview}
-                          alt={`Imagem ${idx + 1}`}
-                          className="w-full h-24 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </CardContent>
           </Card>
