@@ -79,6 +79,26 @@ export const AGENT_PERMISSIONS = {
     canManageAgents: false,
     canManageSettings: false,
   },
+  bom_auto_supervisor: {
+    modules: ['bom_auto'],
+    canViewAllTickets: false,
+    canViewTeamTickets: false,
+    canViewAllLeads: false,
+    canViewTeamLeads: false,
+    canAccessReports: true,
+    canManageAgents: false,
+    canManageSettings: false,
+  },
+  bom_auto_atendente: {
+    modules: ['bom_auto'],
+    canViewAllTickets: false,
+    canViewTeamTickets: false,
+    canViewAllLeads: false,
+    canViewTeamLeads: false,
+    canAccessReports: false,
+    canManageAgents: false,
+    canManageSettings: false,
+  },
 };
 
 const MODULE_ALIASES = {

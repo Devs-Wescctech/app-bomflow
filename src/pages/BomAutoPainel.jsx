@@ -201,11 +201,11 @@ export default function BomAutoPainel() {
     }
   }
 
-  const isVendas = currentUser?.agentType === 'vendas';
+  const isRestrictedAgent = currentUser?.agentType === 'vendas' || currentUser?.agentType === 'bom_auto_atendente';
   const currentUserIdentifier = currentUser?.email || currentUser?.name || currentUser?.username || '';
 
   const atendimentos = allAtendimentos.filter(at => {
-    if (isVendas && currentUserIdentifier) {
+    if (isRestrictedAgent && currentUserIdentifier) {
       const atUsuario = (at.usuario || '').toLowerCase();
       const identifier = currentUserIdentifier.toLowerCase();
       if (atUsuario !== identifier) return false;
