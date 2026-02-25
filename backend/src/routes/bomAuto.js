@@ -142,7 +142,6 @@ router.get('/utilizacoes/:documento', authMiddleware, async (req, res) => {
        WHERE documento_cliente = $1
        AND data_hora >= date_trunc('year', CURRENT_DATE)
        AND data_hora < date_trunc('year', CURRENT_DATE) + interval '1 year'
-       AND status_atendimento != 'Cancelado'
        ORDER BY data_hora DESC`,
       [documento]
     );
