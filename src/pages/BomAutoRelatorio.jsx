@@ -101,8 +101,9 @@ export default function BomAutoRelatorio() {
         if (res.ok) {
           const data = await res.json();
           setCurrentUser(data);
-          const tipo = (data.agentType || '').toLowerCase();
-          setAuthorized(tipo === 'admin' || tipo === 'sales_supervisor');
+          const tipo = (data.agent?.agentType || data.agentType || '').toLowerCase();
+          const role = (data.role || '').toLowerCase();
+          setAuthorized(tipo === 'admin' || tipo === 'sales_supervisor' || role === 'admin');
         } else {
           setAuthorized(false);
         }
