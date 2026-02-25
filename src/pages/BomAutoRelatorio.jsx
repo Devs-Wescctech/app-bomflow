@@ -225,10 +225,11 @@ export default function BomAutoRelatorio() {
     setExporting('pdf');
     try {
       const jsPDFModule = await import('jspdf');
-      const jsPDF = jsPDFModule.default || jsPDFModule.jsPDF;
-      await import('jspdf-autotable');
+      const jsPDFConstructor = jsPDFModule.jsPDF || jsPDFModule.default?.jsPDF || jsPDFModule.default;
+      const autoTableModule = await import('jspdf-autotable');
+      const autoTable = autoTableModule.default || autoTableModule.applyPlugin || autoTableModule;
 
-      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const doc = new jsPDFConstructor({ orientation: 'landscape', unit: 'mm', format: 'a4' });
 
       doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
@@ -240,9 +241,9 @@ export default function BomAutoRelatorio() {
       doc.text(`Total de registros: ${atendimentos.length}`, 14, 30);
 
       const headers = [['Data', 'Contrato/Serviços', 'Documento', 'Placa', 'Tipo Serviço', 'Status', 'Atendente']];
-      const data = atendimentos.map(at => [
+      const tableData = atendimentos.map(at => [
         formatDateTime(at.data_hora || at.created_at),
-        at.contratos_servicos || '-',
+        String(at.contratos_servicos || '-'),
         at.documento_cliente || '-',
         at.placa || '-',
         at.tipo_servico || '-',
@@ -250,9 +251,11 @@ export default function BomAutoRelatorio() {
         at.usuario || '-',
       ]);
 
-      doc.autoTable({
+      const autoTableFn = typeof doc.autoTable === 'function' ? doc.autoTable.bind(doc) : (opts) => autoTable(doc, opts);
+
+      autoTableFn({
         head: headers,
-        body: data,
+        body: tableData,
         startY: 35,
         styles: { fontSize: 8, cellPadding: 2 },
         headStyles: { fillColor: [14, 165, 233], textColor: 255, fontStyle: 'bold', fontSize: 8 },
