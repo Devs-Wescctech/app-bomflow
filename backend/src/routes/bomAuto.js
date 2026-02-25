@@ -115,7 +115,7 @@ router.get('/consulta', authMiddleware, async (req, res) => {
       situacao_financeira,
       pedido: first.pedido || '',
       contrato_id: first.contrato_id || '',
-      contratos_servicos: first.contratos_servicos || '',
+      contratos_servicos: first.contrato_servicos || first.contratos_servicos || '',
       veiculos,
     };
 
