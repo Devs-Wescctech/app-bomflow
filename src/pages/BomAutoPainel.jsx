@@ -243,11 +243,11 @@ export default function BomAutoPainel() {
   }
 
   const alertCounts = {
-    old: allAtendimentos.filter(a => {
+    old: userAtendimentos.filter(a => {
       const alert = getAlertInfo(a);
       return alert && alert.type === 'old';
     }).length,
-    recent: allAtendimentos.filter(a => {
+    recent: userAtendimentos.filter(a => {
       const alert = getAlertInfo(a);
       return alert && alert.type === 'new';
     }).length,
