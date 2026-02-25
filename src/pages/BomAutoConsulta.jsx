@@ -121,12 +121,6 @@ export default function BomAutoConsulta() {
     fetchUser();
   }, []);
 
-  useEffect(() => {
-    return () => {
-      imagePreviews.forEach(url => URL.revokeObjectURL(url));
-    };
-  }, [imagePreviews]);
-
   function getVehicles() {
     if (!clientData) return [];
     if (Array.isArray(clientData.veiculos)) return clientData.veiculos;
