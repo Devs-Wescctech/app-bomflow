@@ -205,13 +205,18 @@ export default function BomAutoPainel() {
   const isRestrictedAgent = userAgentType === 'vendas' || userAgentType === 'bom_auto_atendente';
   const currentUserIdentifier = currentUser?.agent?.email || currentUser?.email || currentUser?.agent?.name || currentUser?.name || '';
 
-  const atendimentos = allAtendimentos.filter(at => {
-    if (isRestrictedAgent && currentUserIdentifier) {
-      const atUsuario = (at.usuario || '').toLowerCase();
-      const identifier = currentUserIdentifier.toLowerCase();
-      if (atUsuario !== identifier) return false;
-    }
+  const userAtendimentos = isRestrictedAgent && currentUserIdentifier
+    ? allAtendimentos.filter(at => (at.usuario || '').toLowerCase() === currentUserIdentifier.toLowerCase())
+    : allAtendimentos;
 
+  const displayCounts = isRestrictedAgent ? {
+    pendentes: userAtendimentos.filter(at => at.status_atendimento === 'Pendente').length,
+    solucionados: userAtendimentos.filter(at => at.status_atendimento === 'Solucionado').length,
+    cancelados: userAtendimentos.filter(at => at.status_atendimento === 'Cancelado').length,
+    total: userAtendimentos.length,
+  } : counts;
+
+  const atendimentos = userAtendimentos.filter(at => {
     if (!universalSearch.trim()) return true;
     const q = universalSearch.trim().toLowerCase();
     const nome = (at.nome_cliente || '').toLowerCase();
@@ -486,7 +491,7 @@ export default function BomAutoPainel() {
                 <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400" />
               </div>
               <div className="min-w-0">
-                <p className="text-2xl md:text-3xl font-extrabold text-amber-600 dark:text-amber-400">{counts.pendentes}</p>
+                <p className="text-2xl md:text-3xl font-extrabold text-amber-600 dark:text-amber-400">{displayCounts.pendentes}</p>
                 <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Pendentes</p>
               </div>
             </div>
@@ -503,7 +508,7 @@ export default function BomAutoPainel() {
                 <CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               </div>
               <div className="min-w-0">
-                <p className="text-2xl md:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">{counts.solucionados}</p>
+                <p className="text-2xl md:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">{displayCounts.solucionados}</p>
                 <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Solucionados</p>
               </div>
             </div>
@@ -520,7 +525,7 @@ export default function BomAutoPainel() {
                 <XCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
               </div>
               <div className="min-w-0">
-                <p className="text-2xl md:text-3xl font-extrabold text-red-600 dark:text-red-400">{counts.cancelados}</p>
+                <p className="text-2xl md:text-3xl font-extrabold text-red-600 dark:text-red-400">{displayCounts.cancelados}</p>
                 <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Cancelados</p>
               </div>
             </div>
@@ -537,7 +542,7 @@ export default function BomAutoPainel() {
                 <BarChart3 className="w-5 h-5 text-gray-600 dark:text-gray-400" />
               </div>
               <div className="min-w-0">
-                <p className="text-2xl md:text-3xl font-extrabold text-gray-700 dark:text-gray-300">{counts.total}</p>
+                <p className="text-2xl md:text-3xl font-extrabold text-gray-700 dark:text-gray-300">{displayCounts.total}</p>
                 <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total</p>
               </div>
             </div>
