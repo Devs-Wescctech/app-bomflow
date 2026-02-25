@@ -272,6 +272,7 @@ export default function BomAutoConsulta() {
           observacoes: sanitizedObs,
           usuario: usuario,
           telefone_contato: telefoneDigits,
+          contratos_servicos: clientData?.contratos_servicos || clientData?.data?.contratos_servicos || '',
         }),
       });
 

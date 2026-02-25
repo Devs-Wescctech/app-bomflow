@@ -175,7 +175,7 @@ export default function BomAutoRelatorio() {
   function getExportData() {
     return atendimentos.map(at => ({
       'Data Atendimento': formatDateTime(at.data_hora || at.created_at),
-      'Contrato / Serviços': at.descricao_veiculo || '-',
+      'Contrato / Serviços': at.contratos_servicos || '-',
       'Documento': at.documento_cliente || '-',
       'Placa': at.placa || '-',
       'Tipo de Serviço': at.tipo_servico || '-',
@@ -242,7 +242,7 @@ export default function BomAutoRelatorio() {
       const headers = [['Data', 'Contrato/Serviços', 'Documento', 'Placa', 'Tipo Serviço', 'Status', 'Atendente']];
       const data = atendimentos.map(at => [
         formatDateTime(at.data_hora || at.created_at),
-        at.descricao_veiculo || '-',
+        at.contratos_servicos || '-',
         at.documento_cliente || '-',
         at.placa || '-',
         at.tipo_servico || '-',
@@ -475,8 +475,8 @@ export default function BomAutoRelatorio() {
                       <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">
                         {formatDateTime(at.data_hora || at.created_at)}
                       </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-[250px] truncate" title={at.descricao_veiculo || '-'}>
-                        {at.descricao_veiculo || '-'}
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-[250px] truncate" title={at.contratos_servicos || '-'}>
+                        {at.contratos_servicos || '-'}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300 font-mono text-xs">
                         {at.documento_cliente || '-'}
