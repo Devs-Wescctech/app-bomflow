@@ -177,6 +177,7 @@ import AgentMyDashboard from "./AgentMyDashboard";
 import BomAutoConsulta from "./BomAutoConsulta";
 
 import BomAutoPainel from "./BomAutoPainel";
+import BomAutoRelatorio from "./BomAutoRelatorio";
 
 import Login from "./Login";
 
@@ -361,6 +362,7 @@ const PAGES = {
     BomAutoConsulta: BomAutoConsulta,
     
     BomAutoPainel: BomAutoPainel,
+    BomAutoRelatorio: BomAutoRelatorio,
     
 }
 
@@ -571,6 +573,7 @@ function PagesContent() {
                 <Route path="/BomAutoConsulta" element={<BomAutoConsulta />} />
                 
                 <Route path="/BomAutoPainel" element={<BomAutoPainel />} />
+                <Route path="/BomAutoRelatorio" element={<BomAutoRelatorio />} />
                 
             </Routes>
         </Layout>

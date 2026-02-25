@@ -193,6 +193,18 @@ router.post('/atendimentos', authMiddleware, async (req, res) => {
   }
 });
 
+router.get('/atendimentos/atendentes', authMiddleware, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT DISTINCT usuario FROM bom_auto_atendimentos WHERE usuario IS NOT NULL ORDER BY usuario ASC`
+    );
+    res.json(result.rows.map(r => r.usuario));
+  } catch (error) {
+    console.error('Error fetching atendentes:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.get('/atendimentos/contadores', authMiddleware, async (req, res) => {
   try {
     const result = await query(
@@ -269,6 +281,10 @@ router.get('/atendimentos', authMiddleware, async (req, res) => {
     if (data_fim) {
       sql += ` AND data_hora <= $${paramIndex++}`;
       params.push(data_fim + ' 23:59:59');
+    }
+    if (req.query.atendente) {
+      sql += ` AND usuario ILIKE $${paramIndex++}`;
+      params.push(`%${req.query.atendente}%`);
     }
 
     sql += ` ORDER BY CASE WHEN status_atendimento = 'Pendente' THEN 0 ELSE 1 END, data_hora DESC LIMIT 500`;
