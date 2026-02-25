@@ -127,6 +127,15 @@ const MENU_MODULES = [
     ]
   },
   {
+    id: "bom_auto",
+    title: "Bom Auto",
+    items: [
+      { id: "BomAutoConsulta", title: "Consulta Cliente" },
+      { id: "BomAutoPainel", title: "Painel Operacional" },
+      { id: "BomAutoRelatorio", title: "Relatório de Utilizações" },
+    ]
+  },
+  {
     id: "config",
     title: "Configurações",
     items: [
