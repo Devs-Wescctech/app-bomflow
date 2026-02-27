@@ -57,6 +57,7 @@ Wescctech CRM is a comprehensive Customer Relationship Management system designe
 - **Dashboard Filters**: Reusable `DashboardFilters` component (`src/components/dashboard/DashboardFilters.jsx`) with period presets, agent selector, and stage filter.
 - **Metrics Documentation**: `MetricsHelpDialog` component (`src/components/dashboard/MetricsHelpDialog.jsx`) explains metric calculations with role-based visibility.
 - **Centralized Constants**: Stage definitions for different lead types are centralized in `src/constants/stages.js`.
+- **Token Auto-Refresh**: Global fetch interceptor (`src/api/tokenInterceptor.js`) transparently refreshes expired accessTokens using the refreshToken (7-day validity). Only retries safe (GET/HEAD/OPTIONS) requests automatically; non-idempotent requests return 401 for app-level handling. On refresh failure, clears tokens and redirects to login. Installed in `src/main.jsx` before app render.
 
 ## External Dependencies
 

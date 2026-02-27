@@ -29,11 +29,10 @@ export default function Login() {
     setError("");
 
     try {
-      await base44.auth.login(formData.email, formData.password);
+      const user = await base44.auth.login(formData.email, formData.password);
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       toast.success("Login realizado com sucesso!");
       
-      const user = await base44.auth.me();
       const agentType = user?.agent?.agentType || user?.agent_type;
       const salesTypes = ['sales', 'sales_supervisor'];
       const supervisorTypes = ['sales_supervisor', 'supervisor'];
