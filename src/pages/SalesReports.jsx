@@ -31,6 +31,7 @@ export default function SalesReports() {
   const [dateRange, setDateRange] = useState({ from: startOfMonth(new Date()), to: endOfMonth(new Date()) });
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [selectedStage, setSelectedStage] = useState(null);
+  const [selectedTeam, setSelectedTeam] = useState(null);
 
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
@@ -42,6 +43,11 @@ export default function SalesReports() {
   const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
   const isSupervisor = currentAgentType?.includes('supervisor') || currentAgentType === 'supervisor';
   const hasPermission = isAdmin || isSupervisor || canAccessReports(currentAgent);
+
+  const { data: teams = [] } = useQuery({
+    queryKey: ['teams'],
+    queryFn: () => base44.entities.Team.list(),
+  });
 
   const { data: allAgents = [] } = useQuery({
     queryKey: ['agents'],
@@ -87,7 +93,14 @@ export default function SalesReports() {
     });
   }, [allAgents]);
 
+  const displayAgents = useMemo(() => {
+    if (!selectedTeam) return salesAgents;
+    return salesAgents.filter(a => (a.teamId || a.team_id) === selectedTeam);
+  }, [salesAgents, selectedTeam]);
+
   const filteredLeads = useMemo(() => {
+    const teamAgentIds = selectedTeam ? displayAgents.map(a => a.id) : null;
+
     return leads.filter(lead => {
       const leadDate = new Date(lead.createdDate || lead.createdAt || lead.created_at);
       
@@ -106,9 +119,15 @@ export default function SalesReports() {
       if (selectedAgent && lead.agentId !== selectedAgent && lead.promoterId !== selectedAgent) return false;
       if (selectedStage && lead.stage !== selectedStage) return false;
 
+      if (teamAgentIds && !selectedAgent) {
+        const leadAgentId = lead.agentId || lead.agent_id;
+        const leadPromoterId = lead.promoterId || lead.promoter_id;
+        if (!teamAgentIds.includes(leadAgentId) && !teamAgentIds.includes(leadPromoterId)) return false;
+      }
+
       return true;
     });
-  }, [leads, dateRange, selectedAgent, selectedStage]);
+  }, [leads, dateRange, selectedAgent, selectedStage, selectedTeam, displayAgents]);
 
   const totalLeads = filteredLeads.length;
   const leadsEmAtendimento = filteredLeads.filter(l => l.stage !== 'fechado_ganho' && l.stage !== 'fechado_perdido').length;
@@ -148,6 +167,7 @@ export default function SalesReports() {
     setDateRange({ from: null, to: null });
     setSelectedAgent(null);
     setSelectedStage(null);
+    setSelectedTeam(null);
   };
 
   const exportToExcel = () => {
@@ -225,19 +245,23 @@ export default function SalesReports() {
       </div>
 
       <DashboardFilters
-        agents={salesAgents}
+        agents={displayAgents}
         stages={STAGES}
+        teams={teams}
         selectedAgent={selectedAgent}
         selectedStage={selectedStage}
+        selectedTeam={selectedTeam}
         selectedPeriod={selectedPeriod}
         dateRange={dateRange}
         onAgentChange={setSelectedAgent}
         onStageChange={setSelectedStage}
+        onTeamChange={setSelectedTeam}
         onPeriodChange={setSelectedPeriod}
         onDateRangeChange={setDateRange}
         onClearFilters={handleClearFilters}
         showAgentFilter={true}
         showStageFilter={true}
+        showTeamFilter={true}
         showPeriodFilter={true}
       />
 

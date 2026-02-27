@@ -90,6 +90,9 @@ export default function BomAutoRelatorio() {
   const [filterTipoServico, setFilterTipoServico] = useState("todos");
   const [filterStatus, setFilterStatus] = useState("todos");
   const [filterAtendente, setFilterAtendente] = useState("todos");
+  const [filterTeam, setFilterTeam] = useState("todos");
+  const [teams, setTeams] = useState([]);
+  const [agents, setAgents] = useState([]);
 
   useEffect(() => {
     async function fetchUser() {
@@ -116,6 +119,7 @@ export default function BomAutoRelatorio() {
   useEffect(() => {
     if (authorized) {
       fetchAtendentes();
+      fetchTeamsAndAgents();
     }
   }, [authorized]);
 
@@ -127,6 +131,23 @@ export default function BomAutoRelatorio() {
       if (res.ok) {
         const data = await res.json();
         setAtendentes(data);
+      }
+    } catch (e) {}
+  }
+
+  async function fetchTeamsAndAgents() {
+    try {
+      const [teamsRes, agentsRes] = await Promise.all([
+        fetch(`${API_BASE}/entities/teams`, { headers: { ...getAuthHeaders() } }),
+        fetch(`${API_BASE}/entities/agents`, { headers: { ...getAuthHeaders() } }),
+      ]);
+      if (teamsRes.ok) {
+        const teamsData = await teamsRes.json();
+        setTeams(Array.isArray(teamsData) ? teamsData : teamsData.data || []);
+      }
+      if (agentsRes.ok) {
+        const agentsData = await agentsRes.json();
+        setAgents(Array.isArray(agentsData) ? agentsData : agentsData.data || []);
       }
     } catch (e) {}
   }
@@ -161,6 +182,18 @@ export default function BomAutoRelatorio() {
     fetchRelatorio();
   }
 
+  const filteredAtendentes = filterTeam !== 'todos'
+    ? atendentes.filter(atendenteName => {
+        const teamAgents = agents.filter(a => (a.teamId || a.team_id) === filterTeam);
+        return teamAgents.some(a => a.name === atendenteName);
+      })
+    : atendentes;
+
+  function handleTeamChange(val) {
+    setFilterTeam(val);
+    setFilterAtendente("todos");
+  }
+
   function handleClearFilters() {
     setFilterDataInicio("");
     setFilterDataFim("");
@@ -168,6 +201,7 @@ export default function BomAutoRelatorio() {
     setFilterTipoServico("todos");
     setFilterStatus("todos");
     setFilterAtendente("todos");
+    setFilterTeam("todos");
     setAtendimentos([]);
   }
 
@@ -393,6 +427,22 @@ export default function BomAutoRelatorio() {
                     </SelectContent>
                   </Select>
                 </div>
+                {teams.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Time</Label>
+                    <Select value={filterTeam} onValueChange={handleTeamChange}>
+                      <SelectTrigger className="border-gray-200 dark:border-gray-700">
+                        <SelectValue placeholder="Todos os times" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Todos os times</SelectItem>
+                        {teams.map(t => (
+                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Atendente</Label>
                   <Select value={filterAtendente} onValueChange={setFilterAtendente}>
@@ -401,7 +451,7 @@ export default function BomAutoRelatorio() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="todos">Todos</SelectItem>
-                      {atendentes.map(a => (
+                      {filteredAtendentes.map(a => (
                         <SelectItem key={a} value={a}>{a}</SelectItem>
                       ))}
                     </SelectContent>

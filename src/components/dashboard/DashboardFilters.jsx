@@ -35,23 +35,27 @@ const PERIOD_PRESETS = [
 export default function DashboardFilters({
   agents = [],
   stages = [],
+  teams = [],
   selectedAgent,
   selectedStage,
+  selectedTeam,
   selectedPeriod,
   dateRange,
   onAgentChange,
   onStageChange,
+  onTeamChange,
   onPeriodChange,
   onDateRangeChange,
   onClearFilters,
   showAgentFilter = true,
   showStageFilter = true,
+  showTeamFilter = true,
   showPeriodFilter = true,
   compact = false,
 }) {
   const [isOpen, setIsOpen] = useState(!compact);
 
-  const hasActiveFilters = selectedAgent || selectedStage || (selectedPeriod && selectedPeriod !== "all");
+  const hasActiveFilters = selectedAgent || selectedStage || selectedTeam || (selectedPeriod && selectedPeriod !== "all");
 
   const handlePeriodChange = (presetId) => {
     const preset = PERIOD_PRESETS.find(p => p.id === presetId);
@@ -80,7 +84,7 @@ export default function DashboardFilters({
         Filtros
         {hasActiveFilters && (
           <span className="ml-1 bg-primary text-primary-foreground rounded-full w-5 h-5 text-xs flex items-center justify-center">
-            {[selectedAgent, selectedStage, selectedPeriod !== "all" && selectedPeriod].filter(Boolean).length}
+            {[selectedAgent, selectedStage, selectedTeam, selectedPeriod !== "all" && selectedPeriod].filter(Boolean).length}
           </span>
         )}
       </Button>
@@ -148,6 +152,25 @@ export default function DashboardFilters({
                   />
                 </PopoverContent>
               </Popover>
+            </div>
+          )}
+
+          {showTeamFilter && teams.length > 0 && (
+            <div className="flex flex-col gap-1.5 min-w-[180px]">
+              <Label className="text-xs text-muted-foreground">Time</Label>
+              <Select value={selectedTeam || "all"} onValueChange={(val) => onTeamChange?.(val === "all" ? null : val)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Todos os times" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os times</SelectItem>
+                  {teams.map((team) => (
+                    <SelectItem key={team.id} value={team.id}>
+                      {team.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
 

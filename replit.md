@@ -54,7 +54,7 @@ Wescctech CRM is a comprehensive Customer Relationship Management system designe
 - **Digital Contract Signing**: Public page for clients to sign contracts digitally (PublicContractSign.jsx), with signature stored as image and token-based access. Routes: getPublicContract, signContract, send-contract-whatsapp.
 - **Task Completion from Lead Detail**: Tasks can be marked as completed directly from lead detail pages (PF, PJ, Referrals) with checkbox and "Concluir" button, synced with main agenda/tasks module.
 - **Optimistic UI**: Implemented for Kanban drag-and-drop.
-- **Dashboard Filters**: Reusable `DashboardFilters` component (`src/components/dashboard/DashboardFilters.jsx`) with period presets, agent selector, and stage filter.
+- **Dashboard Filters**: Reusable `DashboardFilters` component (`src/components/dashboard/DashboardFilters.jsx`) with period presets, team/equipe selector, agent selector, and stage filter. Team filter is available system-wide across all dashboards, kanbans, pipelines, and reports.
 - **Metrics Documentation**: `MetricsHelpDialog` component (`src/components/dashboard/MetricsHelpDialog.jsx`) explains metric calculations with role-based visibility.
 - **Centralized Constants**: Stage definitions for different lead types are centralized in `src/constants/stages.js`.
 - **Token Auto-Refresh**: Global fetch interceptor (`src/api/tokenInterceptor.js`) transparently refreshes expired accessTokens using the refreshToken (7-day validity). Only retries safe (GET/HEAD/OPTIONS) requests automatically; non-idempotent requests return 401 for app-level handling. On refresh failure, clears tokens and redirects to login. Installed in `src/main.jsx` before app render.

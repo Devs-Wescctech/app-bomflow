@@ -39,6 +39,7 @@ export default function ReferralReports() {
   const [dateRange, setDateRange] = useState({ from: startOfMonth(new Date()), to: endOfMonth(new Date()) });
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [selectedStage, setSelectedStage] = useState(null);
+  const [selectedTeam, setSelectedTeam] = useState(null);
 
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
@@ -50,6 +51,11 @@ export default function ReferralReports() {
   const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
   const isSupervisor = currentAgentType?.includes('supervisor') || currentAgentType === 'supervisor';
   const hasPermission = isAdmin || isSupervisor || canAccessReports(currentAgent);
+
+  const { data: teams = [] } = useQuery({
+    queryKey: ['teams'],
+    queryFn: () => base44.entities.Team.list(),
+  });
 
   const { data: allAgents = [], isLoading: agentsLoading } = useQuery({
     queryKey: ['referralReportsAgents'],
@@ -89,7 +95,14 @@ export default function ReferralReports() {
 
   const activeAgents = useMemo(() => allAgents.filter(a => a.active), [allAgents]);
 
+  const displayAgents = useMemo(() => {
+    if (!selectedTeam) return activeAgents;
+    return activeAgents.filter(a => (a.teamId || a.team_id) === selectedTeam);
+  }, [activeAgents, selectedTeam]);
+
   const filteredReferrals = useMemo(() => {
+    const teamAgentIds = selectedTeam ? displayAgents.map(a => a.id) : null;
+
     return referrals.filter(referral => {
       const refDate = new Date(referral.createdAt || referral.created_at || referral.createdDate || referral.created_date);
       if (isNaN(refDate.getTime())) return false;
@@ -112,10 +125,15 @@ export default function ReferralReports() {
       }
 
       if (selectedStage && referral.stage !== selectedStage) return false;
+
+      if (teamAgentIds && !selectedAgent) {
+        const agentId = referral.agentId || referral.agent_id;
+        if (!teamAgentIds.includes(agentId)) return false;
+      }
       
       return true;
     });
-  }, [referrals, dateRange, selectedAgent, selectedStage]);
+  }, [referrals, dateRange, selectedAgent, selectedStage, selectedTeam, displayAgents]);
 
   const getReferralValue = (r) => {
     return parseFloat(r.value) || parseFloat(r.monthlyValue) || parseFloat(r.monthly_value) || 0;
@@ -203,6 +221,7 @@ export default function ReferralReports() {
     setDateRange({ from: null, to: null });
     setSelectedAgent(null);
     setSelectedStage(null);
+    setSelectedTeam(null);
   };
 
   const handleExport = () => {
@@ -280,19 +299,23 @@ export default function ReferralReports() {
       </div>
 
       <DashboardFilters
-        agents={activeAgents}
+        agents={displayAgents}
         stages={STAGES}
+        teams={teams}
         selectedAgent={selectedAgent}
         selectedStage={selectedStage}
+        selectedTeam={selectedTeam}
         selectedPeriod={selectedPeriod}
         dateRange={dateRange}
         onAgentChange={setSelectedAgent}
         onStageChange={setSelectedStage}
+        onTeamChange={setSelectedTeam}
         onPeriodChange={setSelectedPeriod}
         onDateRangeChange={setDateRange}
         onClearFilters={handleClearFilters}
         showAgentFilter={true}
         showStageFilter={true}
+        showTeamFilter={true}
         showPeriodFilter={true}
       />
 
