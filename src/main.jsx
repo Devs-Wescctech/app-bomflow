@@ -1,8 +1,11 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { installTokenInterceptor } from '@/api/tokenInterceptor'
 import App from '@/App.jsx'
 import '@/index.css'
+
+installTokenInterceptor()
 
 const queryClient = new QueryClient({
   defaultOptions: {

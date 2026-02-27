@@ -38,23 +38,13 @@ export default function Dashboard() {
     refetchOnMount: true,
   });
 
-  const { data: agents = [] } = useQuery({
-    queryKey: ['displayAgents'],
-    queryFn: async () => {
-      const allDisplayAgents = await base44.entities.Agent.list();
-      
-      // Admin vê todos
-      if (user?.role === 'admin') {
-        return allDisplayAgents;
-      }
-
-      if (!currentAgent) return [];
-
-      // Ver apenas agentes da equipe
-      return allDisplayAgents.filter(a => a.team_id === currentAgent.team_id);
-    },
-    initialData: [],
-  });
+  const agents = (() => {
+    if (user?.role === 'admin') {
+      return allAgents;
+    }
+    if (!currentAgent) return [];
+    return allAgents.filter(a => a.team_id === currentAgent.team_id);
+  })();
 
   if (userLoading || agentsLoading) {
     return (
