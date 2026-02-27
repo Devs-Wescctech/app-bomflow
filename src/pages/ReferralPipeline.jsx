@@ -255,6 +255,17 @@ function SortableReferralCard({ referral, stage, referrerData, agentData, naviga
                   {referral.referredPhone || referral.referred_phone || 'Sem telefone'}
                 </span>
               </div>
+              {(() => {
+                const d = safeDate(referral.created_at || referral.createdAt);
+                return d ? (
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <Calendar className="w-3 h-3 text-gray-400" />
+                    <span className="text-gray-400 dark:text-gray-500 text-[11px]">
+                      {d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                ) : null;
+              })()}
             </div>
 
             {pendingTasksCount > 0 && (
