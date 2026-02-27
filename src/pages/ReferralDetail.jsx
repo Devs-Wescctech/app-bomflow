@@ -740,6 +740,15 @@ export default function ReferralDetail() {
                     Agente: <strong className="text-white">{referralAgent.name}</strong>
                   </span>
                 )}
+                {(referral.created_at || referral.createdAt) && (() => {
+                  const d = new Date(referral.created_at || referral.createdAt);
+                  return !isNaN(d.getTime()) ? (
+                    <span className="inline-flex items-center gap-1.5 text-white/70 text-sm">
+                      <Calendar className="w-3.5 h-3.5" />
+                      Cadastro: <strong className="text-white">{d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</strong>
+                    </span>
+                  ) : null;
+                })()}
               </div>
             </div>
 
