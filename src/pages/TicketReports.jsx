@@ -54,6 +54,7 @@ export default function TicketReports() {
   const [dateRange, setDateRange] = useState({ from: subDays(new Date(), 7), to: new Date() });
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [selectedStage, setSelectedStage] = useState(null);
+  const [selectedTeam, setSelectedTeam] = useState(null);
   const [selectedQueue, setSelectedQueue] = useState('all');
 
   const { data: user } = useQuery({
@@ -80,13 +81,25 @@ export default function TicketReports() {
     enabled: hasPermission,
   });
 
+  const { data: teams = [] } = useQuery({
+    queryKey: ['teams'],
+    queryFn: () => base44.entities.Team.list(),
+  });
+
   const { data: agents = [] } = useQuery({
     queryKey: ['agents'],
     queryFn: () => base44.entities.Agent.list(),
     enabled: hasPermission,
   });
 
+  const displayAgents = useMemo(() => {
+    if (!selectedTeam) return agents;
+    return agents.filter(a => (a.teamId || a.team_id) === selectedTeam);
+  }, [agents, selectedTeam]);
+
   const filteredTickets = useMemo(() => {
+    const teamAgentIds = selectedTeam ? displayAgents.map(a => a.id) : null;
+
     return allTickets.filter(t => {
       const ticketDate = new Date(t.createdAt || t.createdDate);
       
@@ -106,9 +119,13 @@ export default function TicketReports() {
       if (selectedStage && t.status !== selectedStage) return false;
       if (selectedQueue !== 'all' && t.queueId !== selectedQueue) return false;
 
+      if (teamAgentIds && !selectedAgent) {
+        if (!teamAgentIds.includes(t.agentId)) return false;
+      }
+
       return true;
     });
-  }, [allTickets, dateRange, selectedAgent, selectedStage, selectedQueue]);
+  }, [allTickets, dateRange, selectedAgent, selectedStage, selectedQueue, selectedTeam, displayAgents]);
 
   const totalTickets = filteredTickets.length;
   const completedTickets = filteredTickets.filter(t => ['resolvido', 'fechado'].includes(t.status)).length;
@@ -177,6 +194,7 @@ export default function TicketReports() {
     setDateRange({ from: null, to: null });
     setSelectedAgent(null);
     setSelectedStage(null);
+    setSelectedTeam(null);
     setSelectedQueue('all');
   };
 
@@ -250,19 +268,23 @@ export default function TicketReports() {
       </div>
 
       <DashboardFilters
-        agents={agents}
+        agents={displayAgents}
         stages={STATUS_OPTIONS}
+        teams={teams}
         selectedAgent={selectedAgent}
         selectedStage={selectedStage}
+        selectedTeam={selectedTeam}
         selectedPeriod={selectedPeriod}
         dateRange={dateRange}
         onAgentChange={setSelectedAgent}
         onStageChange={setSelectedStage}
+        onTeamChange={setSelectedTeam}
         onPeriodChange={setSelectedPeriod}
         onDateRangeChange={setDateRange}
         onClearFilters={handleClearFilters}
         showAgentFilter={true}
         showStageFilter={true}
+        showTeamFilter={true}
         showPeriodFilter={true}
       />
 

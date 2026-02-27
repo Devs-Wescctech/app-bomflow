@@ -35,10 +35,16 @@ export default function SalesPJReports() {
   const [dateRange, setDateRange] = useState({ from: startOfMonth(new Date()), to: endOfMonth(new Date()) });
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [selectedStage, setSelectedStage] = useState(null);
+  const [selectedTeam, setSelectedTeam] = useState(null);
 
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
+  });
+
+  const { data: teams = [] } = useQuery({
+    queryKey: ['teams'],
+    queryFn: () => base44.entities.Team.list(),
   });
 
   const { data: allAgents = [] } = useQuery({
@@ -89,7 +95,14 @@ export default function SalesPJReports() {
     });
   }, [allAgents]);
 
+  const displayAgents = useMemo(() => {
+    if (!selectedTeam) return salesAgents;
+    return salesAgents.filter(a => (a.teamId || a.team_id) === selectedTeam);
+  }, [salesAgents, selectedTeam]);
+
   const filteredLeads = useMemo(() => {
+    const teamAgentIds = selectedTeam ? displayAgents.map(a => a.id) : null;
+
     return leadsPJ.filter(lead => {
       const leadDate = new Date(lead.createdAt || lead.created_at || lead.createdDate);
       
@@ -108,9 +121,14 @@ export default function SalesPJReports() {
       if (selectedAgent && (lead.agentId || lead.agent_id) !== selectedAgent) return false;
       if (selectedStage && lead.stage !== selectedStage) return false;
 
+      if (teamAgentIds && !selectedAgent) {
+        const leadAgentId = lead.agentId || lead.agent_id;
+        if (!teamAgentIds.includes(leadAgentId)) return false;
+      }
+
       return true;
     });
-  }, [leadsPJ, dateRange, selectedAgent, selectedStage]);
+  }, [leadsPJ, dateRange, selectedAgent, selectedStage, selectedTeam, displayAgents]);
 
   const getLeadValue = (lead) => {
     return parseFloat(lead.value) || parseFloat(lead.monthlyValue) || parseFloat(lead.monthly_value) || 0;
@@ -175,6 +193,7 @@ export default function SalesPJReports() {
     setDateRange({ from: null, to: null });
     setSelectedAgent(null);
     setSelectedStage(null);
+    setSelectedTeam(null);
   };
 
   const handleExport = () => {
@@ -250,19 +269,23 @@ export default function SalesPJReports() {
       </div>
 
       <DashboardFilters
-        agents={salesAgents}
+        agents={displayAgents}
         stages={STAGES_PJ}
+        teams={teams}
         selectedAgent={selectedAgent}
         selectedStage={selectedStage}
+        selectedTeam={selectedTeam}
         selectedPeriod={selectedPeriod}
         dateRange={dateRange}
         onAgentChange={setSelectedAgent}
         onStageChange={setSelectedStage}
+        onTeamChange={setSelectedTeam}
         onPeriodChange={setSelectedPeriod}
         onDateRangeChange={setDateRange}
         onClearFilters={handleClearFilters}
         showAgentFilter={true}
         showStageFilter={true}
+        showTeamFilter={true}
         showPeriodFilter={true}
       />
 

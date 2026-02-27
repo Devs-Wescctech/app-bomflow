@@ -452,6 +452,7 @@ export default function AgentMyDashboard() {
             }}
             showAgentFilter={false}
             showStageFilter={false}
+            showTeamFilter={false}
             showPeriodFilter={true}
           />
         </motion.div>

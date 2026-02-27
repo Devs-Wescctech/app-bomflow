@@ -32,6 +32,7 @@ export default function CollectionReports() {
   const [dateRange, setDateRange] = useState({ from: startOfMonth(new Date()), to: endOfMonth(new Date()) });
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [selectedStage, setSelectedStage] = useState(null);
+  const [selectedTeam, setSelectedTeam] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
   const { data: user } = useQuery({
@@ -52,13 +53,25 @@ export default function CollectionReports() {
     enabled: hasPermission,
   });
 
+  const { data: teams = [] } = useQuery({
+    queryKey: ['teams'],
+    queryFn: () => base44.entities.Team.list(),
+  });
+
   const { data: agents = [] } = useQuery({
     queryKey: ['agents'],
     queryFn: () => base44.entities.Agent.list(),
     enabled: hasPermission,
   });
 
+  const displayAgents = useMemo(() => {
+    if (!selectedTeam) return agents;
+    return agents.filter(a => (a.teamId || a.team_id) === selectedTeam);
+  }, [agents, selectedTeam]);
+
   const filteredTickets = useMemo(() => {
+    const teamAgentIds = selectedTeam ? displayAgents.map(a => a.id) : null;
+
     return tickets.filter(ticket => {
       const ticketDate = new Date(ticket.createdAt || ticket.createdDate);
       
@@ -81,9 +94,13 @@ export default function CollectionReports() {
         if (selectedStage === 'active' && (ticket.status === 'resolved' || ticket.status === 'closed')) return false;
       }
 
+      if (teamAgentIds && !selectedAgent) {
+        if (!teamAgentIds.includes(ticket.agentId)) return false;
+      }
+
       return true;
     });
-  }, [tickets, dateRange, selectedAgent, selectedStage]);
+  }, [tickets, dateRange, selectedAgent, selectedStage, selectedTeam, displayAgents]);
 
   const totalDebt = filteredTickets.reduce((sum, ticket) => {
     if (ticket.status === 'resolved' || ticket.status === 'closed') return sum;
@@ -124,6 +141,7 @@ export default function CollectionReports() {
     setDateRange({ from: null, to: null });
     setSelectedAgent(null);
     setSelectedStage(null);
+    setSelectedTeam(null);
   };
 
   const handleExportExcel = async () => {
@@ -219,19 +237,23 @@ export default function CollectionReports() {
       </div>
 
       <DashboardFilters
-        agents={agents}
+        agents={displayAgents}
         stages={STATUS_OPTIONS}
+        teams={teams}
         selectedAgent={selectedAgent}
         selectedStage={selectedStage}
+        selectedTeam={selectedTeam}
         selectedPeriod={selectedPeriod}
         dateRange={dateRange}
         onAgentChange={setSelectedAgent}
         onStageChange={setSelectedStage}
+        onTeamChange={setSelectedTeam}
         onPeriodChange={setSelectedPeriod}
         onDateRangeChange={setDateRange}
         onClearFilters={handleClearFilters}
         showAgentFilter={true}
         showStageFilter={true}
+        showTeamFilter={true}
         showPeriodFilter={true}
       />
 

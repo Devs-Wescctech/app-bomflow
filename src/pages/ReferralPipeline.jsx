@@ -398,10 +398,10 @@ export default function ReferralPipeline() {
       try {
         return JSON.parse(saved);
       } catch (e) {
-        return { search: '', agent: 'all', dateFrom: '', dateTo: '' };
+        return { search: '', agent: 'all', team: 'all', dateFrom: '', dateTo: '' };
       }
     }
-    return { search: '', agent: 'all', dateFrom: '', dateTo: '' };
+    return { search: '', agent: 'all', team: 'all', dateFrom: '', dateTo: '' };
   });
 
   useEffect(() => {
@@ -409,12 +409,12 @@ export default function ReferralPipeline() {
   }, [filters]);
 
   const clearFilters = () => {
-    const defaultFilters = { search: '', agent: 'all', dateFrom: '', dateTo: '' };
+    const defaultFilters = { search: '', agent: 'all', team: 'all', dateFrom: '', dateTo: '' };
     setFilters(defaultFilters);
     localStorage.removeItem('referralPipelineFilters');
   };
 
-  const hasActiveFilters = filters.search || filters.agent !== 'all' || filters.dateFrom || filters.dateTo;
+  const hasActiveFilters = filters.search || filters.agent !== 'all' || filters.team !== 'all' || filters.dateFrom || filters.dateTo;
   const [listPage, setListPage] = useState(1);
   const [isDraggingCard, setIsDraggingCard] = useState(false);
 
@@ -504,6 +504,12 @@ export default function ReferralPipeline() {
     queryFn: () => base44.entities.Agent.list(),
     staleTime: 0,
     refetchOnMount: 'always',
+  });
+
+  const { data: teams = [] } = useQuery({
+    queryKey: ['teams'],
+    queryFn: () => base44.entities.Team.list(),
+    staleTime: 60000,
   });
 
   const currentAgent = user?.agent || agents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
@@ -720,6 +726,15 @@ export default function ReferralPipeline() {
         !referral.referrerName?.toLowerCase().includes(searchLower) &&
         !referral.referredPhone?.toLowerCase().includes(searchLower)
       ) {
+        return false;
+      }
+    }
+
+    if (filters.team !== 'all') {
+      const teamAgentIds = agents
+        .filter(a => String(a.team_id) === String(filters.team) || String(a.teamId) === String(filters.team))
+        .map(a => String(a.id));
+      if (!teamAgentIds.includes(String(referral.agentId)) && !teamAgentIds.includes(String(referral.agent_id))) {
         return false;
       }
     }
@@ -1057,7 +1072,7 @@ export default function ReferralPipeline() {
               Filtros
               {hasActiveFilters && (
                 <Badge variant="success" className="ml-2">
-                  {[filters.search, filters.agent !== 'all', filters.dateFrom, filters.dateTo].filter(Boolean).length}
+                  {[filters.search, filters.agent !== 'all', filters.team !== 'all', filters.dateFrom, filters.dateTo].filter(Boolean).length}
                 </Badge>
               )}
             </Button>
@@ -1079,7 +1094,7 @@ export default function ReferralPipeline() {
             >
               <Card className="glass-card border-0 shadow-soft overflow-hidden">
                 <CardContent className="pt-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                     <div>
                       <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
                         Buscar
@@ -1097,6 +1112,23 @@ export default function ReferralPipeline() {
 
                     <div>
                       <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+                        Time
+                      </label>
+                      <Select value={filters.team} onValueChange={(val) => setFilters({...filters, team: val, agent: 'all'})}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Todos os times" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todos os times</SelectItem>
+                          {teams.map(team => (
+                            <SelectItem key={team.id} value={String(team.id)}>{team.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
                         Agente
                       </label>
                       <Select value={filters.agent} onValueChange={(val) => setFilters({...filters, agent: val})}>
@@ -1105,7 +1137,7 @@ export default function ReferralPipeline() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">Todos os agentes</SelectItem>
-                          {agents.map(agent => (
+                          {(filters.team !== 'all' ? agents.filter(a => String(a.team_id) === String(filters.team) || String(a.teamId) === String(filters.team)) : agents).map(agent => (
                             <SelectItem key={agent.id} value={String(agent.id)}>{agent.name}</SelectItem>
                           ))}
                         </SelectContent>

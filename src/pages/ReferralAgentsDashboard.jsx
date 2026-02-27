@@ -212,15 +212,16 @@ export default function ReferralAgentsDashboard() {
       </div>
 
       <DashboardFilters
-        agents={canSeeAllAgents ? teamsForFilter : []}
-        selectedAgent={selectedTeam}
-        onAgentChange={setSelectedTeam}
+        teams={canSeeAllAgents ? teamsForFilter : []}
+        selectedTeam={selectedTeam}
+        onTeamChange={setSelectedTeam}
         selectedPeriod={selectedPeriod}
         onPeriodChange={setSelectedPeriod}
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
         onClearFilters={handleClearFilters}
-        showAgentFilter={canSeeAllAgents}
+        showAgentFilter={false}
+        showTeamFilter={canSeeAllAgents}
         showStageFilter={false}
       />
 

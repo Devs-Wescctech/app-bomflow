@@ -46,6 +46,7 @@ const STAGES_PJ = LEAD_PJ_STAGES;
 export default function SalesPJDashboard() {
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [selectedStage, setSelectedStage] = useState(null);
+  const [selectedTeam, setSelectedTeam] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState("all");
   const [dateRange, setDateRange] = useState({ from: null, to: null });
 
@@ -99,14 +100,35 @@ export default function SalesPJDashboard() {
 
   const agents = allAgents;
 
+  const { data: teams = [] } = useQuery({
+    queryKey: ['teams'],
+    queryFn: () => base44.entities.Team.list(),
+  });
+
   const { data: activities = [] } = useQuery({
     queryKey: ['activities-pj'],
     queryFn: () => base44.entities.ActivityPJ.list('-createdDate', 50),
     initialData: [],
   });
 
+  const displayAgents = useMemo(() => {
+    const salesFiltered = agents.filter(a => {
+      const agentType = a.agentType || a.agent_type;
+      return agentType?.includes('sales') || agentType?.includes('vendas') || agentType === 'admin' || agentType?.includes('supervisor');
+    });
+    if (!selectedTeam) return salesFiltered;
+    return salesFiltered.filter(a => (a.teamId || a.team_id) === selectedTeam);
+  }, [agents, selectedTeam]);
+
   const leads = useMemo(() => {
     let filtered = [...rawLeads];
+
+    if (selectedTeam && !selectedAgent) {
+      const teamAgentIds = allAgents
+        .filter(a => (a.teamId || a.team_id) === selectedTeam)
+        .map(a => a.id);
+      filtered = filtered.filter(l => teamAgentIds.includes(l.agentId || l.agent_id));
+    }
 
     if (selectedAgent) {
       filtered = filtered.filter(l => (l.agentId || l.agent_id) === selectedAgent);
@@ -132,19 +154,15 @@ export default function SalesPJDashboard() {
     }
 
     return filtered;
-  }, [rawLeads, selectedAgent, selectedStage, dateRange]);
+  }, [rawLeads, selectedAgent, selectedStage, selectedTeam, dateRange, allAgents]);
 
   const handleClearFilters = () => {
     setSelectedAgent(null);
     setSelectedStage(null);
+    setSelectedTeam(null);
     setSelectedPeriod("all");
     setDateRange({ from: null, to: null });
   };
-
-  const salesAgents = agents.filter(a => {
-    const agentType = a.agentType || a.agent_type;
-    return agentType?.includes('sales') || agentType?.includes('vendas') || agentType === 'admin' || agentType?.includes('supervisor');
-  });
 
   const totalLeads = leads.length;
   const leadsNovos = leads.filter(l => l.stage === 'novo').length;
@@ -220,18 +238,22 @@ export default function SalesPJDashboard() {
 
       <motion.div variants={itemVariants}>
         <DashboardFilters
-          agents={salesAgents}
+          agents={displayAgents}
           stages={STAGES_PJ}
+          teams={teams}
           selectedAgent={selectedAgent}
           selectedStage={selectedStage}
+          selectedTeam={selectedTeam}
           selectedPeriod={selectedPeriod}
           dateRange={dateRange}
           onAgentChange={setSelectedAgent}
           onStageChange={setSelectedStage}
+          onTeamChange={setSelectedTeam}
           onPeriodChange={setSelectedPeriod}
           onDateRangeChange={setDateRange}
           onClearFilters={handleClearFilters}
           showAgentFilter={isAdmin || isSupervisor}
+          showTeamFilter={isAdmin || isSupervisor}
         />
       </motion.div>
 
