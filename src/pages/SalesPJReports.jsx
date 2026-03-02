@@ -97,11 +97,11 @@ export default function SalesPJReports() {
 
   const displayAgents = useMemo(() => {
     if (!selectedTeam) return salesAgents;
-    return salesAgents.filter(a => (a.teamId || a.team_id) === selectedTeam);
+    return salesAgents.filter(a => String(a.teamId || a.team_id) === String(selectedTeam));
   }, [salesAgents, selectedTeam]);
 
   const filteredLeads = useMemo(() => {
-    const teamAgentIds = selectedTeam ? displayAgents.map(a => a.id) : null;
+    const teamAgentIds = selectedTeam ? displayAgents.map(a => String(a.id)) : null;
 
     return leadsPJ.filter(lead => {
       const leadDate = new Date(lead.createdAt || lead.created_at || lead.createdDate);
@@ -122,7 +122,7 @@ export default function SalesPJReports() {
       if (selectedStage && lead.stage !== selectedStage) return false;
 
       if (teamAgentIds && !selectedAgent) {
-        const leadAgentId = lead.agentId || lead.agent_id;
+        const leadAgentId = String(lead.agentId || lead.agent_id);
         if (!teamAgentIds.includes(leadAgentId)) return false;
       }
 

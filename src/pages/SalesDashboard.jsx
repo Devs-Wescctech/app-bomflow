@@ -119,7 +119,7 @@ export default function SalesDashboard() {
       return agentType?.includes('sales') || agentType?.includes('vendas') || agentType === 'admin' || agentType?.includes('supervisor');
     });
     if (!selectedTeam) return salesFiltered;
-    return salesFiltered.filter(a => (a.teamId || a.team_id) === selectedTeam);
+    return salesFiltered.filter(a => String(a.teamId || a.team_id) === String(selectedTeam));
   }, [agents, selectedTeam]);
 
   const leads = useMemo(() => {
@@ -127,9 +127,9 @@ export default function SalesDashboard() {
 
     if (selectedTeam && !selectedAgent) {
       const teamAgentIds = allAgents
-        .filter(a => (a.teamId || a.team_id) === selectedTeam)
-        .map(a => a.id);
-      filtered = filtered.filter(l => teamAgentIds.includes(l.agentId) || teamAgentIds.includes(l.promoterId));
+        .filter(a => String(a.teamId || a.team_id) === String(selectedTeam))
+        .map(a => String(a.id));
+      filtered = filtered.filter(l => teamAgentIds.includes(String(l.agentId)) || teamAgentIds.includes(String(l.promoterId)));
     }
 
     if (selectedAgent) {

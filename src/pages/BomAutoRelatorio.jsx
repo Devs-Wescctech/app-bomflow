@@ -184,8 +184,8 @@ export default function BomAutoRelatorio() {
 
   const filteredAtendentes = filterTeam !== 'todos'
     ? atendentes.filter(atendenteName => {
-        const teamAgents = agents.filter(a => (a.teamId || a.team_id) === filterTeam);
-        return teamAgents.some(a => a.name === atendenteName);
+        const teamAgents = agents.filter(a => String(a.teamId || a.team_id) === String(filterTeam));
+        return teamAgents.some(a => a.email === atendenteName || a.name === atendenteName);
       })
     : atendentes;
 
@@ -207,8 +207,8 @@ export default function BomAutoRelatorio() {
 
   const displayAtendimentos = filterTeam !== 'todos'
     ? atendimentos.filter(at => {
-        const teamAgents = agents.filter(a => (a.teamId || a.team_id) === filterTeam);
-        return teamAgents.some(a => a.name === at.usuario);
+        const teamAgents = agents.filter(a => String(a.teamId || a.team_id) === String(filterTeam));
+        return teamAgents.some(a => a.email === at.usuario || a.name === at.usuario);
       })
     : atendimentos;
 

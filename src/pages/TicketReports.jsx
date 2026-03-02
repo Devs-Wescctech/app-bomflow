@@ -94,11 +94,11 @@ export default function TicketReports() {
 
   const displayAgents = useMemo(() => {
     if (!selectedTeam) return agents;
-    return agents.filter(a => (a.teamId || a.team_id) === selectedTeam);
+    return agents.filter(a => String(a.teamId || a.team_id) === String(selectedTeam));
   }, [agents, selectedTeam]);
 
   const filteredTickets = useMemo(() => {
-    const teamAgentIds = selectedTeam ? displayAgents.map(a => a.id) : null;
+    const teamAgentIds = selectedTeam ? displayAgents.map(a => String(a.id)) : null;
 
     return allTickets.filter(t => {
       const ticketDate = new Date(t.createdAt || t.createdDate);
@@ -120,7 +120,7 @@ export default function TicketReports() {
       if (selectedQueue !== 'all' && t.queueId !== selectedQueue) return false;
 
       if (teamAgentIds && !selectedAgent) {
-        if (!teamAgentIds.includes(t.agentId)) return false;
+        if (!teamAgentIds.includes(String(t.agentId))) return false;
       }
 
       return true;
