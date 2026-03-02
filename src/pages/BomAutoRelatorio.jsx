@@ -138,8 +138,8 @@ export default function BomAutoRelatorio() {
   async function fetchTeamsAndAgents() {
     try {
       const [teamsRes, agentsRes] = await Promise.all([
-        fetch(`${API_BASE}/entities/teams`, { headers: { ...getAuthHeaders() } }),
-        fetch(`${API_BASE}/entities/agents`, { headers: { ...getAuthHeaders() } }),
+        fetch(`${API_BASE}/teams`, { headers: { ...getAuthHeaders() } }),
+        fetch(`${API_BASE}/agents`, { headers: { ...getAuthHeaders() } }),
       ]);
       if (teamsRes.ok) {
         const teamsData = await teamsRes.json();
@@ -205,8 +205,15 @@ export default function BomAutoRelatorio() {
     setAtendimentos([]);
   }
 
+  const displayAtendimentos = filterTeam !== 'todos'
+    ? atendimentos.filter(at => {
+        const teamAgents = agents.filter(a => (a.teamId || a.team_id) === filterTeam);
+        return teamAgents.some(a => a.name === at.usuario);
+      })
+    : atendimentos;
+
   function getExportData() {
-    return atendimentos.map(at => ({
+    return displayAtendimentos.map(at => ({
       'Data Atendimento': formatDateTime(at.data_hora || at.created_at),
       'Contrato / Serviços': at.contratos_servicos || '-',
       'Documento': at.documento_cliente || '-',
@@ -218,7 +225,7 @@ export default function BomAutoRelatorio() {
   }
 
   async function handleExportExcel() {
-    if (atendimentos.length === 0) {
+    if (displayAtendimentos.length === 0) {
       toast({ title: "Aviso", description: "Nenhum dado para exportar. Aplique os filtros primeiro.", variant: "destructive" });
       return;
     }
@@ -251,7 +258,7 @@ export default function BomAutoRelatorio() {
   }
 
   async function handleExportPDF() {
-    if (atendimentos.length === 0) {
+    if (displayAtendimentos.length === 0) {
       toast({ title: "Aviso", description: "Nenhum dado para exportar. Aplique os filtros primeiro.", variant: "destructive" });
       return;
     }
@@ -271,10 +278,10 @@ export default function BomAutoRelatorio() {
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
       doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 25);
-      doc.text(`Total de registros: ${atendimentos.length}`, 14, 30);
+      doc.text(`Total de registros: ${displayAtendimentos.length}`, 14, 30);
 
       const headers = [['Data', 'Contrato/Serviços', 'Documento', 'Placa', 'Tipo Serviço', 'Status', 'Atendente']];
-      const tableData = atendimentos.map(at => [
+      const tableData = displayAtendimentos.map(at => [
         formatDateTime(at.data_hora || at.created_at),
         String(at.contratos_servicos || '-'),
         at.documento_cliente || '-',
@@ -472,13 +479,13 @@ export default function BomAutoRelatorio() {
         </CardContent>
       </Card>
 
-      {atendimentos.length > 0 && (
+      {displayAtendimentos.length > 0 && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between flex-wrap gap-3">
               <CardTitle className="text-base flex items-center gap-2">
                 Resultados
-                <Badge variant="secondary" className="ml-1">{atendimentos.length} registros</Badge>
+                <Badge variant="secondary" className="ml-1">{displayAtendimentos.length} registros</Badge>
               </CardTitle>
               <div className="flex gap-2">
                 <Button
@@ -519,7 +526,7 @@ export default function BomAutoRelatorio() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {atendimentos.map((at, idx) => (
+                  {displayAtendimentos.map((at, idx) => (
                     <tr
                       key={at.id || idx}
                       className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors"
@@ -554,7 +561,7 @@ export default function BomAutoRelatorio() {
         </Card>
       )}
 
-      {!loading && atendimentos.length === 0 && (
+      {!loading && displayAtendimentos.length === 0 && atendimentos.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center">
             <FileBarChart className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />

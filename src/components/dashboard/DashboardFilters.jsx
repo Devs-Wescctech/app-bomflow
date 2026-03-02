@@ -158,7 +158,11 @@ export default function DashboardFilters({
           {showTeamFilter && teams.length > 0 && (
             <div className="flex flex-col gap-1.5 min-w-[180px]">
               <Label className="text-xs text-muted-foreground">Time</Label>
-              <Select value={selectedTeam || "all"} onValueChange={(val) => onTeamChange?.(val === "all" ? null : val)}>
+              <Select value={selectedTeam || "all"} onValueChange={(val) => {
+                const teamValue = val === "all" ? null : val;
+                onTeamChange?.(teamValue);
+                onAgentChange?.(null);
+              }}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Todos os times" />
                 </SelectTrigger>
