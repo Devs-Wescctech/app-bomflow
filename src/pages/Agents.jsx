@@ -1987,7 +1987,7 @@ export default function Agents() {
                   <SelectValue placeholder="Selecione o supervisor do time" />
                 </SelectTrigger>
                 <SelectContent>
-                  {agents?.filter(a => a.agent_type === 'supervisor' || a.agent_type === 'sales_supervisor' || a.agent_type === 'admin').map(agent => (
+                  {agents?.filter(a => a.agentType === 'supervisor' || a.agentType === 'sales_supervisor' || a.agentType === 'admin').map(agent => (
                     <SelectItem key={agent.id} value={agent.email}>
                       <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-xs font-medium text-blue-600 dark:text-blue-400">
