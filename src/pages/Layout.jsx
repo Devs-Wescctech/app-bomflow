@@ -738,6 +738,12 @@ function LayoutContent({ children, currentPageName }) {
     }
   }, [isPublicPage, isLoadingUser, userError, user, navigate]);
 
+  useEffect(() => {
+    if (isRedirecting && (isPublicPage || user)) {
+      setIsRedirecting(false);
+    }
+  }, [isRedirecting, isPublicPage, user]);
+
   const toggleModule = (moduleId) => {
     setExpandedModules(prev =>
       prev.includes(moduleId)
@@ -813,15 +819,7 @@ function LayoutContent({ children, currentPageName }) {
   }
 
   if (userError || !user) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-gray-50 to-blue-50/30 dark:from-gray-950 dark:to-gray-900">
-        <div className="relative w-16 h-16">
-          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 animate-spin" 
-               style={{ clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" }} />
-          <div className="absolute inset-2 rounded-full bg-white dark:bg-gray-900" />
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (
