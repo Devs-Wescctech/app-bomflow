@@ -104,7 +104,7 @@ export default function SalesAgentsDashboard() {
           return false;
         }
         const agentTeamId = agent.teamId || agent.team_id;
-        if (selectedTeam && agentTeamId !== selectedTeam) {
+        if (selectedTeam && String(agentTeamId) !== String(selectedTeam)) {
           return false;
         }
         return agent.active;

@@ -95,11 +95,11 @@ export default function SalesReports() {
 
   const displayAgents = useMemo(() => {
     if (!selectedTeam) return salesAgents;
-    return salesAgents.filter(a => (a.teamId || a.team_id) === selectedTeam);
+    return salesAgents.filter(a => String(a.teamId || a.team_id) === String(selectedTeam));
   }, [salesAgents, selectedTeam]);
 
   const filteredLeads = useMemo(() => {
-    const teamAgentIds = selectedTeam ? displayAgents.map(a => a.id) : null;
+    const teamAgentIds = selectedTeam ? displayAgents.map(a => String(a.id)) : null;
 
     return leads.filter(lead => {
       const leadDate = new Date(lead.createdDate || lead.createdAt || lead.created_at);
@@ -120,8 +120,8 @@ export default function SalesReports() {
       if (selectedStage && lead.stage !== selectedStage) return false;
 
       if (teamAgentIds && !selectedAgent) {
-        const leadAgentId = lead.agentId || lead.agent_id;
-        const leadPromoterId = lead.promoterId || lead.promoter_id;
+        const leadAgentId = String(lead.agentId || lead.agent_id);
+        const leadPromoterId = String(lead.promoterId || lead.promoter_id);
         if (!teamAgentIds.includes(leadAgentId) && !teamAgentIds.includes(leadPromoterId)) return false;
       }
 

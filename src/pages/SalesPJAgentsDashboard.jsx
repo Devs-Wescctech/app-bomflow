@@ -97,7 +97,7 @@ export default function SalesPJAgentsDashboard() {
       .filter(agent => {
         if (!canSeeAllAgents && agent.id !== currentAgent?.id) return false;
         const agentTeamId = agent.teamId || agent.team_id;
-        if (selectedTeam && agentTeamId !== selectedTeam) return false;
+        if (selectedTeam && String(agentTeamId) !== String(selectedTeam)) return false;
         return agent.active;
       })
       .map(agent => {

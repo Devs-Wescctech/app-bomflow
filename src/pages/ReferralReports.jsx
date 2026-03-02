@@ -97,11 +97,11 @@ export default function ReferralReports() {
 
   const displayAgents = useMemo(() => {
     if (!selectedTeam) return activeAgents;
-    return activeAgents.filter(a => (a.teamId || a.team_id) === selectedTeam);
+    return activeAgents.filter(a => String(a.teamId || a.team_id) === String(selectedTeam));
   }, [activeAgents, selectedTeam]);
 
   const filteredReferrals = useMemo(() => {
-    const teamAgentIds = selectedTeam ? displayAgents.map(a => a.id) : null;
+    const teamAgentIds = selectedTeam ? displayAgents.map(a => String(a.id)) : null;
 
     return referrals.filter(referral => {
       const refDate = new Date(referral.createdAt || referral.created_at || referral.createdDate || referral.created_date);
@@ -127,7 +127,7 @@ export default function ReferralReports() {
       if (selectedStage && referral.stage !== selectedStage) return false;
 
       if (teamAgentIds && !selectedAgent) {
-        const agentId = referral.agentId || referral.agent_id;
+        const agentId = String(referral.agentId || referral.agent_id);
         if (!teamAgentIds.includes(agentId)) return false;
       }
       
