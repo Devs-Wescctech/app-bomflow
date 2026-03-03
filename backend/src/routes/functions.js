@@ -190,6 +190,44 @@ router.post('/check-notifications', authMiddleware, async (req, res) => {
   }
 });
 
+router.get('/lead-generator-base', authMiddleware, async (req, res) => {
+  try {
+    const erpAuthToken = process.env.ERP_AUTH_TOKEN;
+    if (!erpAuthToken) {
+      return res.status(500).json({ success: false, error: 'Credenciais do ERP não configuradas.' });
+    }
+
+    const params = new URLSearchParams();
+    const allowedParams = ['canal', 'cidade', 'uf', 'produto', 'situacao_contrato'];
+    for (const key of allowedParams) {
+      if (req.query[key]) {
+        params.set(key, req.query[key]);
+      }
+    }
+
+    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_BASE_LEADS${params.toString() ? '?' + params.toString() : ''}`;
+    const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
+
+    const erpResponse = await fetch(erpUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': authHeader,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!erpResponse.ok) {
+      throw new Error(`ERP returned status ${erpResponse.status}`);
+    }
+
+    const data = await erpResponse.json();
+    res.json(Array.isArray(data) ? data : []);
+  } catch (error) {
+    console.error('Error fetching lead generator base:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.post('/get-customer-from-erp', authMiddleware, async (req, res) => {
   try {
     const { cpf } = req.body;

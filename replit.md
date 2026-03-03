@@ -28,7 +28,7 @@ Wescctech CRM is a comprehensive Customer Relationship Management system designe
 ### Core Features
 - **Helpdesk**: Ticket management (SLA, Kanban, configurable types, templates, macros, CSAT).
 - **Sales (B2C & B2B)**: Lead pipeline (Kanban), geolocation map, activity scheduling, proposals, e-signatures, targets.
-- **Referrals**: Management, commission tracking, conversion pipeline.
+- **Referrals**: Management, commission tracking, conversion pipeline, Lead Generator (API_BASE_LEADS integration with dynamic filters and 1000-record limit).
 - **Knowledge Base**: Categorized articles, versioning.
 - **Quality Assurance**: Monitoring, evaluation checklists, call auditing.
 - **Collections**: Collection tickets, delinquency dashboard, contact scheduling.
