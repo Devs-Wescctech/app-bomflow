@@ -1,12 +1,23 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
 import {
   Search, Filter, Loader2, Users, ChevronDown, ChevronUp,
-  AlertTriangle, Phone, MapPin, Package, FileText
+  AlertTriangle, Phone, MapPin, Package, FileText,
+  MessageSquare, CheckCircle2, XCircle, Send, X
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -41,6 +52,14 @@ export default function LeadGenerator() {
     produto: "todos",
     situacao_contrato: "todos",
   });
+
+  const [selectedLeads, setSelectedLeads] = useState(new Set());
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showResultDialog, setShowResultDialog] = useState(false);
+  const [sendProgress, setSendProgress] = useState({ current: 0, total: 0 });
+  const [sendResults, setSendResults] = useState(null);
+  const [leadStatuses, setLeadStatuses] = useState({});
 
   useEffect(() => {
     loadFilterOptions();
@@ -78,6 +97,9 @@ export default function LeadGenerator() {
     e?.preventDefault();
     setLoading(true);
     setHasSearched(true);
+    setSelectedLeads(new Set());
+    setLeadStatuses({});
+    setSendResults(null);
     try {
       const params = new URLSearchParams();
       if (filters.canal !== 'todos') params.set('canal', filters.canal);
@@ -114,9 +136,103 @@ export default function LeadGenerator() {
     setLeads([]);
     setTotalFound(0);
     setHasSearched(false);
+    setSelectedLeads(new Set());
+    setLeadStatuses({});
+    setSendResults(null);
   }
 
   const hasActiveFilters = Object.values(filters).some(v => v !== "todos");
+
+  const toggleSelectAll = useCallback(() => {
+    if (selectedLeads.size === leads.length) {
+      setSelectedLeads(new Set());
+    } else {
+      setSelectedLeads(new Set(leads.map((_, i) => i)));
+    }
+  }, [leads, selectedLeads.size]);
+
+  const toggleSelectLead = useCallback((index) => {
+    setSelectedLeads(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  }, []);
+
+  const selectedLeadsList = useMemo(() => {
+    return Array.from(selectedLeads).map(i => leads[i]).filter(Boolean);
+  }, [selectedLeads, leads]);
+
+  const leadsWithNumber = useMemo(() => {
+    return selectedLeadsList.filter(l => l.number);
+  }, [selectedLeadsList]);
+
+  function handleWhatsAppClick() {
+    if (leadsWithNumber.length === 0) {
+      toast.error('Nenhum lead selecionado com número de telefone válido.');
+      return;
+    }
+    setShowConfirmDialog(true);
+  }
+
+  async function handleConfirmSend() {
+    setShowConfirmDialog(false);
+    setSendingWhatsApp(true);
+    setSendProgress({ current: 0, total: leadsWithNumber.length });
+
+    try {
+      const res = await fetch(`${API_BASE}/functions/lead-generator-whatsapp-send`, {
+        method: 'POST',
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          leads: leadsWithNumber.map(l => ({ number: l.number, name: l.name })),
+          filtersUsed: filters,
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Erro HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+
+      if (data.results) {
+        const statusMap = {};
+        data.results.forEach(r => {
+          statusMap[String(r.number)] = {
+            success: r.success,
+            error: r.error,
+            messageSentId: r.messageSentId,
+          };
+        });
+        setLeadStatuses(prev => ({ ...prev, ...statusMap }));
+      }
+
+      setSendResults(data.summary);
+      setSendProgress({ current: data.summary?.total || 0, total: data.summary?.total || 0 });
+      setShowResultDialog(true);
+
+      if (data.summary?.sent > 0) {
+        toast.success(`${data.summary.sent} mensagen${data.summary.sent !== 1 ? 's' : ''} enviada${data.summary.sent !== 1 ? 's' : ''} com sucesso!`);
+      }
+      if (data.summary?.failed > 0) {
+        toast.error(`${data.summary.failed} mensagen${data.summary.failed !== 1 ? 's' : ''} falharam.`);
+      }
+    } catch (err) {
+      console.error('Erro ao enviar WhatsApp:', err);
+      toast.error('Erro ao disparar mensagens: ' + err.message);
+    } finally {
+      setSendingWhatsApp(false);
+    }
+  }
 
   const situacaoLabel = (s) => {
     if (!s) return '-';
@@ -136,6 +252,11 @@ export default function LeadGenerator() {
       case 'S': return 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/50 dark:text-amber-300';
       default: return 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/50 dark:text-blue-300';
     }
+  };
+
+  const getLeadStatus = (lead) => {
+    if (!lead.number) return null;
+    return leadStatuses[String(lead.number)] || null;
   };
 
   return (
@@ -292,7 +413,7 @@ export default function LeadGenerator() {
                 <FileText className="w-4 h-4 text-amber-500" />
                 Resultado da Consulta
               </CardTitle>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 {totalFound > MAX_LEADS && (
                   <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
                     <AlertTriangle className="w-4 h-4" />
@@ -307,6 +428,11 @@ export default function LeadGenerator() {
                     : `${leads.length.toLocaleString('pt-BR')} de ${totalFound.toLocaleString('pt-BR')}`
                   }
                 </Badge>
+                {selectedLeads.size > 0 && (
+                  <Badge className="text-xs bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300">
+                    {selectedLeads.size} selecionado{selectedLeads.size !== 1 ? 's' : ''}
+                  </Badge>
+                )}
               </div>
             </div>
           </CardHeader>
@@ -322,10 +448,77 @@ export default function LeadGenerator() {
               </div>
             )}
 
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={toggleSelectAll}
+                className="gap-2 text-xs"
+              >
+                {selectedLeads.size === leads.length ? (
+                  <><X className="w-3.5 h-3.5" /> Desmarcar Todos</>
+                ) : (
+                  <><CheckCircle2 className="w-3.5 h-3.5" /> Selecionar Todos</>
+                )}
+              </Button>
+
+              <Button
+                size="sm"
+                disabled={selectedLeads.size === 0 || sendingWhatsApp}
+                onClick={handleWhatsAppClick}
+                className="gap-2 text-xs bg-green-600 hover:bg-green-700 text-white"
+              >
+                {sendingWhatsApp ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <MessageSquare className="w-3.5 h-3.5" />
+                )}
+                Disparar WhatsApp
+                {selectedLeads.size > 0 && (
+                  <Badge variant="secondary" className="ml-1 text-xs bg-green-100 text-green-800">
+                    {leadsWithNumber.length}
+                  </Badge>
+                )}
+              </Button>
+
+              {sendResults && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowResultDialog(true)}
+                  className="gap-2 text-xs text-blue-600 hover:text-blue-700"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  Ver Resumo do Último Disparo
+                </Button>
+              )}
+            </div>
+
+            {sendingWhatsApp && (
+              <div className="mb-4 p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                <div className="flex items-center gap-3 mb-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-green-600" />
+                  <span className="text-sm font-medium text-green-800 dark:text-green-300">
+                    Enviando mensagens via WhatsApp...
+                  </span>
+                </div>
+                <Progress value={sendProgress.total > 0 ? (sendProgress.current / sendProgress.total) * 100 : 0} className="h-2" />
+                <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                  Processando {sendProgress.total} lead{sendProgress.total !== 1 ? 's' : ''}. Aguarde...
+                </p>
+              </div>
+            )}
+
             <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
+                    <th className="py-3 px-3 w-10">
+                      <Checkbox
+                        checked={leads.length > 0 && selectedLeads.size === leads.length}
+                        onCheckedChange={toggleSelectAll}
+                      />
+                    </th>
                     <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-gray-300">#</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-gray-300">Nome</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-gray-300">Telefone</th>
@@ -334,46 +527,176 @@ export default function LeadGenerator() {
                     <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-gray-300">Produto</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-gray-300">Canal</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-gray-300">Situação</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-gray-300">WhatsApp</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {leads.map((lead, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
-                      <td className="py-2.5 px-4 text-gray-400 text-xs">{idx + 1}</td>
-                      <td className="py-2.5 px-4 font-medium text-gray-900 dark:text-gray-100">{lead.name || '-'}</td>
-                      <td className="py-2.5 px-4 text-gray-600 dark:text-gray-400">
-                        <div className="flex items-center gap-1.5">
-                          <Phone className="w-3 h-3" />
-                          {lead.number || '-'}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-4 text-gray-600 dark:text-gray-400">{lead.uf || '-'}</td>
-                      <td className="py-2.5 px-4 text-gray-600 dark:text-gray-400">
-                        <div className="flex items-center gap-1.5">
-                          <MapPin className="w-3 h-3" />
-                          {lead.cidade || '-'}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-4 text-gray-600 dark:text-gray-400">
-                        <div className="flex items-center gap-1.5">
-                          <Package className="w-3 h-3" />
-                          {lead.produto || '-'}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-4 text-gray-600 dark:text-gray-400 text-xs">{lead.canal || '-'}</td>
-                      <td className="py-2.5 px-4">
-                        <Badge variant="outline" className={situacaoColor(lead.situacao_contrato)}>
-                          {situacaoLabel(lead.situacao_contrato)}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
+                  {leads.map((lead, idx) => {
+                    const status = getLeadStatus(lead);
+                    return (
+                      <tr
+                        key={idx}
+                        className={`hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors ${
+                          selectedLeads.has(idx) ? 'bg-green-50/50 dark:bg-green-900/10' : ''
+                        }`}
+                      >
+                        <td className="py-2.5 px-3">
+                          <Checkbox
+                            checked={selectedLeads.has(idx)}
+                            onCheckedChange={() => toggleSelectLead(idx)}
+                          />
+                        </td>
+                        <td className="py-2.5 px-4 text-gray-400 text-xs">{idx + 1}</td>
+                        <td className="py-2.5 px-4 font-medium text-gray-900 dark:text-gray-100">{lead.name || '-'}</td>
+                        <td className="py-2.5 px-4 text-gray-600 dark:text-gray-400">
+                          <div className="flex items-center gap-1.5">
+                            <Phone className="w-3 h-3" />
+                            {lead.number || '-'}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4 text-gray-600 dark:text-gray-400">{lead.uf || '-'}</td>
+                        <td className="py-2.5 px-4 text-gray-600 dark:text-gray-400">
+                          <div className="flex items-center gap-1.5">
+                            <MapPin className="w-3 h-3" />
+                            {lead.cidade || '-'}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4 text-gray-600 dark:text-gray-400">
+                          <div className="flex items-center gap-1.5">
+                            <Package className="w-3 h-3" />
+                            {lead.produto || '-'}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4 text-gray-600 dark:text-gray-400 text-xs">{lead.canal || '-'}</td>
+                        <td className="py-2.5 px-4">
+                          <Badge variant="outline" className={situacaoColor(lead.situacao_contrato)}>
+                            {situacaoLabel(lead.situacao_contrato)}
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-4">
+                          {status === null ? (
+                            <span className="text-gray-300 dark:text-gray-600">—</span>
+                          ) : status.success ? (
+                            <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400" title={status.messageSentId ? `ID: ${status.messageSentId}` : 'Enviado'}>
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span className="text-xs">Enviado</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-red-500 dark:text-red-400" title={status.error || 'Falha'}>
+                              <XCircle className="w-4 h-4" />
+                              <span className="text-xs">Falha</span>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-green-600" />
+              Confirmar Disparo WhatsApp
+            </DialogTitle>
+            <DialogDescription>
+              Você está prestes a enviar mensagens via WhatsApp para os leads selecionados.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-4">
+            <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Leads selecionados:</span>
+                <span className="font-semibold">{selectedLeads.size}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Com número válido:</span>
+                <span className="font-semibold text-green-600">{leadsWithNumber.length}</span>
+              </div>
+              {selectedLeads.size - leadsWithNumber.length > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Sem número (ignorados):</span>
+                  <span className="font-semibold text-amber-600">{selectedLeads.size - leadsWithNumber.length}</span>
+                </div>
+              )}
+            </div>
+            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+              <p className="text-xs text-amber-800 dark:text-amber-300">
+                Esta ação não pode ser desfeita. Serão enviadas <strong>{leadsWithNumber.length}</strong> mensagen{leadsWithNumber.length !== 1 ? 's' : ''} via WhatsApp.
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleConfirmSend}
+              className="bg-green-600 hover:bg-green-700 text-white gap-2"
+            >
+              <Send className="w-4 h-4" />
+              Confirmar Envio
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showResultDialog} onOpenChange={setShowResultDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-blue-600" />
+              Resumo do Disparo
+            </DialogTitle>
+          </DialogHeader>
+          {sendResults && (
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800 text-center">
+                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{sendResults.total}</p>
+                  <p className="text-xs text-gray-500">Total</p>
+                </div>
+                <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 text-center">
+                  <p className="text-2xl font-bold text-green-600">{sendResults.sent}</p>
+                  <p className="text-xs text-green-600">Sucesso</p>
+                </div>
+                <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-center">
+                  <p className="text-2xl font-bold text-red-500">{sendResults.failed}</p>
+                  <p className="text-xs text-red-500">Falha</p>
+                </div>
+              </div>
+
+              {sendResults.sent > 0 && sendResults.failed === 0 && (
+                <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-green-600" />
+                  <p className="text-sm text-green-800 dark:text-green-300">
+                    Todas as mensagens foram enviadas com sucesso!
+                  </p>
+                </div>
+              )}
+
+              {sendResults.failed > 0 && (
+                <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-start gap-2">
+                  <XCircle className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
+                  <p className="text-sm text-red-800 dark:text-red-300">
+                    {sendResults.failed} mensagen{sendResults.failed !== 1 ? 's' : ''} falharam. Verifique o status individual na tabela.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setShowResultDialog(false)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

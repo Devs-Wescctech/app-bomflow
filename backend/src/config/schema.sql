@@ -802,3 +802,21 @@ CREATE TABLE IF NOT EXISTS bom_auto_historico_alteracoes (
   data_hora TIMESTAMP DEFAULT NOW(),
   observacao TEXT
 );
+
+-- =====================
+-- LEAD GENERATOR WHATSAPP LOGS
+-- =====================
+CREATE TABLE IF NOT EXISTS gerador_leads_whatsapp_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  lead_number VARCHAR(50) NOT NULL,
+  lead_name VARCHAR(255),
+  user_id UUID,
+  user_email VARCHAR(255),
+  sent_at TIMESTAMP DEFAULT NOW(),
+  http_status INTEGER,
+  api_response JSONB,
+  success BOOLEAN DEFAULT FALSE,
+  message_sent_id VARCHAR(255),
+  filters_used JSONB,
+  created_at TIMESTAMP DEFAULT NOW()
+);
