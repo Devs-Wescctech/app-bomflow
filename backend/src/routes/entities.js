@@ -339,7 +339,7 @@ function normalizeSort(sort) {
 
 router.get('/leads', authMiddleware, async (req, res) => {
   try {
-    const { sort = '-created_at', limit = 100 } = req.query;
+    const { sort = '-created_at', limit = 10000 } = req.query;
     const { field: sortField, dir: sortDir } = normalizeSort(sort);
     const result = await query(`SELECT * FROM leads ORDER BY ${sortField} ${sortDir} LIMIT $1`, [parseInt(limit)]);
     res.json(result.rows.map(convertKeysToCamel));
@@ -516,7 +516,7 @@ router.put('/leads/:id', authMiddleware, async (req, res) => {
 
 router.get('/leads-pj', authMiddleware, async (req, res) => {
   try {
-    const { sort = '-created_at', limit = 100 } = req.query;
+    const { sort = '-created_at', limit = 10000 } = req.query;
     const { field: sortField, dir: sortDir } = normalizeSort(sort);
     const result = await query(`SELECT * FROM leads_pj ORDER BY ${sortField} ${sortDir} LIMIT $1`, [parseInt(limit)]);
     res.json(result.rows.map(convertKeysToCamel));
@@ -679,7 +679,7 @@ router.put('/leads-pj/:id', authMiddleware, async (req, res) => {
 
 router.get('/referrals', authMiddleware, async (req, res) => {
   try {
-    const { sort = '-created_at', limit = 100 } = req.query;
+    const { sort = '-created_at', limit = 10000 } = req.query;
     const { field: sortField, dir: sortDir } = normalizeSort(sort);
     const result = await query(`SELECT * FROM referrals ORDER BY ${sortField} ${sortDir} LIMIT $1`, [parseInt(limit)]);
     res.json(result.rows.map(convertKeysToCamel));

@@ -102,7 +102,7 @@ export function createCrudRouter(tableName, options = {}) {
   return {
     async list(req, res) {
       try {
-        const { sort = defaultSort, limit = 100, offset = 0, search, ...filters } = req.query;
+        const { sort = defaultSort, limit = 10000, offset = 0, search, ...filters } = req.query;
         
         let sql = `SELECT * FROM ${tableName}`;
         const params = [];
