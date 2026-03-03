@@ -179,7 +179,7 @@ export default function ReferralCreate() {
       setReferrerData(indicadorData);
       
       toast.success(`Cliente encontrado: ${indicadorData.nome}`, {
-        description: `Nível ${level} - Comissão: R$ ${commissionValueForToast},00 (${totalConversions} indicação${totalConversions !== 1 ? 'ões' : ''} convertida${totalConversions !== 1 ? 's' : ''})`,
+        description: `Nível ${level} - Comissão: R$ ${commissionValueForToast},00 (${totalConversions} ${totalConversions !== 1 ? 'indicações convertidas' : 'indicação convertida'})`,
         duration: 5000,
       });
 
@@ -406,7 +406,7 @@ export default function ReferralCreate() {
                             {getLevelDescription(referrerLevel).badge}
                           </Badge>
                           <span className="text-sm text-gray-600">
-                            {referrerConversions} indicação{referrerConversions !== 1 ? 'ões' : ''} convertida{referrerConversions !== 1 ? 's' : ''}
+                            {referrerConversions} {referrerConversions !== 1 ? 'indicações convertidas' : 'indicação convertida'}
                           </span>
                         </div>
                         <p className="text-xs text-gray-500 mt-1">
