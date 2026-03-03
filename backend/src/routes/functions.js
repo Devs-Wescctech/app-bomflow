@@ -269,7 +269,7 @@ router.get('/lead-generator-base', authMiddleware, async (req, res) => {
 });
 
 const WHATSAPP_API_URL = 'https://api.wescctech.com.br/core/v2/api/chats/send-template';
-const WHATSAPP_ACCESS_TOKEN = process.env.RUDO_WHATSAPP_TOKEN || '66033309381c7ebb4a23a196';
+const WHATSAPP_ACCESS_TOKEN = '66033309381c7ebb4a23a196';
 const WHATSAPP_TEMPLATE_ID = '6878e30fed3085944b9841b1';
 
 router.post('/lead-generator-whatsapp-send', authMiddleware, async (req, res) => {
@@ -346,7 +346,8 @@ router.post('/lead-generator-whatsapp-send', authMiddleware, async (req, res) =>
           apiResponse = { raw: rawText };
         }
         success = httpStatus >= 200 && httpStatus < 300;
-        messageSentId = apiResponse?.message_sent_id || apiResponse?.messageSentId || apiResponse?.id || null;
+        messageSentId = apiResponse?.messageSentId || apiResponse?.message_sent_id || apiResponse?.id || null;
+        console.log(`[LeadGenerator WhatsApp] Sent to ${number}: HTTP ${httpStatus}, success=${success}, msgId=${messageSentId}`);
       } catch (fetchErr) {
         httpStatus = 0;
         apiResponse = { error: fetchErr.message };
