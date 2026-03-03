@@ -17,7 +17,7 @@ import { Progress } from "@/components/ui/progress";
 import {
   Search, Filter, Loader2, Users, ChevronDown, ChevronUp,
   AlertTriangle, Phone, MapPin, Package, FileText,
-  MessageSquare, CheckCircle2, XCircle, Send, X
+  MessageSquare, CheckCircle2, XCircle, Send, X, RefreshCw
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -65,10 +65,13 @@ export default function LeadGenerator() {
     loadFilterOptions();
   }, []);
 
-  async function loadFilterOptions() {
+  async function loadFilterOptions(forceRefresh = false) {
     setLoadingOptions(true);
     try {
-      const res = await fetch(`${API_BASE}/functions/lead-generator-options`, {
+      const url = forceRefresh
+        ? `${API_BASE}/functions/lead-generator-options?refresh=true`
+        : `${API_BASE}/functions/lead-generator-options`;
+      const res = await fetch(url, {
         headers: { ...getAuthHeaders() },
       });
       if (!res.ok) throw new Error(`Erro ao carregar opções (${res.status})`);
@@ -78,13 +81,23 @@ export default function LeadGenerator() {
         throw new Error(data.error || 'Erro desconhecido');
       }
 
-      setFilterOptions({
+      const opts = {
         canal: Array.isArray(data.canal) ? data.canal : [],
         cidade: Array.isArray(data.cidade) ? data.cidade : [],
         uf: Array.isArray(data.uf) ? data.uf : [],
         produto: Array.isArray(data.produto) ? data.produto : [],
         situacao_contrato: Array.isArray(data.situacao_contrato) ? data.situacao_contrato : [],
-      });
+      };
+
+      setFilterOptions(opts);
+
+      const totalOpts = opts.canal.length + opts.cidade.length + opts.uf.length + opts.produto.length + opts.situacao_contrato.length;
+      if (totalOpts < 5 && !forceRefresh) {
+        toast.info('Poucas opções carregadas. Clique em "Recarregar Filtros" para atualizar.');
+      }
+      if (forceRefresh) {
+        toast.success(`Filtros recarregados: ${opts.canal.length} canais, ${opts.cidade.length} cidades, ${opts.uf.length} UFs, ${opts.produto.length} produtos`);
+      }
     } catch (e) {
       console.error('Erro ao carregar opções de filtro:', e);
       toast.error('Erro ao carregar opções de filtro. Tente recarregar a página.');
@@ -374,6 +387,16 @@ export default function LeadGenerator() {
                 <Button type="submit" disabled={loading} className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white gap-2">
                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
                   Buscar Leads
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={loadingOptions}
+                  onClick={() => loadFilterOptions(true)}
+                  className="gap-2"
+                >
+                  {loadingOptions ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  Recarregar Filtros
                 </Button>
                 {hasActiveFilters && (
                   <Button type="button" variant="outline" onClick={handleClearFilters} className="gap-2">
