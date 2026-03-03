@@ -59,6 +59,7 @@ Wescctech CRM is a comprehensive Customer Relationship Management system designe
 - **Metrics Documentation**: `MetricsHelpDialog` component (`src/components/dashboard/MetricsHelpDialog.jsx`) explains metric calculations with role-based visibility.
 - **Centralized Constants**: Stage definitions for different lead types are centralized in `src/constants/stages.js`.
 - **Token Auto-Refresh**: Global fetch interceptor (`src/api/tokenInterceptor.js`) transparently refreshes expired accessTokens using the refreshToken (7-day validity). Only retries safe (GET/HEAD/OPTIONS) requests automatically; non-idempotent requests return 401 for app-level handling. On refresh failure, clears tokens and redirects to login. Installed in `src/main.jsx` before app render.
+- **API List Limits**: Default list limit for leads, leads_pj, referrals, and generic CRUD endpoints is 10000 (not 100) to ensure dashboards, search pages, and reports all show consistent data. Activity/visit sub-routes keep limit=100 as they are per-lead queries.
 
 ## External Dependencies
 
