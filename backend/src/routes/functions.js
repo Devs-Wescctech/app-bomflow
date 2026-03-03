@@ -214,7 +214,7 @@ router.post('/get-customer-from-erp', authMiddleware, async (req, res) => {
       });
     }
     
-    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CRM?cpf=${cpfLimpo}`;
+    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CPF_INDICADOR?cpf=${cpfLimpo}`;
     
     console.log(`Fetching ERP data for CPF: ${cpfLimpo}`);
     
