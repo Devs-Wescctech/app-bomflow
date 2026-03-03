@@ -268,6 +268,156 @@ router.get('/lead-generator-base', authMiddleware, async (req, res) => {
   }
 });
 
+const WHATSAPP_API_URL = 'https://api.wescctech.com.br/core/v2/api/chats/send-template';
+const WHATSAPP_ACCESS_TOKEN = process.env.RUDO_WHATSAPP_TOKEN || '66033309381c7ebb4a23a196';
+const WHATSAPP_TEMPLATE_ID = '6878e30fed3085944b9841b1';
+
+router.post('/lead-generator-whatsapp-send', authMiddleware, async (req, res) => {
+  try {
+    const { leads, filtersUsed } = req.body;
+    const userId = req.user?.id || null;
+    const userEmail = req.user?.email || null;
+
+    if (!Array.isArray(leads) || leads.length === 0) {
+      return res.status(400).json({ success: false, error: 'Nenhum lead selecionado para envio.' });
+    }
+
+    if (leads.length > 1000) {
+      return res.status(400).json({ success: false, error: 'Limite máximo de 1000 leads por disparo.' });
+    }
+
+    console.log(`[LeadGenerator WhatsApp] Starting batch send: ${leads.length} leads by ${userEmail}`);
+
+    const results = [];
+
+    for (const lead of leads) {
+      const { number, name } = lead;
+      if (!number) {
+        results.push({
+          number: number || '',
+          name: name || '',
+          success: false,
+          httpStatus: 0,
+          error: 'Número não informado',
+          messageSentId: null,
+        });
+        continue;
+      }
+
+      const payload = {
+        number: String(number),
+        templateId: WHATSAPP_TEMPLATE_ID,
+        forceSend: true,
+        verifyContact: false,
+        templatecomponents: [
+          {
+            type: "body",
+            parameters: [
+              {
+                type: "text",
+                text: name || ''
+              }
+            ]
+          }
+        ]
+      };
+
+      let httpStatus = 0;
+      let apiResponse = null;
+      let success = false;
+      let messageSentId = null;
+
+      try {
+        const waRes = await fetch(WHATSAPP_API_URL, {
+          method: 'POST',
+          headers: {
+            'access-token': WHATSAPP_ACCESS_TOKEN,
+            'Content-Type': 'application/json',
+            'accept': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        httpStatus = waRes.status;
+        try {
+          apiResponse = await waRes.json();
+        } catch {
+          const rawText = await waRes.text();
+          apiResponse = { raw: rawText };
+        }
+        success = httpStatus >= 200 && httpStatus < 300;
+        messageSentId = apiResponse?.message_sent_id || apiResponse?.messageSentId || apiResponse?.id || null;
+      } catch (fetchErr) {
+        httpStatus = 0;
+        apiResponse = { error: fetchErr.message };
+        success = false;
+      }
+
+      try {
+        await query(
+          `INSERT INTO gerador_leads_whatsapp_logs
+            (lead_number, lead_name, user_id, user_email, sent_at, http_status, api_response, success, message_sent_id, filters_used)
+          VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9)`,
+          [
+            String(number),
+            name || null,
+            userId,
+            userEmail,
+            httpStatus,
+            JSON.stringify(apiResponse),
+            success,
+            messageSentId ? String(messageSentId) : null,
+            filtersUsed ? JSON.stringify(filtersUsed) : null
+          ]
+        );
+      } catch (dbErr) {
+        console.error('[LeadGenerator WhatsApp] DB log error:', dbErr.message);
+      }
+
+      results.push({
+        number: String(number),
+        name: name || '',
+        success,
+        httpStatus,
+        messageSentId,
+        error: success ? null : (apiResponse?.message || apiResponse?.error || `HTTP ${httpStatus}`),
+      });
+    }
+
+    const totalSent = results.filter(r => r.success).length;
+    const totalFailed = results.filter(r => !r.success).length;
+
+    console.log(`[LeadGenerator WhatsApp] Batch complete: ${totalSent} sent, ${totalFailed} failed`);
+
+    res.json({
+      success: true,
+      summary: {
+        total: results.length,
+        sent: totalSent,
+        failed: totalFailed,
+      },
+      results,
+    });
+  } catch (error) {
+    console.error('[LeadGenerator WhatsApp] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/lead-generator-whatsapp-logs', authMiddleware, async (req, res) => {
+  try {
+    const { limit = 100, offset = 0 } = req.query;
+    const result = await query(
+      `SELECT * FROM gerador_leads_whatsapp_logs ORDER BY sent_at DESC LIMIT $1 OFFSET $2`,
+      [parseInt(limit), parseInt(offset)]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('[LeadGenerator WhatsApp] Logs error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.post('/get-customer-from-erp', authMiddleware, async (req, res) => {
   try {
     const { cpf } = req.body;
