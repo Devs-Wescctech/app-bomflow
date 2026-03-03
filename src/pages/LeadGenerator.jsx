@@ -49,25 +49,26 @@ export default function LeadGenerator() {
   async function loadFilterOptions() {
     setLoadingOptions(true);
     try {
-      const res = await fetch(`${API_BASE}/functions/lead-generator-base`, {
+      const res = await fetch(`${API_BASE}/functions/lead-generator-options`, {
         headers: { ...getAuthHeaders() },
       });
-      if (!res.ok) throw new Error('Erro ao carregar opções');
+      if (!res.ok) throw new Error(`Erro ao carregar opções (${res.status})`);
       const data = await res.json();
-      const allData = Array.isArray(data) ? data : [];
 
-      const unique = (field) => [...new Set(allData.map(d => d[field]).filter(Boolean))].sort();
+      if (data.success === false) {
+        throw new Error(data.error || 'Erro desconhecido');
+      }
 
       setFilterOptions({
-        canal: unique('canal'),
-        cidade: unique('cidade'),
-        uf: unique('uf'),
-        produto: unique('produto'),
-        situacao_contrato: unique('situacao_contrato'),
+        canal: Array.isArray(data.canal) ? data.canal : [],
+        cidade: Array.isArray(data.cidade) ? data.cidade : [],
+        uf: Array.isArray(data.uf) ? data.uf : [],
+        produto: Array.isArray(data.produto) ? data.produto : [],
+        situacao_contrato: Array.isArray(data.situacao_contrato) ? data.situacao_contrato : [],
       });
     } catch (e) {
       console.error('Erro ao carregar opções de filtro:', e);
-      toast.error('Erro ao carregar opções de filtro');
+      toast.error('Erro ao carregar opções de filtro. Tente recarregar a página.');
     } finally {
       setLoadingOptions(false);
     }
