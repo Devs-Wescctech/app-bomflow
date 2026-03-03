@@ -75,6 +75,7 @@ import {
   Menu,
   X,
   Sparkles,
+  Users,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -206,6 +207,7 @@ const menuModules = [
       { title: "Dashboard", url: createPageUrl("ReferralDashboard"), icon: LayoutDashboard, supervisorOnly: true },
       { title: "Dashboard Vendedores", url: createPageUrl("ReferralAgentsDashboard"), icon: UserCheck, supervisorOnly: true },
       { title: "Nova Indicação", url: createPageUrl("ReferralCreate"), icon: Plus, highlight: true },
+      { title: "Gerador de Leads", url: createPageUrl("LeadGenerator"), icon: Users },
       { title: "Pipeline", url: createPageUrl("ReferralPipeline"), icon: TrendingUp },
       { title: "Agenda", url: createPageUrl("ReferralAgenda"), icon: CalendarIcon },
       { title: "Tarefas", url: createPageUrl("ReferralTasks"), icon: CheckSquare },
