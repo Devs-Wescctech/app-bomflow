@@ -228,16 +228,62 @@ async function fetchLeadGeneratorFromERP(queryParams = {}) {
   return Array.isArray(data) ? data : [];
 }
 
+const MIN_RECORDS_FOR_VALID_OPTIONS = 50;
+
 router.get('/lead-generator-options', authMiddleware, async (req, res) => {
   try {
+    const forceRefresh = req.query.refresh === 'true';
     const now = Date.now();
-    if (leadGeneratorOptionsCache.data && (now - leadGeneratorOptionsCache.timestamp) < CACHE_TTL) {
+
+    if (!forceRefresh && leadGeneratorOptionsCache.data && (now - leadGeneratorOptionsCache.timestamp) < CACHE_TTL) {
       console.log('[LeadGenerator] Returning cached filter options');
       return res.json(leadGeneratorOptionsCache.data);
     }
 
     const allData = await fetchLeadGeneratorFromERP();
     console.log(`[LeadGenerator] Loaded ${allData.length} records for filter options`);
+
+    if (allData.length < MIN_RECORDS_FOR_VALID_OPTIONS) {
+      console.warn(`[LeadGenerator] ERP returned only ${allData.length} records — too few, likely incomplete response. Skipping cache update.`);
+
+      if (leadGeneratorOptionsCache.data) {
+        console.log('[LeadGenerator] Returning stale cache instead of incomplete data');
+        return res.json(leadGeneratorOptionsCache.data);
+      }
+
+      let retryData = [];
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        console.log(`[LeadGenerator] Retry attempt ${attempt}...`);
+        await new Promise(r => setTimeout(r, 2000));
+        retryData = await fetchLeadGeneratorFromERP();
+        console.log(`[LeadGenerator] Retry ${attempt} returned ${retryData.length} records`);
+        if (retryData.length >= MIN_RECORDS_FOR_VALID_OPTIONS) break;
+      }
+
+      if (retryData.length >= MIN_RECORDS_FOR_VALID_OPTIONS) {
+        const unique = (field) => [...new Set(retryData.map(d => d[field]).filter(Boolean))].sort();
+        const options = {
+          canal: unique('canal'),
+          cidade: unique('cidade'),
+          uf: unique('uf'),
+          produto: unique('produto'),
+          situacao_contrato: unique('situacao_contrato'),
+        };
+        leadGeneratorOptionsCache = { data: options, timestamp: now };
+        return res.json(options);
+      }
+
+      const unique = (field) => [...new Set(allData.map(d => d[field]).filter(Boolean))].sort();
+      return res.json({
+        canal: unique('canal'),
+        cidade: unique('cidade'),
+        uf: unique('uf'),
+        produto: unique('produto'),
+        situacao_contrato: unique('situacao_contrato'),
+        _partial: true,
+        _recordCount: allData.length,
+      });
+    }
 
     const unique = (field) => [...new Set(allData.map(d => d[field]).filter(Boolean))].sort();
 
