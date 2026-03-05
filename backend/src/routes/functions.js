@@ -539,34 +539,50 @@ router.post('/get-customer-from-erp', authMiddleware, async (req, res) => {
     const rawData = Array.isArray(erpData) ? erpData : [erpData];
     const firstRecord = rawData[0];
 
+    console.log(`[ERP CPF] Received ${rawData.length} records for CPF ${cpfLimpo}`);
+
     const situacaoMap = { 'A': 'Ativo', 'C': 'Cancelado', 'S': 'Suspenso' };
 
-    const contracts = rawData.map(record => ({
-      numero_contrato: String(record.contrato_servicos || record.numero_contrato || record.nrocontrato || ''),
-      plano: record.produto || record.plano || record.nome_plano || '',
-      valor_mensal: parseFloat(record.valor_contrato || record.valor_mensal || record.valor || 0),
-      inicio_vigencia: record.data_contrato || record.inicio_vigencia || record.data_inicio || '',
-      situacao: situacaoMap[record.situacao_contrato] || record.situacao_contrato || record.situacao || record.status || 'Ativo',
-      status_pagamento: record.status_pagamento || record.situacao_financeira || (record.parcelas_abertas > 0 ? 'INADIMPLENTE' : 'EM DIA'),
-      id_dependente_vinculado: record.id_dependente_vinculado || null,
-      nome_cliente_indicado: record.nome_cliente_indicado || null,
-      cpf_indicado: record.cpf_indicado || null,
-      canal: record.canal || '',
-      vendedor: record.vendedor || record.vendedor_receptivo || '',
-      data_vencimento: record.data_vencimento || '',
-      vidas: record.vidas || 0,
-    }));
-    
-    const contratosAtivos = contracts.filter(c => 
-      c.situacao?.toLowerCase().includes('ativ')
-    ).length;
-    
-    const valorTotalMensal = contracts.reduce((sum, c) => sum + (c.valor_mensal || 0), 0);
+    const contractMap = new Map();
+    let contratosAtivos = 0;
+    let valorTotalMensal = 0;
+    const indicadosSet = new Set();
+
+    for (const record of rawData) {
+      const contratoKey = String(record.contrato_servicos || record.id || '');
+      if (contratoKey && !contractMap.has(contratoKey)) {
+        const sit = situacaoMap[record.situacao_contrato] || record.situacao_contrato || 'Ativo';
+        const valor = parseFloat(record.valor_contrato || 0);
+        contractMap.set(contratoKey, {
+          numero_contrato: contratoKey,
+          plano: record.produto || '',
+          valor_mensal: valor,
+          inicio_vigencia: record.data_contrato || '',
+          situacao: sit,
+          status_pagamento: record.parcelas_abertas > 0 ? 'INADIMPLENTE' : 'EM DIA',
+          nome_cliente_indicado: record.nome_cliente_indicado || null,
+          cpf_indicado: record.cpf_indicado || null,
+          canal: record.canal || '',
+          vendedor: record.vendedor || record.vendedor_receptivo || '',
+          data_vencimento: record.data_vencimento || '',
+          vidas: record.vidas || 0,
+        });
+        if (sit.toLowerCase().includes('ativ')) contratosAtivos++;
+        valorTotalMensal += valor;
+      }
+      if (record.nome_cliente_indicado) {
+        indicadosSet.add(record.nome_cliente_indicado);
+      }
+    }
+
+    const contracts = Array.from(contractMap.values());
 
     const cidadeUf = firstRecord.cidade || '';
     const cidadeParts = cidadeUf.split(' - ');
     const cidadeNome = cidadeParts[0]?.trim() || '';
     const ufValue = firstRecord.uf || cidadeParts[1]?.trim() || '';
+
+    console.log(`[ERP CPF] Deduplicated to ${contracts.length} unique contracts, ${indicadosSet.size} unique indicated clients`);
     
     const response = {
       success: true,
@@ -592,7 +608,7 @@ router.post('/get-customer-from-erp', authMiddleware, async (req, res) => {
           vip: firstRecord.vip || false,
           codigo_erp: firstRecord.codigo || firstRecord.id_pessoa || firstRecord.id || null
         },
-        contracts: contracts,
+        contracts: contracts.slice(0, 50),
         dependents: (firstRecord.dependentes || []).map(dep => ({
           id_dependente_erp: dep.id || dep.codigo,
           nome: dep.nome,
@@ -603,9 +619,11 @@ router.post('/get-customer-from-erp', authMiddleware, async (req, res) => {
           total_contratos: contracts.length,
           valor_total_mensal: valorTotalMensal,
           contratos_ativos: contratosAtivos,
+          total_indicados: indicadosSet.size,
+          total_registros_erp: rawData.length,
           status_geral: contratosAtivos > 0 ? 'EM DIA' : 'SEM CONTRATO ATIVO'
         },
-        raw_erp_data: rawData
+        raw_erp_data: [firstRecord]
       }
     };
     
