@@ -820,3 +820,73 @@ CREATE TABLE IF NOT EXISTS gerador_leads_whatsapp_logs (
   filters_used JSONB,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS team_id UUID;
+ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS template_id VARCHAR(255);
+ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS status_envio VARCHAR(50) DEFAULT 'enviado';
+ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS tentativa_numero INTEGER DEFAULT 1;
+ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS motivo_bloqueio TEXT;
+ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS batch_id UUID;
+
+CREATE INDEX IF NOT EXISTS idx_glwl_block_check ON gerador_leads_whatsapp_logs (lead_number, success, sent_at);
+CREATE INDEX IF NOT EXISTS idx_glwl_sent_at ON gerador_leads_whatsapp_logs (sent_at);
+CREATE INDEX IF NOT EXISTS idx_glwl_batch ON gerador_leads_whatsapp_logs (batch_id);
+
+-- =====================
+-- LEAD GENERATOR QUEUE
+-- =====================
+CREATE TABLE IF NOT EXISTS gerador_leads_queue (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  batch_id UUID NOT NULL,
+  lead_id UUID,
+  lead_number VARCHAR(50) NOT NULL,
+  lead_name VARCHAR(255),
+  template_id VARCHAR(255) NOT NULL,
+  status_envio VARCHAR(50) DEFAULT 'pendente',
+  tentativa_numero INTEGER DEFAULT 1,
+  max_tentativas INTEGER DEFAULT 3,
+  user_id UUID,
+  user_email VARCHAR(255),
+  team_id UUID,
+  filters_used JSONB,
+  motivo_bloqueio TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  scheduled_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_glq_batch ON gerador_leads_queue (batch_id);
+CREATE INDEX IF NOT EXISTS idx_glq_status ON gerador_leads_queue (status_envio);
+CREATE INDEX IF NOT EXISTS idx_glq_batch_status ON gerador_leads_queue (batch_id, status_envio);
+
+-- =====================
+-- LEAD GENERATOR AUDIT LOG
+-- =====================
+CREATE TABLE IF NOT EXISTS gerador_leads_audit_log (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID,
+  user_email VARCHAR(255),
+  agent_type VARCHAR(100),
+  action VARCHAR(255) NOT NULL,
+  details JSONB,
+  ip_address VARCHAR(45),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- =====================
+-- LEAD GENERATOR RATE CONFIG
+-- =====================
+CREATE TABLE IF NOT EXISTS gerador_leads_rate_config (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  key VARCHAR(100) UNIQUE NOT NULL,
+  value INTEGER NOT NULL,
+  description TEXT,
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+INSERT INTO gerador_leads_rate_config (key, value, description) VALUES
+  ('limite_por_segundo', 2, 'Máximo de mensagens enviadas por segundo'),
+  ('limite_por_minuto', 30, 'Máximo de mensagens enviadas por minuto'),
+  ('limite_por_usuario_dia', 5000, 'Máximo de mensagens por usuário por dia'),
+  ('bloqueio_recorrencia_dias', 30, 'Dias de bloqueio para reenvio ao mesmo número')
+ON CONFLICT (key) DO NOTHING;

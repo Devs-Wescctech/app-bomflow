@@ -10,6 +10,7 @@ import { runAllAutomations, runAutomationsForLead } from '../services/leadAutoma
 import { generateProposalPDF } from '../services/pdfService.js';
 import { sendWhatsAppMessage, sendDocument, sendTextMessage } from '../services/whatsappService.js';
 import { v4 as uuidv4 } from 'uuid';
+import { enqueueLeads, processQueue, retryFailed, getQueueStatus, getDashboardMetrics, getLogsWithPagination } from '../services/whatsappQueueService.js';
 import OpenAI from 'openai';
 import FormData from 'form-data';
 import axios from 'axios';
@@ -314,15 +315,46 @@ router.get('/lead-generator-base', authMiddleware, async (req, res) => {
   }
 });
 
-const WHATSAPP_API_URL = 'https://api.wescctech.com.br/core/v2/api/chats/send-template';
-const WHATSAPP_ACCESS_TOKEN = '66033309381c7ebb4a23a196';
 const WHATSAPP_TEMPLATE_ID = '6878e30fed3085944b9841b1';
+
+const DISPATCH_FORBIDDEN_TYPES = ['vendas', 'sales', 'bom_auto_atendente', 'support', 'collection', 'pre_sales', 'post_sales'];
+
+async function getAgentForDispatchCheck(req) {
+  const agentResult = await query('SELECT id, agent_type, team_id, email, name FROM agents WHERE id = $1', [req.user.id]);
+  return agentResult.rows[0] || null;
+}
+
+async function logUnauthorizedAttempt(req, agent, action) {
+  try {
+    await query(
+      `INSERT INTO gerador_leads_audit_log (user_id, user_email, agent_type, action, details, ip_address)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        req.user?.id,
+        req.user?.email || agent?.email,
+        agent?.agent_type || 'unknown',
+        action,
+        JSON.stringify({ timestamp: new Date().toISOString(), path: req.originalUrl }),
+        req.ip || req.headers['x-forwarded-for'] || null
+      ]
+    );
+  } catch (err) {
+    console.error('[WhatsAppQueue] Audit log error:', err.message);
+  }
+}
 
 router.post('/lead-generator-whatsapp-send', authMiddleware, async (req, res) => {
   try {
+    const agent = await getAgentForDispatchCheck(req);
+    if (!agent || DISPATCH_FORBIDDEN_TYPES.includes(agent.agent_type)) {
+      await logUnauthorizedAttempt(req, agent, 'whatsapp_dispatch_attempt');
+      return res.status(403).json({ success: false, error: 'Você não tem permissão para realizar disparos de WhatsApp.' });
+    }
+
     const { leads, filtersUsed } = req.body;
     const userId = req.user?.id || null;
-    const userEmail = req.user?.email || null;
+    const userEmail = req.user?.email || agent?.email || null;
+    const teamId = agent?.team_id || null;
 
     if (!Array.isArray(leads) || leads.length === 0) {
       return res.status(400).json({ success: false, error: 'Nenhum lead selecionado para envio.' });
@@ -332,135 +364,105 @@ router.post('/lead-generator-whatsapp-send', authMiddleware, async (req, res) =>
       return res.status(400).json({ success: false, error: 'Limite máximo de 1000 leads por disparo.' });
     }
 
-    console.log(`[LeadGenerator WhatsApp] Starting batch send: ${leads.length} leads by ${userEmail}`);
+    const batchId = uuidv4();
 
-    const results = [];
+    console.log(`[WhatsAppQueue] Enqueuing batch ${batchId}: ${leads.length} leads by ${userEmail}`);
 
-    for (const lead of leads) {
-      const { number, name } = lead;
-      if (!number) {
-        results.push({
-          number: number || '',
-          name: name || '',
-          success: false,
-          httpStatus: 0,
-          error: 'Número não informado',
-          messageSentId: null,
-        });
-        continue;
-      }
+    const summary = await enqueueLeads({
+      leads,
+      userId,
+      userEmail,
+      teamId,
+      templateId: WHATSAPP_TEMPLATE_ID,
+      filtersUsed,
+      batchId,
+    });
 
-      const payload = {
-        number: String(number),
-        templateId: WHATSAPP_TEMPLATE_ID,
-        forceSend: true,
-        verifyContact: false,
-        templatecomponents: [
-          {
-            type: "body",
-            parameters: [
-              {
-                type: "text",
-                text: name || ''
-              }
-            ]
-          }
-        ]
-      };
-
-      let httpStatus = 0;
-      let apiResponse = null;
-      let success = false;
-      let messageSentId = null;
-
-      try {
-        const waRes = await fetch(WHATSAPP_API_URL, {
-          method: 'POST',
-          headers: {
-            'access-token': WHATSAPP_ACCESS_TOKEN,
-            'Content-Type': 'application/json',
-            'accept': 'application/json'
-          },
-          body: JSON.stringify(payload)
-        });
-
-        httpStatus = waRes.status;
-        try {
-          apiResponse = await waRes.json();
-        } catch {
-          const rawText = await waRes.text();
-          apiResponse = { raw: rawText };
-        }
-        success = httpStatus >= 200 && httpStatus < 300;
-        messageSentId = apiResponse?.messageSentId || apiResponse?.message_sent_id || apiResponse?.id || null;
-        console.log(`[LeadGenerator WhatsApp] Sent to ${number}: HTTP ${httpStatus}, success=${success}, msgId=${messageSentId}`);
-      } catch (fetchErr) {
-        httpStatus = 0;
-        apiResponse = { error: fetchErr.message };
-        success = false;
-      }
-
-      try {
-        await query(
-          `INSERT INTO gerador_leads_whatsapp_logs
-            (lead_number, lead_name, user_id, user_email, sent_at, http_status, api_response, success, message_sent_id, filters_used)
-          VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9)`,
-          [
-            String(number),
-            name || null,
-            userId,
-            userEmail,
-            httpStatus,
-            JSON.stringify(apiResponse),
-            success,
-            messageSentId ? String(messageSentId) : null,
-            filtersUsed ? JSON.stringify(filtersUsed) : null
-          ]
-        );
-      } catch (dbErr) {
-        console.error('[LeadGenerator WhatsApp] DB log error:', dbErr.message);
-      }
-
-      results.push({
-        number: String(number),
-        name: name || '',
-        success,
-        httpStatus,
-        messageSentId,
-        error: success ? null : (apiResponse?.message || apiResponse?.error || `HTTP ${httpStatus}`),
-      });
-    }
-
-    const totalSent = results.filter(r => r.success).length;
-    const totalFailed = results.filter(r => !r.success).length;
-
-    console.log(`[LeadGenerator WhatsApp] Batch complete: ${totalSent} sent, ${totalFailed} failed`);
+    processQueue(batchId).catch(err => {
+      console.error(`[WhatsAppQueue] Processing error for batch ${batchId}:`, err.message);
+    });
 
     res.json({
       success: true,
-      summary: {
-        total: results.length,
-        sent: totalSent,
-        failed: totalFailed,
-      },
-      results,
+      batchId,
+      summary,
     });
   } catch (error) {
-    console.error('[LeadGenerator WhatsApp] Error:', error);
+    console.error('[WhatsAppQueue] Error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-router.get('/lead-generator-whatsapp-logs', authMiddleware, async (req, res) => {
+router.get('/lead-generator-queue-status/:batchId', authMiddleware, async (req, res) => {
   try {
-    const { limit = 100, offset = 0 } = req.query;
-    const result = await query(
-      `SELECT * FROM gerador_leads_whatsapp_logs ORDER BY sent_at DESC LIMIT $1 OFFSET $2`,
-      [parseInt(limit), parseInt(offset)]
-    );
-    res.json(result.rows);
+    const status = await getQueueStatus(req.params.batchId);
+    res.json({ success: true, ...status });
   } catch (error) {
-    console.error('[LeadGenerator WhatsApp] Logs error:', error);
+    console.error('[WhatsAppQueue] Status error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/lead-generator-whatsapp-retry', authMiddleware, async (req, res) => {
+  try {
+    const agent = await getAgentForDispatchCheck(req);
+    if (!agent || DISPATCH_FORBIDDEN_TYPES.includes(agent.agent_type)) {
+      await logUnauthorizedAttempt(req, agent, 'whatsapp_retry_attempt');
+      return res.status(403).json({ success: false, error: 'Você não tem permissão para reenviar disparos.' });
+    }
+
+    const { batchId } = req.body;
+    if (!batchId) {
+      return res.status(400).json({ success: false, error: 'batchId é obrigatório.' });
+    }
+
+    const result = await retryFailed(batchId, req.user?.id, req.user?.email, agent?.team_id);
+
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('[WhatsAppQueue] Retry error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/lead-generator-whatsapp-dashboard', authMiddleware, async (req, res) => {
+  try {
+    const agent = await getAgentForDispatchCheck(req);
+    if (!agent || DISPATCH_FORBIDDEN_TYPES.includes(agent.agent_type)) {
+      return res.status(403).json({ success: false, error: 'Sem permissão para acessar o painel de disparos.' });
+    }
+
+    const { from, to, userId: filterUserId, teamId: filterTeamId } = req.query;
+    const metrics = await getDashboardMetrics({ from, to, userId: filterUserId, teamId: filterTeamId });
+
+    res.json({ success: true, ...metrics });
+  } catch (error) {
+    console.error('[WhatsAppQueue] Dashboard error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/lead-generator-whatsapp-logs-list', authMiddleware, async (req, res) => {
+  try {
+    const agent = await getAgentForDispatchCheck(req);
+    if (!agent || DISPATCH_FORBIDDEN_TYPES.includes(agent.agent_type)) {
+      return res.status(403).json({ success: false, error: 'Sem permissão para acessar logs de disparos.' });
+    }
+
+    const { page = 1, limit = 50, status, from, to, userId: filterUserId, batchId } = req.query;
+    const result = await getLogsWithPagination({
+      page: parseInt(page),
+      limit: parseInt(limit),
+      status,
+      from,
+      to,
+      userId: filterUserId,
+      batchId,
+    });
+
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('[WhatsAppQueue] Logs list error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

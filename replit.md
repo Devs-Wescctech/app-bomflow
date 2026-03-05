@@ -28,7 +28,7 @@ Wescctech CRM is a comprehensive Customer Relationship Management system designe
 ### Core Features
 - **Helpdesk**: Ticket management (SLA, Kanban, configurable types, templates, macros, CSAT).
 - **Sales (B2C & B2B)**: Lead pipeline (Kanban), geolocation map, activity scheduling, proposals, e-signatures, targets.
-- **Referrals**: Management, commission tracking, conversion pipeline, Lead Generator (API_BASE_LEADS integration with dynamic filters, 1000-record limit, and WhatsApp bulk messaging via WHU API with full audit logging in `gerador_leads_whatsapp_logs` table).
+- **Referrals**: Management, commission tracking, conversion pipeline, Lead Generator (API_BASE_LEADS integration with dynamic filters, 1000-record limit, and WhatsApp bulk messaging via WHU API with full audit logging in `gerador_leads_whatsapp_logs` table). Lead Generator WhatsApp Dispatch Platform with async queue processing, rate limiting (2/s, 30/min), 30-day recurrence blocking, daily duplicate prevention, retry (max 3x), real-time polling progress, operational dashboard with metrics/charts/logs, and RBAC-based dispatch permission control.
 - **Knowledge Base**: Categorized articles, versioning.
 - **Quality Assurance**: Monitoring, evaluation checklists, call auditing.
 - **Collections**: Collection tickets, delinquency dashboard, contact scheduling.
@@ -60,6 +60,7 @@ Wescctech CRM is a comprehensive Customer Relationship Management system designe
 - **Centralized Constants**: Stage definitions for different lead types are centralized in `src/constants/stages.js`.
 - **Token Auto-Refresh**: Global fetch interceptor (`src/api/tokenInterceptor.js`) transparently refreshes expired accessTokens using the refreshToken (7-day validity). Only retries safe (GET/HEAD/OPTIONS) requests automatically; non-idempotent requests return 401 for app-level handling. On refresh failure, clears tokens and redirects to login. Installed in `src/main.jsx` before app render.
 - **API List Limits**: Default list limit for leads, leads_pj, referrals, and generic CRUD endpoints is 10000 (not 100) to ensure dashboards, search pages, and reports all show consistent data. Activity/visit sub-routes keep limit=100 as they are per-lead queries.
+- **WhatsApp Dispatch Platform (Lead Generator)**: Professional dispatch system with async queue processing (`backend/src/services/whatsappQueueService.js`). Tables: `gerador_leads_queue` (queue items with batch tracking), `gerador_leads_audit_log` (unauthorized access attempts), `gerador_leads_rate_config` (configurable rate limits). Features: rate limiting (2/s, 30/min default), 30-day recurrence blocking per number+template, daily duplicate prevention, intelligent retry (max 3x), real-time polling via `/lead-generator-queue-status/:batchId` (2s interval). Frontend: `LeadGenerator.jsx` with tabs (Gerador | Painel de Disparos), `LeadGeneratorDashboard.jsx` with metrics cards, hourly bar chart, per-user/team tables, paginated logs. RBAC: `DISPATCH_FORBIDDEN_TYPES = ['vendas', 'sales', 'bom_auto_atendente', 'support', 'collection', 'pre_sales', 'post_sales']` — these agent types cannot dispatch, retry, or view dashboard. Unauthorized attempts logged in audit_log.
 
 ## External Dependencies
 
