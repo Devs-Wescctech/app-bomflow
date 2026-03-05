@@ -492,9 +492,9 @@ router.post('/get-customer-from-erp', authMiddleware, async (req, res) => {
     }
     
     const cpfFormatado = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CPF_INDICADOR?cpf=${cpfFormatado}`;
+    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CPF_INDICADOR?documento=${cpfFormatado}`;
     
-    console.log(`Fetching ERP data for CPF: ${cpfLimpo}`);
+    console.log(`Fetching ERP data for CPF: ${cpfLimpo} -> ${erpUrl}`);
     
     const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
     
@@ -538,15 +538,23 @@ router.post('/get-customer-from-erp', authMiddleware, async (req, res) => {
     
     const rawData = Array.isArray(erpData) ? erpData : [erpData];
     const firstRecord = rawData[0];
-    
+
+    const situacaoMap = { 'A': 'Ativo', 'C': 'Cancelado', 'S': 'Suspenso' };
+
     const contracts = rawData.map(record => ({
-      numero_contrato: record.numero_contrato || record.contrato,
-      plano: record.plano || record.nome_plano,
-      valor_mensal: parseFloat(record.valor_mensal || record.valor || 0),
-      inicio_vigencia: record.inicio_vigencia || record.data_inicio,
-      situacao: record.situacao || record.status || 'Ativo',
-      status_pagamento: record.status_pagamento || record.situacao_financeira || 'EM DIA',
-      id_dependente_vinculado: record.id_dependente_vinculado || null
+      numero_contrato: String(record.contrato_servicos || record.numero_contrato || record.nrocontrato || ''),
+      plano: record.produto || record.plano || record.nome_plano || '',
+      valor_mensal: parseFloat(record.valor_contrato || record.valor_mensal || record.valor || 0),
+      inicio_vigencia: record.data_contrato || record.inicio_vigencia || record.data_inicio || '',
+      situacao: situacaoMap[record.situacao_contrato] || record.situacao_contrato || record.situacao || record.status || 'Ativo',
+      status_pagamento: record.status_pagamento || record.situacao_financeira || (record.parcelas_abertas > 0 ? 'INADIMPLENTE' : 'EM DIA'),
+      id_dependente_vinculado: record.id_dependente_vinculado || null,
+      nome_cliente_indicado: record.nome_cliente_indicado || null,
+      cpf_indicado: record.cpf_indicado || null,
+      canal: record.canal || '',
+      vendedor: record.vendedor || record.vendedor_receptivo || '',
+      data_vencimento: record.data_vencimento || '',
+      vidas: record.vidas || 0,
     }));
     
     const contratosAtivos = contracts.filter(c => 
@@ -554,6 +562,11 @@ router.post('/get-customer-from-erp', authMiddleware, async (req, res) => {
     ).length;
     
     const valorTotalMensal = contracts.reduce((sum, c) => sum + (c.valor_mensal || 0), 0);
+
+    const cidadeUf = firstRecord.cidade || '';
+    const cidadeParts = cidadeUf.split(' - ');
+    const cidadeNome = cidadeParts[0]?.trim() || '';
+    const ufValue = firstRecord.uf || cidadeParts[1]?.trim() || '';
     
     const response = {
       success: true,
@@ -561,23 +574,23 @@ router.post('/get-customer-from-erp', authMiddleware, async (req, res) => {
       synced_at: new Date().toISOString(),
       data: {
         contact: {
-          id: null,
-          name: firstRecord.nome || firstRecord.nome_cliente,
-          document: cpfLimpo,
-          birth_date: firstRecord.data_nascimento || firstRecord.nascimento,
-          phones: [firstRecord.telefone, firstRecord.celular].filter(Boolean),
-          emails: [firstRecord.email].filter(Boolean),
+          id: firstRecord.id || null,
+          name: firstRecord.titular || firstRecord.nome || firstRecord.nome_cliente || '',
+          document: firstRecord.cpf || cpfFormatado,
+          birth_date: firstRecord.data_nascimento || firstRecord.nascimento || '',
+          phones: [firstRecord.cel_indicador, firstRecord.cel, firstRecord.telefone, firstRecord.celular].filter(Boolean),
+          emails: [firstRecord.e_mail, firstRecord.email].filter(Boolean),
           address: {
-            logradouro: firstRecord.logradouro || firstRecord.endereco,
-            numero: firstRecord.numero,
-            complemento: firstRecord.complemento,
-            bairro: firstRecord.bairro,
-            cidade: firstRecord.cidade || firstRecord.municipio,
-            uf: firstRecord.uf || firstRecord.estado,
-            cep: firstRecord.cep
+            logradouro: firstRecord.endereco || firstRecord.logradouro || '',
+            numero: firstRecord.numero || '',
+            complemento: firstRecord.complemento || '',
+            bairro: firstRecord.bairro || '',
+            cidade: cidadeNome,
+            uf: ufValue,
+            cep: firstRecord.cep || ''
           },
           vip: firstRecord.vip || false,
-          codigo_erp: firstRecord.codigo || firstRecord.id_pessoa
+          codigo_erp: firstRecord.codigo || firstRecord.id_pessoa || firstRecord.id || null
         },
         contracts: contracts,
         dependents: (firstRecord.dependentes || []).map(dep => ({
