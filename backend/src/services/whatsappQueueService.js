@@ -490,12 +490,30 @@ export async function getDashboardMetrics({ from, to, userId: filterUserId, team
     params
   );
 
+  const byBatchResult = await query(
+    `SELECT
+       batch_id,
+       user_email,
+       MIN(sent_at) as started_at,
+       COUNT(*)::int as total_leads,
+       COUNT(*) FILTER (WHERE success = true)::int as enviados,
+       COUNT(*) FILTER (WHERE success = false AND status_envio = 'falha')::int as falhas,
+       COUNT(*) FILTER (WHERE status_envio IN ('bloqueado_30_dias','bloqueado_duplicidade'))::int as bloqueados
+     FROM gerador_leads_whatsapp_logs ${where}
+     ${where ? 'AND' : 'WHERE'} batch_id IS NOT NULL
+     GROUP BY batch_id, user_email
+     ORDER BY MIN(sent_at) DESC
+     LIMIT 50`,
+    params
+  ).catch(() => ({ rows: [] }));
+
   return {
     totals: totalsResult.rows[0] || { total: 0, enviados: 0, falhas: 0, bloqueados_30d: 0, bloqueados_dup: 0, taxa_sucesso: 0 },
     byHour: byHourResult.rows,
     byDay: byDayResult.rows,
     byUser: byUserResult.rows,
     byTeam: byTeamResult.rows,
+    byBatch: byBatchResult.rows,
   };
 }
 
@@ -676,11 +694,36 @@ export async function getConversionMetrics({ from, to, userId: filterUserId, tea
     params
   );
 
+  const productConditions = [...conditions, 'erp_produto IS NOT NULL'];
+  const productWhere = `WHERE ${productConditions.join(' AND ')}`;
+  const byProductResult = await query(
+    `SELECT
+       erp_produto as produto,
+       COUNT(*)::int as contratos,
+       COALESCE(SUM(erp_valor_contrato), 0)::float as valor_total
+     FROM gerador_leads_conversoes ${productWhere}
+     GROUP BY erp_produto
+     ORDER BY valor_total DESC`,
+    params
+  ).catch(() => ({ rows: [] }));
+
+  const byBatchConvResult = await query(
+    `SELECT
+       dispatch_batch_id as batch_id,
+       COUNT(*)::int as conversoes,
+       COALESCE(SUM(erp_valor_contrato), 0)::float as valor_total
+     FROM gerador_leads_conversoes ${where}
+     ${where ? 'AND' : 'WHERE'} dispatch_batch_id IS NOT NULL
+     GROUP BY dispatch_batch_id
+     ORDER BY conversoes DESC`,
+    params
+  ).catch(() => ({ rows: [] }));
+
   const recentResult = await query(
     `SELECT
        lead_number, lead_name, erp_titular, erp_cpf, erp_contrato, erp_produto,
        erp_situacao, erp_valor_contrato, dispatch_user_email, dispatch_date, data_venda,
-       erp_cel_indicador
+       erp_cel_indicador, dispatch_batch_id
      FROM gerador_leads_conversoes ${where}
      ORDER BY data_venda DESC
      LIMIT 50`,
@@ -712,6 +755,8 @@ export async function getConversionMetrics({ from, to, userId: filterUserId, tea
     byDay: byDayResult.rows,
     byUser: byUserResult.rows,
     byTeam: byTeamResult.rows,
+    byProduct: byProductResult.rows,
+    byBatch: byBatchConvResult.rows,
     recent: recentResult.rows,
   };
 }
