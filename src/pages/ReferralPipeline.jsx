@@ -518,47 +518,49 @@ export default function ReferralPipeline() {
   const currentAgentId = currentAgent?.id;
 
   const { data: referrals = [], isLoading, refetch } = useQuery({
-    queryKey: ['referrals', isAdmin ? 'admin' : currentAgentId],
+    queryKey: ['referrals-pipeline', isAdmin ? 'admin' : (currentAgentId || 'loading')],
     queryFn: async () => {
       const allReferrals = await base44.entities.Referral.list('-createdAt');
-      
-      // Admin/supervisors see all referrals
-      if (isAdmin) {
+
+      const resolvedAgent = currentAgent || agents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
+      const resolvedAgentType = resolvedAgent?.agentType || resolvedAgent?.agent_type;
+      const resolvedIsAdmin = resolvedAgentType === 'admin' || resolvedAgentType === 'supervisor' || resolvedAgentType === 'sales_supervisor';
+      const resolvedAgentId = resolvedAgent?.id;
+
+      if (resolvedIsAdmin) {
         return allReferrals.filter(r => !r.concluded && !r.lost);
       }
 
-      if (!currentAgent) return [];
+      if (!resolvedAgent) return [];
 
-      // Check if user can see all referrals
-      const canSeeAll = canViewAll(currentAgent, 'referrals');
+      const canSeeAll = canViewAll(resolvedAgent, 'referrals');
       if (canSeeAll) {
         return allReferrals.filter(r => !r.concluded && !r.lost);
       }
 
-      // Check if user can see team referrals
-      const canSeeTeam = canViewTeam(currentAgent, 'referrals');
+      const canSeeTeam = canViewTeam(resolvedAgent, 'referrals');
       if (canSeeTeam) {
-        const teamAgents = agents.filter(a => a.team_id === currentAgent.team_id);
-        const teamAgentIds = teamAgents.map(a => a.id);
+        const teamAgentIds = agents
+          .filter(a => String(a.team_id) === String(resolvedAgent.team_id) || String(a.teamId) === String(resolvedAgent.teamId))
+          .map(a => String(a.id));
 
         return allReferrals.filter(r =>
           (!r.concluded && !r.lost) &&
-          (teamAgentIds.includes(r.agentId) || teamAgentIds.includes(r.agent_id))
+          (teamAgentIds.includes(String(r.agentId)) || teamAgentIds.includes(String(r.agent_id)))
         );
       }
 
-      // Default: only show referrals assigned to current agent
       return allReferrals.filter(r =>
         (!r.concluded && !r.lost) &&
-        (r.agentId === currentAgentId || r.agent_id === currentAgentId)
+        (String(r.agentId) === String(resolvedAgentId) || String(r.agent_id) === String(resolvedAgentId))
       );
     },
     staleTime: 0,
     refetchOnMount: true,
-    enabled: !!user && (isAdmin || !!currentAgent),
+    enabled: !!user && !isLoadingAgents,
   });
 
-  const referralsQueryKey = ['referrals', isAdmin ? 'admin' : currentAgentId];
+  const referralsQueryKey = ['referrals-pipeline', isAdmin ? 'admin' : (currentAgentId || 'loading')];
 
   const { data: allReferralActivities = [] } = useQuery({
     queryKey: ['allReferralActivities'],
@@ -739,7 +741,7 @@ export default function ReferralPipeline() {
       }
     }
 
-    if (filters.agent !== 'all' && referral.agentId !== filters.agent) {
+    if (filters.agent !== 'all' && String(referral.agentId || referral.agent_id) !== String(filters.agent)) {
       return false;
     }
 
