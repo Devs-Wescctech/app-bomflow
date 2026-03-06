@@ -4,6 +4,16 @@ const WHATSAPP_API_URL = 'https://api.wescctech.com.br/core/v2/api/chats/send-te
 const WHATSAPP_ACCESS_TOKEN = '66033309381c7ebb4a23a196';
 const WHATSAPP_TEMPLATE_ID = '6878e30fed3085944b9841b1';
 
+export function normalizePhone(phone) {
+  if (!phone) return '';
+  let cleaned = String(phone).replace(/\D/g, '');
+  if (cleaned.length === 0) return '';
+  if (!cleaned.startsWith('55') && (cleaned.length === 10 || cleaned.length === 11)) {
+    cleaned = '55' + cleaned;
+  }
+  return cleaned;
+}
+
 async function getRateConfig() {
   try {
     const result = await query('SELECT key, value FROM gerador_leads_rate_config');
@@ -54,7 +64,7 @@ export async function enqueueLeads({ leads, userId, userEmail, teamId, templateI
       continue;
     }
 
-    const cleanNumber = String(number).replace(/\D/g, '');
+    const cleanNumber = normalizePhone(number);
 
     try {
       const block30Result = await query(
@@ -473,6 +483,257 @@ export async function getDashboardMetrics({ from, to, userId: filterUserId, team
     byHour: byHourResult.rows,
     byUser: byUserResult.rows,
     byTeam: byTeamResult.rows,
+  };
+}
+
+export async function checkConversions({ erpRecords, from, to }) {
+  const conditions = ['success = true'];
+  const params = [];
+
+  if (from) {
+    params.push(from);
+    conditions.push(`sent_at >= $${params.length}::timestamp`);
+  }
+  if (to) {
+    params.push(to);
+    conditions.push(`sent_at <= $${params.length}::timestamp`);
+  }
+
+  const where = conditions.join(' AND ');
+  const logsResult = await query(
+    `SELECT DISTINCT ON (lead_number) id, lead_number, lead_name, sent_at, user_id, user_email, batch_id, team_id
+     FROM gerador_leads_whatsapp_logs
+     WHERE ${where}
+     ORDER BY lead_number, sent_at ASC`,
+    params
+  );
+
+  if (logsResult.rows.length === 0) {
+    return { matched: 0, conversions: [] };
+  }
+
+  const dispatchMap = new Map();
+  for (const log of logsResult.rows) {
+    const normalized = normalizePhone(log.lead_number);
+    if (normalized) {
+      dispatchMap.set(normalized, log);
+    }
+  }
+
+  const conversions = [];
+
+  for (const record of erpRecords) {
+    const celIndicador = record.cel_indicador || record.cel || '';
+    const normalizedErp = normalizePhone(celIndicador);
+
+    if (!normalizedErp) continue;
+
+    const matchingLog = dispatchMap.get(normalizedErp);
+    if (!matchingLog) continue;
+
+    const erpContractDate = record.data_contrato || record.datafechamentovenda || null;
+    if (erpContractDate && matchingLog.sent_at) {
+      const contractDateObj = new Date(erpContractDate);
+      const dispatchDateObj = new Date(matchingLog.sent_at);
+      if (contractDateObj < dispatchDateObj) {
+        continue;
+      }
+    }
+
+    const conversion = {
+      lead_number: matchingLog.lead_number,
+      lead_number_normalized: normalizedErp,
+      lead_name: matchingLog.lead_name,
+      dispatch_log_id: matchingLog.id,
+      dispatch_date: matchingLog.sent_at,
+      dispatch_user_id: matchingLog.user_id,
+      dispatch_user_email: matchingLog.user_email,
+      dispatch_batch_id: matchingLog.batch_id,
+      team_id: matchingLog.team_id,
+      erp_titular: record.titular || record.nome_cliente_indicado || '',
+      erp_cpf: record.cpf_indicado || record.cpf || '',
+      erp_contrato: String(record.contrato_servicos || record.id || ''),
+      erp_produto: record.produto || '',
+      erp_situacao: record.situacao_contrato || '',
+      erp_valor_contrato: parseFloat(record.valor_contrato || 0),
+      erp_cel_indicador: celIndicador,
+      erp_cel_indicador_normalized: normalizedErp,
+      erp_data: record,
+    };
+
+    try {
+      const insertResult = await query(
+        `INSERT INTO gerador_leads_conversoes
+          (lead_number, lead_number_normalized, lead_name, dispatch_log_id, dispatch_date,
+           dispatch_user_id, dispatch_user_email, dispatch_batch_id, team_id,
+           venda_identificada, data_venda, erp_data, erp_titular, erp_cpf, erp_contrato,
+           erp_produto, erp_situacao, erp_valor_contrato, erp_cel_indicador, erp_cel_indicador_normalized, matched_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,NOW(),$10,$11,$12,$13,$14,$15,$16,$17,$18,'phone')
+         ON CONFLICT (lead_number_normalized, erp_contrato) DO NOTHING
+         RETURNING id`,
+        [
+          conversion.lead_number, conversion.lead_number_normalized, conversion.lead_name,
+          conversion.dispatch_log_id, conversion.dispatch_date,
+          conversion.dispatch_user_id, conversion.dispatch_user_email, conversion.dispatch_batch_id, conversion.team_id,
+          JSON.stringify(conversion.erp_data), conversion.erp_titular, conversion.erp_cpf, conversion.erp_contrato,
+          conversion.erp_produto, conversion.erp_situacao, conversion.erp_valor_contrato,
+          conversion.erp_cel_indicador, conversion.erp_cel_indicador_normalized,
+        ]
+      );
+      if (insertResult.rows.length > 0) {
+        conversions.push(conversion);
+      }
+    } catch (err) {
+      console.error(`[Conversions] Error inserting conversion for ${normalizedErp}:`, err.message);
+    }
+  }
+
+  return { matched: conversions.length, conversions };
+}
+
+export async function getConversionMetrics({ from, to, userId: filterUserId, teamId: filterTeamId }) {
+  const conditions = [];
+  const params = [];
+
+  if (from) {
+    params.push(from);
+    conditions.push(`data_venda >= $${params.length}::timestamp`);
+  }
+  if (to) {
+    params.push(to);
+    conditions.push(`data_venda <= $${params.length}::timestamp`);
+  }
+  if (filterUserId) {
+    params.push(filterUserId);
+    conditions.push(`dispatch_user_id = $${params.length}`);
+  }
+  if (filterTeamId) {
+    params.push(filterTeamId);
+    conditions.push(`team_id = $${params.length}`);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const totalsResult = await query(
+    `SELECT
+       COUNT(*)::int as total_conversoes,
+       COUNT(DISTINCT lead_number_normalized)::int as leads_unicos,
+       COALESCE(SUM(erp_valor_contrato), 0)::float as valor_total,
+       COUNT(DISTINCT dispatch_user_id)::int as usuarios_com_conversao,
+       COUNT(DISTINCT dispatch_batch_id)::int as batches_com_conversao
+     FROM gerador_leads_conversoes ${where}`,
+    params
+  );
+
+  const byUserResult = await query(
+    `SELECT
+       dispatch_user_email,
+       COUNT(*)::int as conversoes,
+       COUNT(DISTINCT lead_number_normalized)::int as leads_unicos,
+       COALESCE(SUM(erp_valor_contrato), 0)::float as valor_total
+     FROM gerador_leads_conversoes ${where}
+     GROUP BY dispatch_user_email
+     ORDER BY conversoes DESC`,
+    params
+  );
+
+  const byTeamResult = await query(
+    `SELECT
+       c.team_id,
+       t.name as team_name,
+       COUNT(*)::int as conversoes,
+       COUNT(DISTINCT c.lead_number_normalized)::int as leads_unicos,
+       COALESCE(SUM(c.erp_valor_contrato), 0)::float as valor_total
+     FROM gerador_leads_conversoes c
+     LEFT JOIN teams t ON c.team_id = t.id
+     ${where ? where.replace(/data_venda/g, 'c.data_venda').replace(/dispatch_user_id/g, 'c.dispatch_user_id').replace(/team_id(?!=)/g, 'c.team_id') : ''}
+     GROUP BY c.team_id, t.name
+     ORDER BY conversoes DESC`,
+    params
+  );
+
+  const recentResult = await query(
+    `SELECT
+       lead_number, lead_name, erp_titular, erp_cpf, erp_contrato, erp_produto,
+       erp_situacao, erp_valor_contrato, dispatch_user_email, dispatch_date, data_venda,
+       erp_cel_indicador
+     FROM gerador_leads_conversoes ${where}
+     ORDER BY data_venda DESC
+     LIMIT 50`,
+    params
+  );
+
+  const dispatchTotalsParams = [...params];
+  const dispatchConditions = conditions.map(c => c.replace(/data_venda/g, 'sent_at').replace(/dispatch_user_id/g, 'user_id'));
+  dispatchConditions.push('success = true');
+  const dispatchWhere = `WHERE ${dispatchConditions.join(' AND ')}`;
+  let taxaConversao = 0;
+  try {
+    const dispatchCount = await query(
+      `SELECT COUNT(DISTINCT lead_number)::int as total FROM gerador_leads_whatsapp_logs ${dispatchWhere}`,
+      dispatchTotalsParams
+    );
+    const totalDispatched = dispatchCount.rows[0]?.total || 0;
+    const totalConverted = totalsResult.rows[0]?.leads_unicos || 0;
+    taxaConversao = totalDispatched > 0 ? ((totalConverted / totalDispatched) * 100) : 0;
+  } catch {
+    taxaConversao = 0;
+  }
+
+  return {
+    totals: {
+      ...totalsResult.rows[0],
+      taxa_conversao: Number(taxaConversao.toFixed(2)),
+    },
+    byUser: byUserResult.rows,
+    byTeam: byTeamResult.rows,
+    recent: recentResult.rows,
+  };
+}
+
+export async function getConversionsList({ page = 1, limit = 50, from, to, userId: filterUserId, teamId: filterTeamId }) {
+  const conditions = [];
+  const params = [];
+
+  if (from) {
+    params.push(from);
+    conditions.push(`data_venda >= $${params.length}::timestamp`);
+  }
+  if (to) {
+    params.push(to);
+    conditions.push(`data_venda <= $${params.length}::timestamp`);
+  }
+  if (filterUserId) {
+    params.push(filterUserId);
+    conditions.push(`dispatch_user_id = $${params.length}`);
+  }
+  if (filterTeamId) {
+    params.push(filterTeamId);
+    conditions.push(`team_id = $${params.length}`);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const countResult = await query(
+    `SELECT COUNT(*)::int as total FROM gerador_leads_conversoes ${where}`,
+    params
+  );
+
+  const offset = (page - 1) * limit;
+  const dataParams = [...params, limit, offset];
+  const dataResult = await query(
+    `SELECT * FROM gerador_leads_conversoes ${where}
+     ORDER BY data_venda DESC
+     LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`,
+    dataParams
+  );
+
+  return {
+    data: dataResult.rows,
+    total: countResult.rows[0]?.total || 0,
+    page,
+    limit,
+    totalPages: Math.ceil((countResult.rows[0]?.total || 0) / limit),
   };
 }
 

@@ -9,11 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Send, CheckCircle2, XCircle, Lock, ShieldAlert, TrendingUp,
-  Users, Calendar, Loader2, ChevronLeft, ChevronRight, BarChart3
+  Users, Calendar, Loader2, ChevronLeft, ChevronRight, BarChart3,
+  Target, DollarSign, RefreshCw, Phone, ArrowRightLeft
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { toast } from "sonner";
 
 const API_BASE = '/api';
 
@@ -54,6 +56,7 @@ export default function LeadGeneratorDashboard() {
   const [selectedTeam, setSelectedTeam] = useState('all');
   const [logsPage, setLogsPage] = useState(1);
   const [logsStatus, setLogsStatus] = useState('all');
+  const [checkingConversions, setCheckingConversions] = useState(false);
 
   const dateRange = useMemo(() => {
     if (period === 'custom') {
@@ -109,6 +112,54 @@ export default function LeadGeneratorDashboard() {
     refetchInterval: 30000,
   });
 
+  const conversionQueryParams = useMemo(() => {
+    const params = new URLSearchParams();
+    if (dateRange.from) params.set('from', dateRange.from);
+    if (dateRange.to) params.set('to', dateRange.to);
+    if (selectedUser !== 'all') params.set('userId', selectedUser);
+    if (selectedTeam !== 'all') params.set('teamId', selectedTeam);
+    return params.toString();
+  }, [dateRange, selectedUser, selectedTeam]);
+
+  const { data: conversionData, isLoading: loadingConversions, refetch: refetchConversions } = useQuery({
+    queryKey: ['lead-generator-conversions', conversionQueryParams],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/functions/lead-generator-conversions-metrics?${conversionQueryParams}`, {
+        headers: { ...getAuthHeaders() },
+      });
+      if (!res.ok) throw new Error('Erro ao carregar conversões');
+      return res.json();
+    },
+    refetchInterval: 60000,
+  });
+
+  const handleCheckConversions = async () => {
+    setCheckingConversions(true);
+    try {
+      const res = await fetch(`${API_BASE}/functions/lead-generator-check-conversions`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: dateRange.from || null,
+          to: dateRange.to || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro');
+      if (data.matched > 0) {
+        toast.success(`${data.matched} nova(s) conversão(ões) identificada(s)!`);
+      } else {
+        toast.info('Nenhuma nova conversão encontrada.');
+      }
+      refetchConversions();
+      refetchDashboard();
+    } catch (err) {
+      toast.error(`Erro: ${err.message}`);
+    } finally {
+      setCheckingConversions(false);
+    }
+  };
+
   const { data: teams = [] } = useQuery({
     queryKey: ['teams'],
     queryFn: () => base44.entities.Team.list(),
@@ -123,6 +174,10 @@ export default function LeadGeneratorDashboard() {
   const byHour = dashboardData?.byHour || [];
   const byUser = dashboardData?.byUser || [];
   const byTeam = dashboardData?.byTeam || [];
+
+  const convTotals = conversionData?.totals || {};
+  const convByUser = conversionData?.byUser || [];
+  const convRecent = conversionData?.recent || [];
 
   const hourChartData = useMemo(() => {
     const hours = Array.from({ length: 24 }, (_, i) => ({
@@ -362,6 +417,153 @@ export default function LeadGeneratorDashboard() {
               </CardContent>
             </Card>
           </div>
+
+          <Card className="border-emerald-200 dark:border-emerald-800">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+                  <Target className="w-5 h-5 text-emerald-500" />
+                  Conversões Identificadas
+                </CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCheckConversions}
+                  disabled={checkingConversions}
+                  className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300"
+                >
+                  {checkingConversions ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                  )}
+                  Verificar Conversões
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Cruza telefones dos disparos (API_BASE_LEADS) com contratos ativos do ERP (API_CPF_INDICADOR) usando normalização DDI+DDD
+              </p>
+            </CardHeader>
+            <CardContent>
+              {loadingConversions ? (
+                <div className="py-6 flex justify-center">
+                  <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+                    <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3 text-center">
+                      <p className="text-xl font-bold text-emerald-600">{convTotals.total_conversoes || 0}</p>
+                      <p className="text-[11px] text-gray-500">Total Conversões</p>
+                    </div>
+                    <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3 text-center">
+                      <p className="text-xl font-bold text-emerald-600">{convTotals.leads_unicos || 0}</p>
+                      <p className="text-[11px] text-gray-500">Leads Únicos</p>
+                    </div>
+                    <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3 text-center">
+                      <p className="text-xl font-bold text-emerald-600">
+                        {convTotals.valor_total ? `R$ ${Number(convTotals.valor_total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'R$ 0,00'}
+                      </p>
+                      <p className="text-[11px] text-gray-500">Valor Total</p>
+                    </div>
+                    <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3 text-center">
+                      <p className="text-xl font-bold text-emerald-600">{convTotals.taxa_conversao || 0}%</p>
+                      <p className="text-[11px] text-gray-500">Taxa Conversão</p>
+                    </div>
+                    <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3 text-center">
+                      <p className="text-xl font-bold text-emerald-600">{convTotals.usuarios_com_conversao || 0}</p>
+                      <p className="text-[11px] text-gray-500">Usuários c/ Conversão</p>
+                    </div>
+                  </div>
+
+                  {convByUser.length > 0 && (
+                    <div className="mb-4">
+                      <h4 className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1">
+                        <Users className="w-3 h-3" /> Conversões por Usuário
+                      </h4>
+                      <div className="overflow-x-auto rounded-lg border border-emerald-200 dark:border-emerald-800">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-emerald-50/50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800">
+                              <th className="text-left py-2 px-3 font-medium text-gray-500">Usuário</th>
+                              <th className="text-center py-2 px-3 font-medium text-emerald-600">Conversões</th>
+                              <th className="text-center py-2 px-3 font-medium text-emerald-600">Leads</th>
+                              <th className="text-right py-2 px-3 font-medium text-emerald-600">Valor</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-emerald-100 dark:divide-emerald-900/30">
+                            {convByUser.map((u, i) => (
+                              <tr key={i}>
+                                <td className="py-2 px-3 text-gray-700 dark:text-gray-300">{u.dispatch_user_email || '-'}</td>
+                                <td className="py-2 px-3 text-center font-medium text-emerald-600">{u.conversoes}</td>
+                                <td className="py-2 px-3 text-center text-gray-600">{u.leads_unicos}</td>
+                                <td className="py-2 px-3 text-right text-emerald-600">
+                                  R$ {Number(u.valor_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {convRecent.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1">
+                        <ArrowRightLeft className="w-3 h-3" /> Últimas Conversões
+                      </h4>
+                      <div className="overflow-x-auto rounded-lg border border-emerald-200 dark:border-emerald-800">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-emerald-50/50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800">
+                              <th className="text-left py-2 px-3 font-medium text-gray-500">Telefone</th>
+                              <th className="text-left py-2 px-3 font-medium text-gray-500">Titular ERP</th>
+                              <th className="text-left py-2 px-3 font-medium text-gray-500">Produto</th>
+                              <th className="text-left py-2 px-3 font-medium text-gray-500">Contrato</th>
+                              <th className="text-right py-2 px-3 font-medium text-gray-500">Valor</th>
+                              <th className="text-left py-2 px-3 font-medium text-gray-500">Disparado por</th>
+                              <th className="text-left py-2 px-3 font-medium text-gray-500">Data Disparo</th>
+                              <th className="text-left py-2 px-3 font-medium text-gray-500">Data Venda</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-emerald-100 dark:divide-emerald-900/30">
+                            {convRecent.map((c, i) => (
+                              <tr key={i} className="hover:bg-emerald-50/30 dark:hover:bg-emerald-900/10">
+                                <td className="py-2 px-3 text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                                  <Phone className="w-3 h-3 text-gray-400" />
+                                  {c.lead_number}
+                                </td>
+                                <td className="py-2 px-3 text-gray-700 dark:text-gray-300">{c.erp_titular || '-'}</td>
+                                <td className="py-2 px-3 text-gray-600">{c.erp_produto || '-'}</td>
+                                <td className="py-2 px-3 text-gray-600">{c.erp_contrato || '-'}</td>
+                                <td className="py-2 px-3 text-right font-medium text-emerald-600">
+                                  R$ {Number(c.erp_valor_contrato || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </td>
+                                <td className="py-2 px-3 text-xs text-gray-500 max-w-[150px] truncate">{c.dispatch_user_email || '-'}</td>
+                                <td className="py-2 px-3 text-xs text-gray-500 whitespace-nowrap">
+                                  {c.dispatch_date ? format(new Date(c.dispatch_date), 'dd/MM/yy HH:mm', { locale: ptBR }) : '-'}
+                                </td>
+                                <td className="py-2 px-3 text-xs text-gray-500 whitespace-nowrap">
+                                  {c.data_venda ? format(new Date(c.data_venda), 'dd/MM/yy HH:mm', { locale: ptBR }) : '-'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {convTotals.total_conversoes === 0 && (
+                    <p className="text-sm text-gray-400 text-center py-4">
+                      Nenhuma conversão identificada. Clique em "Verificar Conversões" para cruzar dados com o ERP.
+                    </p>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
 
