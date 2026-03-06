@@ -890,3 +890,40 @@ INSERT INTO gerador_leads_rate_config (key, value, description) VALUES
   ('limite_por_usuario_dia', 5000, 'Máximo de mensagens por usuário por dia'),
   ('bloqueio_recorrencia_dias', 30, 'Dias de bloqueio para reenvio ao mesmo número')
 ON CONFLICT (key) DO NOTHING;
+
+-- =====================
+-- LEAD GENERATOR CONVERSIONS
+-- =====================
+CREATE TABLE IF NOT EXISTS gerador_leads_conversoes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  lead_number VARCHAR(50) NOT NULL,
+  lead_number_normalized VARCHAR(50) NOT NULL,
+  lead_name VARCHAR(255),
+  dispatch_log_id UUID REFERENCES gerador_leads_whatsapp_logs(id),
+  dispatch_date TIMESTAMP,
+  dispatch_user_id UUID,
+  dispatch_user_email VARCHAR(255),
+  dispatch_batch_id UUID,
+  venda_identificada BOOLEAN DEFAULT TRUE,
+  data_venda TIMESTAMP DEFAULT NOW(),
+  erp_data JSONB,
+  erp_titular VARCHAR(255),
+  erp_cpf VARCHAR(20),
+  erp_contrato VARCHAR(100),
+  erp_produto VARCHAR(255),
+  erp_situacao VARCHAR(50),
+  erp_valor_contrato DECIMAL(12,2),
+  erp_cel_indicador VARCHAR(50),
+  erp_cel_indicador_normalized VARCHAR(50),
+  matched_by VARCHAR(50) DEFAULT 'phone',
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_glc_lead_number ON gerador_leads_conversoes (lead_number_normalized);
+CREATE INDEX IF NOT EXISTS idx_glc_dispatch_date ON gerador_leads_conversoes (dispatch_date);
+CREATE INDEX IF NOT EXISTS idx_glc_data_venda ON gerador_leads_conversoes (data_venda);
+CREATE INDEX IF NOT EXISTS idx_glc_dispatch_user ON gerador_leads_conversoes (dispatch_user_id);
+CREATE INDEX IF NOT EXISTS idx_glc_batch ON gerador_leads_conversoes (dispatch_batch_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_glc_unique_conversion ON gerador_leads_conversoes (lead_number_normalized, erp_contrato);
+ALTER TABLE gerador_leads_conversoes ADD COLUMN IF NOT EXISTS team_id UUID;

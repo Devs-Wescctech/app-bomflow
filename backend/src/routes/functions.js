@@ -10,7 +10,7 @@ import { runAllAutomations, runAutomationsForLead } from '../services/leadAutoma
 import { generateProposalPDF } from '../services/pdfService.js';
 import { sendWhatsAppMessage, sendDocument, sendTextMessage } from '../services/whatsappService.js';
 import { v4 as uuidv4 } from 'uuid';
-import { enqueueLeads, processQueue, retryFailed, getQueueStatus, getDashboardMetrics, getLogsWithPagination } from '../services/whatsappQueueService.js';
+import { enqueueLeads, processQueue, retryFailed, getQueueStatus, getDashboardMetrics, getLogsWithPagination, normalizePhone, checkConversions, getConversionMetrics, getConversionsList } from '../services/whatsappQueueService.js';
 import OpenAI from 'openai';
 import FormData from 'form-data';
 import axios from 'axios';
@@ -463,6 +463,106 @@ router.get('/lead-generator-whatsapp-logs-list', authMiddleware, async (req, res
     res.json({ success: true, ...result });
   } catch (error) {
     console.error('[WhatsAppQueue] Logs list error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/lead-generator-check-conversions', authMiddleware, async (req, res) => {
+  try {
+    const agent = await getAgentForDispatchCheck(req);
+    if (!agent || DISPATCH_FORBIDDEN_TYPES.includes(agent.agent_type)) {
+      return res.status(403).json({ success: false, error: 'Sem permissão para verificar conversões.' });
+    }
+
+    const { from, to } = req.body;
+
+    const erpAuthToken = process.env.ERP_AUTH_TOKEN;
+    if (!erpAuthToken) {
+      return res.status(500).json({ success: false, error: 'ERP_AUTH_TOKEN não configurado.' });
+    }
+
+    const logsResult = await query(
+      `SELECT DISTINCT lead_number FROM gerador_leads_whatsapp_logs WHERE success = true`
+    );
+
+    if (logsResult.rows.length === 0) {
+      return res.json({ success: true, matched: 0, message: 'Nenhum disparo encontrado.' });
+    }
+
+    const dispatchedNumbers = logsResult.rows.map(r => normalizePhone(r.lead_number)).filter(Boolean);
+
+    const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
+
+    console.log(`[Conversions] Fetching ERP data from API_CPF_INDICADOR for conversion check...`);
+    const erpResponse = await fetch(
+      'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CPF_INDICADOR',
+      {
+        method: 'GET',
+        headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
+      }
+    );
+
+    if (!erpResponse.ok) {
+      return res.status(502).json({ success: false, error: `ERP retornou status ${erpResponse.status}` });
+    }
+
+    const erpData = await erpResponse.json();
+    const erpRecords = Array.isArray(erpData) ? erpData : [];
+
+    const activeContracts = erpRecords.filter(r => r.situacao_contrato === 'A');
+
+    console.log(`[Conversions] ERP returned ${erpRecords.length} records, ${activeContracts.length} active contracts. Checking against ${dispatchedNumbers.length} dispatched numbers.`);
+
+    const result = await checkConversions({
+      erpRecords: activeContracts,
+      from: from || null,
+      to: to || null,
+    });
+
+    console.log(`[Conversions] Found ${result.matched} new conversions.`);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('[Conversions] Check error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/lead-generator-conversions-metrics', authMiddleware, async (req, res) => {
+  try {
+    const agent = await getAgentForDispatchCheck(req);
+    if (!agent || DISPATCH_FORBIDDEN_TYPES.includes(agent.agent_type)) {
+      return res.status(403).json({ success: false, error: 'Sem permissão.' });
+    }
+
+    const { from, to, userId: filterUserId, teamId: filterTeamId } = req.query;
+    const metrics = await getConversionMetrics({ from, to, userId: filterUserId, teamId: filterTeamId });
+
+    res.json({ success: true, ...metrics });
+  } catch (error) {
+    console.error('[Conversions] Metrics error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/lead-generator-conversions-list', authMiddleware, async (req, res) => {
+  try {
+    const agent = await getAgentForDispatchCheck(req);
+    if (!agent || DISPATCH_FORBIDDEN_TYPES.includes(agent.agent_type)) {
+      return res.status(403).json({ success: false, error: 'Sem permissão.' });
+    }
+
+    const { page = 1, limit = 50, from, to, userId: filterUserId, teamId: filterTeamId } = req.query;
+    const result = await getConversionsList({
+      page: parseInt(page),
+      limit: parseInt(limit),
+      from, to,
+      userId: filterUserId,
+      teamId: filterTeamId,
+    });
+
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('[Conversions] List error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
