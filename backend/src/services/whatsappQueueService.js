@@ -478,9 +478,22 @@ export async function getDashboardMetrics({ from, to, userId: filterUserId, team
     params
   );
 
+  const byDayResult = await query(
+    `SELECT
+       sent_at::date as dia,
+       COUNT(*)::int as total,
+       COUNT(*) FILTER (WHERE success = true)::int as enviados,
+       COUNT(*) FILTER (WHERE success = false AND status_envio = 'falha')::int as falhas
+     FROM gerador_leads_whatsapp_logs ${where}
+     GROUP BY sent_at::date
+     ORDER BY dia ASC`,
+    params
+  );
+
   return {
     totals: totalsResult.rows[0] || { total: 0, enviados: 0, falhas: 0, bloqueados_30d: 0, bloqueados_dup: 0, taxa_sucesso: 0 },
     byHour: byHourResult.rows,
+    byDay: byDayResult.rows,
     byUser: byUserResult.rows,
     byTeam: byTeamResult.rows,
   };
@@ -652,6 +665,17 @@ export async function getConversionMetrics({ from, to, userId: filterUserId, tea
     params
   );
 
+  const byDayResult = await query(
+    `SELECT
+       data_venda::date as dia,
+       COUNT(*)::int as conversoes,
+       COALESCE(SUM(erp_valor_contrato), 0)::float as valor
+     FROM gerador_leads_conversoes ${where}
+     GROUP BY data_venda::date
+     ORDER BY dia ASC`,
+    params
+  );
+
   const recentResult = await query(
     `SELECT
        lead_number, lead_name, erp_titular, erp_cpf, erp_contrato, erp_produto,
@@ -685,6 +709,7 @@ export async function getConversionMetrics({ from, to, userId: filterUserId, tea
       ...totalsResult.rows[0],
       taxa_conversao: Number(taxaConversao.toFixed(2)),
     },
+    byDay: byDayResult.rows,
     byUser: byUserResult.rows,
     byTeam: byTeamResult.rows,
     recent: recentResult.rows,
