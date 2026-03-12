@@ -729,7 +729,7 @@ router.post('/referrals/filter', authMiddleware, async (req, res) => {
 router.post('/referrals', authMiddleware, async (req, res) => {
   try {
     const data = convertKeysToSnake(req.body);
-    const dateFields = ['birth_date', 'created_at', 'updated_at'];
+    const dateFields = ['birth_date', 'referred_birth_date', 'created_at', 'updated_at', 'converted_at', 'commission_paid_at'];
     dateFields.forEach(field => {
       if (data[field] === '' || data[field] === 'Invalid Date') {
         data[field] = null;

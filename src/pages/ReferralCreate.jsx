@@ -71,9 +71,8 @@ export default function ReferralCreate() {
   const [selectedAgentId, setSelectedAgentId] = useState("");
 
   const { data: agents = [] } = useQuery({
-    queryKey: ['salesAgents'],
-    queryFn: () => base44.entities.SalesAgent.list(),
-    initialData: [],
+    queryKey: ['agents'],
+    queryFn: () => base44.entities.Agent.list(),
   });
 
   const { data: user } = useQuery({
@@ -81,13 +80,12 @@ export default function ReferralCreate() {
     queryFn: () => base44.auth.me(),
   });
 
-  // Verifica se é admin/supervisor para poder escolher agente
-  const isAdmin = user?.agent?.agentType === 'admin' || user?.agent?.agentType === 'supervisor';
+  const currentAgentType = user?.agent?.agentType || user?.agent?.agent_type;
+  const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor';
 
-  // Lista de agentes de vendas para seleção (admin)
   const salesAgentsList = agents.filter(a => 
     a.active !== false && 
-    (a.agentType === 'sales' || a.agentType === 'pre_sales' || a.agentType === 'admin' || a.agentType === 'supervisor')
+    (a.agentType === 'sales' || a.agent_type === 'sales')
   );
 
   const createReferralMutation = useMutation({
@@ -95,20 +93,20 @@ export default function ReferralCreate() {
     onSuccess: (newReferral) => {
       console.log('Referral criada:', newReferral);
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
-      toast.success('✅ Indicação cadastrada com sucesso!');
+      queryClient.invalidateQueries({ queryKey: ['referrals-pipeline'] });
+      toast.success('Cadastro realizado com Sucesso');
       
-      // Garantir que temos o ID
       const referralId = newReferral?.id;
       if (referralId) {
         navigate(`${createPageUrl("ReferralDetail")}?id=${referralId}`);
       } else {
-        console.error('ID não encontrado na resposta:', newReferral);
         navigate(createPageUrl("ReferralPipeline"));
       }
     },
     onError: (error) => {
       console.error('Erro ao criar indicação:', error);
-      toast.error('Erro ao criar indicação: ' + error.message);
+      const errorMsg = error?.message || 'Erro desconhecido';
+      toast.error('Erro ao cadastrar indicação: ' + errorMsg);
     }
   });
 
@@ -232,35 +230,18 @@ export default function ReferralCreate() {
     // Gerar código único
     const referralCode = `REF-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
-    // Atribuição do agente
     let assignedAgentId = null;
     
-    // Se for admin e selecionou um agente, usa o selecionado
     if (isAdmin && selectedAgentId) {
       assignedAgentId = selectedAgentId;
-      const selectedAgent = salesAgentsList.find(a => a.id === selectedAgentId);
-      console.log('[ReferralCreate] Admin selecionou agente:', selectedAgentId, selectedAgent?.name);
     } else if (user?.agent?.id) {
-      // Usa o agente direto do user (retornado por /auth/me)
       assignedAgentId = user.agent.id;
-      console.log('[ReferralCreate] Usando agente do usuário:', user.agent.id, user.agent.name);
     } else {
-      // Fallback: tenta encontrar o agente pelo email
-      const userAgent = agents.find(a => a.email === user?.email);
+      const userAgent = agents.find(a => 
+        a.userEmail === user?.email || a.user_email === user?.email || a.email === user?.email
+      );
       if (userAgent) {
         assignedAgentId = userAgent.id;
-        console.log('[ReferralCreate] Encontrado agente por email:', userAgent.id, userAgent.name);
-      } else if (agents.length > 0) {
-        // Se não encontrar, atribui round-robin entre agentes de vendas ativos
-        const salesAgents = agents.filter(a => 
-          a.active !== false && 
-          (a.agentType === 'sales' || a.agentType === 'pre_sales' || a.agentType === 'admin')
-        );
-        if (salesAgents.length > 0) {
-          const index = Date.now() % salesAgents.length;
-          assignedAgentId = salesAgents[index].id;
-          console.log('[ReferralCreate] Atribuído via round-robin:', salesAgents[index].id, salesAgents[index].name);
-        }
       }
     }
 
@@ -269,13 +250,13 @@ export default function ReferralCreate() {
       referrerCpf: referrerCPF.replace(/\D/g, ''),
       referrerName: referrerData.nome,
       referrerPhone: referrerData.telefone,
-      referrerEmail: referrerData.email,
-      referrerContractId: referrerData.contrato,
-      referrerErpData: referrerData.erp_raw,
+      referrerEmail: referrerData.email || null,
+      referrerContractId: referrerData.contrato || null,
+      referrerErpData: referrerData.erp_raw || null,
       referrerLevel: referrerLevel,
       referrerTotalConversions: referrerConversions,
       referredName: formData.referred_name,
-      referredCpf: formData.referred_cpf ? formData.referred_cpf.replace(/\D/g, '') : '',
+      referredCpf: formData.referred_cpf ? formData.referred_cpf.replace(/\D/g, '') : null,
       referredPhone: formData.referred_phone.replace(/\D/g, ''),
       referredEmail: formData.referred_email || null,
       referredAddress: formData.referred_address || null,
@@ -518,22 +499,27 @@ export default function ReferralCreate() {
                         </Select>
                       </div>
 
-                      {/* Seletor de Agente - só aparece para admin/supervisor */}
                       {isAdmin && (
                         <div className="col-span-2">
                           <Label className="text-purple-700 font-semibold">Atribuir a Agente</Label>
-                          <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
-                            <SelectTrigger className="mt-1 border-purple-300">
-                              <SelectValue placeholder="Selecione o agente responsável" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {salesAgentsList.map(agent => (
-                                <SelectItem key={agent.id} value={agent.id}>
-                                  {agent.name} ({agent.agentType})
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          {salesAgentsList.length > 0 ? (
+                            <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
+                              <SelectTrigger className="mt-1 border-purple-300">
+                                <SelectValue placeholder="Selecione o agente responsável" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {salesAgentsList.map(agent => (
+                                  <SelectItem key={agent.id} value={String(agent.id)}>
+                                    {agent.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <div className="mt-1 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                              <p className="text-sm text-amber-700">Nenhum agente de vendas disponível</p>
+                            </div>
+                          )}
                           <p className="text-xs text-gray-500 mt-1">
                             Se não selecionar, será atribuído a você automaticamente.
                           </p>
@@ -625,7 +611,7 @@ export default function ReferralCreate() {
                   <div className="space-y-2">
                     <p className="text-sm text-indigo-900">
                       <strong>
-                        {agents.find(a => a.user_email === user?.email)?.name || "Você"}
+                        {agents.find(a => a.userEmail === user?.email || a.user_email === user?.email || a.email === user?.email)?.name || user?.agent?.name || "Você"}
                       </strong>
                     </p>
                     <p className="text-xs text-gray-600">
