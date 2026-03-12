@@ -86,7 +86,7 @@ export default function ReferralCreate() {
   const salesAgentsList = agents.filter(a => 
     a.active !== false && 
     (a.agentType === 'sales' || a.agent_type === 'sales')
-  );
+  ).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
 
   const createReferralMutation = useMutation({
     mutationFn: (data) => base44.entities.Referral.create(data),
