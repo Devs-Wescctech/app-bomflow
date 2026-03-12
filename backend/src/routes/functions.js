@@ -592,7 +592,7 @@ router.post('/get-customer-from-erp', authMiddleware, async (req, res) => {
     }
     
     const cpfFormatado = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CPF_INDICADOR?documento=${cpfFormatado}`;
+    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CPF_INDICADOR?cpf=${cpfFormatado}`;
     
     console.log(`Fetching ERP data for CPF: ${cpfLimpo} -> ${erpUrl}`);
     

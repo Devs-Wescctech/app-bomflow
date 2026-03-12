@@ -80,5 +80,5 @@ Wescctech CRM is a comprehensive Customer Relationship Management system designe
 - **`jsonwebtoken`**: For JWT authentication.
 - **`multer`**: For file uploads.
 - **`@dnd-kit/core` and `@dnd-kit/sortable`**: Drag-and-drop library.
-- **ERP Bom Pastor**: Integrated for CPF lookup in the Referral system. API `API_CPF_INDICADOR` uses `documento=` parameter (not `cpf=`). Response is deduplicated server-side (Map by `contrato_servicos`) and only first raw record is returned to frontend to avoid sending thousands of records (~6.5MB → ~5KB).
+- **ERP Bom Pastor**: Integrated for CPF lookup in the Referral system. API `API_CPF_INDICADOR` uses `cpf=` parameter (formatted with dots/dash, e.g. `cpf=123.456.789-00`). The `documento=` parameter does NOT filter — it returns all records. Response is deduplicated server-side (Map by `contrato_servicos`) and only first raw record is returned to frontend to avoid sending thousands of records (~6.5MB → ~5KB).
 - **ERP Bom Auto API**: Integrated for vehicle/client consultation in the Bom Auto module (API_TESTE_BOM_AUTO endpoint).
