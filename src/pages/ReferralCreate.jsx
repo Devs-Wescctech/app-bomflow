@@ -209,80 +209,82 @@ export default function ReferralCreate() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!referrerData) {
-      toast.error('Busque o cliente indicador primeiro!');
-      return;
-    }
-
-    if (!formData.referred_name || !formData.referred_phone) {
-      toast.error('Preencha nome e telefone do indicado!');
-      return;
-    }
-
-    // Calcular valor estimado
-    const monthlyValue = parseFloat(formData.monthly_value || 0);
-    const adhesionValue = parseFloat(formData.adhesion_value || 0);
-    const estimatedValue = monthlyValue + adhesionValue;
-
-    // Comissão baseada no nível do indicador
-    const commissionValue = calculateCommissionValue(referrerLevel);
-
-    // Gerar código único
-    const referralCode = `REF-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-
-    let assignedAgentId = null;
-    
-    if (isAdmin && selectedAgentId) {
-      assignedAgentId = selectedAgentId;
-    } else if (user?.agent?.id) {
-      assignedAgentId = user.agent.id;
-    } else {
-      const userAgent = agents.find(a => 
-        a.userEmail === user?.email || a.user_email === user?.email || a.email === user?.email
-      );
-      if (userAgent) {
-        assignedAgentId = userAgent.id;
+    try {
+      if (!referrerData) {
+        toast.error('Busque o cliente indicador primeiro!');
+        return;
       }
-    }
 
-    const referralData = {
-      referralCode: referralCode,
-      referrerCpf: referrerCPF.replace(/\D/g, ''),
-      referrerName: referrerData.nome,
-      referrerPhone: referrerData.telefone,
-      referrerEmail: referrerData.email || null,
-      referrerContractId: referrerData.contrato || null,
-      referrerErpData: referrerData.erp_raw || null,
-      referrerLevel: referrerLevel,
-      referrerTotalConversions: referrerConversions,
-      referredName: formData.referred_name,
-      referredCpf: formData.referred_cpf ? formData.referred_cpf.replace(/\D/g, '') : null,
-      referredPhone: formData.referred_phone.replace(/\D/g, ''),
-      referredEmail: formData.referred_email || null,
-      referredAddress: formData.referred_address || null,
-      referredBirthDate: formData.referred_birth_date || null,
-      relationship: formData.relationship || null,
-      interest: formData.interest || null,
-      notes: formData.notes || null,
-      totalDependents: formData.total_dependents ? parseInt(formData.total_dependents) : null,
-      monthlyValue: monthlyValue > 0 ? monthlyValue : null,
-      adhesionValue: adhesionValue > 0 ? adhesionValue : null,
-      value: estimatedValue > 0 ? estimatedValue : null,
-      commissionValue: commissionValue,
-      agentId: assignedAgentId,
-      stage: "novo",
-      status: "ativo",
-      stageHistory: [
-        {
-          stage: "novo",
-          previousStage: null,
-          changedAt: new Date().toISOString(),
-          changedBy: user?.email || "Sistema",
+      if (!formData.referred_name || !formData.referred_phone) {
+        toast.error('Preencha nome e telefone do indicado!');
+        return;
+      }
+
+      const monthlyValue = parseFloat(formData.monthly_value || 0);
+      const adhesionValue = parseFloat(formData.adhesion_value || 0);
+      const estimatedValue = monthlyValue + adhesionValue;
+
+      const commissionVal = calculateCommissionValue(referrerLevel);
+
+      const referralCode = `REF-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+
+      let assignedAgentId = null;
+      
+      if (isAdmin && selectedAgentId) {
+        assignedAgentId = selectedAgentId;
+      } else if (user?.agent?.id) {
+        assignedAgentId = user.agent.id;
+      } else {
+        const userAgent = agents.find(a => 
+          a.userEmail === user?.email || a.user_email === user?.email || a.email === user?.email
+        );
+        if (userAgent) {
+          assignedAgentId = userAgent.id;
         }
-      ],
-    };
+      }
 
-    createReferralMutation.mutate(referralData);
+      const referralData = {
+        referralCode: referralCode,
+        referrerCpf: referrerCPF.replace(/\D/g, ''),
+        referrerName: referrerData.nome,
+        referrerPhone: referrerData.telefone,
+        referrerEmail: referrerData.email || null,
+        referrerContractId: referrerData.contrato || null,
+        referrerErpData: referrerData.erp_raw || null,
+        referrerLevel: referrerLevel,
+        referrerTotalConversions: referrerConversions,
+        referredName: formData.referred_name,
+        referredCpf: formData.referred_cpf ? formData.referred_cpf.replace(/\D/g, '') : null,
+        referredPhone: formData.referred_phone.replace(/\D/g, ''),
+        referredEmail: formData.referred_email || null,
+        referredAddress: formData.referred_address || null,
+        referredBirthDate: formData.referred_birth_date || null,
+        relationship: formData.relationship || null,
+        interest: formData.interest || null,
+        notes: formData.notes || null,
+        totalDependents: formData.total_dependents ? parseInt(formData.total_dependents) : null,
+        monthlyValue: monthlyValue > 0 ? monthlyValue : null,
+        adhesionValue: adhesionValue > 0 ? adhesionValue : null,
+        value: estimatedValue > 0 ? estimatedValue : null,
+        commissionValue: commissionVal,
+        agentId: assignedAgentId,
+        stage: "novo",
+        status: "ativo",
+        stageHistory: [
+          {
+            stage: "novo",
+            previousStage: null,
+            changedAt: new Date().toISOString(),
+            changedBy: user?.email || "Sistema",
+          }
+        ],
+      };
+
+      createReferralMutation.mutate(referralData);
+    } catch (err) {
+      console.error('[ReferralCreate] Erro no handleSubmit:', err);
+      toast.error('Erro ao preparar dados da indicação: ' + (err.message || 'Erro desconhecido'));
+    }
   };
 
   // Calcular comissão para exibição
