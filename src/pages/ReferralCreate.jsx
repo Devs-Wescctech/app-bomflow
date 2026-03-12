@@ -90,24 +90,6 @@ export default function ReferralCreate() {
 
   const createReferralMutation = useMutation({
     mutationFn: (data) => base44.entities.Referral.create(data),
-    onSuccess: (newReferral) => {
-      console.log('Referral criada:', newReferral);
-      queryClient.invalidateQueries({ queryKey: ['referrals'] });
-      queryClient.invalidateQueries({ queryKey: ['referrals-pipeline'] });
-      toast.success('Cadastro realizado com Sucesso');
-      
-      const referralId = newReferral?.id;
-      if (referralId) {
-        navigate(`${createPageUrl("ReferralDetail")}?id=${referralId}`);
-      } else {
-        navigate(createPageUrl("ReferralPipeline"));
-      }
-    },
-    onError: (error) => {
-      console.error('Erro ao criar indicação:', error);
-      const errorMsg = error?.message || 'Erro desconhecido';
-      toast.error('Erro ao cadastrar indicação: ' + errorMsg);
-    }
   });
 
   const handleSearchReferrer = async () => {
@@ -280,10 +262,21 @@ export default function ReferralCreate() {
         ],
       };
 
-      createReferralMutation.mutate(referralData);
+      const newReferral = await createReferralMutation.mutateAsync(referralData);
+
+      queryClient.invalidateQueries({ queryKey: ['referrals'] });
+      queryClient.invalidateQueries({ queryKey: ['referrals-pipeline'] });
+      toast.success('Cadastro realizado com Sucesso');
+
+      const referralId = newReferral?.id;
+      if (referralId) {
+        navigate(`${createPageUrl("ReferralDetail")}?id=${referralId}`);
+      } else {
+        navigate(createPageUrl("ReferralPipeline"));
+      }
     } catch (err) {
-      console.error('[ReferralCreate] Erro no handleSubmit:', err);
-      toast.error('Erro ao preparar dados da indicação: ' + (err.message || 'Erro desconhecido'));
+      const errorMsg = err?.message || 'Erro desconhecido';
+      toast.error('Erro ao cadastrar indicação: ' + errorMsg);
     }
   };
 
