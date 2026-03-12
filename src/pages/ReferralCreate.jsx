@@ -262,7 +262,11 @@ export default function ReferralCreate() {
         ],
       };
 
+      console.log('[ReferralCreate] Enviando referralData:', JSON.stringify(referralData, null, 2));
+
       const newReferral = await createReferralMutation.mutateAsync(referralData);
+
+      console.log('[ReferralCreate] Cadastro de indicação SUCESSO:', newReferral);
 
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
       queryClient.invalidateQueries({ queryKey: ['referrals-pipeline'] });
@@ -270,13 +274,17 @@ export default function ReferralCreate() {
 
       const referralId = newReferral?.id;
       if (referralId) {
+        console.log('[ReferralCreate] Fluxo de sucesso concluído, redirecionando para detalhes id:', referralId);
         navigate(`${createPageUrl("ReferralDetail")}?id=${referralId}`);
       } else {
+        console.log('[ReferralCreate] Fluxo de sucesso concluído, redirecionando para pipeline (sem ID)');
         navigate(createPageUrl("ReferralPipeline"));
       }
     } catch (err) {
+      console.error('[ReferralCreate] ERRO no cadastro de indicação:', err);
       const errorMsg = err?.message || 'Erro desconhecido';
-      toast.error('Erro ao cadastrar indicação: ' + errorMsg);
+      toast.error('Não foi possível cadastrar a indicação: ' + errorMsg);
+      console.log('[ReferralCreate] Toast de erro exibido para o usuário');
     }
   };
 
