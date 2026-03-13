@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Search, UserPlus, Loader2, CheckCircle, Gift } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { toast } from "sonner";
+import { useToast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { getCommissionFromConversions, calculateCommissionValue, getLevelDescription, getNextLevelInfo, COMMISSION_RULES } from "@/utils/commissionRules";
 
@@ -43,6 +43,7 @@ const formatCPF = (value) => {
 export default function ReferralCreate() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   
   // Estado da busca do indicador
   const [referrerCPF, setReferrerCPF] = useState("");
@@ -94,7 +95,7 @@ export default function ReferralCreate() {
 
   const handleSearchReferrer = async () => {
     if (!referrerCPF || referrerCPF.replace(/\D/g, '').length < 11) {
-      toast.error('Digite um CPF válido');
+      toast({ title: "Erro", description: "Digite um CPF válido", variant: "destructive" });
       return;
     }
 
@@ -112,18 +113,15 @@ export default function ReferralCreate() {
 
       if (!response.success) {
         if (response.noContract) {
-          toast.error("CPF sem contrato ativo", {
-            description: "Este cliente não possui contrato ativo no ERP",
-            duration: 5000,
-          });
+          toast({ title: "CPF sem contrato ativo", description: "Este cliente não possui contrato ativo no ERP", variant: "destructive" });
           setSearchingReferrer(false);
           return;
         }
         
         if (response.notFound) {
-          toast.error("CPF não encontrado no ERP");
+          toast({ title: "Erro", description: "CPF não encontrado no ERP", variant: "destructive" });
         } else {
-          toast.error(response.error || "Erro ao buscar dados no ERP");
+          toast({ title: "Erro", description: response.error || "Erro ao buscar dados no ERP", variant: "destructive" });
         }
         setSearchingReferrer(false);
         return;
@@ -158,30 +156,21 @@ export default function ReferralCreate() {
       setReferrerLevel(level);
       setReferrerData(indicadorData);
       
-      toast.success(`Cliente encontrado: ${indicadorData.nome}`, {
-        description: `Nível ${level} - Comissão: R$ ${commissionValueForToast},00 (${totalConversions} ${totalConversions !== 1 ? 'indicações convertidas' : 'indicação convertida'})`,
-        duration: 5000,
-      });
+      toast({ title: "Sucesso", description: `Cliente encontrado: ${indicadorData.nome} — Nível ${level} - Comissão: R$ ${commissionValueForToast},00 (${totalConversions} ${totalConversions !== 1 ? 'indicações convertidas' : 'indicação convertida'})` });
 
     } catch (error) {
       console.error('Erro ao buscar cliente:', error);
       
       if (error.status === 404 || error.data?.notFound) {
         if (error.data?.noContract) {
-          toast.error("CPF sem contrato ativo", {
-            description: "Este cliente não possui contrato ativo no ERP",
-            duration: 5000,
-          });
+          toast({ title: "CPF sem contrato ativo", description: "Este cliente não possui contrato ativo no ERP", variant: "destructive" });
         } else {
-          toast.error("CPF não encontrado no ERP");
+          toast({ title: "Erro", description: "CPF não encontrado no ERP", variant: "destructive" });
         }
       } else if (error.status === 401) {
-        toast.error("Token do ERP inválido ou expirado", {
-          description: "Entre em contato com o administrador para atualizar o token",
-          duration: 5000,
-        });
+        toast({ title: "Token do ERP inválido ou expirado", description: "Entre em contato com o administrador para atualizar o token", variant: "destructive" });
       } else {
-        toast.error("Erro ao buscar cliente: " + (error.message || 'Erro desconhecido'));
+        toast({ title: "Erro", description: "Erro ao buscar cliente: " + (error.message || 'Erro desconhecido'), variant: "destructive" });
       }
     }
     
@@ -193,12 +182,12 @@ export default function ReferralCreate() {
 
     try {
       if (!referrerData) {
-        toast.error('Busque o cliente indicador primeiro!');
+        toast({ title: "Erro", description: "Busque o cliente indicador primeiro!", variant: "destructive" });
         return;
       }
 
       if (!formData.referred_name || !formData.referred_phone) {
-        toast.error('Preencha nome e telefone do indicado!');
+        toast({ title: "Erro", description: "Preencha nome e telefone do indicado!", variant: "destructive" });
         return;
       }
 
@@ -270,7 +259,7 @@ export default function ReferralCreate() {
 
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
       queryClient.invalidateQueries({ queryKey: ['referrals-pipeline'] });
-      toast.success('Cadastro realizado com Sucesso');
+      toast({ title: "Sucesso", description: "Cadastro realizado com Sucesso" });
 
       const referralId = newReferral?.id;
       if (referralId) {
@@ -282,8 +271,8 @@ export default function ReferralCreate() {
       }
     } catch (err) {
       console.error('[ReferralCreate] ERRO no cadastro de indicação:', err);
-      const errorMsg = err?.message || 'Erro desconhecido';
-      toast.error('Não foi possível cadastrar a indicação: ' + errorMsg);
+      const errorMsg = err?.message || 'Não foi possível cadastrar a indicação. Verifique os dados e tente novamente.';
+      toast({ title: "Erro ao cadastrar indicação", description: errorMsg, variant: "destructive" });
       console.log('[ReferralCreate] Toast de erro exibido para o usuário');
     }
   };
