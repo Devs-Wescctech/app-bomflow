@@ -113,6 +113,7 @@ const MENU_MODULES = [
       { id: "ReferralReports", title: "Relatórios" },
       { id: "ReferralCommissions", title: "Comissões" },
       { id: "ReferralAutomations", title: "Automações" },
+      { id: "LeadGenerator", title: "Gerador de Leads" },
     ]
   },
   {
