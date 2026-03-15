@@ -51,7 +51,8 @@ export default function ReferralCommissions() {
   const agentType = currentAgent?.agentType || currentAgent?.agent_type;
   const isAdmin = agentType === 'admin' || agentType === 'supervisor' || agentType === 'sales_supervisor';
   const isSalesAgent = agentType === 'sales' || agentType === 'pre_sales' || agentType === 'post_sales';
-  const hasAccess = isAdmin || isSalesAgent;
+  const hasSubmenuAccess = (currentAgent?.allowedSubmenus || []).includes('ReferralCommissions');
+  const hasAccess = isAdmin || isSalesAgent || hasSubmenuAccess;
 
   const { data: referrals = [], isLoading } = useQuery({
     queryKey: ['referrals-commissions'],

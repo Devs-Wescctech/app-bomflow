@@ -50,7 +50,8 @@ export default function ReferralReports() {
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
   const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
   const isSupervisor = currentAgentType?.includes('supervisor') || currentAgentType === 'supervisor';
-  const hasPermission = isAdmin || isSupervisor || canAccessReports(currentAgent);
+  const hasSubmenuAccess = (currentAgent?.allowedSubmenus || []).includes('ReferralReports');
+  const hasPermission = isAdmin || isSupervisor || canAccessReports(currentAgent) || hasSubmenuAccess;
 
   const { data: teams = [] } = useQuery({
     queryKey: ['teams'],

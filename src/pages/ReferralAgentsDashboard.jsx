@@ -40,7 +40,8 @@ export default function ReferralAgentsDashboard() {
   const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
   const isSupervisor = user?.role === 'supervisor' || currentAgentType?.includes('supervisor');
   const isSalesAgent = currentAgentType === 'sales' || currentAgentType === 'pre_sales' || currentAgentType === 'post_sales';
-  const hasPermission = isAdmin || isSupervisor || isSalesAgent;
+  const hasSubmenuAccess = (currentAgent?.allowedSubmenus || []).includes('ReferralAgentsDashboard');
+  const hasPermission = isAdmin || isSupervisor || isSalesAgent || hasSubmenuAccess;
   const canFetchData = !!user && !!currentAgent && hasPermission;
 
   const { data: agents = [], isLoading: agentsLoading } = useQuery({
