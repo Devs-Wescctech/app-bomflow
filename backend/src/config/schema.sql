@@ -958,3 +958,20 @@ CREATE INDEX IF NOT EXISTS idx_glc_dispatch_user ON gerador_leads_conversoes (di
 CREATE INDEX IF NOT EXISTS idx_glc_batch ON gerador_leads_conversoes (dispatch_batch_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_glc_unique_conversion ON gerador_leads_conversoes (lead_number_normalized, erp_contrato);
 ALTER TABLE gerador_leads_conversoes ADD COLUMN IF NOT EXISTS team_id UUID;
+
+CREATE TABLE IF NOT EXISTS gerador_leads_auditoria (
+    id SERIAL PRIMARY KEY,
+    data_execucao TIMESTAMP DEFAULT NOW(),
+    periodo_inicio TIMESTAMP,
+    periodo_fim TIMESTAMP,
+    leads_disparados INT,
+    disparos_sucesso INT,
+    vendas_erp INT,
+    vendas_vinculadas INT,
+    valor_total_erp DECIMAL,
+    valor_total_dashboard DECIMAL,
+    divergencias INT DEFAULT 0,
+    detalhes JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_gla_data_execucao ON gerador_leads_auditoria (data_execucao);

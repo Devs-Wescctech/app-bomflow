@@ -12,6 +12,8 @@ import functionRoutes from './routes/functions.js';
 import whatsappRoutes from './routes/whatsapp.js';
 import bomAutoRoutes from './routes/bomAuto.js';
 import { runAllAutomations } from './services/automationService.js';
+import cron from 'node-cron';
+import { runLeadGeneratorAudit } from './routes/functions.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -97,6 +99,17 @@ initDatabase()
     }, AUTOMATION_INTERVAL);
     
     console.log(`[Automations] Scheduler initialized. Running every ${AUTOMATION_INTERVAL / 60000} minutes.`);
+
+    cron.schedule('0 3 * * *', async () => {
+      console.log('[Lead Generator Audit] Iniciando auditoria automática diária...');
+      try {
+        const { divergencias } = await runLeadGeneratorAudit();
+        console.log(`[Lead Generator Audit] Auditoria diária concluída. Divergências: ${divergencias}`);
+      } catch (error) {
+        console.error('[Lead Generator Audit] Erro na auditoria automática:', error.message);
+      }
+    });
+    console.log('[Lead Generator Audit] Cron agendado: todos os dias às 03:00.');
   })
   .catch((error) => {
     console.error('Database initialization failed:', error);

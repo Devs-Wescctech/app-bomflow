@@ -617,6 +617,166 @@ router.get('/lead-generator-roi-metrics', authMiddleware, async (req, res) => {
   }
 });
 
+async function executeMetricsAudit({ from, to, userId, teamId } = {}) {
+  const logConditions = [];
+  const logParams = [];
+  if (from) { logParams.push(from); logConditions.push(`sent_at >= $${logParams.length}::timestamp`); }
+  if (to) { logParams.push(to); logConditions.push(`sent_at <= $${logParams.length}::timestamp`); }
+  if (userId) { logParams.push(userId); logConditions.push(`user_id = $${logParams.length}`); }
+  if (teamId) { logParams.push(teamId); logConditions.push(`team_id = $${logParams.length}`); }
+
+  const logWhere = logConditions.length > 0 ? `WHERE ${logConditions.join(' AND ')}` : '';
+  const successConditions = [...logConditions, 'success = true'];
+  const successWhere = `WHERE ${successConditions.join(' AND ')}`;
+
+  const [totalResult, successCountResult, dispatchResult] = await Promise.all([
+    query(`SELECT COUNT(*)::int as total FROM gerador_leads_whatsapp_logs ${logWhere}`, logParams),
+    query(`SELECT COUNT(*)::int as total, COUNT(DISTINCT lead_number)::int as leads_unicos FROM gerador_leads_whatsapp_logs ${successWhere}`, logParams),
+    query(`SELECT lead_number, MIN(sent_at) as first_sent FROM gerador_leads_whatsapp_logs ${successWhere} GROUP BY lead_number`, logParams),
+  ]);
+
+  const totalLeadsDisparados = totalResult.rows[0]?.total || 0;
+  const totalLeadsSucesso = successCountResult.rows[0]?.total || 0;
+  const leadsUnicosDisparados = successCountResult.rows[0]?.leads_unicos || 0;
+
+  const dispatchMap = new Map();
+  for (const row of dispatchResult.rows) {
+    const normalized = stripPhoneTo55Local(row.lead_number);
+    if (normalized) {
+      dispatchMap.set(normalized, { firstSent: row.first_sent, leadNumber: row.lead_number });
+    }
+  }
+
+  const erpAuthToken = process.env.ERP_AUTH_TOKEN;
+  if (!erpAuthToken) {
+    throw new Error('ERP_AUTH_TOKEN não configurado.');
+  }
+  const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
+
+  console.log(`[Audit] Fetching ERP sales data...`);
+  const erpResponse = await fetch('http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_DADOS_VENDAS_INDICACOES', {
+    method: 'GET',
+    headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
+  });
+  if (!erpResponse.ok) {
+    throw new Error(`ERP retornou status ${erpResponse.status}`);
+  }
+  const erpBody = await erpResponse.json();
+  const vendasList = Array.isArray(erpBody) ? erpBody : [];
+  console.log(`[Audit] ERP returned ${vendasList.length} sales records`);
+
+  const vendasSemDisparo = [];
+  const matchedContracts = new Set();
+  const convertedPhones = new Set();
+  const phoneContractCount = new Map();
+  let valorTotalERP = 0;
+  let valorDashboard = 0;
+
+  for (const venda of vendasList) {
+    const celRaw = venda.cel_indicador ? String(venda.cel_indicador).replace(/\D/g, '') : '';
+    if (!celRaw) continue;
+
+    const celNormalized = celRaw.startsWith('55') && celRaw.length >= 12 ? celRaw.slice(2) : celRaw;
+    const valorContrato = parseBRCurrency(venda.valor_contrato);
+    valorTotalERP += valorContrato;
+
+    const count = phoneContractCount.get(celNormalized) || 0;
+    phoneContractCount.set(celNormalized, count + 1);
+
+    const dataContrato = venda.data_contrato ? new Date(venda.data_contrato) : null;
+    const dispatchInfo = dispatchMap.get(celNormalized);
+
+    if (!dispatchInfo) {
+      vendasSemDisparo.push({
+        cel_indicador: venda.cel_indicador,
+        nome_indicador: venda.nome_indicador,
+        contrato_servicos: venda.contrato_servicos,
+        valor_contrato: valorContrato,
+        data_contrato: venda.data_contrato,
+        situacao_contrato: venda.situacao_contrato
+      });
+      continue;
+    }
+
+    if (!dataContrato || isNaN(dataContrato.getTime()) || dataContrato < new Date(dispatchInfo.firstSent)) {
+      vendasSemDisparo.push({
+        cel_indicador: venda.cel_indicador,
+        nome_indicador: venda.nome_indicador,
+        contrato_servicos: venda.contrato_servicos,
+        valor_contrato: valorContrato,
+        data_contrato: venda.data_contrato,
+        situacao_contrato: venda.situacao_contrato,
+        motivo: dataContrato ? 'data_contrato anterior ao disparo' : 'sem data de contrato'
+      });
+      continue;
+    }
+
+    const contratoId = venda.contrato_servicos || '';
+    const contratoKey = contratoId
+      ? `${celNormalized}_${contratoId}`
+      : `${celNormalized}_${venda.cpf_indicado || ''}_${venda.data_contrato || ''}`;
+
+    if (!matchedContracts.has(contratoKey)) {
+      matchedContracts.add(contratoKey);
+      valorDashboard += valorContrato;
+    }
+    convertedPhones.add(celNormalized);
+  }
+
+  const disparosSemVenda = [];
+  for (const [phone, info] of dispatchMap.entries()) {
+    if (!convertedPhones.has(phone)) {
+      disparosSemVenda.push({
+        lead_number: info.leadNumber,
+        telefone_normalizado: phone,
+        data_disparo: info.firstSent
+      });
+    }
+  }
+
+  const possiveisDuplicidades = [];
+  for (const [phone, count] of phoneContractCount.entries()) {
+    if (count > 1) {
+      const contratos = vendasList
+        .filter(v => {
+          const cel = String(v.cel_indicador || '').replace(/\D/g, '');
+          const norm = cel.startsWith('55') && cel.length >= 12 ? cel.slice(2) : cel;
+          return norm === phone;
+        })
+        .map(v => ({ contrato: v.contrato_servicos, valor: parseBRCurrency(v.valor_contrato), data: v.data_contrato, situacao: v.situacao_contrato }));
+      possiveisDuplicidades.push({ telefone: phone, total_contratos: count, contratos });
+    }
+  }
+
+  const conversoes = matchedContracts.size;
+  const leadsConvertidos = convertedPhones.size;
+  const taxaRecalculada = leadsUnicosDisparados > 0 ? Number(((leadsConvertidos / leadsUnicosDisparados) * 100).toFixed(2)) : 0;
+  const roiRecalculado = totalLeadsDisparados > 0 ? Number((valorDashboard / totalLeadsDisparados).toFixed(2)) : 0;
+
+  return {
+    totais: {
+      leads_disparados: totalLeadsDisparados,
+      leads_sucesso: totalLeadsSucesso,
+      leads_unicos_disparados: leadsUnicosDisparados,
+      vendas_erp: vendasList.length,
+      vendas_vinculadas: conversoes,
+      valor_total_erp: Number(valorTotalERP.toFixed(2)),
+      valor_total_dashboard: Number(valorDashboard.toFixed(2))
+    },
+    inconsistencias: {
+      vendas_sem_disparo: vendasSemDisparo,
+      disparos_sem_venda: disparosSemVenda,
+      possiveis_duplicidades: possiveisDuplicidades
+    },
+    validacao_metricas: {
+      taxa_conversao_recalculada: taxaRecalculada,
+      roi_recalculado: roiRecalculado,
+      conversoes_identificadas: conversoes,
+      leads_convertidos: leadsConvertidos
+    }
+  };
+}
+
 router.get('/lead-generator-metrics-audit', authMiddleware, async (req, res) => {
   try {
     const agent = await getAgentForDispatchCheck(req);
@@ -624,171 +784,88 @@ router.get('/lead-generator-metrics-audit', authMiddleware, async (req, res) => 
       return res.status(403).json({ success: false, error: 'Sem permissão para acessar auditoria de métricas.' });
     }
 
-    const { from, to, userId: filterUserId, teamId: filterTeamId } = req.query;
-
-    const logConditions = [];
-    const logParams = [];
-    if (from) { logParams.push(from); logConditions.push(`sent_at >= $${logParams.length}::timestamp`); }
-    if (to) { logParams.push(to); logConditions.push(`sent_at <= $${logParams.length}::timestamp`); }
-    if (filterUserId) { logParams.push(filterUserId); logConditions.push(`user_id = $${logParams.length}`); }
-    if (filterTeamId) { logParams.push(filterTeamId); logConditions.push(`team_id = $${logParams.length}`); }
-
-    const logWhere = logConditions.length > 0 ? `WHERE ${logConditions.join(' AND ')}` : '';
-    const successConditions = [...logConditions, 'success = true'];
-    const successWhere = `WHERE ${successConditions.join(' AND ')}`;
-
-    const [totalResult, successCountResult, dispatchResult] = await Promise.all([
-      query(`SELECT COUNT(*)::int as total FROM gerador_leads_whatsapp_logs ${logWhere}`, logParams),
-      query(`SELECT COUNT(*)::int as total, COUNT(DISTINCT lead_number)::int as leads_unicos FROM gerador_leads_whatsapp_logs ${successWhere}`, logParams),
-      query(`SELECT lead_number, MIN(sent_at) as first_sent FROM gerador_leads_whatsapp_logs ${successWhere} GROUP BY lead_number`, logParams),
-    ]);
-
-    const totalLeadsDisparados = totalResult.rows[0]?.total || 0;
-    const totalLeadsSucesso = successCountResult.rows[0]?.total || 0;
-    const leadsUnicosDisparados = successCountResult.rows[0]?.leads_unicos || 0;
-
-    const dispatchMap = new Map();
-    for (const row of dispatchResult.rows) {
-      const normalized = stripPhoneTo55Local(row.lead_number);
-      if (normalized) {
-        dispatchMap.set(normalized, { firstSent: row.first_sent, leadNumber: row.lead_number });
-      }
-    }
-
-    const erpAuthToken = process.env.ERP_AUTH_TOKEN;
-    if (!erpAuthToken) {
-      return res.status(500).json({ success: false, error: 'ERP_AUTH_TOKEN não configurado.' });
-    }
-    const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
-
-    console.log(`[Audit] Fetching ERP sales data...`);
-    const erpResponse = await fetch('http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_DADOS_VENDAS_INDICACOES', {
-      method: 'GET',
-      headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
-    });
-    if (!erpResponse.ok) {
-      return res.status(502).json({ success: false, error: `ERP retornou status ${erpResponse.status}` });
-    }
-    const erpBody = await erpResponse.json();
-    const vendasList = Array.isArray(erpBody) ? erpBody : [];
-    console.log(`[Audit] ERP returned ${vendasList.length} sales records`);
-
-    const vendasSemDisparo = [];
-    const matchedContracts = new Set();
-    const convertedPhones = new Set();
-    const phoneContractCount = new Map();
-    let valorTotalERP = 0;
-    let valorDashboard = 0;
-
-    for (const venda of vendasList) {
-      const celRaw = venda.cel_indicador ? String(venda.cel_indicador).replace(/\D/g, '') : '';
-      if (!celRaw) continue;
-
-      const celNormalized = celRaw.startsWith('55') && celRaw.length >= 12 ? celRaw.slice(2) : celRaw;
-      const valorContrato = parseBRCurrency(venda.valor_contrato);
-      valorTotalERP += valorContrato;
-
-      const count = phoneContractCount.get(celNormalized) || 0;
-      phoneContractCount.set(celNormalized, count + 1);
-
-      const dataContrato = venda.data_contrato ? new Date(venda.data_contrato) : null;
-      const dispatchInfo = dispatchMap.get(celNormalized);
-
-      if (!dispatchInfo) {
-        vendasSemDisparo.push({
-          cel_indicador: venda.cel_indicador,
-          nome_indicador: venda.nome_indicador,
-          contrato_servicos: venda.contrato_servicos,
-          valor_contrato: valorContrato,
-          data_contrato: venda.data_contrato,
-          situacao_contrato: venda.situacao_contrato
-        });
-        continue;
-      }
-
-      if (!dataContrato || isNaN(dataContrato.getTime()) || dataContrato < new Date(dispatchInfo.firstSent)) {
-        vendasSemDisparo.push({
-          cel_indicador: venda.cel_indicador,
-          nome_indicador: venda.nome_indicador,
-          contrato_servicos: venda.contrato_servicos,
-          valor_contrato: valorContrato,
-          data_contrato: venda.data_contrato,
-          situacao_contrato: venda.situacao_contrato,
-          motivo: dataContrato ? 'data_contrato anterior ao disparo' : 'sem data de contrato'
-        });
-        continue;
-      }
-
-      const contratoId = venda.contrato_servicos || '';
-      const contratoKey = contratoId
-        ? `${celNormalized}_${contratoId}`
-        : `${celNormalized}_${venda.cpf_indicado || ''}_${venda.data_contrato || ''}`;
-
-      if (!matchedContracts.has(contratoKey)) {
-        matchedContracts.add(contratoKey);
-        valorDashboard += valorContrato;
-      }
-      convertedPhones.add(celNormalized);
-    }
-
-    const disparosSemVenda = [];
-    for (const [phone, info] of dispatchMap.entries()) {
-      if (!convertedPhones.has(phone)) {
-        disparosSemVenda.push({
-          lead_number: info.leadNumber,
-          telefone_normalizado: phone,
-          data_disparo: info.firstSent
-        });
-      }
-    }
-
-    const possiveisDuplicidades = [];
-    for (const [phone, count] of phoneContractCount.entries()) {
-      if (count > 1) {
-        const contratos = vendasList
-          .filter(v => {
-            const cel = String(v.cel_indicador || '').replace(/\D/g, '');
-            const norm = cel.startsWith('55') && cel.length >= 12 ? cel.slice(2) : cel;
-            return norm === phone;
-          })
-          .map(v => ({ contrato: v.contrato_servicos, valor: parseBRCurrency(v.valor_contrato), data: v.data_contrato, situacao: v.situacao_contrato }));
-        possiveisDuplicidades.push({ telefone: phone, total_contratos: count, contratos });
-      }
-    }
-
-    const conversoes = matchedContracts.size;
-    const leadsConvertidos = convertedPhones.size;
-    const taxaRecalculada = leadsUnicosDisparados > 0 ? Number(((leadsConvertidos / leadsUnicosDisparados) * 100).toFixed(2)) : 0;
-    const roiRecalculado = totalLeadsDisparados > 0 ? Number((valorDashboard / totalLeadsDisparados).toFixed(2)) : 0;
-
-    res.json({
-      success: true,
-      totais: {
-        leads_disparados: totalLeadsDisparados,
-        leads_sucesso: totalLeadsSucesso,
-        leads_unicos_disparados: leadsUnicosDisparados,
-        vendas_erp: vendasList.length,
-        vendas_vinculadas: conversoes,
-        valor_total_erp: Number(valorTotalERP.toFixed(2)),
-        valor_total_dashboard: Number(valorDashboard.toFixed(2))
-      },
-      inconsistencias: {
-        vendas_sem_disparo: vendasSemDisparo,
-        disparos_sem_venda: disparosSemVenda,
-        possiveis_duplicidades: possiveisDuplicidades
-      },
-      validacao_metricas: {
-        taxa_conversao_recalculada: taxaRecalculada,
-        roi_recalculado: roiRecalculado,
-        conversoes_identificadas: conversoes,
-        leads_convertidos: leadsConvertidos
-      }
-    });
+    const { from, to, userId, teamId } = req.query;
+    const result = await executeMetricsAudit({ from, to, userId, teamId });
+    res.json({ success: true, ...result });
   } catch (error) {
     console.error('[Audit] Error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+async function runLeadGeneratorAudit(options = {}) {
+  const now = new Date();
+  const from = options.from || new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  const to = options.to || now.toISOString();
+
+  console.log(`[Lead Generator Audit] Executando auditoria para período: ${from} até ${to}`);
+
+  const auditResult = await executeMetricsAudit({ from, to, userId: options.userId, teamId: options.teamId });
+
+  const divergencias =
+    auditResult.inconsistencias.vendas_sem_disparo.length +
+    auditResult.inconsistencias.disparos_sem_venda.length +
+    auditResult.inconsistencias.possiveis_duplicidades.length;
+
+  await query(
+    `INSERT INTO gerador_leads_auditoria
+      (periodo_inicio, periodo_fim, leads_disparados, disparos_sucesso, vendas_erp, vendas_vinculadas, valor_total_erp, valor_total_dashboard, divergencias, detalhes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [
+      from,
+      to,
+      auditResult.totais.leads_disparados,
+      auditResult.totais.leads_sucesso,
+      auditResult.totais.vendas_erp,
+      auditResult.totais.vendas_vinculadas,
+      auditResult.totais.valor_total_erp,
+      auditResult.totais.valor_total_dashboard,
+      divergencias,
+      JSON.stringify(auditResult)
+    ]
+  );
+
+  if (divergencias > 0) {
+    const valorAfetado = Math.abs(auditResult.totais.valor_total_erp - auditResult.totais.valor_total_dashboard);
+    console.log(`[Lead Generator Audit] Divergências encontradas nas métricas`);
+    console.log(`[Lead Generator Audit]   - Total de divergências: ${divergencias}`);
+    console.log(`[Lead Generator Audit]   - Vendas sem disparo: ${auditResult.inconsistencias.vendas_sem_disparo.length}`);
+    console.log(`[Lead Generator Audit]   - Disparos sem venda: ${auditResult.inconsistencias.disparos_sem_venda.length}`);
+    console.log(`[Lead Generator Audit]   - Possíveis duplicidades: ${auditResult.inconsistencias.possiveis_duplicidades.length}`);
+    console.log(`[Lead Generator Audit]   - Valor afetado: R$ ${valorAfetado.toFixed(2)}`);
+    console.log(`[Lead Generator Audit]   - Período: ${from} até ${to}`);
+  } else {
+    console.log(`[Lead Generator Audit] Nenhuma divergência encontrada. Métricas consistentes.`);
+  }
+
+  return { divergencias, auditResult };
+}
+
+router.get('/run-lead-generator-audit', authMiddleware, async (req, res) => {
+  try {
+    const agent = await getAgentForDispatchCheck(req);
+    if (!agent || DISPATCH_FORBIDDEN_TYPES.includes(agent.agent_type)) {
+      return res.status(403).json({ success: false, error: 'Sem permissão para executar auditoria.' });
+    }
+
+    const { from, to, userId, teamId } = req.query;
+    const { divergencias, auditResult } = await runLeadGeneratorAudit({ from, to, userId, teamId });
+
+    res.json({
+      success: true,
+      message: divergencias > 0
+        ? `Auditoria concluída. ${divergencias} divergência(s) encontrada(s).`
+        : 'Auditoria concluída. Nenhuma divergência encontrada.',
+      divergencias,
+      ...auditResult
+    });
+  } catch (error) {
+    console.error('[Lead Generator Audit] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+export { runLeadGeneratorAudit };
 
 router.get('/lead-generator-whatsapp-logs-list', authMiddleware, async (req, res) => {
   try {
