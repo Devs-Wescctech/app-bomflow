@@ -93,6 +93,18 @@ export default function LeadGeneratorDashboard() {
     refetchInterval: 60000,
   });
 
+  const { data: roiData, isLoading: loadingRoi, refetch: refetchRoi } = useQuery({
+    queryKey: ['lead-generator-roi-metrics', dashboardQueryParams],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/functions/lead-generator-roi-metrics?${dashboardQueryParams}`, {
+        headers: { ...getAuthHeaders() },
+      });
+      if (!res.ok) throw new Error('Erro ao carregar métricas ROI');
+      return res.json();
+    },
+    refetchInterval: 60000,
+  });
+
   const logsQueryParams = useMemo(() => {
     const params = new URLSearchParams();
     params.set('page', logsPage);
@@ -131,6 +143,7 @@ export default function LeadGeneratorDashboard() {
       }
       refetchConversions();
       refetchDashboard();
+      refetchRoi();
     } catch (err) {
       toast.error(`Erro: ${err.message}`);
     } finally {
@@ -153,19 +166,22 @@ export default function LeadGeneratorDashboard() {
   const convByBatch = conversionData?.byBatch || [];
   const convRecent = conversionData?.recent || [];
 
+  const roiTotals = roiData?.totals || {};
+  const roiSeries = roiData?.series || {};
+
   const taxaSucesso = totals.taxa_sucesso != null ? Number(totals.taxa_sucesso).toFixed(1) : '0.0';
   const taxaFalha = totals.total > 0 ? ((totals.falhas || 0) / totals.total * 100) : 0;
   const totalBloqueios = (totals.bloqueados_30d || 0) + (totals.bloqueados_dup || 0);
-  const taxaConversao = convTotals.taxa_conversao || 0;
-  const roiComercial = (totals.total || 0) > 0 ? (convTotals.valor_total || 0) / totals.total : 0;
+  const taxaConversao = roiTotals.taxa_conversao || 0;
+  const roiComercial = roiTotals.roi || 0;
 
   const totalEnviados = (totals.total || 0) - totalBloqueios;
   const funnelData = useMemo(() => [
     { name: 'Leads Processados', value: totals.total || 0, fill: '#6366f1' },
     { name: 'Mensagens Enviadas', value: totalEnviados, fill: '#3b82f6' },
     { name: 'Com Sucesso', value: totals.enviados || 0, fill: '#10b981' },
-    { name: 'Conversões', value: convTotals.total_conversoes || 0, fill: '#f59e0b' },
-  ], [totals, totalEnviados, convTotals]);
+    { name: 'Conversões', value: roiTotals.conversoes || 0, fill: '#f59e0b' },
+  ], [totals, totalEnviados, roiTotals]);
 
   const dayChartData = useMemo(() => byDay.map(d => ({
     dia: d.dia ? format(new Date(d.dia), 'dd/MM', { locale: ptBR }) : '',
@@ -174,16 +190,18 @@ export default function LeadGeneratorDashboard() {
     falhas: d.falhas || 0,
   })), [byDay]);
 
-  const convDayChartData = useMemo(() => convByDay.map(d => ({
+  const roiConvPorDia = roiSeries.conversoes_por_dia || [];
+  const roiValorPorDia = roiSeries.valor_vendas_por_dia || [];
+
+  const convDayChartData = useMemo(() => roiConvPorDia.map(d => ({
     dia: d.dia ? format(new Date(d.dia), 'dd/MM', { locale: ptBR }) : '',
     conversoes: d.conversoes || 0,
-    valor: d.valor || 0,
-  })), [convByDay]);
+  })), [roiConvPorDia]);
 
-  const valueDayChartData = useMemo(() => convByDay.map(d => ({
+  const valueDayChartData = useMemo(() => roiValorPorDia.map(d => ({
     dia: d.dia ? format(new Date(d.dia), 'dd/MM', { locale: ptBR }) : '',
     valor: d.valor || 0,
-  })), [convByDay]);
+  })), [roiValorPorDia]);
 
   const hourChartData = useMemo(() => {
     const hours = Array.from({ length: 24 }, (_, i) => ({ hora: `${String(i).padStart(2, '0')}h`, total: 0 }));
@@ -288,7 +306,7 @@ export default function LeadGeneratorDashboard() {
     return s ? <Badge className={s.cls}>{s.label}</Badge> : <Badge variant="secondary">{status || '-'}</Badge>;
   };
 
-  const isLoading = loadingDashboard || loadingConversions;
+  const isLoading = loadingDashboard || loadingConversions || loadingRoi;
 
   return (
     <div className="space-y-5">
@@ -305,7 +323,7 @@ export default function LeadGeneratorDashboard() {
                 {checkingConversions ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <RefreshCw className="w-4 h-4 mr-1" />}
                 Verificar Conversões
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => { refetchDashboard(); refetchConversions(); }}>
+              <Button variant="ghost" size="sm" onClick={() => { refetchDashboard(); refetchConversions(); refetchRoi(); }}>
                 <RefreshCw className="w-4 h-4" />
               </Button>
             </div>
@@ -385,10 +403,10 @@ export default function LeadGeneratorDashboard() {
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {[
-              { label: 'Conversões', value: convTotals.total_conversoes || 0, icon: Target },
+              { label: 'Conversões', value: roiTotals.conversoes || 0, icon: Target },
               { label: 'Taxa Conversão', value: `${taxaConversao}%`, icon: Activity },
-              { label: 'Valor Total Vendas', value: formatCurrency(convTotals.valor_total), icon: DollarSign, small: true },
-              { label: 'Leads Convertidos', value: convTotals.leads_unicos || 0, icon: UserCheck },
+              { label: 'Valor Total Vendas', value: formatCurrency(roiTotals.valor_total_vendas), icon: DollarSign, small: true },
+              { label: 'Leads Convertidos', value: roiTotals.leads_convertidos || 0, icon: UserCheck },
             ].map((c, i) => (
               <Card key={i} className="border-emerald-200 dark:border-emerald-800">
                 <CardContent className="pt-4 pb-3">
