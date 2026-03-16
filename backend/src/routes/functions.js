@@ -442,6 +442,181 @@ router.get('/lead-generator-whatsapp-dashboard', authMiddleware, async (req, res
   }
 });
 
+function stripPhoneTo55Local(phone) {
+  if (!phone) return '';
+  const digits = String(phone).replace(/\D/g, '');
+  if (digits.startsWith('55') && digits.length >= 12) {
+    return digits.slice(2);
+  }
+  return digits;
+}
+
+function parseBRCurrency(value) {
+  if (value == null) return 0;
+  const str = String(value).trim();
+  if (/^\d{1,3}(\.\d{3})*(,\d+)?$/.test(str)) {
+    return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+  }
+  return parseFloat(str) || 0;
+}
+
+router.get('/lead-generator-roi-metrics', authMiddleware, async (req, res) => {
+  try {
+    const agent = await getAgentForDispatchCheck(req);
+    if (!agent || DISPATCH_FORBIDDEN_TYPES.includes(agent.agent_type)) {
+      return res.status(403).json({ success: false, error: 'Sem permissão para acessar métricas ROI.' });
+    }
+
+    const { from, to, userId: filterUserId, teamId: filterTeamId } = req.query;
+
+    const logConditions = [];
+    const logParams = [];
+
+    if (from) {
+      logParams.push(from);
+      logConditions.push(`sent_at >= $${logParams.length}::timestamp`);
+    }
+    if (to) {
+      logParams.push(to);
+      logConditions.push(`sent_at <= $${logParams.length}::timestamp`);
+    }
+    if (filterUserId) {
+      logParams.push(filterUserId);
+      logConditions.push(`user_id = $${logParams.length}`);
+    }
+    if (filterTeamId) {
+      logParams.push(filterTeamId);
+      logConditions.push(`team_id = $${logParams.length}`);
+    }
+
+    const logWhere = logConditions.length > 0 ? `WHERE ${logConditions.join(' AND ')}` : '';
+
+    const totalDisparosResult = await query(
+      `SELECT COUNT(*)::int as total FROM gerador_leads_whatsapp_logs ${logWhere}`,
+      logParams
+    );
+    const totalDisparos = totalDisparosResult.rows[0]?.total || 0;
+
+    const successConditions = [...logConditions, 'success = true'];
+    const successWhere = `WHERE ${successConditions.join(' AND ')}`;
+
+    const successResult = await query(
+      `SELECT
+         COUNT(*)::int as total,
+         COUNT(DISTINCT lead_number)::int as leads_unicos
+       FROM gerador_leads_whatsapp_logs ${successWhere}`,
+      logParams
+    );
+    const disparosSucesso = successResult.rows[0]?.total || 0;
+    const leadsDisparadosSucesso = successResult.rows[0]?.leads_unicos || 0;
+
+    const dispatchedPhonesResult = await query(
+      `SELECT lead_number, MIN(sent_at) as first_sent
+       FROM gerador_leads_whatsapp_logs
+       ${successWhere}
+       GROUP BY lead_number`,
+      logParams
+    );
+
+    const dispatchMap = new Map();
+    for (const row of dispatchedPhonesResult.rows) {
+      const normalized = stripPhoneTo55Local(row.lead_number);
+      if (normalized) {
+        dispatchMap.set(normalized, row.first_sent);
+      }
+    }
+
+    const erpAuthToken = process.env.ERP_AUTH_TOKEN;
+    if (!erpAuthToken) {
+      return res.status(500).json({ success: false, error: 'ERP_AUTH_TOKEN não configurado.' });
+    }
+
+    const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
+    const erpUrl = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_DADOS_VENDAS_INDICACOES';
+
+    console.log(`[ROI Metrics] Fetching ERP sales data from API_DADOS_VENDAS_INDICACOES...`);
+    const erpResponse = await fetch(erpUrl, {
+      method: 'GET',
+      headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
+    });
+
+    if (!erpResponse.ok) {
+      return res.status(502).json({ success: false, error: `ERP retornou status ${erpResponse.status}` });
+    }
+
+    const erpData = await erpResponse.json();
+    const vendasERP = Array.isArray(erpData) ? erpData : [];
+    console.log(`[ROI Metrics] ERP returned ${vendasERP.length} sales records`);
+
+    const matchedContracts = new Set();
+    const convertedPhones = new Set();
+    let valorTotalVendas = 0;
+    const conversoesPorDia = {};
+    const valorPorDia = {};
+
+    for (const venda of vendasERP) {
+      const celIndicador = venda.cel_indicador ? String(venda.cel_indicador).replace(/\D/g, '') : '';
+      if (!celIndicador) continue;
+
+      const celNormalized = celIndicador.startsWith('55') && celIndicador.length >= 12
+        ? celIndicador.slice(2)
+        : celIndicador;
+
+      const dispatchDate = dispatchMap.get(celNormalized);
+      if (!dispatchDate) continue;
+
+      const dataContrato = venda.data_contrato ? new Date(venda.data_contrato) : null;
+      if (!dataContrato || isNaN(dataContrato.getTime())) continue;
+
+      if (dataContrato < new Date(dispatchDate)) continue;
+
+      const contratoId = venda.contrato_servicos || '';
+      const contratoKey = contratoId
+        ? `${celNormalized}_${contratoId}`
+        : `${celNormalized}_${venda.cpf_indicado || ''}_${venda.data_contrato || ''}`;
+      if (matchedContracts.has(contratoKey)) continue;
+      matchedContracts.add(contratoKey);
+
+      const valorContrato = parseBRCurrency(venda.valor_contrato);
+
+      convertedPhones.add(celNormalized);
+      valorTotalVendas += valorContrato;
+
+      const diaKey = dataContrato.toISOString().split('T')[0];
+      conversoesPorDia[diaKey] = (conversoesPorDia[diaKey] || 0) + 1;
+      valorPorDia[diaKey] = (valorPorDia[diaKey] || 0) + valorContrato;
+    }
+
+    const conversoes = matchedContracts.size;
+    const leadsConvertidos = convertedPhones.size;
+    const taxaConversao = leadsDisparadosSucesso > 0 ? Number(((leadsConvertidos / leadsDisparadosSucesso) * 100).toFixed(2)) : 0;
+    const roi = totalDisparos > 0 ? Number((valorTotalVendas / totalDisparos).toFixed(2)) : 0;
+
+    const allDays = new Set([...Object.keys(conversoesPorDia), ...Object.keys(valorPorDia)]);
+    const sortedDays = Array.from(allDays).sort();
+
+    res.json({
+      success: true,
+      totals: {
+        total_disparos: totalDisparos,
+        disparos_sucesso: disparosSucesso,
+        conversoes,
+        leads_convertidos: leadsConvertidos,
+        valor_total_vendas: valorTotalVendas,
+        taxa_conversao: taxaConversao,
+        roi
+      },
+      series: {
+        conversoes_por_dia: sortedDays.map(dia => ({ dia, conversoes: conversoesPorDia[dia] || 0 })),
+        valor_vendas_por_dia: sortedDays.map(dia => ({ dia, valor: valorPorDia[dia] || 0 }))
+      }
+    });
+  } catch (error) {
+    console.error('[ROI Metrics] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.get('/lead-generator-whatsapp-logs-list', authMiddleware, async (req, res) => {
   try {
     const agent = await getAgentForDispatchCheck(req);
