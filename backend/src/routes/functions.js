@@ -3412,7 +3412,7 @@ function generateCommissionPDF(data) {
     doc.fontSize(11).fill(amberAccent).text(formatCurrency(valorTotal), 44, y + 4, { width: doc.page.width - 88, align: 'right' });
     y += 30;
 
-    if (y > doc.page.height - 120) { doc.addPage(); y = 40; }
+    if (y > doc.page.height - 80) { doc.addPage(); y = 40; }
 
     doc.fontSize(12).fill(textDark).text('Detalhamento das Indicações (Auditoria)', 40, y);
     y += 16;
@@ -3436,12 +3436,12 @@ function generateCommissionPDF(data) {
       y = drawTableRow(cols2, [r.nome_indicador || '-', formatCPF(r.cpf_indicado), r.nome_indicado || '-', r.data_contrato || '-', formatCurrency(val)], y, bg);
     });
 
-    y += 20;
-    if (y > doc.page.height - 60) { doc.addPage(); y = 40; }
-    doc.rect(0, doc.page.height - 55, doc.page.width, 55).fill(darkBg);
-    doc.fontSize(9).fill([148, 163, 184]).text('Bom Pastor — Bom Flow CRM', 40, doc.page.height - 48, { align: 'center', width: doc.page.width - 80 });
-    doc.fontSize(8).fill([100, 116, 139]).text(`Relatório gerado automaticamente em ${geradoEm}`, 40, doc.page.height - 36, { align: 'center', width: doc.page.width - 80 });
-    doc.fontSize(7).fill([71, 85, 105]).text('Este documento é destinado exclusivamente ao controle financeiro de comissões.', 40, doc.page.height - 24, { align: 'center', width: doc.page.width - 80 });
+    y += 15;
+    if (y > doc.page.height - 55) { doc.addPage(); y = 40; }
+    doc.rect(40, y, doc.page.width - 80, 45).fill(darkBg);
+    doc.fontSize(9).fill([148, 163, 184]).text('Bom Pastor — Bom Flow CRM', 40, y + 6, { align: 'center', width: doc.page.width - 80 });
+    doc.fontSize(8).fill([100, 116, 139]).text(`Relatório gerado automaticamente em ${geradoEm}`, 40, y + 18, { align: 'center', width: doc.page.width - 80 });
+    doc.fontSize(7).fill([71, 85, 105]).text('Este documento é destinado exclusivamente ao controle financeiro de comissões.', 40, y + 30, { align: 'center', width: doc.page.width - 80 });
 
     doc.end();
   });
