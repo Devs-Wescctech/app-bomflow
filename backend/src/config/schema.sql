@@ -978,3 +978,17 @@ CREATE INDEX IF NOT EXISTS idx_gla_data_execucao ON gerador_leads_auditoria (dat
 
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS erp_agent_id BIGINT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_erp_agent_id ON agents (erp_agent_id) WHERE erp_agent_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS processed_referral_sales (
+    id SERIAL PRIMARY KEY,
+    sale_identifier VARCHAR(500) NOT NULL,
+    indicator_cpf VARCHAR(20),
+    indicator_phone VARCHAR(50),
+    indicator_name VARCHAR(255),
+    contrato_servicos VARCHAR(100),
+    valor_contrato VARCHAR(100),
+    data_contrato VARCHAR(100),
+    processed_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_processed_referral_sales_identifier ON processed_referral_sales (sale_identifier);

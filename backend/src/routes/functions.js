@@ -2330,12 +2330,52 @@ router.get('/referral-paid-sales', authMiddleware, loadAgentMiddleware, async (r
     });
     console.log(`[Comissões] ${paidSales.length} records with valores_pagos=SIM`);
 
+    const existingResult = await query('SELECT sale_identifier FROM processed_referral_sales');
+    const existingIdentifiers = new Set(existingResult.rows.map(r => r.sale_identifier));
+    console.log(`[Comissões] ${existingIdentifiers.size} previously processed sales in DB`);
+
+    const seenIdentifiers = new Set();
     const indicatorMap = {};
+    let duplicatesSkipped = 0;
+    const newSalesToPersist = [];
 
     for (const sale of paidSales) {
+      const contratoId = sale.contrato_servicos ? String(sale.contrato_servicos).trim() : '';
       const cpf = sale.cpf_indicador ? String(sale.cpf_indicador).replace(/\D/g, '') : '';
       const phone = sale.cel_indicador ? String(sale.cel_indicador).replace(/\D/g, '') : '';
       const name = sale.nome_indicador ? String(sale.nome_indicador).trim().toLowerCase() : '';
+      const valorContrato = sale.valor_contrato ? String(sale.valor_contrato).trim() : '';
+      const dataContrato = sale.data_contrato ? String(sale.data_contrato).trim() : '';
+
+      let saleIdentifier = '';
+      if (contratoId) {
+        saleIdentifier = `contrato:${contratoId}`;
+      } else {
+        const compositeKey = [cpf || phone || name, valorContrato, dataContrato].filter(Boolean).join('|');
+        saleIdentifier = `composite:${compositeKey}`;
+      }
+
+      if (!saleIdentifier || saleIdentifier === 'contrato:' || saleIdentifier === 'composite:') {
+        continue;
+      }
+
+      if (seenIdentifiers.has(saleIdentifier)) {
+        duplicatesSkipped++;
+        continue;
+      }
+      seenIdentifiers.add(saleIdentifier);
+
+      if (!existingIdentifiers.has(saleIdentifier)) {
+        newSalesToPersist.push({
+          saleIdentifier,
+          cpf,
+          phone,
+          name: sale.nome_indicador || '',
+          contratoId,
+          valorContrato,
+          dataContrato
+        });
+      }
 
       let key = '';
       let matchType = '';
@@ -2366,18 +2406,36 @@ router.get('/referral-paid-sales', authMiddleware, loadAgentMiddleware, async (r
 
       indicatorMap[key].totalPaidSales += 1;
       indicatorMap[key].sales.push({
-        contrato_servicos: sale.contrato_servicos || '',
-        valor_contrato: sale.valor_contrato || '',
-        data_contrato: sale.data_contrato || ''
+        contrato_servicos: contratoId,
+        valor_contrato: valorContrato,
+        data_contrato: dataContrato
       });
     }
 
+    if (newSalesToPersist.length > 0) {
+      console.log(`[Comissões] Persisting ${newSalesToPersist.length} new sales to processed_referral_sales`);
+      for (const s of newSalesToPersist) {
+        try {
+          await query(
+            `INSERT INTO processed_referral_sales (sale_identifier, indicator_cpf, indicator_phone, indicator_name, contrato_servicos, valor_contrato, data_contrato)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             ON CONFLICT (sale_identifier) DO NOTHING`,
+            [s.saleIdentifier, s.cpf || null, s.phone || null, s.name || null, s.contratoId || null, s.valorContrato || null, s.dataContrato || null]
+          );
+        } catch (persistErr) {
+          console.error(`[Comissões] Error persisting sale ${s.saleIdentifier}:`, persistErr.message);
+        }
+      }
+    }
+
+    const uniquePaidCount = seenIdentifiers.size;
     const indicators = Object.values(indicatorMap);
-    console.log(`[Comissões] ${indicators.length} unique indicators with paid sales`);
+    console.log(`[Comissões] ${indicators.length} unique indicators, ${uniquePaidCount} unique sales (${duplicatesSkipped} duplicates skipped)`);
 
     res.json({
       success: true,
-      totalPaidSales: paidSales.length,
+      totalPaidSales: uniquePaidCount,
+      duplicatesSkipped,
       indicators
     });
   } catch (error) {
