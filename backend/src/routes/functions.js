@@ -2884,7 +2884,27 @@ router.post('/commission-payment/run-batch', authMiddleware, loadAgentMiddleware
 router.get('/commission-payment/batches', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
   try {
     const result = await query('SELECT * FROM commission_payment_batches ORDER BY created_at DESC LIMIT 50');
-    res.json({ success: true, batches: result.rows });
+    const batches = result.rows;
+
+    for (const batch of batches) {
+      const controlResult = await query(
+        'SELECT cpf_indicador, nome_indicador FROM commission_payment_control WHERE lote_pagamento_id = $1',
+        [batch.id]
+      );
+      const indicatorMap = {};
+      for (const r of controlResult.rows) {
+        const key = r.cpf_indicador || r.nome_indicador || 'unknown';
+        indicatorMap[key] = (indicatorMap[key] || 0) + 1;
+      }
+      let totalComissao = 0;
+      for (const count of Object.values(indicatorMap)) {
+        totalComissao += getCommissionByTier(count);
+      }
+      batch.valor_total = totalComissao;
+      batch.total_indicadores = Object.keys(indicatorMap).length;
+    }
+
+    res.json({ success: true, batches });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
