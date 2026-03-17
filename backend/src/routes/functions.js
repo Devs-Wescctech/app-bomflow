@@ -2839,8 +2839,10 @@ async function runWeeklyCommissionBatch() {
         };
       }
       indicatorMap[key].count += 1;
-      const val = parseBRCurrency(e.valor_contrato);
-      indicatorMap[key].total += val;
+    }
+
+    for (const ind of Object.values(indicatorMap)) {
+      ind.total = getCommissionByTier(ind.count);
     }
 
     const totalIndicadores = Object.keys(indicatorMap).length;
@@ -3028,9 +3030,11 @@ async function getCommissionReportData() {
       };
     }
     indicatorMap[key].count += 1;
-    const val = parseBRCurrency(r.valor_contrato);
-    indicatorMap[key].total += val;
     indicatorMap[key].details.push(r);
+  }
+
+  for (const ind of Object.values(indicatorMap)) {
+    ind.total = getCommissionByTier(ind.count);
   }
 
   const totalIndicadores = Object.keys(indicatorMap).length;
@@ -3038,6 +3042,13 @@ async function getCommissionReportData() {
   const valorTotal = Object.values(indicatorMap).reduce((s, i) => s + i.total, 0);
 
   return { cycle, indicators: indicatorMap, totalIndicadores, totalIndicacoes, valorTotal, records };
+}
+
+function getCommissionByTier(totalConversions) {
+  if (totalConversions >= 13) return 200;
+  if (totalConversions >= 4) return 150;
+  if (totalConversions >= 1) return 100;
+  return 0;
 }
 
 function formatPhoneNumber(phone) {
@@ -3149,9 +3160,9 @@ function buildCommissionEmailHtml(data) {
           <th style="${thStyle}">Indicador</th>
           <th style="${thStyle}">CPF</th>
           <th style="${thStyle}">Telefone</th>
-          <th style="${thStyle} text-align: center;">Qtde</th>
-          <th style="${thStyle} text-align: right;">Comissão Unit.</th>
-          <th style="${thStyle} text-align: right;">Valor Total</th>
+          <th style="${thStyle} text-align: center;">Conversões</th>
+          <th style="${thStyle} text-align: center;">Nível</th>
+          <th style="${thStyle} text-align: right;">Comissão</th>
         </tr>
       </thead>
       <tbody>`;
@@ -3159,14 +3170,14 @@ function buildCommissionEmailHtml(data) {
   let rowIdx = 0;
   for (const [key, ind] of Object.entries(indicators)) {
     const bg = rowIdx % 2 === 0 ? '#ffffff' : '#f8fafc';
-    const unitValue = ind.count > 0 ? ind.total / ind.count : 0;
+    const nivel = ind.count >= 13 ? '3 (13+)' : ind.count >= 4 ? '2 (4-12)' : ind.count >= 1 ? '1 (1-3)' : '-';
     html += `
         <tr style="background: ${bg};">
           <td style="${tdStyle} font-weight: 600;">${ind.nome}</td>
           <td style="${tdStyle}">${formatCPF(ind.cpf)}</td>
           <td style="${tdStyle}">${formatPhoneNumber(ind.cel)}</td>
           <td style="${tdStyle} text-align: center;">${ind.count}</td>
-          <td style="${tdRight}">${formatCurrency(unitValue)}</td>
+          <td style="${tdStyle} text-align: center;">${nivel}</td>
           <td style="${tdRight}">${formatCurrency(ind.total)}</td>
         </tr>`;
     rowIdx++;
@@ -3191,7 +3202,7 @@ function buildCommissionEmailHtml(data) {
           <th style="${thStyle}">CPF Indicado</th>
           <th style="${thStyle}">Nome Indicado</th>
           <th style="${thStyle}">Data Contrato</th>
-          <th style="${thStyle} text-align: right;">Comissão</th>
+          <th style="${thStyle} text-align: right;">Valor Contrato</th>
         </tr>
       </thead>
       <tbody>`;
@@ -3284,9 +3295,9 @@ function generateCommissionPDF(data) {
       { label: 'Indicador', w: 110, align: 'left' },
       { label: 'CPF', w: 95, align: 'left' },
       { label: 'Telefone', w: 90, align: 'left' },
-      { label: 'Qtde', w: 35, align: 'center' },
-      { label: 'Comissão Unit.', w: 75, align: 'right' },
-      { label: 'Valor Total', w: 80, align: 'right' },
+      { label: 'Conversões', w: 50, align: 'center' },
+      { label: 'Nível', w: 55, align: 'center' },
+      { label: 'Comissão', w: 85, align: 'right' },
     ];
 
     const drawTableHeader = (columns, startY) => {
@@ -3317,8 +3328,8 @@ function generateCommissionPDF(data) {
     for (const [key, ind] of Object.entries(indicators)) {
       if (y > doc.page.height - 80) { doc.addPage(); y = 40; y = drawTableHeader(cols1, y); }
       const bg = rIdx % 2 === 1 ? [248, 250, 252] : null;
-      const unitVal = ind.count > 0 ? ind.total / ind.count : 0;
-      y = drawTableRow(cols1, [ind.nome, formatCPF(ind.cpf), formatPhoneNumber(ind.cel), String(ind.count), formatCurrency(unitVal), formatCurrency(ind.total)], y, bg);
+      const nivel = ind.count >= 13 ? '3 (13+)' : ind.count >= 4 ? '2 (4-12)' : ind.count >= 1 ? '1 (1-3)' : '-';
+      y = drawTableRow(cols1, [ind.nome, formatCPF(ind.cpf), formatPhoneNumber(ind.cel), String(ind.count), nivel, formatCurrency(ind.total)], y, bg);
       rIdx++;
     }
 
@@ -3339,7 +3350,7 @@ function generateCommissionPDF(data) {
       { label: 'CPF Indicado', w: 100, align: 'left' },
       { label: 'Nome Indicado', w: 120, align: 'left' },
       { label: 'Data Contrato', w: 75, align: 'left' },
-      { label: 'Comissão', w: 80, align: 'right' },
+      { label: 'Valor Contrato', w: 80, align: 'right' },
     ];
 
     y = drawTableHeader(cols2, y);
