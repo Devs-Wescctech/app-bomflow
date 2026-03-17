@@ -992,3 +992,13 @@ CREATE TABLE IF NOT EXISTS processed_referral_sales (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_processed_referral_sales_identifier ON processed_referral_sales (sale_identifier);
+
+CREATE TABLE IF NOT EXISTS processed_referral_contracts (
+    id SERIAL PRIMARY KEY,
+    contrato_servicos VARCHAR(255) NOT NULL,
+    referral_id UUID NOT NULL,
+    cpf_indicado VARCHAR(20),
+    processed_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_processed_referral_contracts_contrato ON processed_referral_contracts (contrato_servicos);
