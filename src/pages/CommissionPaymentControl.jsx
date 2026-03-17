@@ -10,6 +10,7 @@ import {
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { getCommissionFromConversions } from '@/utils/commissionRules';
 
 const STATUS_LABELS = {
   elegivel: 'Elegível',
@@ -267,7 +268,7 @@ export default function CommissionPaymentControl() {
                       <th className="py-2 px-3">Indicador</th>
                       <th className="py-2 px-3">Indicado</th>
                       <th className="py-2 px-3">Contrato</th>
-                      <th className="py-2 px-3">Valor</th>
+                      <th className="py-2 px-3">Valor Contrato</th>
                       <th className="py-2 px-3">Data Contrato</th>
                       <th className="py-2 px-3">Status</th>
                       <th className="py-2 px-3">Lote</th>
@@ -412,24 +413,32 @@ export default function CommissionPaymentControl() {
                       <th className="py-2 px-3">Indicador</th>
                       <th className="py-2 px-3">CPF</th>
                       <th className="py-2 px-3">Telefone</th>
-                      <th className="py-2 px-3">Indicações</th>
+                      <th className="py-2 px-3">Conversões</th>
+                      <th className="py-2 px-3">Nível</th>
+                      <th className="py-2 px-3">Comissão</th>
                       <th className="py-2 px-3">Contratos</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {Object.entries(groupedByIndicator).map(([key, data]) => (
-                      <tr key={key} className="border-b hover:bg-gray-50">
-                        <td className="py-2 px-3 font-medium">{data.nome || '-'}</td>
-                        <td className="py-2 px-3">{data.cpf || '-'}</td>
-                        <td className="py-2 px-3">{data.cel || '-'}</td>
-                        <td className="py-2 px-3">
-                          <Badge className="bg-blue-100 text-blue-800">{data.items.length}</Badge>
-                        </td>
-                        <td className="py-2 px-3 text-xs">
-                          {data.items.map(i => i.contrato_servicos).join(', ')}
-                        </td>
-                      </tr>
-                    ))}
+                    {Object.entries(groupedByIndicator).map(([key, data]) => {
+                      const { level, value } = getCommissionFromConversions(data.items.length);
+                      const nivelLabel = level === 3 ? '3 (13+)' : level === 2 ? '2 (4-12)' : '1 (1-3)';
+                      return (
+                        <tr key={key} className="border-b hover:bg-gray-50">
+                          <td className="py-2 px-3 font-medium">{data.nome || '-'}</td>
+                          <td className="py-2 px-3">{data.cpf || '-'}</td>
+                          <td className="py-2 px-3">{data.cel || '-'}</td>
+                          <td className="py-2 px-3">
+                            <Badge className="bg-blue-100 text-blue-800">{data.items.length}</Badge>
+                          </td>
+                          <td className="py-2 px-3 text-sm">{nivelLabel}</td>
+                          <td className="py-2 px-3 font-bold text-green-600">R$ {value.toFixed(2)}</td>
+                          <td className="py-2 px-3 text-xs">
+                            {data.items.map(i => i.contrato_servicos).join(', ')}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
