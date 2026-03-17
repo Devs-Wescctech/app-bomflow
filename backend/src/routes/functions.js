@@ -3050,10 +3050,25 @@ async function getCommissionReportData() {
     [cycle.start, cycle.end]
   );
 
-  const batchResult = await query(
-    `SELECT id FROM commission_payment_batches WHERE periodo_inicio = $1 AND periodo_fim = $2 ORDER BY id DESC LIMIT 1`,
+  let batchResult = await query(
+    `SELECT id, periodo_inicio, periodo_fim FROM commission_payment_batches WHERE periodo_inicio = $1 AND periodo_fim = $2 ORDER BY id DESC LIMIT 1`,
     [cycle.start, cycle.end]
   );
+
+  if (batchResult.rows.length === 0) {
+    console.log('[Commission Report] No batch for current cycle, checking most recent batch...');
+    batchResult = await query(
+      `SELECT id, periodo_inicio, periodo_fim FROM commission_payment_batches ORDER BY created_at DESC LIMIT 1`
+    );
+    if (batchResult.rows[0]) {
+      const b = batchResult.rows[0];
+      cycle.start = b.periodo_inicio;
+      cycle.end = b.periodo_fim;
+      cycle.label = `${new Date(b.periodo_inicio).toISOString().split('T')[0]} a ${new Date(b.periodo_fim).toISOString().split('T')[0]}`;
+      console.log(`[Commission Report] Using batch #${b.id} cycle: ${cycle.label}`);
+    }
+  }
+
   const currentBatchId = batchResult.rows[0]?.id;
 
   let controlResult;
@@ -3089,7 +3104,7 @@ async function getCommissionReportData() {
     return { cycle, indicators: indicatorMap, totalIndicadores, totalIndicacoes, valorTotal, records };
   }
 
-  console.log('[Commission Report] No snapshot found, calculating dynamically');
+  console.log(`[Commission Report] No snapshot found, calculating dynamically (${records.length} records)`);
   const indicatorMap = {};
   for (const r of records) {
     const key = r.cpf_indicador || r.nome_indicador || 'unknown';
