@@ -2726,23 +2726,17 @@ function getWeeklyCycleDates(referenceDate = new Date()) {
   const d = new Date(referenceDate);
   const dayOfWeek = d.getDay();
 
-  let cycleEnd = new Date(d);
-  let cycleStart = new Date(d);
+  const daysSinceTuesday = (dayOfWeek + 5) % 7;
 
-  if (dayOfWeek === 3) {
-    cycleEnd.setDate(d.getDate() - 1);
-    cycleEnd.setHours(23, 59, 59, 999);
-    cycleStart.setDate(d.getDate() - 6);
-    cycleStart.setHours(0, 0, 0, 0);
-  } else {
-    const daysToLastTuesday = ((dayOfWeek + 7 - 2) % 7) || 7;
-    cycleEnd = new Date(d);
-    cycleEnd.setDate(d.getDate() - daysToLastTuesday);
-    cycleEnd.setHours(23, 59, 59, 999);
-    cycleStart = new Date(cycleEnd);
-    cycleStart.setDate(cycleEnd.getDate() - 5);
-    cycleStart.setHours(0, 0, 0, 0);
-  }
+  const cycleEnd = new Date(d);
+  cycleEnd.setDate(d.getDate() - daysSinceTuesday);
+  cycleEnd.setHours(23, 59, 59, 999);
+
+  const cycleStart = new Date(cycleEnd);
+  cycleStart.setDate(cycleEnd.getDate() - 6);
+  cycleStart.setHours(0, 0, 0, 0);
+
+  console.log('[Commission Cycle] start:', cycleStart, 'end:', cycleEnd);
 
   return {
     start: cycleStart,
