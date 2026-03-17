@@ -1002,3 +1002,20 @@ CREATE TABLE IF NOT EXISTS processed_referral_contracts (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_processed_referral_contracts_contrato ON processed_referral_contracts (contrato_servicos);
+
+CREATE TABLE IF NOT EXISTS commission_reconciliation_logs (
+    id SERIAL PRIMARY KEY,
+    contrato_servicos VARCHAR(255),
+    referral_id UUID,
+    cpf_indicado VARCHAR(20),
+    tipo_problema VARCHAR(50) NOT NULL,
+    descricao TEXT,
+    resolved BOOLEAN DEFAULT false,
+    resolved_at TIMESTAMP,
+    resolved_by VARCHAR(255),
+    execution_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_commission_reconciliation_date ON commission_reconciliation_logs (execution_date);
+CREATE INDEX IF NOT EXISTS idx_commission_reconciliation_tipo ON commission_reconciliation_logs (tipo_problema);

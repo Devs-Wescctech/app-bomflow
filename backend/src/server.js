@@ -13,7 +13,7 @@ import whatsappRoutes from './routes/whatsapp.js';
 import bomAutoRoutes from './routes/bomAuto.js';
 import { runAllAutomations } from './services/automationService.js';
 import cron from 'node-cron';
-import { runLeadGeneratorAudit } from './routes/functions.js';
+import { runLeadGeneratorAudit, runCommissionReconciliation } from './routes/functions.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -110,6 +110,17 @@ initDatabase()
       }
     });
     console.log('[Lead Generator Audit] Cron agendado: todos os dias às 03:00.');
+
+    cron.schedule('0 4 * * *', async () => {
+      console.log('[Commission Reconciliation] Iniciando reconciliação automática diária...');
+      try {
+        const result = await runCommissionReconciliation();
+        console.log(`[Commission Reconciliation] Reconciliação concluída. Inconsistências: ${result.issuesFound || 0}`);
+      } catch (error) {
+        console.error('[Commission Reconciliation] Erro na reconciliação automática:', error.message);
+      }
+    });
+    console.log('[Commission Reconciliation] Cron agendado: todos os dias às 04:00.');
   })
   .catch((error) => {
     console.error('Database initialization failed:', error);
