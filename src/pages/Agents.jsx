@@ -198,6 +198,7 @@ export default function Agents() {
     agentType: "support",
     teamId: "",
     workUnit: "",
+    erpAgentId: "",
     queueIds: [],
     level: "pleno",
     online: false,
@@ -504,6 +505,7 @@ export default function Agents() {
       agentType: "support",
       teamId: "",
       workUnit: "",
+      erpAgentId: "",
       queueIds: [],
       level: "pleno",
       online: false,
@@ -612,6 +614,7 @@ export default function Agents() {
       agentType: agent.agentType || "support",
       teamId: agent.teamId || "",
       workUnit: agent.workUnit || "",
+      erpAgentId: agent.erpAgentId != null ? String(agent.erpAgentId) : "",
       queueIds: agent.queueIds || [],
       level: agent.level || "pleno",
       online: agent.online || false,
@@ -692,8 +695,14 @@ export default function Agents() {
   };
 
   const handleSubmit = () => {
+    if (formData.erpAgentId && isNaN(Number(formData.erpAgentId))) {
+      toast.error("ID do Agente no ERP deve ser numérico.");
+      return;
+    }
+
     const dataToSend = { 
       ...formData,
+      erpAgentId: formData.erpAgentId ? Number(formData.erpAgentId) : null,
       permissions: normalizePermissions(formData.permissions)
     };
     
@@ -1609,6 +1618,18 @@ export default function Agents() {
                   placeholder="Ex: Matriz, Filial SP"
                   className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                 />
+              </div>
+
+              <div>
+                <Label className="text-gray-900 dark:text-gray-100">ID do Agente no ERP</Label>
+                <Input
+                  type="number"
+                  value={formData.erpAgentId}
+                  onChange={(e) => setFormData({...formData, erpAgentId: e.target.value})}
+                  placeholder="Ex: 12345"
+                  className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                />
+                <p className="text-xs text-gray-400 mt-1">Identificador do agente no sistema ERP (opcional)</p>
               </div>
             </div>
 

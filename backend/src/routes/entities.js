@@ -104,7 +104,7 @@ router.get('/agents', authMiddleware, async (req, res) => {
     const result = await query(`
       SELECT id, name, cpf, email, agent_type, team_id, skills, active, 
              photo_url, permissions, level, online, capacity, working_hours, 
-             queue_ids, work_unit, role, must_reset_password,
+             queue_ids, work_unit, role, must_reset_password, erp_agent_id,
              whatsapp_access_token, whatsapp_token_expires_at, created_at, updated_at
       FROM agents 
       ORDER BY created_at DESC 
@@ -123,7 +123,7 @@ router.get('/agents/:id', authMiddleware, async (req, res) => {
     const result = await query(`
       SELECT id, name, cpf, email, agent_type, team_id, skills, active, 
              photo_url, permissions, level, online, capacity, working_hours, 
-             queue_ids, work_unit, role, must_reset_password,
+             queue_ids, work_unit, role, must_reset_password, erp_agent_id,
              whatsapp_access_token, whatsapp_token_expires_at, created_at, updated_at
       FROM agents WHERE id = $1
     `, [id]);
@@ -271,7 +271,7 @@ router.post('/agents/filter', authMiddleware, async (req, res) => {
     let sql = `
       SELECT id, name, cpf, email, agent_type, team_id, skills, active, 
              photo_url, permissions, level, online, capacity, working_hours, 
-             queue_ids, work_unit, role, created_at, updated_at
+             queue_ids, work_unit, role, erp_agent_id, created_at, updated_at
       FROM agents
     `;
     

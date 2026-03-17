@@ -975,3 +975,6 @@ CREATE TABLE IF NOT EXISTS gerador_leads_auditoria (
 );
 
 CREATE INDEX IF NOT EXISTS idx_gla_data_execucao ON gerador_leads_auditoria (data_execucao);
+
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS erp_agent_id BIGINT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_erp_agent_id ON agents (erp_agent_id) WHERE erp_agent_id IS NOT NULL;
