@@ -138,7 +138,7 @@ export default function CommissionPaymentControl() {
               <DollarSign className="w-6 h-6 text-green-600" />
               Controle de Pagamento de Comissões
             </h1>
-            <p className="text-sm text-gray-500">Ciclo semanal: Quinta 00:00 → Terça 23:59 | Fechamento: Quarta</p>
+            <p className="text-sm text-gray-500">Ciclo semanal: Quarta 00:00 → Terça 23:59 | Fechamento: Quarta</p>
           </div>
         </div>
         <Button
