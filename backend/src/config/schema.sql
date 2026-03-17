@@ -1072,3 +1072,21 @@ CREATE TABLE IF NOT EXISTS commission_payment_control (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_commission_payment_control_contrato ON commission_payment_control (contrato_servicos);
 CREATE INDEX IF NOT EXISTS idx_commission_payment_control_lote ON commission_payment_control (lote_pagamento_id);
 CREATE INDEX IF NOT EXISTS idx_commission_payment_control_status ON commission_payment_control (status_pagamento);
+
+CREATE TABLE IF NOT EXISTS commission_weekly_snapshot (
+    id SERIAL PRIMARY KEY,
+    cycle_start TIMESTAMP NOT NULL,
+    cycle_end TIMESTAMP NOT NULL,
+    batch_id INTEGER REFERENCES commission_payment_batches(id),
+    cpf_indicador VARCHAR(20),
+    nome_indicador VARCHAR(255),
+    cel_indicador VARCHAR(50),
+    total_conversoes INTEGER NOT NULL DEFAULT 0,
+    nivel_comissao INTEGER NOT NULL DEFAULT 1,
+    valor_comissao NUMERIC(10,2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_commission_snapshot_cycle ON commission_weekly_snapshot (cycle_start, cycle_end);
+CREATE INDEX IF NOT EXISTS idx_commission_snapshot_batch ON commission_weekly_snapshot (batch_id);
+CREATE INDEX IF NOT EXISTS idx_commission_snapshot_cpf ON commission_weekly_snapshot (cpf_indicador);

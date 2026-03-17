@@ -2855,6 +2855,26 @@ async function runWeeklyCommissionBatch() {
       [batchId, ids]
     );
 
+    const existingSnapshot = await query(
+      'SELECT id FROM commission_weekly_snapshot WHERE cycle_start = $1 AND cycle_end = $2 LIMIT 1',
+      [cycle.start, cycle.end]
+    );
+
+    if (existingSnapshot.rows.length === 0) {
+      for (const ind of Object.values(indicatorMap)) {
+        const nivel = ind.count >= 13 ? 3 : ind.count >= 4 ? 2 : ind.count >= 1 ? 1 : 0;
+        await query(
+          `INSERT INTO commission_weekly_snapshot 
+           (cycle_start, cycle_end, batch_id, cpf_indicador, nome_indicador, cel_indicador, total_conversoes, nivel_comissao, valor_comissao)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [cycle.start, cycle.end, batchId, ind.cpf, ind.nome, ind.cel, ind.count, nivel, ind.total]
+        );
+      }
+      console.log(`[Commission Batch] Snapshot saved: ${totalIndicadores} indicators for cycle ${cycle.label}`);
+    } else {
+      console.log(`[Commission Batch] Snapshot already exists for cycle ${cycle.label}, skipping`);
+    }
+
     console.log(`[Commission Batch] Batch #${batchId} created: ${totalIndicadores} indicators, R$ ${valorTotal.toFixed(2)}`);
 
     return {
@@ -2887,21 +2907,35 @@ router.get('/commission-payment/batches', authMiddleware, loadAgentMiddleware, r
     const batches = result.rows;
 
     for (const batch of batches) {
-      const controlResult = await query(
-        'SELECT cpf_indicador, nome_indicador FROM commission_payment_control WHERE lote_pagamento_id = $1',
+      const snapshotResult = await query(
+        'SELECT * FROM commission_weekly_snapshot WHERE batch_id = $1',
         [batch.id]
       );
-      const indicatorMap = {};
-      for (const r of controlResult.rows) {
-        const key = r.cpf_indicador || r.nome_indicador || 'unknown';
-        indicatorMap[key] = (indicatorMap[key] || 0) + 1;
+
+      if (snapshotResult.rows.length > 0) {
+        let totalComissao = 0;
+        for (const s of snapshotResult.rows) {
+          totalComissao += parseFloat(s.valor_comissao);
+        }
+        batch.valor_total = totalComissao;
+        batch.total_indicadores = snapshotResult.rows.length;
+      } else {
+        const controlResult = await query(
+          'SELECT cpf_indicador, nome_indicador FROM commission_payment_control WHERE lote_pagamento_id = $1',
+          [batch.id]
+        );
+        const indicatorMap = {};
+        for (const r of controlResult.rows) {
+          const key = r.cpf_indicador || r.nome_indicador || 'unknown';
+          indicatorMap[key] = (indicatorMap[key] || 0) + 1;
+        }
+        let totalComissao = 0;
+        for (const count of Object.values(indicatorMap)) {
+          totalComissao += getCommissionByTier(count);
+        }
+        batch.valor_total = totalComissao;
+        batch.total_indicadores = Object.keys(indicatorMap).length;
       }
-      let totalComissao = 0;
-      for (const count of Object.values(indicatorMap)) {
-        totalComissao += getCommissionByTier(count);
-      }
-      batch.valor_total = totalComissao;
-      batch.total_indicadores = Object.keys(indicatorMap).length;
     }
 
     res.json({ success: true, batches });
@@ -3011,6 +3045,11 @@ async function getEmailSettings() {
 async function getCommissionReportData() {
   const cycle = getWeeklyCycleDates();
 
+  const snapshotResult = await query(
+    'SELECT * FROM commission_weekly_snapshot WHERE cycle_start = $1 AND cycle_end = $2 ORDER BY nome_indicador',
+    [cycle.start, cycle.end]
+  );
+
   const batchResult = await query(
     `SELECT id FROM commission_payment_batches WHERE periodo_inicio = $1 AND periodo_fim = $2 ORDER BY id DESC LIMIT 1`,
     [cycle.start, cycle.end]
@@ -3030,6 +3069,27 @@ async function getCommissionReportData() {
   }
   const records = controlResult.rows;
 
+  if (snapshotResult.rows.length > 0) {
+    console.log(`[Commission Report] Using snapshot data (${snapshotResult.rows.length} indicators)`);
+    const indicatorMap = {};
+    for (const s of snapshotResult.rows) {
+      const key = s.cpf_indicador || s.nome_indicador || 'unknown';
+      indicatorMap[key] = {
+        nome: s.nome_indicador || '-',
+        cpf: s.cpf_indicador || '-',
+        cel: s.cel_indicador || '-',
+        count: parseInt(s.total_conversoes),
+        total: parseFloat(s.valor_comissao),
+        details: records.filter(r => (r.cpf_indicador || r.nome_indicador || 'unknown') === key)
+      };
+    }
+    const totalIndicadores = Object.keys(indicatorMap).length;
+    const totalIndicacoes = records.length;
+    const valorTotal = Object.values(indicatorMap).reduce((s, i) => s + i.total, 0);
+    return { cycle, indicators: indicatorMap, totalIndicadores, totalIndicacoes, valorTotal, records };
+  }
+
+  console.log('[Commission Report] No snapshot found, calculating dynamically');
   const indicatorMap = {};
   for (const r of records) {
     const key = r.cpf_indicador || r.nome_indicador || 'unknown';
