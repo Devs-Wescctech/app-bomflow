@@ -2404,18 +2404,58 @@ router.get('/referral-paid-sales', authMiddleware, loadAgentMiddleware, async (r
       }
     }
 
+    const usedContractsResult = await query('SELECT contrato_servicos, referral_id, cpf_indicado FROM processed_referral_contracts');
+    const usedContracts = {};
+    for (const row of usedContractsResult.rows) {
+      usedContracts[row.contrato_servicos] = {
+        referralId: row.referral_id,
+        cpfIndicado: row.cpf_indicado
+      };
+    }
+
     const uniquePaidCount = seenIdentifiers.size;
     const paidCpfIndicadoCount = Object.keys(paidByCpfIndicado).length;
-    console.log(`[Comissões] ${uniquePaidCount} unique sales (${duplicatesSkipped} duplicates skipped), ${paidCpfIndicadoCount} unique CPFs indicados with paid sales`);
+    console.log(`[Comissões] ${uniquePaidCount} unique sales (${duplicatesSkipped} duplicates skipped), ${paidCpfIndicadoCount} unique CPFs indicados with paid sales, ${Object.keys(usedContracts).length} contracts already used`);
 
     res.json({
       success: true,
       totalPaidSales: uniquePaidCount,
       duplicatesSkipped,
-      paidByCpfIndicado
+      paidByCpfIndicado,
+      usedContracts
     });
   } catch (error) {
     console.error('[Comissões] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/referral-use-contract', authMiddleware, async (req, res) => {
+  try {
+    const contratoServicos = req.body.contratoServicos || req.body.contrato_servicos;
+    const referralId = req.body.referralId || req.body.referral_id;
+    const cpfIndicado = req.body.cpfIndicado || req.body.cpf_indicado;
+
+    if (!contratoServicos || !referralId) {
+      return res.status(400).json({ success: false, error: 'contratoServicos and referralId are required' });
+    }
+
+    const result = await query(
+      `INSERT INTO processed_referral_contracts (contrato_servicos, referral_id, cpf_indicado)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (contrato_servicos) DO NOTHING
+       RETURNING *`,
+      [String(contratoServicos).trim(), referralId, cpfIndicado || null]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ success: false, alreadyUsed: true, message: 'Contract already used for another commission' });
+    }
+
+    console.log(`[Comissões] Contract ${contratoServicos} recorded for referral ${referralId}`);
+    res.json({ success: true, contract: result.rows[0] });
+  } catch (error) {
+    console.error('[Comissões] Error recording contract:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

@@ -92,34 +92,79 @@ export default function ReferralCommissions() {
   });
 
   const erpPaidMap = erpPaidData?.paidByCpfIndicado || {};
+  const usedContracts = erpPaidData?.usedContracts || {};
   const erpLoaded = !!erpPaidData && !isLoadingErp;
 
-  const isReferralPaidInErp = (referral) => {
-    const referredCpf = referral.referredCpf ? String(referral.referredCpf).replace(/\D/g, '') : '';
-    if (!referredCpf || referredCpf.length < 11) return false;
-    return !!erpPaidMap[referredCpf];
-  };
+  const commissionsData = (() => {
+    const eligible = referrals
+      .filter(r => r.stage === 'fechado_ganho')
+      .filter(r => r.commissionValue && parseFloat(r.commissionValue) > 0)
+      .filter(r => {
+        if (isAdmin) return true;
+        return r.agentId === currentAgent?.id;
+      });
 
-  const commissionsData = referrals
-    .filter(r => r.stage === 'fechado_ganho')
-    .filter(r => r.commissionValue && parseFloat(r.commissionValue) > 0)
-    .filter(r => {
-      if (isAdmin) return true;
-      return r.agentId === currentAgent?.id;
-    })
-    .map(r => {
+    const allConverted = referrals
+      .filter(r => r.stage === 'fechado_ganho')
+      .filter(r => r.commissionValue && parseFloat(r.commissionValue) > 0);
+
+    const winnerByReferredCpf = {};
+    const sortedAll = [...allConverted].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    for (const r of sortedAll) {
+      const cpf = r.referredCpf ? String(r.referredCpf).replace(/\D/g, '') : '';
+      if (cpf && cpf.length >= 11 && !winnerByReferredCpf[cpf]) {
+        winnerByReferredCpf[cpf] = r.id;
+      }
+    }
+
+    const sorted = [...eligible].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+    const contractsClaimedThisRun = new Set();
+    const statusById = {};
+
+    for (const r of sorted) {
       let effectiveStatus = r.commissionStatus || 'pending';
 
       if (erpLoaded && effectiveStatus !== 'paga' && effectiveStatus !== 'cancelada') {
-        effectiveStatus = isReferralPaidInErp(r) ? 'aprovada' : 'pending';
+        const referredCpf = r.referredCpf ? String(r.referredCpf).replace(/\D/g, '') : '';
+
+        if (!referredCpf || referredCpf.length < 11) {
+          effectiveStatus = 'pending';
+        } else {
+          const isWinner = winnerByReferredCpf[referredCpf] === r.id;
+          const sales = erpPaidMap[referredCpf] || [];
+
+          if (!isWinner || sales.length === 0) {
+            effectiveStatus = 'pending';
+          } else {
+            const availableContract = sales.find(s => {
+              const cid = s.contrato_servicos ? String(s.contrato_servicos).trim() : '';
+              if (!cid) return false;
+              const alreadyUsedInDb = usedContracts[cid] && usedContracts[cid].referralId !== r.id;
+              const alreadyClaimedNow = contractsClaimedThisRun.has(cid);
+              return !alreadyUsedInDb && !alreadyClaimedNow;
+            });
+
+            if (availableContract) {
+              const cid = String(availableContract.contrato_servicos).trim();
+              contractsClaimedThisRun.add(cid);
+              effectiveStatus = 'aprovada';
+            } else {
+              effectiveStatus = 'pending';
+            }
+          }
+        }
       }
 
-      return {
-        ...r,
-        effectiveCommissionStatus: effectiveStatus,
-        referrer_display: r.referrerName || 'Sem nome',
-      };
-    });
+      statusById[r.id] = effectiveStatus;
+    }
+
+    return eligible.map(r => ({
+      ...r,
+      effectiveCommissionStatus: statusById[r.id] || r.commissionStatus || 'pending',
+      referrer_display: r.referrerName || 'Sem nome',
+    }));
+  })();
 
   const filteredCommissions = statusFilter === 'all' 
     ? commissionsData
@@ -134,7 +179,46 @@ export default function ReferralCommissions() {
   const totalApproved = approvedCommissions.reduce((sum, c) => sum + (parseFloat(c.commissionValue) || 0), 0);
   const totalPaid = paidCommissions.reduce((sum, c) => sum + (parseFloat(c.commissionValue) || 0), 0);
 
-  const handleApproveCommission = (commission) => {
+  const handleApproveCommission = async (commission) => {
+    const referredCpf = commission.referredCpf ? String(commission.referredCpf).replace(/\D/g, '') : '';
+    const sales = erpPaidMap[referredCpf] || [];
+    const availableContract = sales.find(s => {
+      const cid = s.contrato_servicos ? String(s.contrato_servicos).trim() : '';
+      return cid && (!usedContracts[cid] || usedContracts[cid].referralId === commission.id);
+    });
+
+    if (!availableContract) {
+      toast.error('Nenhum contrato disponível para aprovar esta comissão');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      const resp = await fetch('/api/functions/referral-use-contract', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          contratoServicos: String(availableContract.contrato_servicos).trim(),
+          referralId: commission.id,
+          cpfIndicado: referredCpf
+        })
+      });
+      const result = await resp.json();
+
+      if (!resp.ok || (result.alreadyUsed)) {
+        toast.error('Contrato já utilizado para outra comissão');
+        queryClient.invalidateQueries({ queryKey: ['referral-paid-sales'] });
+        return;
+      }
+    } catch (err) {
+      console.error('Error recording contract:', err);
+      toast.error('Erro ao registrar contrato');
+      return;
+    }
+
     updateCommissionMutation.mutate({
       id: commission.id,
       data: {
