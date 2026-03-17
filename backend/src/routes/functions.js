@@ -2300,4 +2300,90 @@ router.get('/indicacoes-agent-dashboard', authMiddleware, async (req, res) => {
   }
 });
 
+router.get('/referral-paid-sales', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const erpAuthToken = process.env.ERP_AUTH_TOKEN;
+    if (!erpAuthToken) {
+      return res.status(500).json({ success: false, error: 'ERP_AUTH_TOKEN não configurado.' });
+    }
+
+    const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
+    const erpUrl = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_DADOS_VENDAS_INDICACOES';
+
+    console.log('[Comissões] Fetching ERP sales data from API_DADOS_VENDAS_INDICACOES...');
+    const erpResponse = await fetch(erpUrl, {
+      method: 'GET',
+      headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
+    });
+
+    if (!erpResponse.ok) {
+      return res.status(502).json({ success: false, error: `ERP retornou status ${erpResponse.status}` });
+    }
+
+    const erpData = await erpResponse.json();
+    const allSales = Array.isArray(erpData) ? erpData : [];
+    console.log(`[Comissões] ERP returned ${allSales.length} total records`);
+
+    const paidSales = allSales.filter(r => {
+      const vp = (r.valores_pagos || '').toString().trim().toUpperCase();
+      return vp === 'SIM';
+    });
+    console.log(`[Comissões] ${paidSales.length} records with valores_pagos=SIM`);
+
+    const indicatorMap = {};
+
+    for (const sale of paidSales) {
+      const cpf = sale.cpf_indicador ? String(sale.cpf_indicador).replace(/\D/g, '') : '';
+      const phone = sale.cel_indicador ? String(sale.cel_indicador).replace(/\D/g, '') : '';
+      const name = sale.nome_indicador ? String(sale.nome_indicador).trim().toLowerCase() : '';
+
+      let key = '';
+      let matchType = '';
+      if (cpf && cpf.length >= 11) {
+        key = `cpf:${cpf}`;
+        matchType = 'cpf';
+      } else if (phone && phone.length >= 10) {
+        const phoneNormalized = phone.startsWith('55') && phone.length >= 12 ? phone.slice(2) : phone;
+        key = `phone:${phoneNormalized}`;
+        matchType = 'phone';
+      } else if (name && name.length > 2) {
+        key = `name:${name}`;
+        matchType = 'name';
+      } else {
+        continue;
+      }
+
+      if (!indicatorMap[key]) {
+        indicatorMap[key] = {
+          matchType,
+          cpf_indicador: cpf,
+          cel_indicador: phone,
+          nome_indicador: sale.nome_indicador || '',
+          totalPaidSales: 0,
+          sales: []
+        };
+      }
+
+      indicatorMap[key].totalPaidSales += 1;
+      indicatorMap[key].sales.push({
+        contrato_servicos: sale.contrato_servicos || '',
+        valor_contrato: sale.valor_contrato || '',
+        data_contrato: sale.data_contrato || ''
+      });
+    }
+
+    const indicators = Object.values(indicatorMap);
+    console.log(`[Comissões] ${indicators.length} unique indicators with paid sales`);
+
+    res.json({
+      success: true,
+      totalPaidSales: paidSales.length,
+      indicators
+    });
+  } catch (error) {
+    console.error('[Comissões] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;

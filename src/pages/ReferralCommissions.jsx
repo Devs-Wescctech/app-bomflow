@@ -62,6 +62,20 @@ export default function ReferralCommissions() {
     enabled: hasAccess,
   });
 
+  const { data: erpPaidData, isLoading: isLoadingErp } = useQuery({
+    queryKey: ['referral-paid-sales'],
+    queryFn: async () => {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('/api/functions/referral-paid-sales', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error('Erro ao buscar vendas pagas do ERP');
+      return response.json();
+    },
+    staleTime: 60000,
+    enabled: hasAccess,
+  });
+
   const updateCommissionMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Referral.update(id, data),
     onSuccess: () => {
@@ -77,15 +91,52 @@ export default function ReferralCommissions() {
     },
   });
 
-  // Filtrar referrals com comissão
-  // Vendedores veem apenas suas próprias indicações, admin/supervisor vê todas
+  const normalizePhone = (phone) => {
+    if (!phone) return '';
+    const digits = String(phone).replace(/\D/g, '');
+    return digits.startsWith('55') && digits.length >= 12 ? digits.slice(2) : digits;
+  };
+
+  const isReferralPaidInErp = (referral, indicators) => {
+    if (!indicators || indicators.length === 0) return false;
+
+    const refCpf = referral.referrerCpf ? String(referral.referrerCpf).replace(/\D/g, '') : '';
+    const refPhone = normalizePhone(referral.referrerPhone);
+    const refName = referral.referrerName ? String(referral.referrerName).trim().toLowerCase() : '';
+
+    if (refCpf && refCpf.length >= 11) {
+      return indicators.some(ind => {
+        const indCpf = ind.cpf_indicador ? String(ind.cpf_indicador).replace(/\D/g, '') : '';
+        return indCpf === refCpf;
+      });
+    }
+
+    if (refPhone && refPhone.length >= 10) {
+      return indicators.some(ind => {
+        const indPhone = normalizePhone(ind.cel_indicador);
+        return indPhone && indPhone === refPhone;
+      });
+    }
+
+    if (refName && refName.length > 2) {
+      return indicators.some(ind => {
+        const indName = (ind.nome_indicador || '').trim().toLowerCase();
+        return indName && indName === refName;
+      });
+    }
+
+    return false;
+  };
+
+  const erpIndicators = erpPaidData?.indicators || [];
+
   const commissionsData = referrals
     .filter(r => r.commissionValue && parseFloat(r.commissionValue) > 0)
     .filter(r => {
       if (isAdmin) return true;
-      // Vendedor só vê suas próprias indicações
       return r.agentId === currentAgent?.id;
     })
+    .filter(r => isReferralPaidInErp(r, erpIndicators))
     .map(r => ({
       ...r,
       referrer_display: r.referrerName || 'Sem nome',
@@ -423,10 +474,10 @@ export default function ReferralCommissions() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {(isLoading || isLoadingErp) ? (
               <div className="text-center py-12 text-gray-500 dark:text-gray-400">
                 <Activity className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600 animate-pulse" />
-                <p>Carregando...</p>
+                <p>{isLoadingErp ? 'Validando vendas pagas no ERP...' : 'Carregando...'}</p>
               </div>
             ) : filteredCommissions.length === 0 ? (
               <div className="text-center py-12 text-gray-500 dark:text-gray-400">
