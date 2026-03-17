@@ -106,6 +106,7 @@ const MENU_MODULES = [
     id: "referral",
     title: "Indicações",
     items: [
+      { id: "IndicacoesMeuPainel", title: "Meu Painel" },
       { id: "ReferralDashboard", title: "Dashboard" },
       { id: "ReferralAgentsDashboard", title: "Dashboard Vendedores" },
       { id: "ReferralCreate", title: "Nova Indicação" },
