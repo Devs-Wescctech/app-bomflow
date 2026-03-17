@@ -95,6 +95,17 @@ export default function ReferralCommissions() {
   const usedContracts = erpPaidData?.usedContracts || {};
   const erpLoaded = !!erpPaidData && !isLoadingErp;
 
+  const parseErpDate = (dateStr) => {
+    if (!dateStr) return null;
+    const str = String(dateStr).trim();
+    const brMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (brMatch) {
+      return new Date(`${brMatch[3]}-${brMatch[2]}-${brMatch[1]}T00:00:00`);
+    }
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
   const commissionsData = (() => {
     const eligible = referrals
       .filter(r => r.stage === 'fechado_ganho')
@@ -137,12 +148,20 @@ export default function ReferralCommissions() {
           if (!isWinner || sales.length === 0) {
             effectiveStatus = 'pending';
           } else {
+            const referralCreatedAt = r.createdAt ? new Date(r.createdAt) : null;
+
             const availableContract = sales.find(s => {
               const cid = s.contrato_servicos ? String(s.contrato_servicos).trim() : '';
               if (!cid) return false;
               const alreadyUsedInDb = usedContracts[cid] && usedContracts[cid].referralId !== r.id;
               const alreadyClaimedNow = contractsClaimedThisRun.has(cid);
-              return !alreadyUsedInDb && !alreadyClaimedNow;
+              if (alreadyUsedInDb || alreadyClaimedNow) return false;
+
+              const saleDate = parseErpDate(s.data_contrato);
+              if (!saleDate || !referralCreatedAt) return false;
+              if (referralCreatedAt >= saleDate) return false;
+
+              return true;
             });
 
             if (availableContract) {
@@ -182,9 +201,18 @@ export default function ReferralCommissions() {
   const handleApproveCommission = async (commission) => {
     const referredCpf = commission.referredCpf ? String(commission.referredCpf).replace(/\D/g, '') : '';
     const sales = erpPaidMap[referredCpf] || [];
+    const commissionCreatedAt = commission.createdAt ? new Date(commission.createdAt) : null;
+
     const availableContract = sales.find(s => {
       const cid = s.contrato_servicos ? String(s.contrato_servicos).trim() : '';
-      return cid && (!usedContracts[cid] || usedContracts[cid].referralId === commission.id);
+      if (!cid) return false;
+      if (usedContracts[cid] && usedContracts[cid].referralId !== commission.id) return false;
+
+      const saleDate = parseErpDate(s.data_contrato);
+      if (!saleDate || !commissionCreatedAt) return false;
+      if (commissionCreatedAt >= saleDate) return false;
+
+      return true;
     });
 
     if (!availableContract) {
