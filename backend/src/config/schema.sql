@@ -1028,7 +1028,23 @@ CREATE TABLE IF NOT EXISTS commission_payment_batches (
     total_indicadores INTEGER DEFAULT 0,
     valor_total DECIMAL(15,2) DEFAULT 0,
     status VARCHAR(20) DEFAULT 'aberto',
+    email_enviado BOOLEAN DEFAULT FALSE,
+    data_envio_email TIMESTAMP,
+    usuario_envio VARCHAR(255),
+    tipo_envio VARCHAR(20),
     created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS email_commission_settings (
+    id SERIAL PRIMARY KEY,
+    smtp_server VARCHAR(255) DEFAULT 'email-ssl.com.br',
+    smtp_port INTEGER DEFAULT 465,
+    smtp_user VARCHAR(255) DEFAULT 'noreplybompastor@wescctech.com.br',
+    smtp_password VARCHAR(500),
+    email_from VARCHAR(255) DEFAULT 'noreplybompastor@wescctech.com.br',
+    email_to TEXT DEFAULT 'tais.dequi@wescctech.com.br',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS commission_payment_control (

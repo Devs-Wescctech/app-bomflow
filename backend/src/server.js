@@ -13,7 +13,7 @@ import whatsappRoutes from './routes/whatsapp.js';
 import bomAutoRoutes from './routes/bomAuto.js';
 import { runAllAutomations } from './services/automationService.js';
 import cron from 'node-cron';
-import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch } from './routes/functions.js';
+import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport } from './routes/functions.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -132,6 +132,21 @@ initDatabase()
       }
     });
     console.log('[Commission Batch] Cron agendado: quartas-feiras às 05:00.');
+
+    cron.schedule('0 8 * * 3', async () => {
+      console.log('[Commission Email] Iniciando envio automático de relatório semanal...');
+      try {
+        const result = await sendCommissionReport({ tipo_envio: 'automatico', usuario_envio: 'system' });
+        if (result.skipped) {
+          console.log(`[Commission Email] Envio pulado: ${result.message}`);
+        } else {
+          console.log(`[Commission Email] Relatório enviado. Indicadores: ${result.totalIndicadores}, Valor: R$ ${result.valorTotal?.toFixed(2)}`);
+        }
+      } catch (error) {
+        console.error('[Commission Email] Erro no envio automático:', error.message);
+      }
+    });
+    console.log('[Commission Email] Cron agendado: quartas-feiras às 08:00.');
   })
   .catch((error) => {
     console.error('Database initialization failed:', error);
