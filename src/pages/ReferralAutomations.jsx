@@ -593,6 +593,15 @@ export default function ReferralAutomations() {
                 </Button>
               </div>
 
+              {(!emailSettingsData?.settings?.smtp_password || emailSettingsData.settings.smtp_password === '') && (
+                <Alert className="bg-amber-50 dark:bg-amber-950 border-amber-300">
+                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                  <AlertDescription className="text-sm text-amber-800 dark:text-amber-200">
+                    <strong>Atenção:</strong> A senha SMTP ainda não foi salva. Preencha o campo "Senha SMTP" e clique em "Salvar Configurações" antes de testar ou enviar relatórios.
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200">
                 <AlertDescription className="text-sm">
                   O relatório semanal é enviado automaticamente toda quarta-feira às 08:00, cobrindo o período de quinta a terça.

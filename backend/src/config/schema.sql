@@ -1047,6 +1047,10 @@ CREATE TABLE IF NOT EXISTS email_commission_settings (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
+INSERT INTO email_commission_settings (smtp_server, smtp_port, smtp_user, email_from, email_to)
+SELECT 'email-ssl.com.br', 465, 'noreplybompastor@wescctech.com.br', 'noreplybompastor@wescctech.com.br', 'tais.dequi@wescctech.com.br'
+WHERE NOT EXISTS (SELECT 1 FROM email_commission_settings);
+
 CREATE TABLE IF NOT EXISTS commission_payment_control (
     id SERIAL PRIMARY KEY,
     cpf_indicador VARCHAR(20),
