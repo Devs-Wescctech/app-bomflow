@@ -2335,15 +2335,14 @@ router.get('/referral-paid-sales', authMiddleware, loadAgentMiddleware, async (r
     console.log(`[Comissões] ${existingIdentifiers.size} previously processed sales in DB`);
 
     const seenIdentifiers = new Set();
-    const indicatorMap = {};
+    const paidByCpfIndicado = {};
     let duplicatesSkipped = 0;
     const newSalesToPersist = [];
 
     for (const sale of paidSales) {
       const contratoId = sale.contrato_servicos ? String(sale.contrato_servicos).trim() : '';
-      const cpf = sale.cpf_indicador ? String(sale.cpf_indicador).replace(/\D/g, '') : '';
-      const phone = sale.cel_indicador ? String(sale.cel_indicador).replace(/\D/g, '') : '';
-      const name = sale.nome_indicador ? String(sale.nome_indicador).trim().toLowerCase() : '';
+      const cpfIndicado = sale.cpf_indicado ? String(sale.cpf_indicado).replace(/\D/g, '') : '';
+      const cpfIndicador = sale.cpf_indicador ? String(sale.cpf_indicador).replace(/\D/g, '') : '';
       const valorContrato = sale.valor_contrato ? String(sale.valor_contrato).trim() : '';
       const dataContrato = sale.data_contrato ? String(sale.data_contrato).trim() : '';
 
@@ -2351,7 +2350,7 @@ router.get('/referral-paid-sales', authMiddleware, loadAgentMiddleware, async (r
       if (contratoId) {
         saleIdentifier = `contrato:${contratoId}`;
       } else {
-        const compositeKey = [cpf || phone || name, valorContrato, dataContrato].filter(Boolean).join('|');
+        const compositeKey = [cpfIndicado || cpfIndicador, valorContrato, dataContrato].filter(Boolean).join('|');
         saleIdentifier = `composite:${compositeKey}`;
       }
 
@@ -2368,8 +2367,8 @@ router.get('/referral-paid-sales', authMiddleware, loadAgentMiddleware, async (r
       if (!existingIdentifiers.has(saleIdentifier)) {
         newSalesToPersist.push({
           saleIdentifier,
-          cpf,
-          phone,
+          cpf: cpfIndicador,
+          phone: sale.cel_indicador ? String(sale.cel_indicador).replace(/\D/g, '') : '',
           name: sale.nome_indicador || '',
           contratoId,
           valorContrato,
@@ -2377,39 +2376,16 @@ router.get('/referral-paid-sales', authMiddleware, loadAgentMiddleware, async (r
         });
       }
 
-      let key = '';
-      let matchType = '';
-      if (cpf && cpf.length >= 11) {
-        key = `cpf:${cpf}`;
-        matchType = 'cpf';
-      } else if (phone && phone.length >= 10) {
-        const phoneNormalized = phone.startsWith('55') && phone.length >= 12 ? phone.slice(2) : phone;
-        key = `phone:${phoneNormalized}`;
-        matchType = 'phone';
-      } else if (name && name.length > 2) {
-        key = `name:${name}`;
-        matchType = 'name';
-      } else {
-        continue;
+      if (cpfIndicado && cpfIndicado.length >= 11) {
+        if (!paidByCpfIndicado[cpfIndicado]) {
+          paidByCpfIndicado[cpfIndicado] = [];
+        }
+        paidByCpfIndicado[cpfIndicado].push({
+          contrato_servicos: contratoId,
+          valor_contrato: valorContrato,
+          data_contrato: dataContrato
+        });
       }
-
-      if (!indicatorMap[key]) {
-        indicatorMap[key] = {
-          matchType,
-          cpf_indicador: cpf,
-          cel_indicador: phone,
-          nome_indicador: sale.nome_indicador || '',
-          totalPaidSales: 0,
-          sales: []
-        };
-      }
-
-      indicatorMap[key].totalPaidSales += 1;
-      indicatorMap[key].sales.push({
-        contrato_servicos: contratoId,
-        valor_contrato: valorContrato,
-        data_contrato: dataContrato
-      });
     }
 
     if (newSalesToPersist.length > 0) {
@@ -2429,14 +2405,14 @@ router.get('/referral-paid-sales', authMiddleware, loadAgentMiddleware, async (r
     }
 
     const uniquePaidCount = seenIdentifiers.size;
-    const indicators = Object.values(indicatorMap);
-    console.log(`[Comissões] ${indicators.length} unique indicators, ${uniquePaidCount} unique sales (${duplicatesSkipped} duplicates skipped)`);
+    const paidCpfIndicadoCount = Object.keys(paidByCpfIndicado).length;
+    console.log(`[Comissões] ${uniquePaidCount} unique sales (${duplicatesSkipped} duplicates skipped), ${paidCpfIndicadoCount} unique CPFs indicados with paid sales`);
 
     res.json({
       success: true,
       totalPaidSales: uniquePaidCount,
       duplicatesSkipped,
-      indicators
+      paidByCpfIndicado
     });
   } catch (error) {
     console.error('[Comissões] Error:', error);
