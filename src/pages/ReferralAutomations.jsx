@@ -604,7 +604,7 @@ export default function ReferralAutomations() {
 
               <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200">
                 <AlertDescription className="text-sm">
-                  O relatório semanal é enviado automaticamente toda quarta-feira às 08:00, cobrindo o período de quinta a terça.
+                  O relatório semanal é enviado automaticamente toda quarta-feira às 08:00, cobrindo o período de quarta a terça.
                   Use os botões acima para testar ou reenviar manualmente.
                 </AlertDescription>
               </Alert>
