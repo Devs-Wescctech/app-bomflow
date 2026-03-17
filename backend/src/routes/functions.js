@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
+import nodemailer from 'nodemailer';
 import { query } from '../config/database.js';
 import { authMiddleware, optionalAuth } from '../middleware/auth.js';
 import { loadAgentMiddleware, requirePermission, requireRole } from '../middleware/permissions.js';
@@ -2874,8 +2875,6 @@ async function runWeeklyCommissionBatch() {
   }
 }
 
-export { runWeeklyCommissionBatch };
-
 router.post('/commission-payment/run-batch', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
   try {
     const result = await runWeeklyCommissionBatch();
@@ -2983,6 +2982,331 @@ router.put('/commission-payment/confirm-batch/:batchId', authMiddleware, loadAge
 
     res.json({ success: true, updatedCount: updateResult.rowCount });
   } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+async function getEmailSettings() {
+  const result = await query('SELECT * FROM email_commission_settings ORDER BY id DESC LIMIT 1');
+  return result.rows[0] || null;
+}
+
+async function getCommissionReportData() {
+  const cycle = getWeeklyCycleDates();
+
+  const batchResult = await query(
+    `SELECT id FROM commission_payment_batches WHERE periodo_inicio = $1 AND periodo_fim = $2 ORDER BY id DESC LIMIT 1`,
+    [cycle.start, cycle.end]
+  );
+  const currentBatchId = batchResult.rows[0]?.id;
+
+  let controlResult;
+  if (currentBatchId) {
+    controlResult = await query(
+      "SELECT * FROM commission_payment_control WHERE lote_pagamento_id = $1 ORDER BY nome_indicador, created_at",
+      [currentBatchId]
+    );
+  } else {
+    controlResult = await query(
+      "SELECT * FROM commission_payment_control WHERE status_pagamento = 'elegivel' AND lote_pagamento_id IS NULL ORDER BY nome_indicador, created_at"
+    );
+  }
+  const records = controlResult.rows;
+
+  const indicatorMap = {};
+  for (const r of records) {
+    const key = r.cpf_indicador || r.nome_indicador || 'unknown';
+    if (!indicatorMap[key]) {
+      indicatorMap[key] = {
+        nome: r.nome_indicador || '-',
+        cpf: r.cpf_indicador || '-',
+        cel: r.cel_indicador || '-',
+        count: 0,
+        total: 0,
+        details: []
+      };
+    }
+    indicatorMap[key].count += 1;
+    const val = parseBRCurrency(r.valor_contrato);
+    indicatorMap[key].total += val;
+    indicatorMap[key].details.push(r);
+  }
+
+  const totalIndicadores = Object.keys(indicatorMap).length;
+  const totalIndicacoes = records.length;
+  const valorTotal = Object.values(indicatorMap).reduce((s, i) => s + i.total, 0);
+
+  return { cycle, indicators: indicatorMap, totalIndicadores, totalIndicacoes, valorTotal, records };
+}
+
+function buildCommissionEmailHtml(data) {
+  const { cycle, indicators, totalIndicadores, totalIndicacoes, valorTotal, records } = data;
+
+  const formatDate = (d) => {
+    if (!d) return '-';
+    try {
+      const dt = new Date(d);
+      return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+    } catch { return String(d); }
+  };
+
+  const periodoInicio = formatDate(cycle.start);
+  const periodoFim = formatDate(cycle.end);
+
+  let summaryHtml = `
+    <div style="font-family: Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px;">
+      <div style="background: linear-gradient(135deg, #f59e0b, #d97706); padding: 20px 30px; border-radius: 12px; color: white; margin-bottom: 24px;">
+        <h1 style="margin: 0; font-size: 22px;">Relatório Semanal de Comissões de Indicação</h1>
+        <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.9;">Período: ${periodoInicio} → ${periodoFim}</p>
+      </div>
+
+      <div style="display: flex; gap: 16px; margin-bottom: 24px;">
+        <div style="flex: 1; background: #fef3c7; padding: 16px; border-radius: 8px; text-align: center;">
+          <div style="font-size: 28px; font-weight: bold; color: #92400e;">${totalIndicadores}</div>
+          <div style="font-size: 12px; color: #78350f;">Indicadores</div>
+        </div>
+        <div style="flex: 1; background: #dbeafe; padding: 16px; border-radius: 8px; text-align: center;">
+          <div style="font-size: 28px; font-weight: bold; color: #1e40af;">${totalIndicacoes}</div>
+          <div style="font-size: 12px; color: #1e3a5f;">Indicações</div>
+        </div>
+        <div style="flex: 1; background: #d1fae5; padding: 16px; border-radius: 8px; text-align: center;">
+          <div style="font-size: 28px; font-weight: bold; color: #065f46;">R$ ${valorTotal.toFixed(2)}</div>
+          <div style="font-size: 12px; color: #064e3b;">Valor Total</div>
+        </div>
+      </div>
+
+      <h2 style="font-size: 16px; color: #1f2937; border-bottom: 2px solid #f59e0b; padding-bottom: 8px;">Resumo por Indicador</h2>
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 24px;">
+        <thead>
+          <tr style="background: #f9fafb;">
+            <th style="padding: 10px; border: 1px solid #e5e7eb; text-align: left;">Indicador</th>
+            <th style="padding: 10px; border: 1px solid #e5e7eb; text-align: left;">CPF</th>
+            <th style="padding: 10px; border: 1px solid #e5e7eb; text-align: left;">Telefone</th>
+            <th style="padding: 10px; border: 1px solid #e5e7eb; text-align: center;">Qtde</th>
+            <th style="padding: 10px; border: 1px solid #e5e7eb; text-align: right;">Valor Total</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+  for (const [key, ind] of Object.entries(indicators)) {
+    summaryHtml += `
+          <tr>
+            <td style="padding: 8px 10px; border: 1px solid #e5e7eb;">${ind.nome}</td>
+            <td style="padding: 8px 10px; border: 1px solid #e5e7eb;">${ind.cpf}</td>
+            <td style="padding: 8px 10px; border: 1px solid #e5e7eb;">${ind.cel}</td>
+            <td style="padding: 8px 10px; border: 1px solid #e5e7eb; text-align: center;">${ind.count}</td>
+            <td style="padding: 8px 10px; border: 1px solid #e5e7eb; text-align: right;">R$ ${ind.total.toFixed(2)}</td>
+          </tr>`;
+  }
+
+  summaryHtml += `
+        </tbody>
+      </table>
+
+      <h2 style="font-size: 16px; color: #1f2937; border-bottom: 2px solid #3b82f6; padding-bottom: 8px;">Detalhamento (Auditoria)</h2>
+      <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px;">
+        <thead>
+          <tr style="background: #f9fafb;">
+            <th style="padding: 8px; border: 1px solid #e5e7eb; text-align: left;">Indicador</th>
+            <th style="padding: 8px; border: 1px solid #e5e7eb; text-align: left;">CPF Indicado</th>
+            <th style="padding: 8px; border: 1px solid #e5e7eb; text-align: left;">Nome Indicado</th>
+            <th style="padding: 8px; border: 1px solid #e5e7eb; text-align: left;">Data Contrato</th>
+            <th style="padding: 8px; border: 1px solid #e5e7eb; text-align: right;">Valor Contrato</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+  for (const r of records) {
+    summaryHtml += `
+          <tr>
+            <td style="padding: 6px 8px; border: 1px solid #e5e7eb;">${r.nome_indicador || '-'}</td>
+            <td style="padding: 6px 8px; border: 1px solid #e5e7eb;">${r.cpf_indicado || '-'}</td>
+            <td style="padding: 6px 8px; border: 1px solid #e5e7eb;">${r.nome_indicado || '-'}</td>
+            <td style="padding: 6px 8px; border: 1px solid #e5e7eb;">${r.data_contrato || '-'}</td>
+            <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: right;">${r.valor_contrato || '-'}</td>
+          </tr>`;
+  }
+
+  summaryHtml += `
+        </tbody>
+      </table>
+
+      <div style="font-size: 11px; color: #9ca3af; text-align: center; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+        Bom Flow CRM — Relatório gerado automaticamente em ${new Date().toLocaleString('pt-BR')}
+      </div>
+    </div>`;
+
+  return summaryHtml;
+}
+
+async function sendCommissionReport(options = {}) {
+  const { tipo_envio = 'automatico', usuario_envio = 'system' } = options;
+
+  const settings = await getEmailSettings();
+  if (!settings || !settings.smtp_password) {
+    throw new Error('Configurações SMTP não encontradas ou senha não definida. Configure em Indicações → Automações.');
+  }
+
+  const reportData = await getCommissionReportData();
+
+  if (reportData.records.length === 0 && tipo_envio === 'automatico') {
+    console.log('[Commission Email] No eligible commissions to report, skipping automatic send');
+    return { success: true, skipped: true, message: 'Sem comissões elegíveis para reportar' };
+  }
+
+  if (tipo_envio === 'automatico') {
+    const existingResult = await query(
+      `SELECT id FROM commission_payment_batches WHERE email_enviado = TRUE AND periodo_inicio = $1 AND periodo_fim = $2`,
+      [reportData.cycle.start, reportData.cycle.end]
+    );
+    if (existingResult.rows.length > 0) {
+      console.log('[Commission Email] Report already sent for this period, skipping');
+      return { success: true, skipped: true, message: 'Relatório já enviado para este período' };
+    }
+  }
+
+  const formatDateBR = (d) => {
+    const dt = new Date(d);
+    return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+  };
+
+  const subject = `Relatório Semanal de Comissões de Indicação - Período: ${formatDateBR(reportData.cycle.start)} - ${formatDateBR(reportData.cycle.end)}`;
+  const html = buildCommissionEmailHtml(reportData);
+
+  const transporter = nodemailer.createTransport({
+    host: settings.smtp_server,
+    port: settings.smtp_port,
+    secure: true,
+    auth: {
+      user: settings.smtp_user,
+      pass: settings.smtp_password
+    },
+    tls: { rejectUnauthorized: false }
+  });
+
+  const recipients = (settings.email_to || '').split(',').map(e => e.trim()).filter(Boolean);
+  if (recipients.length === 0) throw new Error('Nenhum destinatário configurado');
+
+  await transporter.sendMail({
+    from: settings.email_from || settings.smtp_user,
+    to: recipients.join(', '),
+    subject,
+    html
+  });
+
+  console.log(`[Commission Email] Report sent to ${recipients.join(', ')}`);
+
+  const batchResult = await query(
+    `SELECT id FROM commission_payment_batches WHERE periodo_inicio = $1 AND periodo_fim = $2 ORDER BY id DESC LIMIT 1`,
+    [reportData.cycle.start, reportData.cycle.end]
+  );
+
+  if (batchResult.rows.length > 0) {
+    await query(
+      `UPDATE commission_payment_batches SET email_enviado = TRUE, data_envio_email = NOW(), usuario_envio = $1, tipo_envio = $2 WHERE id = $3`,
+      [usuario_envio, tipo_envio, batchResult.rows[0].id]
+    );
+  }
+
+  return {
+    success: true,
+    recipients,
+    totalIndicadores: reportData.totalIndicadores,
+    totalIndicacoes: reportData.totalIndicacoes,
+    valorTotal: reportData.valorTotal,
+    periodo: reportData.cycle.label
+  };
+}
+
+export { runWeeklyCommissionBatch, sendCommissionReport };
+
+router.get('/email-commission-settings', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+  try {
+    const settings = await getEmailSettings();
+    if (settings) {
+      settings.smtp_password = settings.smtp_password ? '********' : '';
+    }
+    res.json({ success: true, settings: settings || null });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/email-commission-settings', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+  try {
+    const { smtp_server, smtp_port, smtp_user, smtp_password, email_from, email_to,
+            smtpServer, smtpPort, smtpUser, smtpPassword, emailFrom, emailTo } = req.body;
+
+    const server = smtp_server || smtpServer;
+    const port = smtp_port || smtpPort;
+    const user = smtp_user || smtpUser;
+    const password = smtp_password || smtpPassword;
+    const from = email_from || emailFrom;
+    const to = email_to || emailTo;
+
+    const existing = await getEmailSettings();
+
+    if (existing) {
+      const finalPassword = (password && password !== '********') ? password : existing.smtp_password;
+      await query(
+        `UPDATE email_commission_settings SET smtp_server = $1, smtp_port = $2, smtp_user = $3, smtp_password = $4, email_from = $5, email_to = $6, updated_at = NOW() WHERE id = $7`,
+        [server, parseInt(port), user, finalPassword, from, to, existing.id]
+      );
+    } else {
+      await query(
+        `INSERT INTO email_commission_settings (smtp_server, smtp_port, smtp_user, smtp_password, email_from, email_to) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [server, parseInt(port), user, password, from, to]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/commission-report/send', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+  try {
+    const userEmail = req.user?.email || req.user?.userEmail || 'admin';
+    const result = await sendCommissionReport({ tipo_envio: 'manual', usuario_envio: userEmail });
+    res.json(result);
+  } catch (error) {
+    console.error('[Commission Email] Manual send error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/commission-report/test', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+  try {
+    const settings = await getEmailSettings();
+    if (!settings || !settings.smtp_password) {
+      return res.status(400).json({ success: false, error: 'Configurações SMTP não encontradas ou senha não definida.' });
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: settings.smtp_server,
+      port: settings.smtp_port,
+      secure: true,
+      auth: { user: settings.smtp_user, pass: settings.smtp_password },
+      tls: { rejectUnauthorized: false }
+    });
+
+    const recipients = (settings.email_to || '').split(',').map(e => e.trim()).filter(Boolean);
+    if (recipients.length === 0) return res.status(400).json({ success: false, error: 'Nenhum destinatário configurado' });
+
+    const reportData = await getCommissionReportData();
+    const html = buildCommissionEmailHtml(reportData);
+
+    await transporter.sendMail({
+      from: settings.email_from || settings.smtp_user,
+      to: recipients.join(', '),
+      subject: `[TESTE] Relatório Semanal de Comissões de Indicação`,
+      html
+    });
+
+    res.json({ success: true, message: `Email de teste enviado para ${recipients.join(', ')}` });
+  } catch (error) {
+    console.error('[Commission Email] Test error:', error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
