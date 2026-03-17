@@ -3050,25 +3050,10 @@ async function getCommissionReportData() {
     [cycle.start, cycle.end]
   );
 
-  let batchResult = await query(
-    `SELECT id, periodo_inicio, periodo_fim FROM commission_payment_batches WHERE periodo_inicio = $1 AND periodo_fim = $2 ORDER BY id DESC LIMIT 1`,
+  const batchResult = await query(
+    `SELECT id FROM commission_payment_batches WHERE periodo_inicio = $1 AND periodo_fim = $2 ORDER BY id DESC LIMIT 1`,
     [cycle.start, cycle.end]
   );
-
-  if (batchResult.rows.length === 0) {
-    console.log('[Commission Report] No batch for current cycle, checking most recent batch...');
-    batchResult = await query(
-      `SELECT id, periodo_inicio, periodo_fim FROM commission_payment_batches ORDER BY created_at DESC LIMIT 1`
-    );
-    if (batchResult.rows[0]) {
-      const b = batchResult.rows[0];
-      cycle.start = b.periodo_inicio;
-      cycle.end = b.periodo_fim;
-      cycle.label = `${new Date(b.periodo_inicio).toISOString().split('T')[0]} a ${new Date(b.periodo_fim).toISOString().split('T')[0]}`;
-      console.log(`[Commission Report] Using batch #${b.id} cycle: ${cycle.label}`);
-    }
-  }
-
   const currentBatchId = batchResult.rows[0]?.id;
 
   let controlResult;
@@ -3084,9 +3069,10 @@ async function getCommissionReportData() {
   }
   const records = controlResult.rows;
 
+  let indicatorMap = {};
+
   if (snapshotResult.rows.length > 0) {
     console.log(`[Commission Report] Using snapshot data (${snapshotResult.rows.length} indicators)`);
-    const indicatorMap = {};
     for (const s of snapshotResult.rows) {
       const key = s.cpf_indicador || s.nome_indicador || 'unknown';
       indicatorMap[key] = {
@@ -3098,39 +3084,85 @@ async function getCommissionReportData() {
         details: records.filter(r => (r.cpf_indicador || r.nome_indicador || 'unknown') === key)
       };
     }
-    const totalIndicadores = Object.keys(indicatorMap).length;
-    const totalIndicacoes = records.length;
-    const valorTotal = Object.values(indicatorMap).reduce((s, i) => s + i.total, 0);
-    return { cycle, indicators: indicatorMap, totalIndicadores, totalIndicacoes, valorTotal, records };
-  }
-
-  console.log(`[Commission Report] No snapshot found, calculating dynamically (${records.length} records)`);
-  const indicatorMap = {};
-  for (const r of records) {
-    const key = r.cpf_indicador || r.nome_indicador || 'unknown';
-    if (!indicatorMap[key]) {
-      indicatorMap[key] = {
-        nome: r.nome_indicador || '-',
-        cpf: r.cpf_indicador || '-',
-        cel: r.cel_indicador || '-',
-        count: 0,
-        total: 0,
-        details: []
-      };
+  } else {
+    console.log(`[Commission Report] No snapshot, calculating dynamically (${records.length} records)`);
+    for (const r of records) {
+      const key = r.cpf_indicador || r.nome_indicador || 'unknown';
+      if (!indicatorMap[key]) {
+        indicatorMap[key] = {
+          nome: r.nome_indicador || '-',
+          cpf: r.cpf_indicador || '-',
+          cel: r.cel_indicador || '-',
+          count: 0,
+          total: 0,
+          details: []
+        };
+      }
+      indicatorMap[key].count += 1;
+      indicatorMap[key].details.push(r);
     }
-    indicatorMap[key].count += 1;
-    indicatorMap[key].details.push(r);
-  }
-
-  for (const ind of Object.values(indicatorMap)) {
-    ind.total = getCommissionByTier(ind.count);
+    for (const ind of Object.values(indicatorMap)) {
+      ind.total = getCommissionByTier(ind.count);
+    }
   }
 
   const totalIndicadores = Object.keys(indicatorMap).length;
   const totalIndicacoes = records.length;
   const valorTotal = Object.values(indicatorMap).reduce((s, i) => s + i.total, 0);
 
-  return { cycle, indicators: indicatorMap, totalIndicadores, totalIndicacoes, valorTotal, records };
+  const currentRecordIds = new Set(records.map(r => r.id));
+
+  const pendingResult = await query(
+    "SELECT cpc.*, cpb.periodo_inicio, cpb.periodo_fim FROM commission_payment_control cpc LEFT JOIN commission_payment_batches cpb ON cpc.lote_pagamento_id = cpb.id WHERE cpc.status_pagamento != 'pago' ORDER BY cpb.periodo_inicio, cpc.nome_indicador, cpc.created_at"
+  );
+
+  const batchGroups = {};
+  for (const r of pendingResult.rows) {
+    if (currentBatchId && r.lote_pagamento_id === currentBatchId) continue;
+    if (!currentBatchId && currentRecordIds.has(r.id)) continue;
+
+    const batchKey = r.lote_pagamento_id || 'unbatched';
+    const indicatorKey = r.cpf_indicador || r.nome_indicador || 'unknown';
+    const groupKey = `${batchKey}::${indicatorKey}`;
+
+    if (!batchGroups[groupKey]) {
+      batchGroups[groupKey] = {
+        nome: r.nome_indicador || '-',
+        cpf: r.cpf_indicador || '-',
+        cel: r.cel_indicador || '-',
+        periodo: r.periodo_inicio && r.periodo_fim
+          ? `${formatDateBR(r.periodo_inicio)} → ${formatDateBR(r.periodo_fim)}`
+          : '-',
+        batchId: r.lote_pagamento_id,
+        count: 0
+      };
+    }
+    batchGroups[groupKey].count += 1;
+  }
+
+  const pendingList = [];
+  let pendingTotal = 0;
+  for (const entry of Object.values(batchGroups)) {
+    entry.total = getCommissionByTier(entry.count);
+    pendingTotal += entry.total;
+    pendingList.push(entry);
+  }
+  const hasPending = pendingList.length > 0;
+
+  console.log(`[Commission Report] Cycle: ${cycle.label} | Current: ${totalIndicadores} indicators | Pending entries: ${pendingList.length}`);
+
+  return {
+    cycle,
+    indicators: indicatorMap,
+    totalIndicadores,
+    totalIndicacoes,
+    valorTotal,
+    records,
+    pending: pendingList,
+    pendingTotal,
+    hasPending,
+    cycleEmpty: totalIndicadores === 0
+  };
 }
 
 function getCommissionByTier(totalConversions) {
@@ -3184,7 +3216,7 @@ function formatCurrency(value) {
 }
 
 function buildCommissionEmailHtml(data) {
-  const { cycle, indicators, totalIndicadores, totalIndicacoes, valorTotal, records } = data;
+  const { cycle, indicators, totalIndicadores, totalIndicacoes, valorTotal, records, pending, pendingTotal, hasPending, cycleEmpty } = data;
   const periodoInicio = formatDateBR(cycle.start);
   const periodoFim = formatDateBR(cycle.end);
   const geradoEm = formatDateTimeBR(new Date());
@@ -3218,8 +3250,20 @@ function buildCommissionEmailHtml(data) {
         <td style="padding: 4px 0;" colspan="2"><strong>Sistema:</strong> Bom Flow CRM</td>
       </tr>
     </table>
-  </div>
+  </div>`;
 
+  if (cycleEmpty) {
+    html += `
+  <!-- Cycle Empty Notice -->
+  <div style="padding: 40px; text-align: center;">
+    <div style="background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 12px; padding: 40px 24px;">
+      <div style="font-size: 40px; margin-bottom: 12px;">📋</div>
+      <div style="font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">Nenhuma comissão foi gerada para este ciclo</div>
+      <div style="font-size: 13px; color: #64748b;">Período: ${periodoInicio} → ${periodoFim}</div>
+    </div>
+  </div>`;
+  } else {
+    html += `
   <!-- Summary Cards -->
   <div style="padding: 24px 40px;">
     <table style="width: 100%; border-collapse: separate; border-spacing: 12px 0;">
@@ -3256,11 +3300,11 @@ function buildCommissionEmailHtml(data) {
       </thead>
       <tbody>`;
 
-  let rowIdx = 0;
-  for (const [key, ind] of Object.entries(indicators)) {
-    const bg = rowIdx % 2 === 0 ? '#ffffff' : '#f8fafc';
-    const nivel = ind.count >= 13 ? '3 (13+)' : ind.count >= 4 ? '2 (4-12)' : ind.count >= 1 ? '1 (1-3)' : '-';
-    html += `
+    let rowIdx = 0;
+    for (const [key, ind] of Object.entries(indicators)) {
+      const bg = rowIdx % 2 === 0 ? '#ffffff' : '#f8fafc';
+      const nivel = ind.count >= 13 ? '3 (13+)' : ind.count >= 4 ? '2 (4-12)' : ind.count >= 1 ? '1 (1-3)' : '-';
+      html += `
         <tr style="background: ${bg};">
           <td style="${tdStyle} font-weight: 600;">${ind.nome}</td>
           <td style="${tdStyle}">${formatCPF(ind.cpf)}</td>
@@ -3269,10 +3313,10 @@ function buildCommissionEmailHtml(data) {
           <td style="${tdStyle} text-align: center;">${nivel}</td>
           <td style="${tdRight}">${formatCurrency(ind.total)}</td>
         </tr>`;
-    rowIdx++;
-  }
+      rowIdx++;
+    }
 
-  html += `
+    html += `
         <tr style="background: #1e293b;">
           <td colspan="5" style="padding: 12px; border: 1px solid #334155; color: #ffffff; font-weight: 700; font-size: 14px;">TOTAL A PAGAR</td>
           <td style="padding: 12px; border: 1px solid #334155; color: #f59e0b; font-weight: 800; font-size: 16px; text-align: right;">${formatCurrency(valorTotal)}</td>
@@ -3296,10 +3340,10 @@ function buildCommissionEmailHtml(data) {
       </thead>
       <tbody>`;
 
-  records.forEach((r, idx) => {
-    const bg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
-    const val = parseBRCurrency(r.valor_contrato);
-    html += `
+    records.forEach((r, idx) => {
+      const bg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+      const val = parseBRCurrency(r.valor_contrato);
+      html += `
         <tr style="background: ${bg};">
           <td style="${tdStyle}">${r.nome_indicador || '-'}</td>
           <td style="${tdStyle}">${formatCPF(r.cpf_indicado)}</td>
@@ -3307,13 +3351,60 @@ function buildCommissionEmailHtml(data) {
           <td style="${tdStyle}">${r.data_contrato || '-'}</td>
           <td style="${tdRight}">${formatCurrency(val)}</td>
         </tr>`;
-  });
+    });
 
-  html += `
+    html += `
       </tbody>
     </table>
-  </div>
+  </div>`;
+  }
 
+  if (hasPending) {
+    html += `
+  <!-- Pending Commissions Section -->
+  <div style="padding: 0 40px 24px;">
+    <div style="background: #fffbeb; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+      <div style="font-size: 14px; font-weight: 700; color: #92400e;">⚠ Existem comissões pendentes de pagamento de ciclos anteriores</div>
+    </div>
+    <h2 style="font-size: 15px; color: #1e293b; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 2px solid #f97316;">Comissões Pendentes de Pagamento</h2>
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="background: #fff7ed;">
+          <th style="${thStyle}">Indicador</th>
+          <th style="${thStyle}">CPF</th>
+          <th style="${thStyle}">Período</th>
+          <th style="${thStyle} text-align: center;">Conversões</th>
+          <th style="${thStyle} text-align: right;">Comissão</th>
+          <th style="${thStyle} text-align: center;">Status</th>
+        </tr>
+      </thead>
+      <tbody>`;
+
+    pending.forEach((pend, pIdx) => {
+      const bg = pIdx % 2 === 0 ? '#ffffff' : '#fffbeb';
+      html += `
+        <tr style="background: ${bg};">
+          <td style="${tdStyle} font-weight: 600;">${pend.nome}</td>
+          <td style="${tdStyle}">${formatCPF(pend.cpf)}</td>
+          <td style="${tdStyle}">${pend.periodo}</td>
+          <td style="${tdStyle} text-align: center;">${pend.count}</td>
+          <td style="${tdRight}">${formatCurrency(pend.total)}</td>
+          <td style="${tdStyle} text-align: center;"><span style="background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">Pendente</span></td>
+        </tr>`;
+    });
+
+    html += `
+        <tr style="background: #7c2d12;">
+          <td colspan="4" style="padding: 12px; border: 1px solid #9a3412; color: #ffffff; font-weight: 700; font-size: 14px;">TOTAL PENDENTE</td>
+          <td style="padding: 12px; border: 1px solid #9a3412; color: #fb923c; font-weight: 800; font-size: 16px; text-align: right;">${formatCurrency(pendingTotal)}</td>
+          <td style="padding: 12px; border: 1px solid #9a3412;"></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>`;
+  }
+
+  html += `
   <!-- Footer -->
   <div style="background: #1e293b; padding: 24px 40px; text-align: center;">
     <div style="font-size: 13px; color: #94a3b8; font-weight: 600;">Bom Pastor</div>
@@ -3331,7 +3422,7 @@ function buildCommissionEmailHtml(data) {
 
 function generateCommissionPDF(data) {
   return new Promise((resolve, reject) => {
-    const { cycle, indicators, totalIndicadores, totalIndicacoes, valorTotal, records } = data;
+    const { cycle, indicators, totalIndicadores, totalIndicacoes, valorTotal, records, pending, pendingTotal, hasPending, cycleEmpty } = data;
     const periodoInicio = formatDateBR(cycle.start);
     const periodoFim = formatDateBR(cycle.end);
     const geradoEm = formatDateTimeBR(new Date());
@@ -3346,6 +3437,7 @@ function generateCommissionPDF(data) {
     const amberAccent = [245, 158, 11];
     const textDark = [30, 41, 59];
     const textLight = [100, 116, 139];
+    const orangeAccent = [249, 115, 22];
 
     doc.rect(0, 0, doc.page.width, 80).fill(darkBg);
     doc.fontSize(10).fill([148, 163, 184]).text('BOM PASTOR', 40, 20, { align: 'center', characterSpacing: 3 });
@@ -3360,25 +3452,6 @@ function generateCommissionPDF(data) {
     y += 14;
     doc.text('Sistema: Bom Flow CRM', 40, y);
     y += 20;
-
-    const cardW = (doc.page.width - 80 - 20) / 3;
-    const cards = [
-      { label: 'Indicadores a Pagar', value: String(totalIndicadores), bg: [254, 243, 199], color: [146, 64, 14] },
-      { label: 'Indicações Pagas', value: String(totalIndicacoes), bg: [219, 234, 254], color: [30, 64, 175] },
-      { label: 'Total das Comissões', value: formatCurrency(valorTotal), bg: [6, 95, 70], color: [255, 255, 255] },
-    ];
-    cards.forEach((card, i) => {
-      const cx = 40 + i * (cardW + 10);
-      doc.roundedRect(cx, y, cardW, 50, 6).fill(card.bg);
-      doc.fontSize(18).fill(card.color).text(card.value, cx, y + 8, { width: cardW, align: 'center' });
-      doc.fontSize(7).text(card.label.toUpperCase(), cx, y + 32, { width: cardW, align: 'center', characterSpacing: 1 });
-    });
-    y += 65;
-
-    doc.fontSize(12).fill(textDark).text('Resumo de Pagamentos por Indicador', 40, y);
-    y += 16;
-    doc.rect(40, y, doc.page.width - 80, 2).fill(amberAccent);
-    y += 8;
 
     const cols1 = [
       { label: 'Indicador', w: 110, align: 'left' },
@@ -3411,47 +3484,108 @@ function generateCommissionPDF(data) {
       return startY + 16;
     };
 
-    y = drawTableHeader(cols1, y);
+    if (cycleEmpty) {
+      doc.roundedRect(60, y, doc.page.width - 120, 60, 8).lineWidth(1.5).dash(5, { space: 4 }).stroke([203, 213, 225]);
+      doc.fontSize(13).fill(textDark).text('Nenhuma comissão foi gerada para este ciclo', 60, y + 16, { width: doc.page.width - 120, align: 'center' });
+      doc.fontSize(9).fill(textLight).text(`Período: ${periodoInicio} → ${periodoFim}`, 60, y + 36, { width: doc.page.width - 120, align: 'center' });
+      y += 80;
+    } else {
+      const cardW = (doc.page.width - 80 - 20) / 3;
+      const cards = [
+        { label: 'Indicadores a Pagar', value: String(totalIndicadores), bg: [254, 243, 199], color: [146, 64, 14] },
+        { label: 'Indicações Pagas', value: String(totalIndicacoes), bg: [219, 234, 254], color: [30, 64, 175] },
+        { label: 'Total das Comissões', value: formatCurrency(valorTotal), bg: [6, 95, 70], color: [255, 255, 255] },
+      ];
+      cards.forEach((card, i) => {
+        const cx = 40 + i * (cardW + 10);
+        doc.roundedRect(cx, y, cardW, 50, 6).fill(card.bg);
+        doc.fontSize(18).fill(card.color).text(card.value, cx, y + 8, { width: cardW, align: 'center' });
+        doc.fontSize(7).text(card.label.toUpperCase(), cx, y + 32, { width: cardW, align: 'center', characterSpacing: 1 });
+      });
+      y += 65;
 
-    let rIdx = 0;
-    for (const [key, ind] of Object.entries(indicators)) {
-      if (y > doc.page.height - 80) { doc.addPage(); y = 40; y = drawTableHeader(cols1, y); }
-      const bg = rIdx % 2 === 1 ? [248, 250, 252] : null;
-      const nivel = ind.count >= 13 ? '3 (13+)' : ind.count >= 4 ? '2 (4-12)' : ind.count >= 1 ? '1 (1-3)' : '-';
-      y = drawTableRow(cols1, [ind.nome, formatCPF(ind.cpf), formatPhoneNumber(ind.cel), String(ind.count), nivel, formatCurrency(ind.total)], y, bg);
-      rIdx++;
+      doc.fontSize(12).fill(textDark).text('Resumo de Pagamentos por Indicador', 40, y);
+      y += 16;
+      doc.rect(40, y, doc.page.width - 80, 2).fill(amberAccent);
+      y += 8;
+
+      y = drawTableHeader(cols1, y);
+
+      let rIdx = 0;
+      for (const [key, ind] of Object.entries(indicators)) {
+        if (y > doc.page.height - 80) { doc.addPage(); y = 40; y = drawTableHeader(cols1, y); }
+        const bg = rIdx % 2 === 1 ? [248, 250, 252] : null;
+        const nivel = ind.count >= 13 ? '3 (13+)' : ind.count >= 4 ? '2 (4-12)' : ind.count >= 1 ? '1 (1-3)' : '-';
+        y = drawTableRow(cols1, [ind.nome, formatCPF(ind.cpf), formatPhoneNumber(ind.cel), String(ind.count), nivel, formatCurrency(ind.total)], y, bg);
+        rIdx++;
+      }
+
+      doc.rect(40, y, doc.page.width - 80, 20).fill(darkBg);
+      doc.fontSize(9).fill([255, 255, 255]).text('TOTAL A PAGAR', 44, y + 6, { width: 400 });
+      doc.fontSize(11).fill(amberAccent).text(formatCurrency(valorTotal), 44, y + 4, { width: doc.page.width - 88, align: 'right' });
+      y += 30;
+
+      if (y > doc.page.height - 80) { doc.addPage(); y = 40; }
+
+      doc.fontSize(12).fill(textDark).text('Detalhamento das Indicações (Auditoria)', 40, y);
+      y += 16;
+      doc.rect(40, y, doc.page.width - 80, 2).fill([59, 130, 246]);
+      y += 8;
+
+      const cols2 = [
+        { label: 'Indicador', w: 110, align: 'left' },
+        { label: 'CPF Indicado', w: 100, align: 'left' },
+        { label: 'Nome Indicado', w: 120, align: 'left' },
+        { label: 'Data Contrato', w: 75, align: 'left' },
+        { label: 'Valor Contrato', w: 80, align: 'right' },
+      ];
+
+      y = drawTableHeader(cols2, y);
+
+      records.forEach((r, idx) => {
+        if (y > doc.page.height - 60) { doc.addPage(); y = 40; y = drawTableHeader(cols2, y); }
+        const bg = idx % 2 === 1 ? [248, 250, 252] : null;
+        const val = parseBRCurrency(r.valor_contrato);
+        y = drawTableRow(cols2, [r.nome_indicador || '-', formatCPF(r.cpf_indicado), r.nome_indicado || '-', r.data_contrato || '-', formatCurrency(val)], y, bg);
+      });
+      y += 15;
     }
 
-    doc.rect(40, y, doc.page.width - 80, 20).fill(darkBg);
-    doc.fontSize(9).fill([255, 255, 255]).text('TOTAL A PAGAR', 44, y + 6, { width: 400 });
-    doc.fontSize(11).fill(amberAccent).text(formatCurrency(valorTotal), 44, y + 4, { width: doc.page.width - 88, align: 'right' });
-    y += 30;
+    if (hasPending) {
+      if (y > doc.page.height - 100) { doc.addPage(); y = 40; }
 
-    if (y > doc.page.height - 80) { doc.addPage(); y = 40; }
+      doc.roundedRect(40, y, doc.page.width - 80, 24, 4).fill([255, 251, 235]);
+      doc.fontSize(9).fill([146, 64, 14]).text('⚠ Existem comissões pendentes de pagamento de ciclos anteriores', 52, y + 7, { width: doc.page.width - 104 });
+      y += 34;
 
-    doc.fontSize(12).fill(textDark).text('Detalhamento das Indicações (Auditoria)', 40, y);
-    y += 16;
-    doc.rect(40, y, doc.page.width - 80, 2).fill([59, 130, 246]);
-    y += 8;
+      doc.fontSize(12).fill(textDark).text('Comissões Pendentes de Pagamento', 40, y);
+      y += 16;
+      doc.rect(40, y, doc.page.width - 80, 2).fill(orangeAccent);
+      y += 8;
 
-    const cols2 = [
-      { label: 'Indicador', w: 110, align: 'left' },
-      { label: 'CPF Indicado', w: 100, align: 'left' },
-      { label: 'Nome Indicado', w: 120, align: 'left' },
-      { label: 'Data Contrato', w: 75, align: 'left' },
-      { label: 'Valor Contrato', w: 80, align: 'right' },
-    ];
+      const colsPending = [
+        { label: 'Indicador', w: 110, align: 'left' },
+        { label: 'CPF', w: 95, align: 'left' },
+        { label: 'Período', w: 100, align: 'left' },
+        { label: 'Conversões', w: 55, align: 'center' },
+        { label: 'Comissão', w: 75, align: 'right' },
+        { label: 'Status', w: 50, align: 'center' },
+      ];
 
-    y = drawTableHeader(cols2, y);
+      y = drawTableHeader(colsPending, y);
 
-    records.forEach((r, idx) => {
-      if (y > doc.page.height - 60) { doc.addPage(); y = 40; y = drawTableHeader(cols2, y); }
-      const bg = idx % 2 === 1 ? [248, 250, 252] : null;
-      const val = parseBRCurrency(r.valor_contrato);
-      y = drawTableRow(cols2, [r.nome_indicador || '-', formatCPF(r.cpf_indicado), r.nome_indicado || '-', r.data_contrato || '-', formatCurrency(val)], y, bg);
-    });
+      pending.forEach((pend, pIdx) => {
+        if (y > doc.page.height - 60) { doc.addPage(); y = 40; y = drawTableHeader(colsPending, y); }
+        const bg = pIdx % 2 === 1 ? [255, 251, 235] : null;
+        y = drawTableRow(colsPending, [pend.nome, formatCPF(pend.cpf), pend.periodo, String(pend.count), formatCurrency(pend.total), 'Pendente'], y, bg);
+      });
 
-    y += 15;
+      doc.rect(40, y, doc.page.width - 80, 20).fill([124, 45, 18]);
+      doc.fontSize(9).fill([255, 255, 255]).text('TOTAL PENDENTE', 44, y + 6, { width: 400 });
+      doc.fontSize(11).fill([251, 146, 60]).text(formatCurrency(pendingTotal), 44, y + 4, { width: doc.page.width - 88, align: 'right' });
+      y += 30;
+    }
+
     if (y > doc.page.height - 55) { doc.addPage(); y = 40; }
     doc.rect(40, y, doc.page.width - 80, 45).fill(darkBg);
     doc.fontSize(9).fill([148, 163, 184]).text('Bom Pastor — Bom Flow CRM', 40, y + 6, { align: 'center', width: doc.page.width - 80 });
@@ -3472,9 +3606,9 @@ async function sendCommissionReport(options = {}) {
 
   const reportData = await getCommissionReportData();
 
-  if (reportData.records.length === 0 && tipo_envio === 'automatico') {
-    console.log('[Commission Email] No eligible commissions to report, skipping automatic send');
-    return { success: true, skipped: true, message: 'Sem comissões elegíveis para reportar' };
+  if (reportData.cycleEmpty && !reportData.hasPending && tipo_envio === 'automatico') {
+    console.log('[Commission Email] No commissions in current cycle and no pending, skipping automatic send');
+    return { success: true, skipped: true, message: 'Sem comissões no ciclo atual e sem pendências anteriores' };
   }
 
   if (tipo_envio === 'automatico') {
