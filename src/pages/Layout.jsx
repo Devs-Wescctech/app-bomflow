@@ -226,6 +226,7 @@ const menuModules = [
       { title: "Tarefas", url: createPageUrl("ReferralTasks"), icon: CheckSquare },
       { title: "Relatórios", url: createPageUrl("ReferralReports"), icon: FileBarChart, supervisorOnly: true },
       { title: "Comissões", url: createPageUrl("ReferralCommissions"), icon: DollarSign, supervisorOnly: true },
+      { title: "Reconciliação", url: createPageUrl("CommissionReconciliation"), icon: Shield, supervisorOnly: true },
       { title: "Automações", url: createPageUrl("ReferralAutomations"), icon: Zap, supervisorOnly: true },
     ]
   },

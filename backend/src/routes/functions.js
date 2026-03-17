@@ -868,6 +868,266 @@ router.get('/run-lead-generator-audit', authMiddleware, async (req, res) => {
 
 export { runLeadGeneratorAudit };
 
+async function runCommissionReconciliation() {
+  console.log('[Commission Reconciliation] Starting reconciliation...');
+  const issues = [];
+
+  try {
+    const erpToken = process.env.ERP_AUTH_TOKEN;
+    if (!erpToken) {
+      console.error('[Commission Reconciliation] ERP_AUTH_TOKEN not configured');
+      return { success: false, error: 'ERP_AUTH_TOKEN not configured', issues: [] };
+    }
+
+    const API_URL = `https://api.grupobompastor.com.br/api/dados-vendas-indicacoes?token=${erpToken}`;
+    const erpResponse = await fetch(API_URL);
+    if (!erpResponse.ok) throw new Error(`ERP API error: ${erpResponse.status}`);
+    const erpData = await erpResponse.json();
+    const allRecords = Array.isArray(erpData) ? erpData : (erpData.data || []);
+
+    const paidSales = allRecords.filter(r =>
+      r.valores_pagos && String(r.valores_pagos).toUpperCase() === 'SIM'
+    );
+
+    const referralsResult = await query(
+      "SELECT id, referred_cpf, commission_status, commission_value, created_at, stage FROM referrals WHERE stage = 'fechado_ganho' AND commission_value > 0 ORDER BY created_at ASC"
+    );
+    const referrals = referralsResult.rows;
+
+    const usedContractsResult = await query('SELECT contrato_servicos, referral_id FROM processed_referral_contracts');
+    const usedContractsMap = {};
+    for (const row of usedContractsResult.rows) {
+      usedContractsMap[row.contrato_servicos] = row.referral_id;
+    }
+
+    const referralsByCpf = {};
+    for (const ref of referrals) {
+      const cpf = ref.referred_cpf ? String(ref.referred_cpf).replace(/\D/g, '') : '';
+      if (cpf && cpf.length >= 11) {
+        if (!referralsByCpf[cpf]) referralsByCpf[cpf] = [];
+        referralsByCpf[cpf].push(ref);
+      }
+    }
+
+    const processedContracts = new Set();
+    for (const sale of paidSales) {
+      const contratoId = sale.contrato_servicos ? String(sale.contrato_servicos).trim() : '';
+      if (!contratoId || processedContracts.has(contratoId)) continue;
+      processedContracts.add(contratoId);
+
+      const cpfIndicado = sale.cpf_indicado ? String(sale.cpf_indicado).replace(/\D/g, '') : '';
+      const matchingReferrals = cpfIndicado ? (referralsByCpf[cpfIndicado] || []) : [];
+
+      if (matchingReferrals.length === 0) {
+        issues.push({
+          contrato_servicos: contratoId,
+          referral_id: null,
+          cpf_indicado: cpfIndicado || null,
+          tipo_problema: 'venda_sem_comissao',
+          descricao: `Venda paga (contrato ${contratoId}) sem indicação correspondente no sistema`
+        });
+        continue;
+      }
+
+      const usedByReferralId = usedContractsMap[contratoId];
+      if (!usedByReferralId) {
+        issues.push({
+          contrato_servicos: contratoId,
+          referral_id: matchingReferrals[0].id,
+          cpf_indicado: cpfIndicado,
+          tipo_problema: 'venda_sem_comissao',
+          descricao: `Venda paga (contrato ${contratoId}) com indicação existente mas contrato não vinculado a comissão`
+        });
+      }
+    }
+
+    for (const ref of referrals) {
+      if (ref.commission_status === 'aprovada' || ref.commission_status === 'paga') {
+        const refCpf = ref.referred_cpf ? String(ref.referred_cpf).replace(/\D/g, '') : '';
+        const hasPaidSale = paidSales.some(s => {
+          const cpf = s.cpf_indicado ? String(s.cpf_indicado).replace(/\D/g, '') : '';
+          return cpf === refCpf;
+        });
+
+        if (!hasPaidSale) {
+          issues.push({
+            contrato_servicos: null,
+            referral_id: ref.id,
+            cpf_indicado: refCpf || null,
+            tipo_problema: 'comissao_sem_venda',
+            descricao: `Comissão ${ref.commission_status} para indicação ${ref.id} sem venda paga correspondente no ERP`
+          });
+        }
+      }
+    }
+
+    const contractCommissionCount = {};
+    for (const [contrato, refId] of Object.entries(usedContractsMap)) {
+      if (!contractCommissionCount[contrato]) contractCommissionCount[contrato] = [];
+      contractCommissionCount[contrato].push(refId);
+    }
+    for (const ref of referrals) {
+      if (ref.commission_status === 'paga' || ref.commission_status === 'aprovada') {
+        const refCpf = ref.referred_cpf ? String(ref.referred_cpf).replace(/\D/g, '') : '';
+        const matchingSales = paidSales.filter(s => {
+          const cpf = s.cpf_indicado ? String(s.cpf_indicado).replace(/\D/g, '') : '';
+          return cpf === refCpf;
+        });
+        for (const sale of matchingSales) {
+          const cid = sale.contrato_servicos ? String(sale.contrato_servicos).trim() : '';
+          if (cid && usedContractsMap[cid] && usedContractsMap[cid] !== ref.id) {
+            issues.push({
+              contrato_servicos: cid,
+              referral_id: ref.id,
+              cpf_indicado: refCpf || null,
+              tipo_problema: 'contrato_duplicado',
+              descricao: `Contrato ${cid} vinculado a outra indicação, mas indicação ${ref.id} também possui comissão ${ref.commission_status}`
+            });
+          }
+        }
+      }
+    }
+
+    for (const ref of referrals) {
+      if (ref.commission_status === 'paga') {
+        const refCpf = ref.referred_cpf ? String(ref.referred_cpf).replace(/\D/g, '') : '';
+        const currentErpSales = allRecords.filter(s => {
+          const cpf = s.cpf_indicado ? String(s.cpf_indicado).replace(/\D/g, '') : '';
+          return cpf === refCpf;
+        });
+        const hasUnpaidNow = currentErpSales.some(s =>
+          String(s.valores_pagos || '').toUpperCase() !== 'SIM'
+        ) && !currentErpSales.some(s =>
+          String(s.valores_pagos || '').toUpperCase() === 'SIM'
+        );
+
+        if (hasUnpaidNow && currentErpSales.length > 0) {
+          issues.push({
+            contrato_servicos: null,
+            referral_id: ref.id,
+            cpf_indicado: refCpf || null,
+            tipo_problema: 'venda_cancelada',
+            descricao: `Comissão paga para indicação ${ref.id} mas ERP não possui mais venda paga para este CPF`
+          });
+        }
+      }
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+
+    await query("DELETE FROM commission_reconciliation_logs WHERE execution_date = $1 AND resolved = false", [today]);
+
+    for (const issue of issues) {
+      await query(
+        `INSERT INTO commission_reconciliation_logs (contrato_servicos, referral_id, cpf_indicado, tipo_problema, descricao, execution_date)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [issue.contrato_servicos, issue.referral_id, issue.cpf_indicado, issue.tipo_problema, issue.descricao, today]
+      );
+    }
+
+    console.log(`[Commission Reconciliation] Completed. Found ${issues.length} issues.`);
+    return { success: true, issuesFound: issues.length, issues };
+
+  } catch (error) {
+    console.error('[Commission Reconciliation] Error:', error.message);
+    return { success: false, error: error.message, issues: [] };
+  }
+}
+
+export { runCommissionReconciliation };
+
+router.post('/commission-reconciliation/run', authMiddleware, async (req, res) => {
+  try {
+    const result = await runCommissionReconciliation();
+    res.json(result);
+  } catch (error) {
+    console.error('[Commission Reconciliation] Manual run error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/commission-reconciliation/logs', authMiddleware, async (req, res) => {
+  try {
+    const { date, tipo, resolved } = req.query;
+    let sql = 'SELECT * FROM commission_reconciliation_logs WHERE 1=1';
+    const params = [];
+
+    if (date) {
+      params.push(date);
+      sql += ` AND execution_date = $${params.length}`;
+    }
+    if (tipo) {
+      params.push(tipo);
+      sql += ` AND tipo_problema = $${params.length}`;
+    }
+    if (resolved !== undefined) {
+      params.push(resolved === 'true');
+      sql += ` AND resolved = $${params.length}`;
+    }
+
+    sql += ' ORDER BY created_at DESC LIMIT 500';
+
+    const result = await query(sql, params);
+    res.json({ success: true, logs: result.rows });
+  } catch (error) {
+    console.error('[Commission Reconciliation] Logs error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/commission-reconciliation/summary', authMiddleware, async (req, res) => {
+  try {
+    const summaryResult = await query(`
+      SELECT 
+        tipo_problema,
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE resolved = false) as pending,
+        COUNT(*) FILTER (WHERE resolved = true) as resolved,
+        MAX(execution_date) as last_execution
+      FROM commission_reconciliation_logs
+      GROUP BY tipo_problema
+    `);
+
+    const lastRunResult = await query(`
+      SELECT MAX(execution_date) as last_run, COUNT(*) as total_issues
+      FROM commission_reconciliation_logs
+      WHERE execution_date = (SELECT MAX(execution_date) FROM commission_reconciliation_logs)
+    `);
+
+    res.json({
+      success: true,
+      byType: summaryResult.rows,
+      lastRun: lastRunResult.rows[0] || null
+    });
+  } catch (error) {
+    console.error('[Commission Reconciliation] Summary error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.put('/commission-reconciliation/resolve/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userEmail = req.user?.email || req.user?.userEmail || 'admin';
+
+    const result = await query(
+      `UPDATE commission_reconciliation_logs 
+       SET resolved = true, resolved_at = NOW(), resolved_by = $1 
+       WHERE id = $2 RETURNING *`,
+      [userEmail, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Log not found' });
+    }
+
+    res.json({ success: true, log: result.rows[0] });
+  } catch (error) {
+    console.error('[Commission Reconciliation] Resolve error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.get('/lead-generator-whatsapp-logs-list', authMiddleware, async (req, res) => {
   try {
     const agent = await getAgentForDispatchCheck(req);

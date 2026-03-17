@@ -122,6 +122,8 @@ import ReferralDetail from "./ReferralDetail";
 
 import ReferralCommissions from "./ReferralCommissions";
 
+import CommissionReconciliation from "./CommissionReconciliation";
+
 import ReferralAutomations from "./ReferralAutomations";
 
 import ReferralAgenda from "./ReferralAgenda";
@@ -529,6 +531,7 @@ function PagesContent() {
                 <Route path="/ReferralDetail" element={<ReferralDetail />} />
                 
                 <Route path="/ReferralCommissions" element={<ReferralCommissions />} />
+                <Route path="/CommissionReconciliation" element={<CommissionReconciliation />} />
                 
                 <Route path="/ReferralAutomations" element={<ReferralAutomations />} />
                 
