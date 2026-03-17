@@ -2,6 +2,7 @@ import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
 import nodemailer from 'nodemailer';
+import PDFDocument from 'pdfkit';
 import { query } from '../config/database.js';
 import { authMiddleware, optionalAuth } from '../middleware/auth.js';
 import { loadAgentMiddleware, requirePermission, requireRole } from '../middleware/permissions.js';
@@ -3039,104 +3040,326 @@ async function getCommissionReportData() {
   return { cycle, indicators: indicatorMap, totalIndicadores, totalIndicacoes, valorTotal, records };
 }
 
+function formatPhoneNumber(phone) {
+  if (!phone) return '-';
+  const digits = String(phone).replace(/\D/g, '');
+  if (digits.length === 11) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
+  return phone;
+}
+
+function formatCPF(cpf) {
+  if (!cpf) return '-';
+  const digits = String(cpf).replace(/\D/g, '');
+  if (digits.length === 11) {
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+  }
+  return cpf;
+}
+
+function formatDateBR(d) {
+  if (!d) return '-';
+  try {
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return String(d);
+    return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+  } catch { return String(d); }
+}
+
+function formatDateTimeBR(d) {
+  if (!d) return '-';
+  try {
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return String(d);
+    return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()} ${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
+  } catch { return String(d); }
+}
+
+function formatCurrency(value) {
+  return `R$ ${value.toFixed(2).replace('.', ',')}`;
+}
+
 function buildCommissionEmailHtml(data) {
   const { cycle, indicators, totalIndicadores, totalIndicacoes, valorTotal, records } = data;
+  const periodoInicio = formatDateBR(cycle.start);
+  const periodoFim = formatDateBR(cycle.end);
+  const geradoEm = formatDateTimeBR(new Date());
 
-  const formatDate = (d) => {
-    if (!d) return '-';
-    try {
-      const dt = new Date(d);
-      return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
-    } catch { return String(d); }
-  };
+  const thStyle = 'padding: 10px 12px; border: 1px solid #cbd5e1; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;';
+  const tdStyle = 'padding: 8px 12px; border: 1px solid #e2e8f0; font-size: 13px;';
+  const tdRight = 'padding: 8px 12px; border: 1px solid #e2e8f0; font-size: 13px; text-align: right; font-weight: 500;';
 
-  const periodoInicio = formatDate(cycle.start);
-  const periodoFim = formatDate(cycle.end);
+  let html = `
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin: 0; padding: 0; background: #f1f5f9; font-family: 'Segoe UI', Arial, sans-serif;">
+<div style="max-width: 800px; margin: 0 auto; background: #ffffff;">
 
-  let summaryHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px;">
-      <div style="background: linear-gradient(135deg, #f59e0b, #d97706); padding: 20px 30px; border-radius: 12px; color: white; margin-bottom: 24px;">
-        <h1 style="margin: 0; font-size: 22px;">Relatório Semanal de Comissões de Indicação</h1>
-        <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.9;">Período: ${periodoInicio} → ${periodoFim}</p>
-      </div>
+  <!-- Header -->
+  <div style="background: #1e293b; padding: 30px 40px; text-align: center;">
+    <div style="font-size: 14px; color: #94a3b8; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 8px;">Bom Pastor</div>
+    <h1 style="margin: 0; font-size: 22px; color: #ffffff; font-weight: 700;">RELATÓRIO SEMANAL DE COMISSÕES DE INDICAÇÃO</h1>
+    <div style="font-size: 13px; color: #64748b; margin-top: 6px;">Bom Flow CRM</div>
+    <div style="height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); margin-top: 16px; border-radius: 2px;"></div>
+  </div>
 
-      <div style="display: flex; gap: 16px; margin-bottom: 24px;">
-        <div style="flex: 1; background: #fef3c7; padding: 16px; border-radius: 8px; text-align: center;">
-          <div style="font-size: 28px; font-weight: bold; color: #92400e;">${totalIndicadores}</div>
-          <div style="font-size: 12px; color: #78350f;">Indicadores</div>
-        </div>
-        <div style="flex: 1; background: #dbeafe; padding: 16px; border-radius: 8px; text-align: center;">
-          <div style="font-size: 28px; font-weight: bold; color: #1e40af;">${totalIndicacoes}</div>
-          <div style="font-size: 12px; color: #1e3a5f;">Indicações</div>
-        </div>
-        <div style="flex: 1; background: #d1fae5; padding: 16px; border-radius: 8px; text-align: center;">
-          <div style="font-size: 28px; font-weight: bold; color: #065f46;">R$ ${valorTotal.toFixed(2)}</div>
-          <div style="font-size: 12px; color: #064e3b;">Valor Total</div>
-        </div>
-      </div>
+  <!-- Report Info -->
+  <div style="padding: 24px 40px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;">
+    <table style="width: 100%; font-size: 13px; color: #475569;">
+      <tr>
+        <td style="padding: 4px 0;"><strong>Período:</strong> ${periodoInicio} → ${periodoFim}</td>
+        <td style="padding: 4px 0; text-align: right;"><strong>Gerado em:</strong> ${geradoEm}</td>
+      </tr>
+      <tr>
+        <td style="padding: 4px 0;" colspan="2"><strong>Sistema:</strong> Bom Flow CRM</td>
+      </tr>
+    </table>
+  </div>
 
-      <h2 style="font-size: 16px; color: #1f2937; border-bottom: 2px solid #f59e0b; padding-bottom: 8px;">Resumo por Indicador</h2>
-      <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 24px;">
-        <thead>
-          <tr style="background: #f9fafb;">
-            <th style="padding: 10px; border: 1px solid #e5e7eb; text-align: left;">Indicador</th>
-            <th style="padding: 10px; border: 1px solid #e5e7eb; text-align: left;">CPF</th>
-            <th style="padding: 10px; border: 1px solid #e5e7eb; text-align: left;">Telefone</th>
-            <th style="padding: 10px; border: 1px solid #e5e7eb; text-align: center;">Qtde</th>
-            <th style="padding: 10px; border: 1px solid #e5e7eb; text-align: right;">Valor Total</th>
-          </tr>
-        </thead>
-        <tbody>`;
+  <!-- Summary Cards -->
+  <div style="padding: 24px 40px;">
+    <table style="width: 100%; border-collapse: separate; border-spacing: 12px 0;">
+      <tr>
+        <td style="background: #fef3c7; padding: 20px; border-radius: 8px; text-align: center; width: 33%;">
+          <div style="font-size: 32px; font-weight: 800; color: #92400e;">${totalIndicadores}</div>
+          <div style="font-size: 11px; color: #78350f; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px;">Indicadores a Pagar</div>
+        </td>
+        <td style="background: #dbeafe; padding: 20px; border-radius: 8px; text-align: center; width: 33%;">
+          <div style="font-size: 32px; font-weight: 800; color: #1e40af;">${totalIndicacoes}</div>
+          <div style="font-size: 11px; color: #1e3a5f; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px;">Indicações Pagas</div>
+        </td>
+        <td style="background: #065f46; padding: 20px; border-radius: 8px; text-align: center; width: 33%;">
+          <div style="font-size: 28px; font-weight: 800; color: #ffffff;">${formatCurrency(valorTotal)}</div>
+          <div style="font-size: 11px; color: #a7f3d0; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px;">Total das Comissões</div>
+        </td>
+      </tr>
+    </table>
+  </div>
 
+  <!-- Indicator Summary Table -->
+  <div style="padding: 0 40px 24px;">
+    <h2 style="font-size: 15px; color: #1e293b; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 2px solid #f59e0b;">Resumo de Pagamentos por Indicador</h2>
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="background: #f1f5f9;">
+          <th style="${thStyle}">Indicador</th>
+          <th style="${thStyle}">CPF</th>
+          <th style="${thStyle}">Telefone</th>
+          <th style="${thStyle} text-align: center;">Qtde</th>
+          <th style="${thStyle} text-align: right;">Comissão Unit.</th>
+          <th style="${thStyle} text-align: right;">Valor Total</th>
+        </tr>
+      </thead>
+      <tbody>`;
+
+  let rowIdx = 0;
   for (const [key, ind] of Object.entries(indicators)) {
-    summaryHtml += `
-          <tr>
-            <td style="padding: 8px 10px; border: 1px solid #e5e7eb;">${ind.nome}</td>
-            <td style="padding: 8px 10px; border: 1px solid #e5e7eb;">${ind.cpf}</td>
-            <td style="padding: 8px 10px; border: 1px solid #e5e7eb;">${ind.cel}</td>
-            <td style="padding: 8px 10px; border: 1px solid #e5e7eb; text-align: center;">${ind.count}</td>
-            <td style="padding: 8px 10px; border: 1px solid #e5e7eb; text-align: right;">R$ ${ind.total.toFixed(2)}</td>
-          </tr>`;
+    const bg = rowIdx % 2 === 0 ? '#ffffff' : '#f8fafc';
+    const unitValue = ind.count > 0 ? ind.total / ind.count : 0;
+    html += `
+        <tr style="background: ${bg};">
+          <td style="${tdStyle} font-weight: 600;">${ind.nome}</td>
+          <td style="${tdStyle}">${formatCPF(ind.cpf)}</td>
+          <td style="${tdStyle}">${formatPhoneNumber(ind.cel)}</td>
+          <td style="${tdStyle} text-align: center;">${ind.count}</td>
+          <td style="${tdRight}">${formatCurrency(unitValue)}</td>
+          <td style="${tdRight}">${formatCurrency(ind.total)}</td>
+        </tr>`;
+    rowIdx++;
   }
 
-  summaryHtml += `
-        </tbody>
-      </table>
+  html += `
+        <tr style="background: #1e293b;">
+          <td colspan="5" style="padding: 12px; border: 1px solid #334155; color: #ffffff; font-weight: 700; font-size: 14px;">TOTAL A PAGAR</td>
+          <td style="padding: 12px; border: 1px solid #334155; color: #f59e0b; font-weight: 800; font-size: 16px; text-align: right;">${formatCurrency(valorTotal)}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 
-      <h2 style="font-size: 16px; color: #1f2937; border-bottom: 2px solid #3b82f6; padding-bottom: 8px;">Detalhamento (Auditoria)</h2>
-      <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px;">
-        <thead>
-          <tr style="background: #f9fafb;">
-            <th style="padding: 8px; border: 1px solid #e5e7eb; text-align: left;">Indicador</th>
-            <th style="padding: 8px; border: 1px solid #e5e7eb; text-align: left;">CPF Indicado</th>
-            <th style="padding: 8px; border: 1px solid #e5e7eb; text-align: left;">Nome Indicado</th>
-            <th style="padding: 8px; border: 1px solid #e5e7eb; text-align: left;">Data Contrato</th>
-            <th style="padding: 8px; border: 1px solid #e5e7eb; text-align: right;">Valor Contrato</th>
-          </tr>
-        </thead>
-        <tbody>`;
+  <!-- Audit Detail Table -->
+  <div style="padding: 0 40px 24px;">
+    <h2 style="font-size: 15px; color: #1e293b; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 2px solid #3b82f6;">Detalhamento das Indicações (Auditoria)</h2>
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="background: #f1f5f9;">
+          <th style="${thStyle}">Indicador</th>
+          <th style="${thStyle}">CPF Indicado</th>
+          <th style="${thStyle}">Nome Indicado</th>
+          <th style="${thStyle}">Data Contrato</th>
+          <th style="${thStyle} text-align: right;">Comissão</th>
+        </tr>
+      </thead>
+      <tbody>`;
 
-  for (const r of records) {
-    summaryHtml += `
-          <tr>
-            <td style="padding: 6px 8px; border: 1px solid #e5e7eb;">${r.nome_indicador || '-'}</td>
-            <td style="padding: 6px 8px; border: 1px solid #e5e7eb;">${r.cpf_indicado || '-'}</td>
-            <td style="padding: 6px 8px; border: 1px solid #e5e7eb;">${r.nome_indicado || '-'}</td>
-            <td style="padding: 6px 8px; border: 1px solid #e5e7eb;">${r.data_contrato || '-'}</td>
-            <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: right;">${r.valor_contrato || '-'}</td>
-          </tr>`;
-  }
+  records.forEach((r, idx) => {
+    const bg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+    const val = parseBRCurrency(r.valor_contrato);
+    html += `
+        <tr style="background: ${bg};">
+          <td style="${tdStyle}">${r.nome_indicador || '-'}</td>
+          <td style="${tdStyle}">${formatCPF(r.cpf_indicado)}</td>
+          <td style="${tdStyle}">${r.nome_indicado || '-'}</td>
+          <td style="${tdStyle}">${r.data_contrato || '-'}</td>
+          <td style="${tdRight}">${formatCurrency(val)}</td>
+        </tr>`;
+  });
 
-  summaryHtml += `
-        </tbody>
-      </table>
+  html += `
+      </tbody>
+    </table>
+  </div>
 
-      <div style="font-size: 11px; color: #9ca3af; text-align: center; padding-top: 16px; border-top: 1px solid #e5e7eb;">
-        Bom Flow CRM — Relatório gerado automaticamente em ${new Date().toLocaleString('pt-BR')}
-      </div>
-    </div>`;
+  <!-- Footer -->
+  <div style="background: #1e293b; padding: 24px 40px; text-align: center;">
+    <div style="font-size: 13px; color: #94a3b8; font-weight: 600;">Bom Pastor</div>
+    <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Bom Flow CRM</div>
+    <div style="height: 1px; background: #334155; margin: 12px 0;"></div>
+    <div style="font-size: 11px; color: #64748b;">Relatório gerado automaticamente em ${geradoEm}</div>
+    <div style="font-size: 10px; color: #475569; margin-top: 6px; font-style: italic;">Este documento é destinado exclusivamente ao controle financeiro de comissões.</div>
+  </div>
 
-  return summaryHtml;
+</div>
+</body></html>`;
+
+  return html;
+}
+
+function generateCommissionPDF(data) {
+  return new Promise((resolve, reject) => {
+    const { cycle, indicators, totalIndicadores, totalIndicacoes, valorTotal, records } = data;
+    const periodoInicio = formatDateBR(cycle.start);
+    const periodoFim = formatDateBR(cycle.end);
+    const geradoEm = formatDateTimeBR(new Date());
+
+    const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true });
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const darkBg = [30, 41, 59];
+    const amberAccent = [245, 158, 11];
+    const textDark = [30, 41, 59];
+    const textLight = [100, 116, 139];
+
+    doc.rect(0, 0, doc.page.width, 80).fill(darkBg);
+    doc.fontSize(10).fill([148, 163, 184]).text('BOM PASTOR', 40, 20, { align: 'center', characterSpacing: 3 });
+    doc.fontSize(16).fill([255, 255, 255]).text('RELATÓRIO SEMANAL DE COMISSÕES DE INDICAÇÃO', 40, 38, { align: 'center' });
+    doc.fontSize(9).fill([100, 116, 139]).text('Bom Flow CRM', 40, 60, { align: 'center' });
+    doc.rect(40, 78, doc.page.width - 80, 3).fill(amberAccent);
+
+    let y = 95;
+    doc.fontSize(9).fill(textLight);
+    doc.text(`Período: ${periodoInicio} → ${periodoFim}`, 40, y);
+    doc.text(`Gerado em: ${geradoEm}`, 40, y, { align: 'right', width: doc.page.width - 80 });
+    y += 14;
+    doc.text('Sistema: Bom Flow CRM', 40, y);
+    y += 20;
+
+    const cardW = (doc.page.width - 80 - 20) / 3;
+    const cards = [
+      { label: 'Indicadores a Pagar', value: String(totalIndicadores), bg: [254, 243, 199], color: [146, 64, 14] },
+      { label: 'Indicações Pagas', value: String(totalIndicacoes), bg: [219, 234, 254], color: [30, 64, 175] },
+      { label: 'Total das Comissões', value: formatCurrency(valorTotal), bg: [6, 95, 70], color: [255, 255, 255] },
+    ];
+    cards.forEach((card, i) => {
+      const cx = 40 + i * (cardW + 10);
+      doc.roundedRect(cx, y, cardW, 50, 6).fill(card.bg);
+      doc.fontSize(18).fill(card.color).text(card.value, cx, y + 8, { width: cardW, align: 'center' });
+      doc.fontSize(7).text(card.label.toUpperCase(), cx, y + 32, { width: cardW, align: 'center', characterSpacing: 1 });
+    });
+    y += 65;
+
+    doc.fontSize(12).fill(textDark).text('Resumo de Pagamentos por Indicador', 40, y);
+    y += 16;
+    doc.rect(40, y, doc.page.width - 80, 2).fill(amberAccent);
+    y += 8;
+
+    const cols1 = [
+      { label: 'Indicador', w: 110, align: 'left' },
+      { label: 'CPF', w: 95, align: 'left' },
+      { label: 'Telefone', w: 90, align: 'left' },
+      { label: 'Qtde', w: 35, align: 'center' },
+      { label: 'Comissão Unit.', w: 75, align: 'right' },
+      { label: 'Valor Total', w: 80, align: 'right' },
+    ];
+
+    const drawTableHeader = (columns, startY) => {
+      doc.rect(40, startY, doc.page.width - 80, 18).fill([241, 245, 249]);
+      let cx = 44;
+      doc.fontSize(7).fill(textDark);
+      columns.forEach(col => {
+        doc.text(col.label.toUpperCase(), cx, startY + 5, { width: col.w, align: col.align });
+        cx += col.w;
+      });
+      return startY + 18;
+    };
+
+    const drawTableRow = (columns, values, startY, bg) => {
+      if (bg) doc.rect(40, startY, doc.page.width - 80, 16).fill(bg);
+      let cx = 44;
+      doc.fontSize(8).fill(textDark);
+      columns.forEach((col, i) => {
+        doc.text(values[i] || '-', cx, startY + 4, { width: col.w, align: col.align });
+        cx += col.w;
+      });
+      return startY + 16;
+    };
+
+    y = drawTableHeader(cols1, y);
+
+    let rIdx = 0;
+    for (const [key, ind] of Object.entries(indicators)) {
+      if (y > doc.page.height - 80) { doc.addPage(); y = 40; y = drawTableHeader(cols1, y); }
+      const bg = rIdx % 2 === 1 ? [248, 250, 252] : null;
+      const unitVal = ind.count > 0 ? ind.total / ind.count : 0;
+      y = drawTableRow(cols1, [ind.nome, formatCPF(ind.cpf), formatPhoneNumber(ind.cel), String(ind.count), formatCurrency(unitVal), formatCurrency(ind.total)], y, bg);
+      rIdx++;
+    }
+
+    doc.rect(40, y, doc.page.width - 80, 20).fill(darkBg);
+    doc.fontSize(9).fill([255, 255, 255]).text('TOTAL A PAGAR', 44, y + 6, { width: 400 });
+    doc.fontSize(11).fill(amberAccent).text(formatCurrency(valorTotal), 44, y + 4, { width: doc.page.width - 88, align: 'right' });
+    y += 30;
+
+    if (y > doc.page.height - 120) { doc.addPage(); y = 40; }
+
+    doc.fontSize(12).fill(textDark).text('Detalhamento das Indicações (Auditoria)', 40, y);
+    y += 16;
+    doc.rect(40, y, doc.page.width - 80, 2).fill([59, 130, 246]);
+    y += 8;
+
+    const cols2 = [
+      { label: 'Indicador', w: 110, align: 'left' },
+      { label: 'CPF Indicado', w: 100, align: 'left' },
+      { label: 'Nome Indicado', w: 120, align: 'left' },
+      { label: 'Data Contrato', w: 75, align: 'left' },
+      { label: 'Comissão', w: 80, align: 'right' },
+    ];
+
+    y = drawTableHeader(cols2, y);
+
+    records.forEach((r, idx) => {
+      if (y > doc.page.height - 60) { doc.addPage(); y = 40; y = drawTableHeader(cols2, y); }
+      const bg = idx % 2 === 1 ? [248, 250, 252] : null;
+      const val = parseBRCurrency(r.valor_contrato);
+      y = drawTableRow(cols2, [r.nome_indicador || '-', formatCPF(r.cpf_indicado), r.nome_indicado || '-', r.data_contrato || '-', formatCurrency(val)], y, bg);
+    });
+
+    y += 20;
+    if (y > doc.page.height - 60) { doc.addPage(); y = 40; }
+    doc.rect(0, doc.page.height - 55, doc.page.width, 55).fill(darkBg);
+    doc.fontSize(9).fill([148, 163, 184]).text('Bom Pastor — Bom Flow CRM', 40, doc.page.height - 48, { align: 'center', width: doc.page.width - 80 });
+    doc.fontSize(8).fill([100, 116, 139]).text(`Relatório gerado automaticamente em ${geradoEm}`, 40, doc.page.height - 36, { align: 'center', width: doc.page.width - 80 });
+    doc.fontSize(7).fill([71, 85, 105]).text('Este documento é destinado exclusivamente ao controle financeiro de comissões.', 40, doc.page.height - 24, { align: 'center', width: doc.page.width - 80 });
+
+    doc.end();
+  });
 }
 
 async function sendCommissionReport(options = {}) {
@@ -3165,13 +3388,15 @@ async function sendCommissionReport(options = {}) {
     }
   }
 
-  const formatDateBR = (d) => {
-    const dt = new Date(d);
-    return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
-  };
-
-  const subject = `Relatório Semanal de Comissões de Indicação - Período: ${formatDateBR(reportData.cycle.start)} - ${formatDateBR(reportData.cycle.end)}`;
+  const startStr = formatDateBR(reportData.cycle.start);
+  const endStr = formatDateBR(reportData.cycle.end);
+  const subject = `Relatório Semanal de Comissões de Indicação - Período: ${startStr} - ${endStr}`;
   const html = buildCommissionEmailHtml(reportData);
+
+  console.log('[Commission Email] Generating PDF...');
+  const pdfBuffer = await generateCommissionPDF(reportData);
+  const pdfFilename = `relatorio_comissoes_${reportData.cycle.start.toISOString().split('T')[0]}_${reportData.cycle.end.toISOString().split('T')[0]}.pdf`;
+  console.log(`[Commission Email] PDF generated: ${pdfFilename} (${pdfBuffer.length} bytes)`);
 
   const transporter = nodemailer.createTransport({
     host: settings.smtp_server,
@@ -3191,7 +3416,12 @@ async function sendCommissionReport(options = {}) {
     from: settings.email_from || settings.smtp_user,
     to: recipients.join(', '),
     subject,
-    html
+    html,
+    attachments: [{
+      filename: pdfFilename,
+      content: pdfBuffer,
+      contentType: 'application/pdf'
+    }]
   });
 
   console.log(`[Commission Email] Report sent to ${recipients.join(', ')}`);
@@ -3296,12 +3526,19 @@ router.post('/commission-report/test', authMiddleware, loadAgentMiddleware, requ
 
     const reportData = await getCommissionReportData();
     const html = buildCommissionEmailHtml(reportData);
+    const pdfBuffer = await generateCommissionPDF(reportData);
+    const pdfFilename = `relatorio_comissoes_teste.pdf`;
 
     await transporter.sendMail({
       from: settings.email_from || settings.smtp_user,
       to: recipients.join(', '),
       subject: `[TESTE] Relatório Semanal de Comissões de Indicação`,
-      html
+      html,
+      attachments: [{
+        filename: pdfFilename,
+        content: pdfBuffer,
+        contentType: 'application/pdf'
+      }]
     });
 
     res.json({ success: true, message: `Email de teste enviado para ${recipients.join(', ')}` });
