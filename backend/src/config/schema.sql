@@ -1019,3 +1019,36 @@ CREATE TABLE IF NOT EXISTS commission_reconciliation_logs (
 
 CREATE INDEX IF NOT EXISTS idx_commission_reconciliation_date ON commission_reconciliation_logs (execution_date);
 CREATE INDEX IF NOT EXISTS idx_commission_reconciliation_tipo ON commission_reconciliation_logs (tipo_problema);
+
+CREATE TABLE IF NOT EXISTS commission_payment_batches (
+    id SERIAL PRIMARY KEY,
+    periodo_inicio TIMESTAMP NOT NULL,
+    periodo_fim TIMESTAMP NOT NULL,
+    data_geracao TIMESTAMP DEFAULT NOW(),
+    total_indicadores INTEGER DEFAULT 0,
+    valor_total DECIMAL(15,2) DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'aberto',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS commission_payment_control (
+    id SERIAL PRIMARY KEY,
+    cpf_indicador VARCHAR(20),
+    nome_indicador VARCHAR(255),
+    cel_indicador VARCHAR(50),
+    cpf_indicado VARCHAR(20),
+    nome_indicado VARCHAR(255),
+    data_contrato VARCHAR(100),
+    valor_contrato VARCHAR(100),
+    contrato_servicos VARCHAR(255) NOT NULL,
+    status_pagamento VARCHAR(20) DEFAULT 'elegivel',
+    periodo_pagamento VARCHAR(100),
+    lote_pagamento_id INTEGER REFERENCES commission_payment_batches(id),
+    data_confirmacao_pagamento TIMESTAMP,
+    usuario_confirmacao VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_commission_payment_control_contrato ON commission_payment_control (contrato_servicos);
+CREATE INDEX IF NOT EXISTS idx_commission_payment_control_lote ON commission_payment_control (lote_pagamento_id);
+CREATE INDEX IF NOT EXISTS idx_commission_payment_control_status ON commission_payment_control (status_pagamento);
