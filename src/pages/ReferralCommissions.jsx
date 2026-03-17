@@ -129,28 +129,38 @@ export default function ReferralCommissions() {
   };
 
   const erpIndicators = erpPaidData?.indicators || [];
+  const erpLoaded = !!erpPaidData && !isLoadingErp;
 
   const commissionsData = referrals
+    .filter(r => r.stage === 'fechado_ganho')
     .filter(r => r.commissionValue && parseFloat(r.commissionValue) > 0)
     .filter(r => {
       if (isAdmin) return true;
       return r.agentId === currentAgent?.id;
     })
-    .filter(r => isReferralPaidInErp(r, erpIndicators))
-    .map(r => ({
-      ...r,
-      referrer_display: r.referrerName || 'Sem nome',
-    }));
+    .map(r => {
+      let effectiveStatus = r.commissionStatus || 'pending';
+
+      if (erpLoaded && effectiveStatus !== 'paga' && effectiveStatus !== 'cancelada') {
+        const hasPaidSaleInErp = isReferralPaidInErp(r, erpIndicators);
+        effectiveStatus = hasPaidSaleInErp ? 'aprovada' : 'pending';
+      }
+
+      return {
+        ...r,
+        effectiveCommissionStatus: effectiveStatus,
+        referrer_display: r.referrerName || 'Sem nome',
+      };
+    });
 
   const filteredCommissions = statusFilter === 'all' 
     ? commissionsData
-    : commissionsData.filter(c => c.commissionStatus === statusFilter);
+    : commissionsData.filter(c => c.effectiveCommissionStatus === statusFilter);
 
-  // Métricas (usando valores em inglês do banco: pending, aprovada, paga)
   const totalCommissions = commissionsData.reduce((sum, c) => sum + (parseFloat(c.commissionValue) || 0), 0);
-  const pendingCommissions = commissionsData.filter(c => c.commissionStatus === 'pending');
-  const approvedCommissions = commissionsData.filter(c => c.commissionStatus === 'aprovada');
-  const paidCommissions = commissionsData.filter(c => c.commissionStatus === 'paga');
+  const pendingCommissions = commissionsData.filter(c => c.effectiveCommissionStatus === 'pending');
+  const approvedCommissions = commissionsData.filter(c => c.effectiveCommissionStatus === 'aprovada');
+  const paidCommissions = commissionsData.filter(c => c.effectiveCommissionStatus === 'paga');
 
   const totalPending = pendingCommissions.reduce((sum, c) => sum + (parseFloat(c.commissionValue) || 0), 0);
   const totalApproved = approvedCommissions.reduce((sum, c) => sum + (parseFloat(c.commissionValue) || 0), 0);
@@ -213,7 +223,7 @@ export default function ReferralCommissions() {
         c.referredName,
         `R$ ${parseFloat(c.value || 0).toFixed(2)}`,
         `R$ ${parseFloat(c.commissionValue || 0).toFixed(2)}`,
-        c.commissionStatus,
+        c.effectiveCommissionStatus,
         safeFormatDate(c.convertedAt)
       ])
     ].map(row => row.join(',')).join('\n');
@@ -504,7 +514,7 @@ export default function ReferralCommissions() {
                           ) : (
                             <Badge className="bg-blue-100 text-blue-800 text-xs">Nível 1</Badge>
                           )}
-                          {getStatusBadge(commission.commissionStatus)}
+                          {getStatusBadge(commission.effectiveCommissionStatus)}
                         </div>
                         
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -560,7 +570,7 @@ export default function ReferralCommissions() {
                           </Button>
                         </Link>
 
-                        {isAdmin && commission.commissionStatus === 'pending' && (
+                        {isAdmin && commission.effectiveCommissionStatus === 'pending' && (
                           <Button
                             size="sm"
                             onClick={() => handleApproveCommission(commission)}
@@ -572,7 +582,7 @@ export default function ReferralCommissions() {
                           </Button>
                         )}
 
-                        {isAdmin && commission.commissionStatus === 'aprovada' && (
+                        {isAdmin && commission.effectiveCommissionStatus === 'aprovada' && (
                           <Button
                             size="sm"
                             onClick={() => handleOpenPaymentDialog(commission)}
@@ -584,7 +594,7 @@ export default function ReferralCommissions() {
                           </Button>
                         )}
 
-                        {isAdmin && (commission.commissionStatus === 'pending' || commission.commissionStatus === 'aprovada') && (
+                        {isAdmin && (commission.effectiveCommissionStatus === 'pending' || commission.effectiveCommissionStatus === 'aprovada') && (
                           <Button
                             size="sm"
                             variant="destructive"
