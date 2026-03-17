@@ -11,6 +11,7 @@ import { generateProposalPDF } from '../services/pdfService.js';
 import { sendWhatsAppMessage, sendDocument, sendTextMessage } from '../services/whatsappService.js';
 import { v4 as uuidv4 } from 'uuid';
 import { enqueueLeads, processQueue, retryFailed, getQueueStatus, getDashboardMetrics, getLogsWithPagination, normalizePhone, checkConversions, getConversionMetrics, getConversionsList } from '../services/whatsappQueueService.js';
+import { getAgentByErpId, getErpAgentMap, resolveAgentFromErp } from '../services/erpIntegrationService.js';
 import OpenAI from 'openai';
 import FormData from 'form-data';
 import axios from 'axios';
