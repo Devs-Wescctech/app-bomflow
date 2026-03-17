@@ -2720,4 +2720,271 @@ router.post('/referral-use-contract', authMiddleware, async (req, res) => {
   }
 });
 
+function getWeeklyCycleDates(referenceDate = new Date()) {
+  const d = new Date(referenceDate);
+  const dayOfWeek = d.getDay();
+
+  let cycleEnd = new Date(d);
+  let cycleStart = new Date(d);
+
+  if (dayOfWeek === 3) {
+    cycleEnd.setDate(d.getDate() - 1);
+    cycleEnd.setHours(23, 59, 59, 999);
+    cycleStart.setDate(d.getDate() - 6);
+    cycleStart.setHours(0, 0, 0, 0);
+  } else {
+    const daysToLastTuesday = ((dayOfWeek + 7 - 2) % 7) || 7;
+    cycleEnd = new Date(d);
+    cycleEnd.setDate(d.getDate() - daysToLastTuesday);
+    cycleEnd.setHours(23, 59, 59, 999);
+    cycleStart = new Date(cycleEnd);
+    cycleStart.setDate(cycleEnd.getDate() - 5);
+    cycleStart.setHours(0, 0, 0, 0);
+  }
+
+  return {
+    start: cycleStart,
+    end: cycleEnd,
+    label: `${cycleStart.toISOString().split('T')[0]} a ${cycleEnd.toISOString().split('T')[0]}`
+  };
+}
+
+async function runWeeklyCommissionBatch() {
+  console.log('[Commission Batch] Starting weekly batch generation...');
+
+  try {
+    const erpAuthToken = process.env.ERP_AUTH_TOKEN;
+    if (!erpAuthToken) {
+      console.error('[Commission Batch] ERP_AUTH_TOKEN not configured');
+      return { success: false, error: 'ERP_AUTH_TOKEN not configured' };
+    }
+
+    const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
+    const erpUrl = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_DADOS_VENDAS_INDICACOES';
+
+    const erpResponse = await fetch(erpUrl, {
+      method: 'GET',
+      headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
+    });
+
+    if (!erpResponse.ok) throw new Error(`ERP API error: ${erpResponse.status}`);
+    const erpData = await erpResponse.json();
+    const allSales = Array.isArray(erpData) ? erpData : [];
+
+    const paidSales = allSales.filter(r => {
+      const vp = (r.valores_pagos || '').toString().trim().toUpperCase();
+      return vp === 'SIM';
+    });
+
+    console.log(`[Commission Batch] ERP returned ${allSales.length} records, ${paidSales.length} paid`);
+
+    const existingResult = await query('SELECT contrato_servicos FROM commission_payment_control');
+    const existingContracts = new Set(existingResult.rows.map(r => r.contrato_servicos));
+
+    const cycle = getWeeklyCycleDates();
+    let newCount = 0;
+
+    const newEligible = [];
+    for (const sale of paidSales) {
+      const contratoId = sale.contrato_servicos ? String(sale.contrato_servicos).trim() : '';
+      if (!contratoId || existingContracts.has(contratoId)) continue;
+
+      newEligible.push(sale);
+      existingContracts.add(contratoId);
+
+      await query(
+        `INSERT INTO commission_payment_control 
+         (cpf_indicador, nome_indicador, cel_indicador, cpf_indicado, nome_indicado, data_contrato, valor_contrato, contrato_servicos, status_pagamento, periodo_pagamento)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'elegivel', $9)
+         ON CONFLICT (contrato_servicos) DO NOTHING`,
+        [
+          sale.cpf_indicador || null,
+          sale.nome_indicador || null,
+          sale.cel_indicador || null,
+          sale.cpf_indicado || null,
+          sale.nome_indicado || null,
+          sale.data_contrato || null,
+          sale.valor_contrato || null,
+          contratoId,
+          cycle.label
+        ]
+      );
+      newCount++;
+    }
+
+    console.log(`[Commission Batch] Registered ${newCount} new eligible commissions`);
+
+    const elegiveisResult = await query(
+      "SELECT * FROM commission_payment_control WHERE status_pagamento = 'elegivel' AND lote_pagamento_id IS NULL"
+    );
+    const elegiveis = elegiveisResult.rows;
+
+    if (elegiveis.length === 0) {
+      console.log('[Commission Batch] No eligible commissions to batch');
+      return { success: true, newCommissions: newCount, batchId: null, message: 'No eligible commissions for batch' };
+    }
+
+    const indicatorMap = {};
+    for (const e of elegiveis) {
+      const key = e.cpf_indicador || e.nome_indicador || 'unknown';
+      if (!indicatorMap[key]) {
+        indicatorMap[key] = {
+          nome: e.nome_indicador,
+          cpf: e.cpf_indicador,
+          cel: e.cel_indicador,
+          count: 0,
+          total: 0
+        };
+      }
+      indicatorMap[key].count += 1;
+      const val = parseBRCurrency(e.valor_contrato);
+      indicatorMap[key].total += val;
+    }
+
+    const totalIndicadores = Object.keys(indicatorMap).length;
+    const valorTotal = Object.values(indicatorMap).reduce((s, i) => s + i.total, 0);
+
+    const batchResult = await query(
+      `INSERT INTO commission_payment_batches (periodo_inicio, periodo_fim, total_indicadores, valor_total, status)
+       VALUES ($1, $2, $3, $4, 'aberto') RETURNING id`,
+      [cycle.start, cycle.end, totalIndicadores, valorTotal]
+    );
+    const batchId = batchResult.rows[0].id;
+
+    const ids = elegiveis.map(e => e.id);
+    await query(
+      `UPDATE commission_payment_control SET lote_pagamento_id = $1 WHERE id = ANY($2)`,
+      [batchId, ids]
+    );
+
+    console.log(`[Commission Batch] Batch #${batchId} created: ${totalIndicadores} indicators, R$ ${valorTotal.toFixed(2)}`);
+
+    return {
+      success: true,
+      newCommissions: newCount,
+      batchId,
+      totalIndicadores,
+      valorTotal,
+      cycle: cycle.label,
+      indicators: Object.values(indicatorMap)
+    };
+  } catch (error) {
+    console.error('[Commission Batch] Error:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+export { runWeeklyCommissionBatch };
+
+router.post('/commission-payment/run-batch', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+  try {
+    const result = await runWeeklyCommissionBatch();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/commission-payment/batches', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM commission_payment_batches ORDER BY created_at DESC LIMIT 50');
+    res.json({ success: true, batches: result.rows });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/commission-payment/control', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+  try {
+    const { status, lote_id, limit: lim } = req.query;
+    let sql = 'SELECT * FROM commission_payment_control WHERE 1=1';
+    const params = [];
+
+    if (status) {
+      params.push(status);
+      sql += ` AND status_pagamento = $${params.length}`;
+    }
+    if (lote_id) {
+      params.push(parseInt(lote_id));
+      sql += ` AND lote_pagamento_id = $${params.length}`;
+    }
+
+    sql += ` ORDER BY created_at DESC LIMIT ${parseInt(lim) || 500}`;
+
+    const result = await query(sql, params);
+    res.json({ success: true, records: result.rows });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/commission-payment/summary', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+  try {
+    const statusResult = await query(`
+      SELECT status_pagamento, COUNT(*) as total
+      FROM commission_payment_control GROUP BY status_pagamento
+    `);
+
+    const batchResult = await query(`
+      SELECT COUNT(*) as total_batches, 
+             COUNT(*) FILTER (WHERE status = 'aberto') as abertos,
+             COUNT(*) FILTER (WHERE status = 'pago') as pagos
+      FROM commission_payment_batches
+    `);
+
+    res.json({
+      success: true,
+      byStatus: statusResult.rows,
+      batches: batchResult.rows[0] || {}
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.put('/commission-payment/confirm/:id', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userEmail = req.user?.email || req.user?.userEmail || 'admin';
+
+    const result = await query(
+      `UPDATE commission_payment_control 
+       SET status_pagamento = 'pago', data_confirmacao_pagamento = NOW(), usuario_confirmacao = $1
+       WHERE id = $2 AND status_pagamento = 'elegivel' RETURNING *`,
+      [userEmail, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Record not found or already paid' });
+    }
+
+    res.json({ success: true, record: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.put('/commission-payment/confirm-batch/:batchId', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const userEmail = req.user?.email || req.user?.userEmail || 'admin';
+
+    const updateResult = await query(
+      `UPDATE commission_payment_control 
+       SET status_pagamento = 'pago', data_confirmacao_pagamento = NOW(), usuario_confirmacao = $1
+       WHERE lote_pagamento_id = $2 AND status_pagamento = 'elegivel'`,
+      [userEmail, parseInt(batchId)]
+    );
+
+    await query(
+      `UPDATE commission_payment_batches SET status = 'pago' WHERE id = $1`,
+      [parseInt(batchId)]
+    );
+
+    res.json({ success: true, updatedCount: updateResult.rowCount });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;

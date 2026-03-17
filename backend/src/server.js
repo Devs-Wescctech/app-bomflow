@@ -13,7 +13,7 @@ import whatsappRoutes from './routes/whatsapp.js';
 import bomAutoRoutes from './routes/bomAuto.js';
 import { runAllAutomations } from './services/automationService.js';
 import cron from 'node-cron';
-import { runLeadGeneratorAudit, runCommissionReconciliation } from './routes/functions.js';
+import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch } from './routes/functions.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -121,6 +121,17 @@ initDatabase()
       }
     });
     console.log('[Commission Reconciliation] Cron agendado: todos os dias às 04:00.');
+
+    cron.schedule('0 5 * * 3', async () => {
+      console.log('[Commission Batch] Iniciando geração de lote semanal (quarta-feira)...');
+      try {
+        const result = await runWeeklyCommissionBatch();
+        console.log(`[Commission Batch] Lote gerado. Novas comissões: ${result.newCommissions || 0}, Lote: ${result.batchId || 'N/A'}`);
+      } catch (error) {
+        console.error('[Commission Batch] Erro na geração de lote:', error.message);
+      }
+    });
+    console.log('[Commission Batch] Cron agendado: quartas-feiras às 05:00.');
   })
   .catch((error) => {
     console.error('Database initialization failed:', error);
