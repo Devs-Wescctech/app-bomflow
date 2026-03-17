@@ -2187,4 +2187,117 @@ router.get('/autentiqueTest', authMiddleware, async (req, res) => {
   }
 });
 
+router.get('/indicacoes-agent-dashboard', authMiddleware, async (req, res) => {
+  try {
+    const agentId = req.user.id;
+
+    const agentResult = await query('SELECT erp_agent_id FROM agents WHERE id = $1', [agentId]);
+    if (!agentResult.rows.length) {
+      return res.status(404).json({ success: false, error: 'Agente não encontrado.' });
+    }
+
+    const erpAgentId = agentResult.rows[0].erp_agent_id;
+    if (!erpAgentId) {
+      return res.json({
+        success: true,
+        totais: { vendas: 0, valor_total: 0, ticket_medio: 0 },
+        series: { vendas_por_dia: [], valor_por_dia: [] },
+        ultimas_vendas: [],
+        erp_agent_id_missing: true
+      });
+    }
+
+    const erpAuthToken = process.env.ERP_AUTH_TOKEN;
+    if (!erpAuthToken) {
+      return res.status(500).json({ success: false, error: 'ERP_AUTH_TOKEN não configurado.' });
+    }
+
+    const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
+    const erpUrl = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_VENDAS_INDICACAO_AGENTES';
+
+    console.log(`[Indicações Meu Painel] Fetching ERP data for erp_agent_id=${erpAgentId}...`);
+    const erpResponse = await fetch(erpUrl, {
+      method: 'GET',
+      headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
+    });
+
+    if (!erpResponse.ok) {
+      return res.status(502).json({ success: false, error: `ERP retornou status ${erpResponse.status}` });
+    }
+
+    const erpData = await erpResponse.json();
+    const allRecords = Array.isArray(erpData) ? erpData : [];
+    console.log(`[Indicações Meu Painel] ERP returned ${allRecords.length} total records`);
+
+    const agentRecords = allRecords.filter(r => {
+      const recordErpId = r.id_agente != null ? Number(r.id_agente) : null;
+      return recordErpId === Number(erpAgentId);
+    });
+    console.log(`[Indicações Meu Painel] ${agentRecords.length} records match erp_agent_id=${erpAgentId}`);
+
+    const vendasEfetivadas = agentRecords.filter(r => {
+      const vp = (r.valores_pagos || '').toString().trim().toUpperCase();
+      return vp === 'SIM';
+    });
+    console.log(`[Indicações Meu Painel] ${vendasEfetivadas.length} records with valores_pagos=SIM`);
+
+    let valorTotal = 0;
+    const vendasPorDia = {};
+    const valorPorDia = {};
+
+    for (const venda of vendasEfetivadas) {
+      const valor = parseBRCurrency(venda.valor_contrato);
+      valorTotal += valor;
+
+      let diaKey = 'sem_data';
+      if (venda.data_contrato) {
+        const parsedDate = new Date(venda.data_contrato);
+        if (!isNaN(parsedDate.getTime())) {
+          diaKey = parsedDate.toISOString().split('T')[0];
+        }
+      }
+
+      if (diaKey !== 'sem_data') {
+        vendasPorDia[diaKey] = (vendasPorDia[diaKey] || 0) + 1;
+        valorPorDia[diaKey] = (valorPorDia[diaKey] || 0) + valor;
+      }
+    }
+
+    const totalVendas = vendasEfetivadas.length;
+    const ticketMedio = totalVendas > 0 ? Number((valorTotal / totalVendas).toFixed(2)) : 0;
+
+    const sortedDays = Object.keys(vendasPorDia).sort();
+
+    const ultimasVendas = vendasEfetivadas
+      .filter(v => v.data_contrato && !isNaN(new Date(v.data_contrato).getTime()))
+      .sort((a, b) => new Date(b.data_contrato) - new Date(a.data_contrato))
+      .slice(0, 50)
+      .map(v => ({
+        nome_indicado: v.nome_indicado || '',
+        data_contrato: v.data_contrato || '',
+        valor_contrato: parseBRCurrency(v.valor_contrato),
+        canal: v.canal || '',
+        situacao_contrato: v.situacao_contrato || '',
+        contrato_servicos: v.contrato_servicos || ''
+      }));
+
+    res.json({
+      success: true,
+      totais: {
+        vendas: totalVendas,
+        valor_total: Number(valorTotal.toFixed(2)),
+        ticket_medio: ticketMedio
+      },
+      series: {
+        vendas_por_dia: sortedDays.map(dia => ({ dia, vendas: vendasPorDia[dia] || 0 })),
+        valor_por_dia: sortedDays.map(dia => ({ dia, valor: valorPorDia[dia] || 0 }))
+      },
+      ultimas_vendas: ultimasVendas
+    });
+  } catch (error) {
+    console.error('[Indicações Meu Painel] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;

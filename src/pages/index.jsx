@@ -178,6 +178,8 @@ import QualityChecklists from "./QualityChecklists";
 
 import AgentMyDashboard from "./AgentMyDashboard";
 
+import IndicacoesMeuPainel from "./IndicacoesMeuPainel";
+
 import BomAutoConsulta from "./BomAutoConsulta";
 
 import BomAutoPainel from "./BomAutoPainel";
@@ -366,6 +368,8 @@ const PAGES = {
     QualityChecklists: QualityChecklists,
     
     AgentMyDashboard: AgentMyDashboard,
+    
+    IndicacoesMeuPainel: IndicacoesMeuPainel,
     
     BomAutoConsulta: BomAutoConsulta,
     
@@ -569,6 +573,8 @@ function PagesContent() {
                 <Route path="/ReferralAgentsDashboard" element={<ReferralAgentsDashboard />} />
                 
                 <Route path="/ReferralReports" element={<ReferralReports />} />
+                
+                <Route path="/IndicacoesMeuPainel" element={<IndicacoesMeuPainel />} />
                 
                 <Route path="/LeadPJAutomations" element={<LeadPJAutomations />} />
                 

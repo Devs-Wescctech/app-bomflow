@@ -205,6 +205,7 @@ const menuModules = [
     icon: Gift,
     gradient: "from-amber-500 to-orange-500",
     items: [
+      { title: "Meu Painel", url: createPageUrl("IndicacoesMeuPainel"), icon: Activity },
       { title: "Dashboard", url: createPageUrl("ReferralDashboard"), icon: LayoutDashboard, supervisorOnly: true },
       { title: "Dashboard Vendedores", url: createPageUrl("ReferralAgentsDashboard"), icon: UserCheck, supervisorOnly: true },
       { title: "Nova Indicação", url: createPageUrl("ReferralCreate"), icon: Plus, highlight: true },
