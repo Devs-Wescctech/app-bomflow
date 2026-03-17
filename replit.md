@@ -59,7 +59,7 @@ Wescctech CRM is a comprehensive, self-hosted Customer Relationship Management s
 - **API List Limits**: Default API list limits increased to 10000 for leads, referrals, and generic CRUD endpoints to ensure consistent data visibility in dashboards and reports.
 - **WhatsApp Dispatch Platform**: Professional system with async queue processing, rate limiting, recurrence blocking, daily duplicate prevention, intelligent retry logic, real-time polling, and an operational dashboard for metrics and analytics, including RBAC for dispatch permissions.
 - **Lead Generator Metrics Audit**: Automated daily audit system for Lead Generator metrics, checking for sales without dispatches, dispatches without sales, potential duplicates, and recalculating ROI. Results are persisted and accessible on-demand.
-- **Commission ERP Validation & Deduplication**: Commission eligibility validated against ERP data (`API_DADOS_VENDAS_INDICACOES`), with sales deduplication based on `contrato_servicos` and fallback composite keys. Processed sales are recorded.
+- **Commission ERP Validation & Deduplication**: Commission eligibility validated against ERP data (`API_DADOS_VENDAS_INDICACOES`) by matching `cpf_indicado` (referred person's CPF) from the ERP with `referred_cpf` from referrals. Each commission maps to a specific sale of the referred client. Sales deduplication uses `contrato_servicos` and fallback composite keys. Processed sales are recorded.
 - **Phone Normalization**: Utility function `normalizePhone()` ensures consistent phone number formats for conversion tracking and comparison across various data sources.
 
 ## External Dependencies

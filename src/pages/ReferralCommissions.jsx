@@ -91,45 +91,14 @@ export default function ReferralCommissions() {
     },
   });
 
-  const normalizePhone = (phone) => {
-    if (!phone) return '';
-    const digits = String(phone).replace(/\D/g, '');
-    return digits.startsWith('55') && digits.length >= 12 ? digits.slice(2) : digits;
-  };
-
-  const isReferralPaidInErp = (referral, indicators) => {
-    if (!indicators || indicators.length === 0) return false;
-
-    const refCpf = referral.referrerCpf ? String(referral.referrerCpf).replace(/\D/g, '') : '';
-    const refPhone = normalizePhone(referral.referrerPhone);
-    const refName = referral.referrerName ? String(referral.referrerName).trim().toLowerCase() : '';
-
-    if (refCpf && refCpf.length >= 11) {
-      return indicators.some(ind => {
-        const indCpf = ind.cpf_indicador ? String(ind.cpf_indicador).replace(/\D/g, '') : '';
-        return indCpf === refCpf;
-      });
-    }
-
-    if (refPhone && refPhone.length >= 10) {
-      return indicators.some(ind => {
-        const indPhone = normalizePhone(ind.cel_indicador);
-        return indPhone && indPhone === refPhone;
-      });
-    }
-
-    if (refName && refName.length > 2) {
-      return indicators.some(ind => {
-        const indName = (ind.nome_indicador || '').trim().toLowerCase();
-        return indName && indName === refName;
-      });
-    }
-
-    return false;
-  };
-
-  const erpIndicators = erpPaidData?.indicators || [];
+  const erpPaidMap = erpPaidData?.paidByCpfIndicado || {};
   const erpLoaded = !!erpPaidData && !isLoadingErp;
+
+  const isReferralPaidInErp = (referral) => {
+    const referredCpf = referral.referredCpf ? String(referral.referredCpf).replace(/\D/g, '') : '';
+    if (!referredCpf || referredCpf.length < 11) return false;
+    return !!erpPaidMap[referredCpf];
+  };
 
   const commissionsData = referrals
     .filter(r => r.stage === 'fechado_ganho')
@@ -142,8 +111,7 @@ export default function ReferralCommissions() {
       let effectiveStatus = r.commissionStatus || 'pending';
 
       if (erpLoaded && effectiveStatus !== 'paga' && effectiveStatus !== 'cancelada') {
-        const hasPaidSaleInErp = isReferralPaidInErp(r, erpIndicators);
-        effectiveStatus = hasPaidSaleInErp ? 'aprovada' : 'pending';
+        effectiveStatus = isReferralPaidInErp(r) ? 'aprovada' : 'pending';
       }
 
       return {
