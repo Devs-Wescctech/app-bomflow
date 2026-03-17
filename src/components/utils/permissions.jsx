@@ -237,9 +237,16 @@ export function filterMenuItems(agent, menuItems) {
       // Admin sees everything except salesOnly items
       if (isAdmin) return true;
       
-      // Check if agent can access this module
-      if (!canAccessModule(agent, item.id)) return false;
+      // Check if agent can access this module (use moduleId alias if present)
+      const effectiveModuleId = item.moduleId || item.id;
+      if (!canAccessModule(agent, effectiveModuleId)) return false;
       
+      if (item.requiredSubmenu) {
+        if (hasSubmenuRestrictions && !allowedSubmenus.includes(item.requiredSubmenu)) {
+          return false;
+        }
+      }
+
       return true;
     })
     .map(item => {
