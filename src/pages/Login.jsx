@@ -34,9 +34,20 @@ export default function Login() {
       toast.success("Login realizado com sucesso!");
       
       const agentType = user?.agent?.agentType || user?.agent_type;
+      const agentModules = user?.agent?.modules || [];
+      const allowedSubmenus = user?.agent?.allowedSubmenus || [];
+      const hasSubmenuRestrictions = allowedSubmenus.length > 0;
+
+      const canAccessIndicacoesMeuPainel =
+        (agentModules.includes('referral') || agentModules.includes('all')) &&
+        (!hasSubmenuRestrictions || allowedSubmenus.includes('IndicacoesMeuPainel'));
+
       const salesTypes = ['sales', 'sales_supervisor'];
       const supervisorTypes = ['sales_supervisor', 'supervisor'];
-      if (agentType && supervisorTypes.includes(agentType)) {
+
+      if (canAccessIndicacoesMeuPainel) {
+        navigate("/IndicacoesMeuPainel");
+      } else if (agentType && supervisorTypes.includes(agentType)) {
         navigate("/SalesDashboard");
       } else if (agentType && salesTypes.includes(agentType)) {
         navigate("/AgentMyDashboard");
