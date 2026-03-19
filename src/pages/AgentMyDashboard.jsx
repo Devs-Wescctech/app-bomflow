@@ -70,9 +70,8 @@ const STAGES_PJ = [
 
 const STAGES_REFERRAL = [
   { id: 'novo', label: 'Novo', color: 'bg-purple-500' },
-  { id: 'validacao', label: 'Validação', color: 'bg-blue-500' },
   { id: 'contato_iniciado', label: 'Contato', color: 'bg-cyan-500' },
-  { id: 'qualificado', label: 'Qualificado', color: 'bg-indigo-500' },
+  { id: 'qualificado', label: 'Fechado', color: 'bg-indigo-500' },
   { id: 'proposta_enviada', label: 'Proposta', color: 'bg-amber-500' },
   { id: 'fechado_ganho', label: 'Convertido', color: 'bg-green-500' },
   { id: 'fechado_perdido', label: 'Perdido', color: 'bg-red-500' },
