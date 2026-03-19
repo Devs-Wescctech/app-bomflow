@@ -118,6 +118,25 @@ export default function CommissionPaymentControl() {
     try { return format(new Date(dateStr), 'dd/MM/yyyy'); } catch { return String(dateStr); }
   };
 
+  const allCpfs = [...new Set(records.map(r => r.cpf_indicador).filter(Boolean))];
+
+  const { data: pixData } = useQuery({
+    queryKey: ['commission-pix-keys', allCpfs.join(',')],
+    queryFn: async () => {
+      const pixMap = {};
+      await Promise.all(allCpfs.map(async (cpf) => {
+        try {
+          const res = await fetchWithAuth(`/api/functions/indicadores-pix/${cpf}`);
+          if (res?.chave_pix) pixMap[cpf] = res.chave_pix;
+        } catch {}
+      }));
+      return pixMap;
+    },
+    enabled: allCpfs.length > 0,
+    staleTime: 60000,
+  });
+  const pixMap = pixData || {};
+
   const groupedByIndicator = {};
   for (const r of records.filter(r => r.status_pagamento === 'elegivel')) {
     const key = r.cpf_indicador || r.nome_indicador || 'unknown';
@@ -412,7 +431,7 @@ export default function CommissionPaymentControl() {
                     <tr className="border-b text-left">
                       <th className="py-2 px-3">Indicador</th>
                       <th className="py-2 px-3">CPF</th>
-                      <th className="py-2 px-3">Telefone</th>
+                      <th className="py-2 px-3">PIX</th>
                       <th className="py-2 px-3">Conversões</th>
                       <th className="py-2 px-3">Nível</th>
                       <th className="py-2 px-3">Comissão</th>
@@ -427,7 +446,13 @@ export default function CommissionPaymentControl() {
                         <tr key={key} className="border-b hover:bg-gray-50">
                           <td className="py-2 px-3 font-medium">{data.nome || '-'}</td>
                           <td className="py-2 px-3">{data.cpf || '-'}</td>
-                          <td className="py-2 px-3">{data.cel || '-'}</td>
+                          <td className="py-2 px-3">
+                            {pixMap[data.cpf] ? (
+                              <span className="text-sm">{pixMap[data.cpf]}</span>
+                            ) : (
+                              <span className="text-xs text-gray-400 italic">PIX não cadastrado</span>
+                            )}
+                          </td>
                           <td className="py-2 px-3">
                             <Badge className="bg-blue-100 text-blue-800">{data.items.length}</Badge>
                           </td>
