@@ -120,8 +120,8 @@ const metricsInfo = {
       },
       {
         icon: Target,
-        name: "Em Qualificação",
-        description: "Indicações sendo avaliadas para conversão.",
+        name: "Fechados",
+        description: "Indicações fechadas aguardando proposta.",
         calculation: "Contagem de indicações com stage = 'qualificado'"
       },
       {

@@ -101,11 +101,10 @@ export default function PortalReferralList() {
   const getStageName = (stage) => {
     const stages = {
       'novo': 'Novo',
-      'validacao': 'Em Validação',
       'contato_iniciado': 'Contato Iniciado',
-      'qualificado': 'Qualificado',
+      'qualificado': 'Fechado',
       'proposta_enviada': 'Proposta Enviada',
-      'fechado_ganho': 'Fechado',
+      'fechado_ganho': 'Convertido',
       'fechado_perdido': 'Não Fechado',
     };
     return stages[stage] || stage;

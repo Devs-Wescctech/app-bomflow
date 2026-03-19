@@ -5,9 +5,8 @@ import { ptBR } from "date-fns/locale";
 
 const STAGES = [
   { value: 'novo', label: 'Nova', color: 'gray', gradient: 'from-gray-400 to-gray-500' },
-  { value: 'validacao', label: 'Validação', color: 'blue', gradient: 'from-blue-400 to-blue-600' },
   { value: 'contato_iniciado', label: 'Contato', color: 'purple', gradient: 'from-purple-400 to-purple-600' },
-  { value: 'qualificado', label: 'Qualificado', color: 'indigo', gradient: 'from-indigo-400 to-indigo-600' },
+  { value: 'qualificado', label: 'Fechado', color: 'indigo', gradient: 'from-indigo-400 to-indigo-600' },
   { value: 'proposta_enviada', label: 'Proposta', color: 'amber', gradient: 'from-amber-400 to-amber-600' },
   { value: 'fechado_ganho', label: 'Convertido', color: 'emerald', gradient: 'from-emerald-400 to-emerald-600' },
   { value: 'fechado_perdido', label: 'Perdido', color: 'red', gradient: 'from-red-400 to-red-600' },
