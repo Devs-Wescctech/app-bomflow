@@ -3494,34 +3494,37 @@ function generateCommissionPDF(data) {
     y += 20;
 
     const cols1 = [
-      { label: 'Indicador', w: 110, align: 'left' },
-      { label: 'CPF', w: 95, align: 'left' },
-      { label: 'PIX', w: 90, align: 'left' },
-      { label: 'Conversões', w: 50, align: 'center' },
-      { label: 'Nível', w: 55, align: 'center' },
-      { label: 'Comissão', w: 85, align: 'right' },
+      { label: 'Indicador', w: 150, align: 'left' },
+      { label: 'CPF', w: 90, align: 'left' },
+      { label: 'PIX', w: 85, align: 'left' },
+      { label: 'Conversões', w: 45, align: 'center' },
+      { label: 'Nível', w: 50, align: 'center' },
+      { label: 'Comissão', w: 75, align: 'right' },
     ];
 
+    const ROW_HEIGHT = 22;
+    const HEADER_HEIGHT = 20;
+
     const drawTableHeader = (columns, startY) => {
-      doc.rect(40, startY, doc.page.width - 80, 18).fill([241, 245, 249]);
+      doc.rect(40, startY, doc.page.width - 80, HEADER_HEIGHT).fill([241, 245, 249]);
       let cx = 44;
       doc.fontSize(7).fill(textDark);
       columns.forEach(col => {
-        doc.text(col.label.toUpperCase(), cx, startY + 5, { width: col.w, align: col.align });
+        doc.text(col.label.toUpperCase(), cx, startY + 6, { width: col.w, align: col.align });
         cx += col.w;
       });
-      return startY + 18;
+      return startY + HEADER_HEIGHT;
     };
 
     const drawTableRow = (columns, values, startY, bg) => {
-      if (bg) doc.rect(40, startY, doc.page.width - 80, 16).fill(bg);
+      if (bg) doc.rect(40, startY, doc.page.width - 80, ROW_HEIGHT).fill(bg);
       let cx = 44;
       doc.fontSize(8).fill(textDark);
       columns.forEach((col, i) => {
-        doc.text(values[i] || '-', cx, startY + 4, { width: col.w, align: col.align });
+        doc.text(values[i] || '-', cx, startY + 4, { width: col.w, align: col.align, height: ROW_HEIGHT - 4, lineBreak: true, ellipsis: true });
         cx += col.w;
       });
-      return startY + 16;
+      return startY + ROW_HEIGHT;
     };
 
     if (cycleEmpty) {
@@ -3574,11 +3577,11 @@ function generateCommissionPDF(data) {
       y += 8;
 
       const cols2 = [
-        { label: 'Indicador', w: 110, align: 'left' },
-        { label: 'CPF Indicado', w: 100, align: 'left' },
-        { label: 'Nome Indicado', w: 120, align: 'left' },
-        { label: 'Data Contrato', w: 75, align: 'left' },
-        { label: 'Valor Contrato', w: 80, align: 'right' },
+        { label: 'Indicador', w: 145, align: 'left' },
+        { label: 'CPF Indicado', w: 90, align: 'left' },
+        { label: 'Nome Indicado', w: 130, align: 'left' },
+        { label: 'Data Contrato', w: 65, align: 'left' },
+        { label: 'Valor Contrato', w: 65, align: 'right' },
       ];
 
       y = drawTableHeader(cols2, y);
@@ -3605,11 +3608,11 @@ function generateCommissionPDF(data) {
       y += 8;
 
       const colsPending = [
-        { label: 'Indicador', w: 110, align: 'left' },
-        { label: 'CPF', w: 95, align: 'left' },
-        { label: 'Período', w: 100, align: 'left' },
-        { label: 'Conversões', w: 55, align: 'center' },
-        { label: 'Comissão', w: 75, align: 'right' },
+        { label: 'Indicador', w: 145, align: 'left' },
+        { label: 'CPF', w: 90, align: 'left' },
+        { label: 'Período', w: 95, align: 'left' },
+        { label: 'Conversões', w: 45, align: 'center' },
+        { label: 'Comissão', w: 70, align: 'right' },
         { label: 'Status', w: 50, align: 'center' },
       ];
 
