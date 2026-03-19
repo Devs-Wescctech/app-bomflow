@@ -3106,6 +3106,23 @@ async function getCommissionReportData() {
     }
   }
 
+  const allCpfsRaw = [...new Set(Object.values(indicatorMap).map(i => i.cpf).filter(c => c && c !== '-'))];
+  const allCpfsNormalized = [...new Set(allCpfsRaw.map(c => String(c).replace(/\D/g, '')).filter(Boolean))];
+  let pixMap = {};
+  if (allCpfsNormalized.length > 0) {
+    const pixResult = await query(
+      `SELECT cpf_indicador, chave_pix FROM indicadores_pix WHERE cpf_indicador = ANY($1)`,
+      [allCpfsNormalized]
+    );
+    for (const row of pixResult.rows) {
+      pixMap[row.cpf_indicador] = row.chave_pix;
+    }
+  }
+  for (const ind of Object.values(indicatorMap)) {
+    const cpfClean = ind.cpf ? String(ind.cpf).replace(/\D/g, '') : '';
+    ind.pix = pixMap[cpfClean] || null;
+  }
+
   const totalIndicadores = Object.keys(indicatorMap).length;
   const totalIndicacoes = records.length;
   const valorTotal = Object.values(indicatorMap).reduce((s, i) => s + i.total, 0);
@@ -3140,9 +3157,25 @@ async function getCommissionReportData() {
     batchGroups[groupKey].count += 1;
   }
 
+  const pendingCpfsNormalized = [...new Set(
+    Object.values(batchGroups).map(g => g.cpf).filter(c => c && c !== '-').map(c => String(c).replace(/\D/g, '')).filter(Boolean)
+  )];
+  const missingCpfs = pendingCpfsNormalized.filter(c => !pixMap[c]);
+  if (missingCpfs.length > 0) {
+    const extraPixResult = await query(
+      `SELECT cpf_indicador, chave_pix FROM indicadores_pix WHERE cpf_indicador = ANY($1)`,
+      [missingCpfs]
+    );
+    for (const row of extraPixResult.rows) {
+      pixMap[row.cpf_indicador] = row.chave_pix;
+    }
+  }
+
   const pendingList = [];
   let pendingTotal = 0;
   for (const entry of Object.values(batchGroups)) {
+    const cpfClean = entry.cpf ? String(entry.cpf).replace(/\D/g, '') : '';
+    entry.pix = pixMap[cpfClean] || pixMap[entry.cpf] || null;
     entry.total = getCommissionByTier(entry.count);
     pendingTotal += entry.total;
     pendingList.push(entry);
@@ -3213,6 +3246,11 @@ function formatDateTimeBR(d) {
 
 function formatCurrency(value) {
   return `R$ ${value.toFixed(2).replace('.', ',')}`;
+}
+
+function escapeHtml(str) {
+  if (!str) return str;
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function buildCommissionEmailHtml(data) {
@@ -3292,7 +3330,7 @@ function buildCommissionEmailHtml(data) {
         <tr style="background: #f1f5f9;">
           <th style="${thStyle}">Indicador</th>
           <th style="${thStyle}">CPF</th>
-          <th style="${thStyle}">Telefone</th>
+          <th style="${thStyle}">PIX</th>
           <th style="${thStyle} text-align: center;">Conversões</th>
           <th style="${thStyle} text-align: center;">Nível</th>
           <th style="${thStyle} text-align: right;">Comissão</th>
@@ -3304,11 +3342,12 @@ function buildCommissionEmailHtml(data) {
     for (const [key, ind] of Object.entries(indicators)) {
       const bg = rowIdx % 2 === 0 ? '#ffffff' : '#f8fafc';
       const nivel = ind.count >= 13 ? '3 (13+)' : ind.count >= 4 ? '2 (4-12)' : ind.count >= 1 ? '1 (1-3)' : '-';
+      const pixDisplay = ind.pix ? escapeHtml(ind.pix) : 'PIX não informado';
       html += `
         <tr style="background: ${bg};">
-          <td style="${tdStyle} font-weight: 600;">${ind.nome}</td>
+          <td style="${tdStyle} font-weight: 600;">${escapeHtml(ind.nome)}</td>
           <td style="${tdStyle}">${formatCPF(ind.cpf)}</td>
-          <td style="${tdStyle}">${formatPhoneNumber(ind.cel)}</td>
+          <td style="${tdStyle}${!ind.pix ? ' color: #94a3b8; font-style: italic;' : ''}">${pixDisplay}</td>
           <td style="${tdStyle} text-align: center;">${ind.count}</td>
           <td style="${tdStyle} text-align: center;">${nivel}</td>
           <td style="${tdRight}">${formatCurrency(ind.total)}</td>
@@ -3412,6 +3451,7 @@ function buildCommissionEmailHtml(data) {
     <div style="height: 1px; background: #334155; margin: 12px 0;"></div>
     <div style="font-size: 11px; color: #64748b;">Relatório gerado automaticamente em ${geradoEm}</div>
     <div style="font-size: 10px; color: #475569; margin-top: 6px; font-style: italic;">Este documento é destinado exclusivamente ao controle financeiro de comissões.</div>
+    <div style="font-size: 10px; color: #f59e0b; margin-top: 8px; font-weight: 600;">O pagamento das comissões deve ser realizado via chave PIX informada pelo indicador.</div>
   </div>
 
 </div>
@@ -3456,7 +3496,7 @@ function generateCommissionPDF(data) {
     const cols1 = [
       { label: 'Indicador', w: 110, align: 'left' },
       { label: 'CPF', w: 95, align: 'left' },
-      { label: 'Telefone', w: 90, align: 'left' },
+      { label: 'PIX', w: 90, align: 'left' },
       { label: 'Conversões', w: 50, align: 'center' },
       { label: 'Nível', w: 55, align: 'center' },
       { label: 'Comissão', w: 85, align: 'right' },
@@ -3516,7 +3556,8 @@ function generateCommissionPDF(data) {
         if (y > doc.page.height - 80) { doc.addPage(); y = 40; y = drawTableHeader(cols1, y); }
         const bg = rIdx % 2 === 1 ? [248, 250, 252] : null;
         const nivel = ind.count >= 13 ? '3 (13+)' : ind.count >= 4 ? '2 (4-12)' : ind.count >= 1 ? '1 (1-3)' : '-';
-        y = drawTableRow(cols1, [ind.nome, formatCPF(ind.cpf), formatPhoneNumber(ind.cel), String(ind.count), nivel, formatCurrency(ind.total)], y, bg);
+        const pixDisplay = ind.pix || 'PIX não informado';
+        y = drawTableRow(cols1, [ind.nome, formatCPF(ind.cpf), pixDisplay, String(ind.count), nivel, formatCurrency(ind.total)], y, bg);
         rIdx++;
       }
 
@@ -3586,11 +3627,12 @@ function generateCommissionPDF(data) {
       y += 30;
     }
 
-    if (y > doc.page.height - 55) { doc.addPage(); y = 40; }
-    doc.rect(40, y, doc.page.width - 80, 45).fill(darkBg);
+    if (y > doc.page.height - 70) { doc.addPage(); y = 40; }
+    doc.rect(40, y, doc.page.width - 80, 58).fill(darkBg);
     doc.fontSize(9).fill([148, 163, 184]).text('Bom Pastor — Bom Flow CRM', 40, y + 6, { align: 'center', width: doc.page.width - 80 });
     doc.fontSize(8).fill([100, 116, 139]).text(`Relatório gerado automaticamente em ${geradoEm}`, 40, y + 18, { align: 'center', width: doc.page.width - 80 });
     doc.fontSize(7).fill([71, 85, 105]).text('Este documento é destinado exclusivamente ao controle financeiro de comissões.', 40, y + 30, { align: 'center', width: doc.page.width - 80 });
+    doc.fontSize(7).fill(amberAccent).text('O pagamento das comissões deve ser realizado via chave PIX informada pelo indicador.', 40, y + 42, { align: 'center', width: doc.page.width - 80 });
 
     doc.end();
   });
