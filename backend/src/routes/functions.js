@@ -3782,4 +3782,100 @@ router.post('/commission-report/test', authMiddleware, loadAgentMiddleware, requ
   }
 });
 
+router.get('/indicadores-pix/:cpf', authMiddleware, async (req, res) => {
+  try {
+    const cpf = req.params.cpf.replace(/\D/g, '');
+    if (!cpf) return res.status(400).json({ error: 'CPF obrigatório' });
+
+    const result = await query(
+      'SELECT chave_pix FROM indicadores_pix WHERE cpf_indicador = $1',
+      [cpf]
+    );
+
+    res.json({ chave_pix: result.rows[0]?.chave_pix || null });
+  } catch (error) {
+    console.error('[PIX] Erro ao buscar PIX:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/indicadores-pix/:cpf', authMiddleware, async (req, res) => {
+  try {
+    const cpf = req.params.cpf.replace(/\D/g, '');
+    const chavePix = (req.body.chave_pix || req.body.chavePix || '').trim().slice(0, 150);
+
+    if (!cpf) return res.status(400).json({ error: 'CPF obrigatório' });
+    if (!chavePix) return res.status(400).json({ error: 'Chave PIX obrigatória' });
+
+    const result = await query(
+      `INSERT INTO indicadores_pix (cpf_indicador, chave_pix) 
+       VALUES ($1, $2) 
+       ON CONFLICT (cpf_indicador) 
+       DO UPDATE SET chave_pix = $2, updated_at = NOW()
+       RETURNING *`,
+      [cpf, chavePix]
+    );
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (error) {
+    console.error('[PIX] Erro ao salvar PIX:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/portal/indicadores-pix/:cpf', async (req, res) => {
+  try {
+    const contactId = req.headers['x-portal-contact-id'];
+    if (!contactId) return res.status(401).json({ error: 'Autenticação do portal obrigatória' });
+
+    const contact = await query('SELECT document FROM contacts WHERE id = $1', [contactId]);
+    if (contact.rows.length === 0) return res.status(401).json({ error: 'Contato não encontrado' });
+
+    const cpf = req.params.cpf.replace(/\D/g, '');
+    const contactCpf = (contact.rows[0].document || '').replace(/\D/g, '');
+    if (cpf !== contactCpf) return res.status(403).json({ error: 'Acesso negado' });
+
+    const result = await query(
+      'SELECT chave_pix FROM indicadores_pix WHERE cpf_indicador = $1',
+      [cpf]
+    );
+
+    res.json({ chave_pix: result.rows[0]?.chave_pix || null });
+  } catch (error) {
+    console.error('[PIX Portal] Erro ao buscar PIX:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/portal/indicadores-pix/:cpf', async (req, res) => {
+  try {
+    const contactId = req.headers['x-portal-contact-id'];
+    if (!contactId) return res.status(401).json({ error: 'Autenticação do portal obrigatória' });
+
+    const contact = await query('SELECT document FROM contacts WHERE id = $1', [contactId]);
+    if (contact.rows.length === 0) return res.status(401).json({ error: 'Contato não encontrado' });
+
+    const cpf = req.params.cpf.replace(/\D/g, '');
+    const contactCpf = (contact.rows[0].document || '').replace(/\D/g, '');
+    if (cpf !== contactCpf) return res.status(403).json({ error: 'Acesso negado' });
+
+    const chavePix = (req.body.chave_pix || req.body.chavePix || '').trim().slice(0, 150);
+    if (!chavePix) return res.status(400).json({ error: 'Chave PIX obrigatória' });
+
+    const result = await query(
+      `INSERT INTO indicadores_pix (cpf_indicador, chave_pix) 
+       VALUES ($1, $2) 
+       ON CONFLICT (cpf_indicador) 
+       DO UPDATE SET chave_pix = $2, updated_at = NOW()
+       RETURNING *`,
+      [cpf, chavePix]
+    );
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (error) {
+    console.error('[PIX Portal] Erro ao salvar PIX:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
