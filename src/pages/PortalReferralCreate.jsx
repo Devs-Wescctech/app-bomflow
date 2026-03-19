@@ -34,6 +34,7 @@ export default function PortalReferralCreate() {
   const [contractData, setContractData] = useState(null);
   const [referrerLevel, setReferrerLevel] = useState(1);
   const [totalConversions, setTotalConversions] = useState(0);
+  const [referrerPix, setReferrerPix] = useState("");
   
   const [formData, setFormData] = useState({
     referred_name: "",
@@ -64,8 +65,18 @@ export default function PortalReferralCreate() {
       const parsedContact = JSON.parse(contact);
       setContactData(parsedContact);
       
-      // Buscar indicações anteriores para calcular nível
       fetchReferrerLevel(parsedContact.document);
+
+      const cpfClean = parsedContact.document?.replace(/\D/g, '');
+      const portalContactId = localStorage.getItem('portal_contact_id');
+      if (cpfClean && portalContactId) {
+        fetch(`/api/functions/portal/indicadores-pix/${cpfClean}`, {
+          headers: { 'x-portal-contact-id': portalContactId }
+        })
+          .then(r => r.ok ? r.json() : null)
+          .then(data => { if (data?.chave_pix) setReferrerPix(data.chave_pix); })
+          .catch(() => {});
+      }
     }
     
     if (contract && contract !== 'null') {
@@ -146,6 +157,19 @@ export default function PortalReferralCreate() {
       ],
     };
 
+    if (referrerPix.trim()) {
+      try {
+        const portalContactId = localStorage.getItem('portal_contact_id');
+        await fetch(`/api/functions/portal/indicadores-pix/${contactData.document.replace(/\D/g, '')}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'x-portal-contact-id': portalContactId },
+          body: JSON.stringify({ chave_pix: referrerPix.trim() })
+        });
+      } catch (pixErr) {
+        console.log('[PIX] Erro ao salvar PIX (não crítico):', pixErr.message);
+      }
+    }
+
     createReferralMutation.mutate(referralData);
   };
 
@@ -203,6 +227,19 @@ export default function PortalReferralCreate() {
                   <div>
                     <p className="text-gray-600">Telefone:</p>
                     <p className="font-semibold text-gray-900">{contactData.phone}</p>
+                  </div>
+                  <div>
+                    <Label className="text-gray-600 text-sm">Chave PIX (para receber comissão)</Label>
+                    <Input
+                      value={referrerPix}
+                      onChange={(e) => setReferrerPix(e.target.value.slice(0, 150))}
+                      placeholder="CPF, telefone, email ou chave aleatória"
+                      className="mt-1 text-sm"
+                      maxLength={150}
+                    />
+                    {referrerPix && (
+                      <p className="text-xs text-green-700 mt-1">Será salvo automaticamente ao enviar a indicação.</p>
+                    )}
                   </div>
                   <div className="pt-3 border-t border-amber-300">
                     <div className="flex items-center gap-2 mb-2">

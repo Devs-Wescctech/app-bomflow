@@ -1090,3 +1090,13 @@ CREATE TABLE IF NOT EXISTS commission_weekly_snapshot (
 CREATE INDEX IF NOT EXISTS idx_commission_snapshot_cycle ON commission_weekly_snapshot (cycle_start, cycle_end);
 CREATE INDEX IF NOT EXISTS idx_commission_snapshot_batch ON commission_weekly_snapshot (batch_id);
 CREATE INDEX IF NOT EXISTS idx_commission_snapshot_cpf ON commission_weekly_snapshot (cpf_indicador);
+
+CREATE TABLE IF NOT EXISTS indicadores_pix (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    cpf_indicador VARCHAR(20) NOT NULL UNIQUE,
+    chave_pix VARCHAR(150) NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_indicadores_pix_cpf ON indicadores_pix (cpf_indicador);

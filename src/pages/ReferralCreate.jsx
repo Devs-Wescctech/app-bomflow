@@ -51,6 +51,8 @@ export default function ReferralCreate() {
   const [referrerData, setReferrerData] = useState(null);
   const [referrerLevel, setReferrerLevel] = useState(1);
   const [referrerConversions, setReferrerConversions] = useState(0);
+  const [referrerPix, setReferrerPix] = useState("");
+  const [pixSaving, setPixSaving] = useState(false);
   
   // Dados do indicado
   const [formData, setFormData] = useState({
@@ -101,6 +103,7 @@ export default function ReferralCreate() {
 
     setSearchingReferrer(true);
     setReferrerData(null);
+    setReferrerPix("");
     
     try {
       console.log('Buscando cliente indicador no ERP...');
@@ -155,7 +158,19 @@ export default function ReferralCreate() {
       setReferrerConversions(totalConversions);
       setReferrerLevel(level);
       setReferrerData(indicadorData);
-      
+
+      try {
+        const pixRes = await fetch(`/api/functions/indicadores-pix/${cpfClean}`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken')}` }
+        });
+        if (pixRes.ok) {
+          const pixData = await pixRes.json();
+          if (pixData.chave_pix) setReferrerPix(pixData.chave_pix);
+        }
+      } catch (pixErr) {
+        console.log('[PIX] Erro ao buscar PIX (não crítico):', pixErr.message);
+      }
+
       toast({ title: "Sucesso", description: `Cliente encontrado: ${indicadorData.nome} — Nível ${level} - Comissão: R$ ${commissionValueForToast},00 (${totalConversions} ${totalConversions !== 1 ? 'indicações convertidas' : 'indicação convertida'})` });
 
     } catch (error) {
@@ -250,6 +265,21 @@ export default function ReferralCreate() {
           }
         ],
       };
+
+      if (referrerPix.trim()) {
+        try {
+          await fetch(`/api/functions/indicadores-pix/${referrerCPF.replace(/\D/g, '')}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+            },
+            body: JSON.stringify({ chave_pix: referrerPix.trim() })
+          });
+        } catch (pixErr) {
+          console.log('[PIX] Erro ao salvar PIX (não crítico):', pixErr.message);
+        }
+      }
 
       console.log('[ReferralCreate] Enviando referralData:', JSON.stringify(referralData, null, 2));
 
@@ -372,6 +402,19 @@ export default function ReferralCreate() {
                       {referrerData.totalContratos > 0 && (
                         <p><strong>Contratos Ativos:</strong> {referrerData.totalContratos}</p>
                       )}
+                      <div className="mt-3 pt-3 border-t border-purple-200">
+                        <Label className="text-purple-900 text-xs font-semibold">Chave PIX (para pagamento de comissão)</Label>
+                        <Input
+                          value={referrerPix}
+                          onChange={(e) => setReferrerPix(e.target.value.slice(0, 150))}
+                          placeholder="CPF, telefone, email ou chave aleatória"
+                          className="mt-1 bg-white text-sm"
+                          maxLength={150}
+                        />
+                        {referrerPix && (
+                          <p className="text-xs text-green-700 mt-1">A chave PIX será salva automaticamente ao cadastrar a indicação.</p>
+                        )}
+                      </div>
                       <div className="mt-3 pt-3 border-t border-purple-200">
                         <p className="text-xs text-purple-700 mb-2">Status de Indicador:</p>
                         <div className="flex items-center gap-2">
