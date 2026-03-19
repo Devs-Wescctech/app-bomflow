@@ -3312,7 +3312,7 @@ function buildCommissionEmailHtml(data) {
         </td>
         <td style="background: #dbeafe; padding: 20px; border-radius: 8px; text-align: center; width: 33%;">
           <div style="font-size: 32px; font-weight: 800; color: #1e40af;">${totalIndicacoes}</div>
-          <div style="font-size: 11px; color: #1e3a5f; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px;">Indicações Pagas</div>
+          <div style="font-size: 11px; color: #1e3a5f; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px;">Indicações Elegíveis</div>
         </td>
         <td style="background: #065f46; padding: 20px; border-radius: 8px; text-align: center; width: 33%;">
           <div style="font-size: 28px; font-weight: 800; color: #ffffff;">${formatCurrency(valorTotal)}</div>
@@ -3536,7 +3536,7 @@ function generateCommissionPDF(data) {
       const cardW = (doc.page.width - 80 - 20) / 3;
       const cards = [
         { label: 'Indicadores a Pagar', value: String(totalIndicadores), bg: [254, 243, 199], color: [146, 64, 14] },
-        { label: 'Indicações Pagas', value: String(totalIndicacoes), bg: [219, 234, 254], color: [30, 64, 175] },
+        { label: 'Indicações Elegíveis', value: String(totalIndicacoes), bg: [219, 234, 254], color: [30, 64, 175] },
         { label: 'Total das Comissões', value: formatCurrency(valorTotal), bg: [6, 95, 70], color: [255, 255, 255] },
       ];
       cards.forEach((card, i) => {
