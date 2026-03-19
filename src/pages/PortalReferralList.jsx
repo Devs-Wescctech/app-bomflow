@@ -102,7 +102,6 @@ export default function PortalReferralList() {
     const stages = {
       'novo': 'Novo',
       'contato_iniciado': 'Contato Iniciado',
-      'qualificado': 'Fechado',
       'proposta_enviada': 'Proposta Enviada',
       'fechado_ganho': 'Convertido',
       'fechado_perdido': 'Não Fechado',

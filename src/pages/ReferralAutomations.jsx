@@ -52,7 +52,6 @@ import AutomationLogsPanel from "@/components/whatsapp/AutomationLogsPanel";
 const STAGES = [
   { value: "novo", label: "Novo" },
   { value: "em_contato", label: "Em Contato" },
-  { value: "qualificado", label: "Fechado" },
   { value: "proposta_enviada", label: "Proposta Enviada" },
   { value: "fechado_ganho", label: "Fechado - Ganho" },
   { value: "fechado_perdido", label: "Fechado - Perdido" },

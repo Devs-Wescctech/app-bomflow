@@ -105,7 +105,6 @@ export default function ReferralAgentsDashboard() {
         const agentReferrals = filteredReferralsByDate.filter(r => (r.agentId || r.agent_id) === agent.id);
         const totalReferrals = agentReferrals.length;
         const novos = agentReferrals.filter(r => r.stage === 'novo').length;
-        const qualificados = agentReferrals.filter(r => r.stage === 'qualificado').length;
         const propostasEnviadas = agentReferrals.filter(r => r.stage === 'proposta_enviada').length;
         const conversoes = agentReferrals.filter(r => r.stage === 'fechado_ganho').length;
         const perdidos = agentReferrals.filter(r => r.stage === 'fechado_perdido').length;
@@ -122,7 +121,6 @@ export default function ReferralAgentsDashboard() {
           agent,
           totalReferrals,
           novos,
-          qualificados,
           propostasEnviadas,
           conversoes,
           perdidos,

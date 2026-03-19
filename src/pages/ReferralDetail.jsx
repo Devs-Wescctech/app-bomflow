@@ -57,7 +57,6 @@ import ReferralPipelineHistory from "../components/sales/ReferralPipelineHistory
 const STAGES = [
   { value: "novo", label: "Novo", color: "bg-gray-500", badge: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100" },
   { value: "contato_iniciado", label: "Contato Iniciado", color: "bg-blue-500", badge: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100" },
-  { value: "qualificado", label: "Fechado", color: "bg-indigo-500", badge: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-100" },
   { value: "proposta_enviada", label: "Proposta Enviada", color: "bg-yellow-500", badge: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100" },
   { value: "fechado_ganho", label: "Fechado - Ganho", color: "bg-green-500", badge: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100" },
   { value: "fechado_perdido", label: "Perdido", color: "bg-red-500", badge: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100" },
@@ -624,7 +623,7 @@ export default function ReferralDetail() {
                   Salvar
                 </Button>
               )}
-              {(referral.stage === 'fechado_ganho' || referral.stage === 'proposta_enviada' || referral.stage === 'qualificado') && (
+              {(referral.stage === 'fechado_ganho' || referral.stage === 'proposta_enviada') && (
                 <Button
                   onClick={() => {
                     if (confirm('Confirma a conversão desta indicação?\n\nA comissão será aprovada automaticamente.')) {
