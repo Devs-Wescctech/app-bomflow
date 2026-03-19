@@ -167,7 +167,7 @@ export default function ReferralDashboard() {
 
   const totalReferrals = referrals.length;
   const referralsNovos = referrals.filter(r => r.stage === 'novo').length;
-  const referralsQualificados = referrals.filter(r => r.stage === 'qualificado').length;
+  const referralsPropostas = referrals.filter(r => r.stage === 'proposta_enviada').length;
   const conversoes = referrals.filter(r => r.stage === 'fechado_ganho').length;
   const perdidos = referrals.filter(r => r.stage === 'fechado_perdido').length;
   const referralsAtivos = referrals.filter(r => 

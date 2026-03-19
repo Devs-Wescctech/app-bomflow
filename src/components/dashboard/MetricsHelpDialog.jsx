@@ -120,9 +120,9 @@ const metricsInfo = {
       },
       {
         icon: Target,
-        name: "Fechados",
-        description: "Indicações fechadas aguardando proposta.",
-        calculation: "Contagem de indicações com stage = 'qualificado'"
+        name: "Propostas Enviadas",
+        description: "Indicações com propostas enviadas.",
+        calculation: "Contagem de indicações com stage = 'proposta_enviada'"
       },
       {
         icon: CheckCircle,
