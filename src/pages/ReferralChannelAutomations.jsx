@@ -53,13 +53,21 @@ const STAGES = [
 ];
 
 const TRIGGER_TYPES = [
-  { value: "inactivity", label: "Inatividade" },
+  { value: "lead_created", label: "Indicação Nova (Boas-Vindas)" },
+  { value: "stage_change", label: "Mudança de Etapa" },
   { value: "stage_duration", label: "Tempo na Etapa" },
+  { value: "inactivity", label: "Inatividade" },
+  { value: "no_activity", label: "Sem Atividade" },
+  { value: "no_contact", label: "Sem Contato" },
 ];
 
 const ACTION_TYPES = [
   { value: "send_whatsapp", label: "Enviar WhatsApp" },
   { value: "internal_alert", label: "Alerta Interno (Coordenador)" },
+  { value: "change_stage", label: "Mudar Etapa" },
+  { value: "create_task", label: "Criar Tarefa" },
+  { value: "send_notification", label: "Enviar Notificação" },
+  { value: "notify_supervisor", label: "Alertar Coordenador" },
 ];
 
 const parseConfig = (config) => {
@@ -128,7 +136,7 @@ export default function ReferralChannelAutomations() {
     name: "",
     description: "",
     active: true,
-    trigger_type: "inactivity",
+    trigger_type: "lead_created",
     trigger_config: {
       stage: "novo",
       duration_days: 0,
@@ -136,6 +144,12 @@ export default function ReferralChannelAutomations() {
     },
     action_type: "send_whatsapp",
     action_config: {
+      new_stage: "",
+      task_title: "",
+      task_description: "",
+      notification_message: "",
+      whatsapp_template_id: "",
+      whatsapp_template_name: "",
       alertMessage: "",
       templateMessage: "",
     },
@@ -175,12 +189,12 @@ export default function ReferralChannelAutomations() {
     mutationFn: (data) => channelAutomationApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['referralChannelAutomations'] });
-      toast.success('Automacao criada com sucesso!');
+      toast.success('Automação criada com sucesso!');
       setShowDialog(false);
       resetForm();
     },
     onError: (error) => {
-      toast.error(`Erro ao criar automacao: ${error.message}`);
+      toast.error(`Erro ao criar automação: ${error.message}`);
     },
   });
 
@@ -188,7 +202,7 @@ export default function ReferralChannelAutomations() {
     mutationFn: ({ id, data }) => channelAutomationApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['referralChannelAutomations'] });
-      toast.success('Automacao atualizada!');
+      toast.success('Automação atualizada!');
       setShowDialog(false);
       resetForm();
     },
@@ -201,7 +215,7 @@ export default function ReferralChannelAutomations() {
     mutationFn: (id) => channelAutomationApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['referralChannelAutomations'] });
-      toast.success('Automacao excluida!');
+      toast.success('Automação excluída!');
     },
   });
 
@@ -220,7 +234,7 @@ export default function ReferralChannelAutomations() {
     } catch (err) {
       setTokenVerified(false);
       setTokenTemplateCount(null);
-      toast.error(`Token invalido ou erro de conexao: ${err.message}`);
+      toast.error(`Token inválido ou erro de conexão: ${err.message}`);
     } finally {
       setVerifyingToken(false);
     }
@@ -245,7 +259,7 @@ export default function ReferralChannelAutomations() {
         setActiveConfigId(result.id);
       }
       queryClient.invalidateQueries({ queryKey: ['referralChannelConfig'] });
-      toast.success('Configuracao do canal salva!');
+      toast.success('Configuração do canal salva!');
     } catch (err) {
       toast.error(`Erro ao salvar: ${err.message}`);
     }
@@ -256,7 +270,7 @@ export default function ReferralChannelAutomations() {
       name: "",
       description: "",
       active: true,
-      trigger_type: "inactivity",
+      trigger_type: "lead_created",
       trigger_config: {
         stage: "novo",
         duration_days: 0,
@@ -264,6 +278,12 @@ export default function ReferralChannelAutomations() {
       },
       action_type: "send_whatsapp",
       action_config: {
+        new_stage: "",
+        task_title: "",
+        task_description: "",
+        notification_message: "",
+        whatsapp_template_id: "",
+        whatsapp_template_name: "",
         alertMessage: "",
         templateMessage: "",
       },
@@ -280,20 +300,38 @@ export default function ReferralChannelAutomations() {
     const triggerConfig = parseConfig(rule.triggerConfig || rule.trigger_config) || {};
     const actionConfig = parseConfig(rule.actionConfig || rule.action_config) || {};
     
+    const defaultActionConfig = {
+      new_stage: "",
+      task_title: "",
+      task_description: "",
+      notification_message: "",
+      whatsapp_template_id: "",
+      whatsapp_template_name: "",
+      alertMessage: "",
+      templateMessage: "",
+    };
+    
+    const defaultTriggerConfig = {
+      stage: "novo",
+      duration_days: 0,
+      duration_hours: 0,
+    };
+    
     setFormData({
       name: rule.name || "",
       description: rule.description || "",
       active: rule.active !== false,
-      trigger_type: rule.triggerType || rule.trigger_type || "inactivity",
+      trigger_type: rule.triggerType || rule.trigger_type || "lead_created",
       trigger_config: {
+        ...defaultTriggerConfig,
         stage: triggerConfig.stage || "novo",
         duration_days: triggerConfig.duration_days || triggerConfig.durationDays || triggerConfig.days || 0,
         duration_hours: triggerConfig.duration_hours || triggerConfig.durationHours || triggerConfig.hours || 0,
       },
       action_type: rule.actionType || rule.action_type || "send_whatsapp",
       action_config: {
-        alertMessage: actionConfig.alertMessage || "",
-        templateMessage: actionConfig.templateMessage || "",
+        ...defaultActionConfig,
+        ...actionConfig,
       },
       whatsapp_template_id: rule.whatsappTemplateId || rule.whatsapp_template_id || actionConfig.whatsapp_template_id || actionConfig.whatsappTemplateId || "",
       whatsapp_template_name: rule.whatsappTemplateName || rule.whatsapp_template_name || actionConfig.whatsapp_template_name || actionConfig.whatsappTemplateName || "",
@@ -307,12 +345,12 @@ export default function ReferralChannelAutomations() {
     e.preventDefault();
     
     if (!formData.name) {
-      toast.error('Nome da automacao e obrigatorio!');
+      toast.error('Nome da automação é obrigatório!');
       return;
     }
 
     if (!channelToken.trim()) {
-      toast.error('Configure o token do canal antes de criar automacoes!');
+      toast.error('Configure o token do canal antes de criar automações!');
       return;
     }
 
@@ -397,10 +435,10 @@ export default function ReferralChannelAutomations() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-3">
               <Radio className="w-8 h-8 text-orange-600 dark:text-orange-400" />
-              Automacoes por Canal
+              Automações por Canal
             </h1>
             <p className="text-gray-500 dark:text-gray-400 mt-1">
-              Configure automacoes usando tokens de canais especificos do WhatsApp
+              Configure automações usando tokens de canais específicos do WhatsApp
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -408,7 +446,7 @@ export default function ReferralChannelAutomations() {
             <Button
               onClick={() => {
                 if (!channelToken.trim()) {
-                  toast.error('Configure o token do canal antes de criar automacoes');
+                  toast.error('Configure o token do canal antes de criar automações');
                   return;
                 }
                 resetForm();
@@ -417,7 +455,7 @@ export default function ReferralChannelAutomations() {
               className="bg-orange-600 hover:bg-orange-700"
             >
               <Plus className="w-4 h-4 mr-2" />
-              Nova Automacao
+              Nova Automação
             </Button>
           </div>
         </div>
@@ -426,7 +464,7 @@ export default function ReferralChannelAutomations() {
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <Key className="w-5 h-5 text-orange-600" />
-              Configuracao do Canal
+              Configuração do Canal
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -480,7 +518,7 @@ export default function ReferralChannelAutomations() {
                 className="bg-orange-600 hover:bg-orange-700"
               >
                 <Save className="w-4 h-4 mr-2" />
-                Salvar Configuracao
+                Salvar Configuração
               </Button>
             </div>
 
@@ -498,7 +536,7 @@ export default function ReferralChannelAutomations() {
               <Alert className="bg-amber-50 dark:bg-amber-950 border-amber-300">
                 <AlertCircle className="w-4 h-4 text-amber-600" />
                 <AlertDescription className="text-sm text-amber-800 dark:text-amber-200">
-                  Informe o token do canal para comecar a criar automacoes. O token pode ser obtido na plataforma WHU/Rudo.
+                  Informe o token do canal para começar a criar automações. O token pode ser obtido na plataforma WHU/Rudo.
                 </AlertDescription>
               </Alert>
             )}
@@ -513,7 +551,7 @@ export default function ReferralChannelAutomations() {
                   <Play className="w-6 h-6 text-green-600 dark:text-green-400" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Automacoes Ativas</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Automações Ativas</p>
                   <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
                     {rules.filter(r => r.active).length}
                   </p>
@@ -529,7 +567,7 @@ export default function ReferralChannelAutomations() {
                   <Pause className="w-6 h-6 text-gray-600 dark:text-gray-400" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Automacoes Inativas</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Automações Inativas</p>
                   <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
                     {rules.filter(r => !r.active).length}
                   </p>
@@ -560,7 +598,7 @@ export default function ReferralChannelAutomations() {
             <Card className="bg-white dark:bg-gray-900">
               <CardContent className="p-12 text-center">
                 <Loader2 className="w-8 h-8 mx-auto animate-spin text-orange-600" />
-                <p className="mt-2 text-gray-600 dark:text-gray-400">Carregando automacoes...</p>
+                <p className="mt-2 text-gray-600 dark:text-gray-400">Carregando automações...</p>
               </CardContent>
             </Card>
           ) : rules.length === 0 ? (
@@ -568,15 +606,15 @@ export default function ReferralChannelAutomations() {
               <CardContent className="p-12 text-center">
                 <Radio className="w-16 h-16 text-gray-300 dark:text-gray-700 mx-auto mb-4" />
                 <p className="text-gray-600 dark:text-gray-400 font-medium mb-2">
-                  Nenhuma automacao por canal criada
+                  Nenhuma automação por canal criada
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-500 mb-4">
-                  Configure o token do canal acima e crie automacoes especificas
+                  Configure o token do canal acima e crie automações específicas
                 </p>
                 {channelToken.trim() && (
                   <Button onClick={() => setShowDialog(true)} variant="outline">
                     <Plus className="w-4 h-4 mr-2" />
-                    Criar primeira automacao
+                    Criar primeira automação
                   </Button>
                 )}
               </CardContent>
@@ -633,7 +671,7 @@ export default function ReferralChannelAutomations() {
                           </div>
 
                           <div className="bg-orange-50 dark:bg-orange-950 p-3 rounded-lg">
-                            <p className="text-xs text-orange-600 dark:text-orange-400 font-semibold mb-1">ACAO</p>
+                            <p className="text-xs text-orange-600 dark:text-orange-400 font-semibold mb-1">AÇÃO</p>
                             <p className="text-sm text-gray-900 dark:text-gray-100">
                               {getActionLabel(rule.actionType || rule.action_type)}
                             </p>
@@ -678,7 +716,7 @@ export default function ReferralChannelAutomations() {
                           variant="ghost"
                           size="icon"
                           onClick={() => {
-                            if (confirm('Deseja excluir esta automacao?')) {
+                            if (confirm('Deseja excluir esta automação?')) {
                               deleteRuleMutation.mutate(rule.id);
                             }
                           }}
@@ -698,14 +736,14 @@ export default function ReferralChannelAutomations() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingRule ? 'Editar Automacao por Canal' : 'Nova Automacao por Canal'}
+              {editingRule ? 'Editar Automação por Canal' : 'Nova Automação por Canal'}
             </DialogTitle>
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-4">
               <div>
-                <Label>Nome da Automacao *</Label>
+                <Label>Nome da Automação *</Label>
                 <Input
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -715,11 +753,11 @@ export default function ReferralChannelAutomations() {
               </div>
 
               <div>
-                <Label>Descricao</Label>
+                <Label>Descrição</Label>
                 <Textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Descreva o objetivo desta automacao..."
+                  placeholder="Descreva o objetivo desta automação..."
                   rows={2}
                   className="mt-1"
                 />
@@ -753,7 +791,7 @@ export default function ReferralChannelAutomations() {
                   </Select>
                 </div>
 
-                {(formData.trigger_type === 'inactivity' || formData.trigger_type === 'stage_duration') && (
+                {formData.trigger_type !== 'lead_created' && (
                   <div>
                     <Label>Etapa</Label>
                     <Select 
@@ -811,16 +849,16 @@ export default function ReferralChannelAutomations() {
               </CardContent>
             </Card>
 
-            <Card className="border-orange-200 bg-orange-50">
+            <Card className="border-green-200 bg-green-50">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Zap className="w-5 h-5" />
-                  Entao (Acao)
+                  Então (Ação)
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <Label>Tipo de Acao</Label>
+                  <Label>Tipo de Ação</Label>
                   <Select 
                     value={formData.action_type} 
                     onValueChange={(val) => setFormData({ ...formData, action_type: val })}
@@ -840,7 +878,7 @@ export default function ReferralChannelAutomations() {
 
                 {formData.action_type === 'send_whatsapp' && (
                   <div>
-                    <Label>Template de WhatsApp (Canal) *</Label>
+                    <Label>Template de WhatsApp *</Label>
                     <div className="mt-1 flex gap-2">
                       <Input
                         value={formData.whatsapp_template_name || formData.whatsapp_template_id}
@@ -871,21 +909,76 @@ export default function ReferralChannelAutomations() {
                   </div>
                 )}
 
-                {formData.action_type === 'internal_alert' && (
+                {formData.action_type === 'change_stage' && (
                   <div>
-                    <Label>Mensagem do Alerta</Label>
+                    <Label>Nova Etapa</Label>
+                    <Select 
+                      value={formData.action_config.new_stage} 
+                      onValueChange={(val) => setFormData({ 
+                        ...formData, 
+                        action_config: { ...formData.action_config, new_stage: val }
+                      })}
+                    >
+                      <SelectTrigger className="mt-1 bg-white">
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {STAGES.map(stage => (
+                          <SelectItem key={stage.value} value={stage.value}>
+                            {stage.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {formData.action_type === 'create_task' && (
+                  <>
+                    <div>
+                      <Label>Título da Tarefa</Label>
+                      <Input
+                        value={formData.action_config.task_title}
+                        onChange={(e) => setFormData({ 
+                          ...formData, 
+                          action_config: { ...formData.action_config, task_title: e.target.value }
+                        })}
+                        placeholder="Ex: Ligar para o indicado"
+                        className="mt-1 bg-white"
+                      />
+                    </div>
+                    <div>
+                      <Label>Descrição da Tarefa</Label>
+                      <Textarea
+                        value={formData.action_config.task_description}
+                        onChange={(e) => setFormData({ 
+                          ...formData, 
+                          action_config: { ...formData.action_config, task_description: e.target.value }
+                        })}
+                        placeholder="Detalhes da tarefa..."
+                        rows={2}
+                        className="mt-1 bg-white"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {(formData.action_type === 'send_notification' || formData.action_type === 'notify_supervisor') && (
+                  <div>
+                    <Label>Mensagem da Notificação</Label>
                     <Textarea
-                      value={formData.action_config.alertMessage}
+                      value={formData.action_config.notification_message}
                       onChange={(e) => setFormData({ 
                         ...formData, 
-                        action_config: { ...formData.action_config, alertMessage: e.target.value }
+                        action_config: { ...formData.action_config, notification_message: e.target.value }
                       })}
-                      placeholder="Ex: Indicacao sem contato apos 48h."
+                      placeholder="Ex: Indicação sem contato após 48h. Verificar com vendedor."
                       rows={2}
                       className="mt-1 bg-white"
                     />
                   </div>
                 )}
+
               </CardContent>
             </Card>
 
@@ -895,7 +988,7 @@ export default function ReferralChannelAutomations() {
                   checked={formData.active}
                   onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
                 />
-                <Label>Ativar automacao</Label>
+                <Label>Ativar automação</Label>
               </div>
             </div>
 
@@ -914,7 +1007,7 @@ export default function ReferralChannelAutomations() {
                     Salvando...
                   </>
                 ) : (
-                  editingRule ? 'Atualizar' : 'Criar Automacao'
+                  editingRule ? 'Atualizar' : 'Criar Automação'
                 )}
               </Button>
             </DialogFooter>
