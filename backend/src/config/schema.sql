@@ -920,6 +920,14 @@ CREATE TABLE IF NOT EXISTS gerador_leads_queue (
 );
 
 ALTER TABLE gerador_leads_queue ADD COLUMN IF NOT EXISTS channel_token VARCHAR(500);
+ALTER TABLE gerador_leads_queue ADD COLUMN IF NOT EXISTS lead_uf VARCHAR(2);
+ALTER TABLE gerador_leads_queue ADD COLUMN IF NOT EXISTS lead_cidade VARCHAR(255);
+ALTER TABLE gerador_leads_queue ADD COLUMN IF NOT EXISTS lead_produto VARCHAR(255);
+ALTER TABLE gerador_leads_queue ADD COLUMN IF NOT EXISTS lead_situacao VARCHAR(100);
+ALTER TABLE gerador_leads_queue ADD COLUMN IF NOT EXISTS agent_id UUID;
+ALTER TABLE gerador_leads_queue ADD COLUMN IF NOT EXISTS agent_name VARCHAR(255);
+ALTER TABLE gerador_leads_queue ADD COLUMN IF NOT EXISTS template_name VARCHAR(255);
+ALTER TABLE gerador_leads_queue ADD COLUMN IF NOT EXISTS automation_name VARCHAR(255);
 
 CREATE INDEX IF NOT EXISTS idx_glq_batch ON gerador_leads_queue (batch_id);
 CREATE INDEX IF NOT EXISTS idx_glq_status ON gerador_leads_queue (status_envio);
@@ -1135,3 +1143,43 @@ CREATE TABLE IF NOT EXISTS indicadores_pix (
 );
 
 CREATE INDEX IF NOT EXISTS idx_indicadores_pix_cpf ON indicadores_pix (cpf_indicador);
+
+-- =====================
+-- LEAD GENERATOR LOG ESTRUTURADO
+-- =====================
+CREATE TABLE IF NOT EXISTS gerador_leads_log_estruturado (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  batch_id UUID NOT NULL,
+  disparado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  processado_em TIMESTAMPTZ,
+  duracao_ms INTEGER,
+  lead_number VARCHAR(20) NOT NULL,
+  lead_name VARCHAR(255),
+  lead_uf VARCHAR(2),
+  lead_cidade VARCHAR(255),
+  lead_produto VARCHAR(255),
+  lead_situacao VARCHAR(100),
+  agent_id UUID,
+  agent_name VARCHAR(255),
+  agent_email VARCHAR(255),
+  template_id VARCHAR(100),
+  template_name VARCHAR(255),
+  channel_token VARCHAR(500),
+  automation_name VARCHAR(255),
+  tentativa_numero INTEGER DEFAULT 1,
+  status_envio VARCHAR(50) NOT NULL,
+  http_status INTEGER,
+  message_sent_id VARCHAR(255),
+  api_response JSONB,
+  motivo_bloqueio TEXT,
+  convertido BOOLEAN DEFAULT FALSE,
+  data_conversao TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_log_est_batch_id ON gerador_leads_log_estruturado(batch_id);
+CREATE INDEX IF NOT EXISTS idx_log_est_disparado_em ON gerador_leads_log_estruturado(disparado_em);
+CREATE INDEX IF NOT EXISTS idx_log_est_lead_number ON gerador_leads_log_estruturado(lead_number);
+CREATE INDEX IF NOT EXISTS idx_log_est_agent_id ON gerador_leads_log_estruturado(agent_id);
+CREATE INDEX IF NOT EXISTS idx_log_est_status_envio ON gerador_leads_log_estruturado(status_envio);
+CREATE INDEX IF NOT EXISTS idx_log_est_convertido ON gerador_leads_log_estruturado(convertido);

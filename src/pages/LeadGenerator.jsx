@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import LeadGeneratorDashboard from "./LeadGeneratorDashboard";
+import LeadGeneratorLogEstruturado from "./LeadGeneratorLogEstruturado";
 
 const API_BASE = '/api';
 const MAX_LEADS = 1000;
@@ -442,7 +443,7 @@ export default function LeadGenerator() {
     <div className="p-4 md:p-6 space-y-6 bg-gray-50 dark:bg-gray-950 min-h-screen">
       {canViewDashboard ? (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-lg grid-cols-3">
             <TabsTrigger value="gerador" className="gap-2">
               <Users className="w-4 h-4" />
               Gerador
@@ -450,6 +451,10 @@ export default function LeadGenerator() {
             <TabsTrigger value="painel" className="gap-2">
               <BarChart3 className="w-4 h-4" />
               Painel de Disparos
+            </TabsTrigger>
+            <TabsTrigger value="log" className="gap-2">
+              <FileText className="w-4 h-4" />
+              Log Estruturado
             </TabsTrigger>
           </TabsList>
 
@@ -459,6 +464,10 @@ export default function LeadGenerator() {
 
           <TabsContent value="painel">
             <LeadGeneratorDashboard />
+          </TabsContent>
+
+          <TabsContent value="log">
+            <LeadGeneratorLogEstruturado />
           </TabsContent>
         </Tabs>
       ) : (

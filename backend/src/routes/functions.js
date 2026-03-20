@@ -384,6 +384,10 @@ router.post('/lead-generator-whatsapp-send', authMiddleware, async (req, res) =>
       teamId,
       templateId: envioConfig.templateId,
       channelToken: envioConfig.channelToken,
+      templateName: envioConfig.templateName,
+      automationName: envioConfig.automationName,
+      agentId: agent?.id || null,
+      agentName: agent?.name || null,
       filtersUsed,
       batchId,
     });
@@ -399,6 +403,118 @@ router.post('/lead-generator-whatsapp-send', authMiddleware, async (req, res) =>
     });
   } catch (error) {
     console.error('[WhatsAppQueue] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+const LOG_SAFE_COLUMNS = `id, batch_id, disparado_em, processado_em, duracao_ms,
+  lead_number, lead_name, lead_uf, lead_cidade, lead_produto, lead_situacao,
+  agent_id, agent_name, agent_email, template_id, template_name, automation_name,
+  tentativa_numero, status_envio, http_status, message_sent_id, motivo_bloqueio,
+  convertido, data_conversao, created_at`;
+
+const LOG_ALLOWED_TYPES = ['supervisor', 'admin', 'indicator', 'referral_manager'];
+
+router.get('/lead-generator-log-estruturado', authMiddleware, async (req, res) => {
+  try {
+    const agent = await getAgentForDispatchCheck(req);
+    if (!agent || !LOG_ALLOWED_TYPES.includes(agent.agent_type)) {
+      return res.status(403).json({ success: false, error: 'Sem permissão para visualizar logs estruturados.' });
+    }
+
+    const { batchId, startDate, endDate, status, agentId, limit = 500, offset = 0 } = req.query;
+    let whereClause = 'WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+
+    if (batchId) {
+      whereClause += ` AND batch_id = $${paramIndex}`;
+      params.push(batchId);
+      paramIndex++;
+    }
+    if (startDate) {
+      whereClause += ` AND disparado_em >= $${paramIndex}`;
+      params.push(startDate);
+      paramIndex++;
+    }
+    if (endDate) {
+      whereClause += ` AND disparado_em <= $${paramIndex}`;
+      params.push(endDate);
+      paramIndex++;
+    }
+    if (status) {
+      whereClause += ` AND status_envio = $${paramIndex}`;
+      params.push(status);
+      paramIndex++;
+    }
+    if (agentId) {
+      whereClause += ` AND agent_id = $${paramIndex}`;
+      params.push(agentId);
+      paramIndex++;
+    }
+
+    const countResult = await query(`SELECT COUNT(*)::int as total FROM gerador_leads_log_estruturado ${whereClause}`, params);
+
+    const dataResult = await query(
+      `SELECT ${LOG_SAFE_COLUMNS} FROM gerador_leads_log_estruturado ${whereClause} ORDER BY disparado_em DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...params, parseInt(limit), parseInt(offset)]
+    );
+
+    res.json({
+      success: true,
+      total: countResult.rows[0]?.total || 0,
+      data: dataResult.rows,
+    });
+  } catch (error) {
+    console.error('[LogEstruturado] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/lead-generator-log-estruturado/stats', authMiddleware, async (req, res) => {
+  try {
+    const agent = await getAgentForDispatchCheck(req);
+    if (!agent || !LOG_ALLOWED_TYPES.includes(agent.agent_type)) {
+      return res.status(403).json({ success: false, error: 'Sem permissão para visualizar stats de logs.' });
+    }
+
+    const { startDate, endDate, agentId } = req.query;
+    let whereClause = 'WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+
+    if (startDate) {
+      whereClause += ` AND disparado_em >= $${paramIndex}`;
+      params.push(startDate);
+      paramIndex++;
+    }
+    if (endDate) {
+      whereClause += ` AND disparado_em <= $${paramIndex}`;
+      params.push(endDate);
+      paramIndex++;
+    }
+    if (agentId) {
+      whereClause += ` AND agent_id = $${paramIndex}`;
+      params.push(agentId);
+      paramIndex++;
+    }
+
+    const result = await query(`
+      SELECT
+        COUNT(*)::int as total,
+        COUNT(*) FILTER (WHERE status_envio = 'enviado')::int as enviados,
+        COUNT(*) FILTER (WHERE status_envio = 'falha')::int as falhas,
+        COUNT(*) FILTER (WHERE status_envio LIKE 'bloqueado%')::int as bloqueados,
+        COUNT(*) FILTER (WHERE convertido = true)::int as convertidos,
+        COALESCE(AVG(duracao_ms) FILTER (WHERE duracao_ms IS NOT NULL), 0)::int as avg_duracao_ms,
+        COUNT(DISTINCT batch_id)::int as total_batches,
+        COUNT(DISTINCT agent_id)::int as total_agents
+      FROM gerador_leads_log_estruturado ${whereClause}
+    `, params);
+
+    res.json({ success: true, stats: result.rows[0] });
+  } catch (error) {
+    console.error('[LogEstruturado] Stats error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
