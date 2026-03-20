@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,10 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Search, Loader2, CheckCircle2, XCircle, AlertTriangle,
-  Clock, Send, Filter, RefreshCw, ChevronLeft, ChevronRight,
-  Timer, Users, BarChart3, Shield
+  Search, Loader2, CheckCircle2, XCircle,
+  Clock, Send, RefreshCw, ChevronLeft, ChevronRight,
+  Timer, Shield, Download, FilterX
 } from "lucide-react";
+import { toast } from "sonner";
 
 const API_BASE = '/api';
 
@@ -22,14 +23,17 @@ const STATUS_CONFIG = {
   enviado: { label: 'Enviado', color: 'bg-green-100 text-green-800', icon: CheckCircle2 },
   falha: { label: 'Falha', color: 'bg-red-100 text-red-800', icon: XCircle },
   reenvio_agendado: { label: 'Reenvio', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
+  bloqueado: { label: 'Bloqueado', color: 'bg-orange-100 text-orange-800', icon: Shield },
   bloqueado_30_dias: { label: 'Bloq. 30d', color: 'bg-orange-100 text-orange-800', icon: Shield },
   bloqueado_duplicidade: { label: 'Duplicidade', color: 'bg-orange-100 text-orange-800', icon: Shield },
+  bloqueado_limite_diario: { label: 'Limite Diário', color: 'bg-orange-100 text-orange-800', icon: Shield },
 };
 
 export default function LeadGeneratorLogEstruturado() {
   const [page, setPage] = useState(0);
   const [statusFilter, setStatusFilter] = useState("todos");
   const [searchNumber, setSearchNumber] = useState("");
+  const [exporting, setExporting] = useState(false);
   const pageSize = 50;
 
   const today = new Date();
@@ -92,6 +96,51 @@ export default function LeadGeneratorLogEstruturado() {
     );
   }, [logs, searchNumber]);
 
+  const handleClearFilters = useCallback(() => {
+    const now = new Date();
+    const ago = new Date(now);
+    ago.setDate(ago.getDate() - 30);
+    setStartDate(ago.toISOString().slice(0, 10));
+    setEndDate(now.toISOString().slice(0, 10));
+    setStatusFilter("todos");
+    setSearchNumber("");
+    setPage(0);
+  }, []);
+
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (startDate) params.append('startDate', `${startDate}T00:00:00`);
+      if (endDate) params.append('endDate', `${endDate}T23:59:59`);
+      if (statusFilter && statusFilter !== 'todos') params.append('status', statusFilter);
+
+      const res = await fetch(`${API_BASE}/functions/lead-generator-log-estruturado/export?${params.toString()}`, {
+        headers: getAuthHeaders(),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Erro ao exportar');
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `log_disparos_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Excel exportado com sucesso!');
+    } catch (err) {
+      toast.error(err.message || 'Erro ao exportar Excel');
+    } finally {
+      setExporting(false);
+    }
+  }, [startDate, endDate, statusFilter]);
+
   const formatDate = (d) => {
     if (!d) return '-';
     return new Date(d).toLocaleString('pt-BR', {
@@ -147,9 +196,24 @@ export default function LeadGeneratorLogEstruturado() {
         <CardHeader className="pb-3">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <CardTitle className="text-lg">Log de Disparos Detalhado</CardTitle>
-            <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
-              <RefreshCw className="w-4 h-4" /> Atualizar
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handleClearFilters} className="gap-2">
+                <FilterX className="w-4 h-4" /> Limpar
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExport}
+                disabled={exporting}
+                className="gap-2"
+              >
+                {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                Exportar Excel
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
+                <RefreshCw className="w-4 h-4" /> Atualizar
+              </Button>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-3 mt-3">
@@ -178,8 +242,10 @@ export default function LeadGeneratorLogEstruturado() {
                 <SelectItem value="enviado">Enviado</SelectItem>
                 <SelectItem value="falha">Falha</SelectItem>
                 <SelectItem value="reenvio_agendado">Reenvio</SelectItem>
+                <SelectItem value="bloqueado">Bloqueado</SelectItem>
                 <SelectItem value="bloqueado_30_dias">Bloq. 30 dias</SelectItem>
                 <SelectItem value="bloqueado_duplicidade">Duplicidade</SelectItem>
+                <SelectItem value="bloqueado_limite_diario">Limite Diário</SelectItem>
               </SelectContent>
             </Select>
 
@@ -220,6 +286,7 @@ export default function LeadGeneratorLogEstruturado() {
                     <th className="pb-2 pr-3 font-medium">Status</th>
                     <th className="pb-2 pr-3 font-medium">Duração</th>
                     <th className="pb-2 pr-3 font-medium">HTTP</th>
+                    <th className="pb-2 pr-3 font-medium">Motivo Bloqueio</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -244,6 +311,7 @@ export default function LeadGeneratorLogEstruturado() {
                         </td>
                         <td className="py-2 pr-3 text-xs">{formatDuration(log.duracao_ms)}</td>
                         <td className="py-2 pr-3 text-xs font-mono">{log.http_status || '-'}</td>
+                        <td className="py-2 pr-3 truncate max-w-[200px] text-xs" title={log.motivo_bloqueio}>{log.motivo_bloqueio || '-'}</td>
                       </tr>
                     );
                   })}

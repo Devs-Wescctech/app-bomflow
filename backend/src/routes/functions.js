@@ -12,6 +12,7 @@ import { runAllAutomations, runAutomationsForLead } from '../services/leadAutoma
 import { generateProposalPDF } from '../services/pdfService.js';
 import { sendWhatsAppMessage, sendDocument, sendTextMessage } from '../services/whatsappService.js';
 import { v4 as uuidv4 } from 'uuid';
+import ExcelJS from 'exceljs';
 import { enqueueLeads, processQueue, retryFailed, getQueueStatus, getDashboardMetrics, getLogsWithPagination, normalizePhone, checkConversions, getConversionMetrics, getConversionsList } from '../services/whatsappQueueService.js';
 import { getEnvioRegulamentoConfig } from '../services/automationService.js';
 import { getAgentByErpId, getErpAgentMap, resolveAgentFromErp } from '../services/erpIntegrationService.js';
@@ -515,6 +516,149 @@ router.get('/lead-generator-log-estruturado/stats', authMiddleware, async (req, 
     res.json({ success: true, stats: result.rows[0] });
   } catch (error) {
     console.error('[LogEstruturado] Stats error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/lead-generator-log-estruturado/export', authMiddleware, async (req, res) => {
+  try {
+    const agent = await getAgentForDispatchCheck(req);
+    if (!agent || !LOG_ALLOWED_TYPES.includes(agent.agent_type)) {
+      return res.status(403).json({ success: false, error: 'Sem permissão para exportar logs.' });
+    }
+
+    const { startDate, endDate, status } = req.query;
+    let whereClause = 'WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+
+    if (startDate) {
+      whereClause += ` AND disparado_em >= $${paramIndex}`;
+      params.push(startDate);
+      paramIndex++;
+    }
+    if (endDate) {
+      whereClause += ` AND disparado_em <= $${paramIndex}`;
+      params.push(endDate);
+      paramIndex++;
+    }
+    if (status && status !== 'todos') {
+      if (status === 'bloqueado') {
+        whereClause += ` AND status_envio LIKE 'bloqueado%'`;
+      } else {
+        whereClause += ` AND status_envio = $${paramIndex}`;
+        params.push(status);
+        paramIndex++;
+      }
+    }
+
+    const dataResult = await query(
+      `SELECT ${LOG_SAFE_COLUMNS} FROM gerador_leads_log_estruturado ${whereClause} ORDER BY disparado_em DESC LIMIT 50000`,
+      params
+    );
+
+    const rows = dataResult.rows;
+
+    const sanitizeCell = (val) => {
+      if (typeof val !== 'string') return val;
+      if (/^[=+\-@]/.test(val)) return `'${val}`;
+      return val;
+    };
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Log Disparos');
+
+    const columns = [
+      { header: 'Data/Hora Disparo', key: 'disparado_em', width: 22 },
+      { header: 'Data/Hora Processado', key: 'processado_em', width: 22 },
+      { header: 'Duração (ms)', key: 'duracao_ms', width: 14 },
+      { header: 'Telefone', key: 'lead_number', width: 18 },
+      { header: 'Nome', key: 'lead_name', width: 28 },
+      { header: 'UF', key: 'lead_uf', width: 6 },
+      { header: 'Cidade', key: 'lead_cidade', width: 22 },
+      { header: 'Produto', key: 'lead_produto', width: 18 },
+      { header: 'Situação', key: 'lead_situacao', width: 16 },
+      { header: 'Agente', key: 'agent_name', width: 24 },
+      { header: 'E-mail Agente', key: 'agent_email', width: 28 },
+      { header: 'Template', key: 'template_name', width: 30 },
+      { header: 'Automação', key: 'automation_name', width: 22 },
+      { header: 'Tentativa', key: 'tentativa_numero', width: 12 },
+      { header: 'Status', key: 'status_envio', width: 20 },
+      { header: 'HTTP Status', key: 'http_status', width: 14 },
+      { header: 'ID Mensagem', key: 'message_sent_id', width: 28 },
+      { header: 'Motivo Bloqueio', key: 'motivo_bloqueio', width: 40 },
+      { header: 'Convertido', key: 'convertido', width: 12 },
+      { header: 'Data Conversão', key: 'data_conversao', width: 22 },
+    ];
+
+    sheet.columns = columns;
+
+    const headerRow = sheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+    headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+
+    const formatDateExcel = (d) => {
+      if (!d) return '';
+      const dt = new Date(d);
+      const dd = String(dt.getDate()).padStart(2, '0');
+      const mm = String(dt.getMonth() + 1).padStart(2, '0');
+      const yyyy = dt.getFullYear();
+      const hh = String(dt.getHours()).padStart(2, '0');
+      const min = String(dt.getMinutes()).padStart(2, '0');
+      const ss = String(dt.getSeconds()).padStart(2, '0');
+      return `${dd}/${mm}/${yyyy} ${hh}:${min}:${ss}`;
+    };
+
+    const statusColors = {
+      bloqueado: 'FFFFF3CD',
+      enviado: 'FFD4EDDA',
+      reenvio_agendado: 'FFFFEEBA',
+      falha: 'FFF8D7DA',
+    };
+
+    for (const row of rows) {
+      const dataRow = sheet.addRow({
+        disparado_em: formatDateExcel(row.disparado_em),
+        processado_em: formatDateExcel(row.processado_em),
+        duracao_ms: row.duracao_ms ?? '',
+        lead_number: sanitizeCell(row.lead_number),
+        lead_name: sanitizeCell(row.lead_name || ''),
+        lead_uf: sanitizeCell(row.lead_uf || ''),
+        lead_cidade: sanitizeCell(row.lead_cidade || ''),
+        lead_produto: sanitizeCell(row.lead_produto || ''),
+        lead_situacao: sanitizeCell(row.lead_situacao || ''),
+        agent_name: sanitizeCell(row.agent_name || ''),
+        agent_email: sanitizeCell(row.agent_email || ''),
+        template_name: sanitizeCell(row.template_name || ''),
+        automation_name: sanitizeCell(row.automation_name || ''),
+        tentativa_numero: row.tentativa_numero,
+        status_envio: sanitizeCell(row.status_envio),
+        http_status: row.http_status ?? '',
+        message_sent_id: sanitizeCell(row.message_sent_id || ''),
+        motivo_bloqueio: sanitizeCell(row.motivo_bloqueio || ''),
+        convertido: row.convertido ? 'Sim' : 'Não',
+        data_conversao: formatDateExcel(row.data_conversao),
+      });
+
+      const bgColor = statusColors[row.status_envio];
+      if (bgColor) {
+        dataRow.eachCell((cell) => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+        });
+      }
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const filename = `log_disparos_${today}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('[LogEstruturado] Export error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
