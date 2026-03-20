@@ -61,7 +61,9 @@ export default function LeadGenerator() {
   const [queueStatus, setQueueStatus] = useState(null);
   const [enqueueSummary, setEnqueueSummary] = useState(null);
   const [leadStatuses, setLeadStatuses] = useState({});
+  const [pollingTimeout, setPollingTimeout] = useState(false);
   const pollingRef = useRef(null);
+  const pollingCountRef = useRef(0);
 
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
@@ -200,8 +202,20 @@ export default function LeadGenerator() {
 
   function startPolling(batchId) {
     if (pollingRef.current) clearInterval(pollingRef.current);
+    pollingCountRef.current = 0;
+    setPollingTimeout(false);
 
     pollingRef.current = setInterval(async () => {
+      pollingCountRef.current += 1;
+
+      if (pollingCountRef.current >= 300) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+        setSendingWhatsApp(false);
+        setPollingTimeout(true);
+        return;
+      }
+
       try {
         const res = await fetch(`${API_BASE}/functions/lead-generator-queue-status/${batchId}`, {
           headers: { ...getAuthHeaders() },
@@ -853,6 +867,20 @@ export default function LeadGenerator() {
                     <p className="text-xs text-blue-500">Reenvio</p>
                   </div>
                 </div>
+
+                {pollingTimeout && (
+                  <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 flex items-start gap-2">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-sm text-amber-800 dark:text-amber-300">
+                        O processamento demorou mais que o esperado. Alguns disparos podem ter sido interrompidos. Clique em "Reenviar Falhas" para retomar.
+                      </p>
+                    </div>
+                    <button onClick={() => setPollingTimeout(false)} className="text-amber-600 hover:text-amber-800 shrink-0">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
 
                 {queueStatus?.enviado > 0 && queueStatus?.falha === 0 && queueStatus?.isComplete && (
                   <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 flex items-center gap-2">

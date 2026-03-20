@@ -863,3 +863,68 @@ export async function getLogsWithPagination({ page = 1, limit = 50, status, from
     totalPages: Math.ceil((countResult.rows[0]?.total || 0) / limit),
   };
 }
+
+export async function recoverStuckQueues() {
+  const startTime = new Date().toISOString();
+  console.log(`[Recovery] Iniciando verificação de itens presos na fila... (${startTime})`);
+
+  try {
+    const stuckResult = await query(
+      `SELECT * FROM gerador_leads_queue
+       WHERE status_envio = 'enviando'
+         AND updated_at < NOW() - INTERVAL '10 minutes'
+       ORDER BY batch_id, created_at ASC`
+    );
+
+    if (stuckResult.rows.length === 0) {
+      console.log('[Recovery] Nenhum item preso encontrado na inicialização.');
+      return;
+    }
+
+    console.log(`[Recovery] Encontrados ${stuckResult.rows.length} itens presos em 'enviando'.`);
+
+    let recovered = 0;
+    let markedAsFailed = 0;
+    const batchIds = new Set();
+
+    for (const item of stuckResult.rows) {
+      if (item.tentativa_numero < item.max_tentativas) {
+        await query(
+          `UPDATE gerador_leads_queue
+           SET status_envio = 'reenvio_agendado',
+               motivo_bloqueio = 'Recovery automático: servidor reiniciado durante processamento',
+               updated_at = NOW()
+           WHERE id = $1`,
+          [item.id]
+        );
+        recovered++;
+        batchIds.add(item.batch_id);
+      } else {
+        await query(
+          `UPDATE gerador_leads_queue
+           SET status_envio = 'falha',
+               motivo_bloqueio = 'Esgotadas as tentativas após recovery automático',
+               updated_at = NOW()
+           WHERE id = $1`,
+          [item.id]
+        );
+        markedAsFailed++;
+      }
+    }
+
+    console.log(`[Recovery] Resultado: ${recovered} recuperados para reenvio, ${markedAsFailed} marcados como falha.`);
+
+    for (const batchId of batchIds) {
+      const batchCount = stuckResult.rows.filter(r => r.batch_id === batchId).length;
+      console.log(`[Recovery] Batch ${batchId}: ${batchCount} itens — iniciando reprocessamento...`);
+      processQueue(batchId).catch(err => {
+        console.error(`[Recovery] Erro ao reprocessar batch ${batchId}:`, err.message);
+      });
+    }
+
+    const endTime = new Date().toISOString();
+    console.log(`[Recovery] Verificação concluída. (${endTime})`);
+  } catch (err) {
+    console.error('[Recovery] Erro durante verificação de itens presos:', err.message);
+  }
+}
