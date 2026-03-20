@@ -14,6 +14,7 @@ import bomAutoRoutes from './routes/bomAuto.js';
 import { runAllAutomations } from './services/automationService.js';
 import cron from 'node-cron';
 import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport } from './routes/functions.js';
+import { recoverStuckQueues } from './services/whatsappQueueService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,7 +84,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 });
 
 initDatabase()
-  .then(() => {
+  .then(async () => {
     console.log('Database schema initialized successfully');
     
     const AUTOMATION_INTERVAL = 60 * 60 * 1000;
@@ -147,6 +148,12 @@ initDatabase()
       }
     });
     console.log('[Commission Email] Cron agendado: quartas-feiras às 08:00.');
+
+    try {
+      await recoverStuckQueues();
+    } catch (err) {
+      console.error('[Recovery] Falha no recovery de itens presos (não impede inicialização):', err.message);
+    }
   })
   .catch((error) => {
     console.error('Database initialization failed:', error);
