@@ -1,5 +1,5 @@
 import { query } from '../config/database.js';
-import { sendWhatsAppMessage } from './whatsappService.js';
+import { sendWhatsAppMessage, sendWhatsAppMessageWithToken } from './whatsappService.js';
 
 export async function checkAndExecuteLeadAutomations() {
   try {
@@ -67,6 +67,224 @@ export async function checkAndExecuteReferralAutomations() {
     }
   } catch (error) {
     console.error('Error checking referral automations:', error);
+  }
+}
+
+export async function checkAndExecuteReferralChannelAutomations() {
+  try {
+    const automationsResult = await query(`
+      SELECT * FROM referral_channel_automations 
+      WHERE active = true 
+      ORDER BY priority ASC
+    `);
+    const automations = automationsResult.rows;
+
+    for (const automation of automations) {
+      const triggerConfig = typeof automation.trigger_config === 'string' 
+        ? JSON.parse(automation.trigger_config) 
+        : automation.trigger_config || {};
+
+      if (automation.trigger_type === 'inactivity' || automation.trigger_type === 'stage_duration') {
+        await checkInactivityTriggerWithToken(automation, triggerConfig, 'referral_channel', 'referrals', automation.channel_token);
+      }
+    }
+  } catch (error) {
+    console.error('Error checking referral channel automations:', error);
+  }
+}
+
+async function checkInactivityTriggerWithToken(automation, triggerConfig, automationType, tableName, channelToken) {
+  try {
+    const hours = Number(triggerConfig.hours) || 
+                  (Number(triggerConfig.days) ? Number(triggerConfig.days) * 24 : 
+                  (Number(triggerConfig.duration_days) ? Number(triggerConfig.duration_days) * 24 : 
+                  (Number(triggerConfig.duration_hours) || 48)));
+    
+    const hoursAgo = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+    const closedStages = ['fechado_ganho', 'fechado_perdido', 'convertido', 'perdido', 'cancelado'];
+    
+    const leadsResult = await query(`
+      SELECT l.*, a.name as agent_name, a.phone as agent_phone, a.email as agent_email
+      FROM ${tableName} l
+      LEFT JOIN agents a ON l.agent_id = a.id
+      WHERE l.created_at < $1
+        AND (l.stage IS NULL OR l.stage NOT IN ($2, $3, $4, $5, $6))
+        AND NOT EXISTS (
+          SELECT 1 FROM automation_logs al 
+          WHERE al.lead_id = l.id 
+            AND al.automation_id = $7
+            AND al.executed_at > $8
+        )
+      LIMIT 10
+    `, [hoursAgo.toISOString(), ...closedStages, automation.id, hoursAgo.toISOString()]);
+
+    console.log(`[ChannelAutomation] ${automation.name}: Found ${leadsResult.rows.length} leads matching criteria`);
+
+    for (const lead of leadsResult.rows) {
+      await executeChannelAutomationAction(automation, lead, automationType, channelToken);
+    }
+  } catch (error) {
+    console.error(`Error checking inactivity trigger for ${automationType}:`, error);
+  }
+}
+
+async function executeChannelAutomationAction(automation, lead, automationType, channelToken) {
+  const actionConfig = typeof automation.action_config === 'string' 
+    ? JSON.parse(automation.action_config) 
+    : automation.action_config || {};
+
+  const leadName = lead.name || lead.referred_name || lead.company_name || lead.fantasy_name || 'Lead';
+  const leadPhone = lead.phone || lead.referred_phone || lead.cell_phone || lead.whatsapp;
+
+  try {
+    if (automation.action_type === 'send_whatsapp') {
+      if (!leadPhone) {
+        console.log(`[ChannelAutomation] ${automation.name}: Lead ${leadName} has no phone number, skipping`);
+        await logAutomationExecution({
+          automationType,
+          automationId: automation.id,
+          automationName: automation.name,
+          leadId: lead.id,
+          leadName,
+          leadPhone: null,
+          agentId: lead.agent_id || null,
+          agentName: lead.agent_name || null,
+          actionType: automation.action_type,
+          status: 'skipped',
+          message: 'Lead sem telefone cadastrado'
+        });
+        return;
+      }
+
+      const message = actionConfig.templateMessage
+        ?.replace(/\{\{nome_cliente\}\}/gi, leadName)
+        ?.replace(/\{\{nome_vendedor\}\}/gi, lead.agent_name || 'Consultor')
+        ?.replace(/\{\{nome\}\}/gi, leadName)
+        ?.replace(/\(Nome cliente\)/gi, leadName)
+        ?.replace(/\(Nome Vendedor\)/gi, lead.agent_name || 'Consultor')
+        ?.replace(/\(Nome Cliente\)/gi, leadName)
+        ?.replace(/\(Nome\)/gi, leadName);
+
+      if (automation.whatsapp_template_id) {
+        try {
+          const agent = lead.agent_id ? { id: lead.agent_id, name: lead.agent_name, phone: lead.agent_phone } : null;
+          const result = await sendWhatsAppMessageWithToken(lead, agent, automation.whatsapp_template_id, channelToken);
+          
+          await logAutomationExecution({
+            automationType,
+            automationId: automation.id,
+            automationName: automation.name,
+            leadId: lead.id,
+            leadName,
+            leadPhone,
+            agentId: lead.agent_id || null,
+            agentName: lead.agent_name || null,
+            actionType: automation.action_type,
+            status: 'sent',
+            message: message || `Template: ${automation.whatsapp_template_name}`,
+            apiResponse: result
+          });
+
+          console.log(`[ChannelAutomation] ${automation.name}: Message sent to ${leadName} (${leadPhone})`, result);
+        } catch (sendError) {
+          console.error(`[ChannelAutomation] ${automation.name}: Failed to send WhatsApp to ${leadName}:`, sendError.message);
+          await logAutomationExecution({
+            automationType,
+            automationId: automation.id,
+            automationName: automation.name,
+            leadId: lead.id,
+            leadName,
+            leadPhone,
+            agentId: lead.agent_id || null,
+            agentName: lead.agent_name || null,
+            actionType: automation.action_type,
+            status: 'error',
+            message: message,
+            errorMessage: sendError.message
+          });
+        }
+      } else {
+        await logAutomationExecution({
+          automationType,
+          automationId: automation.id,
+          automationName: automation.name,
+          leadId: lead.id,
+          leadName,
+          leadPhone,
+          agentId: lead.agent_id || null,
+          agentName: lead.agent_name || null,
+          actionType: automation.action_type,
+          status: 'pending',
+          message: message || 'Mensagem personalizada aguardando template'
+        });
+        console.log(`[ChannelAutomation] ${automation.name}: Logged pending message for ${leadName} (no template configured)`);
+      }
+
+      await updateAutomationCount(automation.id, automationType);
+      
+    } else if (automation.action_type === 'internal_alert') {
+      await logAutomationExecution({
+        automationType,
+        automationId: automation.id,
+        automationName: automation.name,
+        leadId: lead.id,
+        leadName,
+        leadPhone,
+        agentId: lead.agent_id || null,
+        agentName: lead.agent_name || null,
+        actionType: automation.action_type,
+        status: 'executed',
+        message: actionConfig.alertMessage
+      });
+
+      if (actionConfig.notifyRole === 'supervisor') {
+        try {
+          const supervisorsResult = await query(`
+            SELECT email, name FROM agents 
+            WHERE agent_type = 'sales_supervisor' AND active = true
+          `);
+          
+          const alertMessage = actionConfig.alertMessage
+            ?.replace(/\{\{nome_cliente\}\}/gi, leadName)
+            ?.replace(/\{\{nome_vendedor\}\}/gi, lead.agent_name || 'Não atribuído') 
+            || 'Verificar lead';
+          
+          for (const supervisor of supervisorsResult.rows) {
+            await query(`
+              INSERT INTO notifications (user_email, title, message, type, created_at)
+              VALUES ($1, $2, $3, $4, NOW())
+            `, [
+              supervisor.email,
+              `Alerta: ${automation.name}`,
+              alertMessage,
+              'automation_alert'
+            ]);
+          }
+        } catch (notifError) {
+          console.error(`[ChannelAutomation] Failed to create notification:`, notifError.message);
+        }
+      }
+
+      await updateAutomationCount(automation.id, automationType);
+      console.log(`[ChannelAutomation] ${automation.name}: Internal alert logged for ${leadName}`);
+    }
+  } catch (error) {
+    console.error(`[ChannelAutomation] ${automation.name}: Error executing action for ${leadName}:`, error);
+    await logAutomationExecution({
+      automationType,
+      automationId: automation.id,
+      automationName: automation.name,
+      leadId: lead.id,
+      leadName,
+      leadPhone,
+      agentId: lead.agent_id || null,
+      agentName: lead.agent_name || null,
+      actionType: automation.action_type,
+      status: 'error',
+      message: actionConfig.templateMessage || actionConfig.alertMessage,
+      errorMessage: error.message
+    });
   }
 }
 
@@ -362,6 +580,7 @@ export async function runAllAutomations() {
     await checkAndExecuteLeadAutomations();
     await checkAndExecuteLeadPJAutomations();
     await checkAndExecuteReferralAutomations();
+    await checkAndExecuteReferralChannelAutomations();
     console.log('[Automations] Automation checks completed.');
   } catch (error) {
     console.error('[Automations] Error running automations:', error);

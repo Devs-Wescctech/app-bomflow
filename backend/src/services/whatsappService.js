@@ -23,6 +23,142 @@ export async function getWhatsAppTemplates() {
   return response.json();
 }
 
+export async function getWhatsAppTemplatesByToken(channelToken) {
+  if (!channelToken) {
+    throw new Error('Channel token is required');
+  }
+
+  const response = await fetch(`${RUDO_API_BASE}/action-cards/templates`, {
+    method: 'GET',
+    headers: {
+      'access-token': channelToken,
+      'Accept': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(`Failed to fetch templates for channel: ${error.msg || response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function createChatWithToken(params, channelToken) {
+  const token = channelToken || process.env.RUDO_WHATSAPP_TOKEN;
+  if (!token) {
+    throw new Error('No WhatsApp token available');
+  }
+
+  const { number, templateId, templateComponents } = params;
+
+  const body = {
+    number: number.replace(/\D/g, ''),
+    quickAnswerId: templateId,
+    quickAnswerComponents: templateComponents || [],
+  };
+
+  const response = await fetch(`${RUDO_API_BASE}/chats/create-new`, {
+    method: 'POST',
+    headers: {
+      'access-token': token,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  const responseData = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMsg = responseData.msg || response.statusText;
+    const error = new Error(`Failed to create chat: ${errorMsg}`);
+    error.apiMessage = errorMsg;
+    throw error;
+  }
+
+  return responseData;
+}
+
+export async function sendTemplateWithToken(params, channelToken) {
+  const token = channelToken || process.env.RUDO_WHATSAPP_TOKEN;
+  if (!token) {
+    throw new Error('No WhatsApp token available');
+  }
+
+  const { number, templateId, templateComponents } = params;
+
+  const body = {
+    number: number.replace(/\D/g, ''),
+    templateId: templateId,
+    templateComponents: templateComponents || [],
+    forceSend: true,
+  };
+
+  const response = await fetch(`${RUDO_API_BASE}/chats/send-template`, {
+    method: 'POST',
+    headers: {
+      'access-token': token,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  const responseData = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(`Failed to send template: ${responseData.msg || response.statusText}`);
+  }
+
+  return responseData;
+}
+
+export async function sendWhatsAppMessageWithToken(lead, agent, templateId, channelToken, templateComponents) {
+  const phone = lead.phone || lead.referred_phone || lead.contact_phone || lead.whatsapp || lead.cell_phone;
+
+  if (!phone) {
+    throw new Error('Lead does not have a phone number');
+  }
+
+  const formattedNumber = phone.replace(/\D/g, '');
+  const brazilNumber = formattedNumber.startsWith('55') ? formattedNumber : `55${formattedNumber}`;
+  const leadName = lead.name || lead.referred_name || lead.contact_name || 'Cliente';
+
+  const components = templateComponents || [
+    {
+      type: 'BODY',
+      parameters: [
+        { type: 'text', text: leadName },
+      ],
+    },
+  ];
+
+  let result;
+  let usedFallback = false;
+
+  try {
+    result = await createChatWithToken({
+      number: brazilNumber,
+      templateId,
+      templateComponents: components,
+    }, channelToken);
+  } catch (error) {
+    if (error.apiMessage && error.apiMessage.toLowerCase().includes('already open')) {
+      usedFallback = true;
+      result = await sendTemplateWithToken({
+        number: brazilNumber,
+        templateId,
+        templateComponents: components,
+      }, channelToken);
+    } else {
+      throw error;
+    }
+  }
+
+  return { ...result, usedFallback };
+}
+
 export async function createChat(params) {
   const token = process.env.RUDO_WHATSAPP_TOKEN;
   

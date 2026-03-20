@@ -127,6 +127,8 @@ import CommissionPaymentControl from "./CommissionPaymentControl";
 
 import ReferralAutomations from "./ReferralAutomations";
 
+import ReferralChannelAutomations from "./ReferralChannelAutomations";
+
 import ReferralAgenda from "./ReferralAgenda";
 
 import ReferralTasks from "./ReferralTasks";
@@ -317,6 +319,8 @@ const PAGES = {
     ReferralCommissions: ReferralCommissions,
     
     ReferralAutomations: ReferralAutomations,
+    
+    ReferralChannelAutomations: ReferralChannelAutomations,
     
     ReferralAgenda: ReferralAgenda,
     
@@ -536,6 +540,8 @@ function PagesContent() {
                 <Route path="/CommissionPaymentControl" element={<CommissionPaymentControl />} />
                 
                 <Route path="/ReferralAutomations" element={<ReferralAutomations />} />
+                
+                <Route path="/ReferralChannelAutomations" element={<ReferralChannelAutomations />} />
                 
                 <Route path="/ReferralAgenda" element={<ReferralAgenda />} />
                 

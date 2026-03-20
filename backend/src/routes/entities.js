@@ -73,6 +73,8 @@ const entities = {
     'activities-pj': { tableName: 'activities_pj', allowedFilters: ['lead_id', 'type'] },
   'lead-pj-automations': { tableName: 'lead_pj_automations', searchFields: ['name'] },
   'referral-automations': { tableName: 'referral_automations', searchFields: ['name'] },
+  'referral-channel-automations': { tableName: 'referral_channel_automations', searchFields: ['name'], allowedFilters: ['channel_token', 'active'] },
+  'referral-channel-config': { tableName: 'referral_channel_config', searchFields: ['channel_label'] },
   'automation-logs': { tableName: 'automation_logs', allowedFilters: ['automation_id', 'automation_type', 'lead_id', 'referral_id'] },
   'proposal-templates': { tableName: 'proposal_templates', searchFields: ['name'] },
   sales: { allowedFilters: ['lead_id', 'agent_id', 'status'] },
