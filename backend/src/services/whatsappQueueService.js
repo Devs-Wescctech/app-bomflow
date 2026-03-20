@@ -91,6 +91,29 @@ export async function enqueueLeads({ leads, userId, userEmail, teamId, templateI
           [cleanNumber, name || null, userId, userEmail, templateId, `Envio realizado nos últimos ${bloqueioRecorrenciaDias} dias`, batchId, teamId]
         );
 
+        await registrarLogDisparo({
+          batchId,
+          leadNumber: cleanNumber,
+          leadName: name,
+          leadUf: uf,
+          leadCidade: cidade,
+          leadProduto: produto,
+          leadSituacao: situacao_contrato,
+          agentId,
+          agentName,
+          agentEmail: userEmail,
+          templateId,
+          templateName,
+          channelToken,
+          automationName,
+          tentativaNumero: 1,
+          statusEnvio: 'bloqueado',
+          motivoBloqueio: `Envio realizado nos últimos ${bloqueioRecorrenciaDias} dias`,
+          disparadoEm: new Date(),
+          processadoEm: new Date(),
+          duracaoMs: 0,
+        });
+
         blocked30Days++;
         continue;
       }
@@ -120,6 +143,29 @@ export async function enqueueLeads({ leads, userId, userEmail, teamId, templateI
           [cleanNumber, name || null, userId, userEmail, templateId, batchId, teamId]
         );
 
+        await registrarLogDisparo({
+          batchId,
+          leadNumber: cleanNumber,
+          leadName: name,
+          leadUf: uf,
+          leadCidade: cidade,
+          leadProduto: produto,
+          leadSituacao: situacao_contrato,
+          agentId,
+          agentName,
+          agentEmail: userEmail,
+          templateId,
+          templateName,
+          channelToken,
+          automationName,
+          tentativaNumero: 1,
+          statusEnvio: 'bloqueado',
+          motivoBloqueio: 'Envio já realizado hoje para este número',
+          disparadoEm: new Date(),
+          processadoEm: new Date(),
+          duracaoMs: 0,
+        });
+
         blockedDuplicate++;
         continue;
       }
@@ -128,16 +174,39 @@ export async function enqueueLeads({ leads, userId, userEmail, teamId, templateI
         await query(
           `INSERT INTO gerador_leads_queue
             (batch_id, lead_id, lead_number, lead_name, template_id, channel_token, template_name, automation_name, agent_id, agent_name, lead_uf, lead_cidade, lead_produto, lead_situacao, status_envio, user_id, user_email, team_id, filters_used, motivo_bloqueio)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'bloqueado_duplicidade', $15, $16, $17, $18, $19)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'bloqueado_limite_diario', $15, $16, $17, $18, $19)`,
           [batchId, lead_id || null, cleanNumber, name || null, templateId, channelToken, templateName || null, automationName || null, agentId || null, agentName || null, uf || null, cidade || null, produto || null, situacao_contrato || null, userId, userEmail, teamId, filtersUsed ? JSON.stringify(filtersUsed) : null, `Limite diário de ${limitePorUsuarioDia} envios atingido`]
         );
 
         await query(
           `INSERT INTO gerador_leads_whatsapp_logs
             (lead_number, lead_name, user_id, user_email, template_id, status_envio, motivo_bloqueio, batch_id, team_id, success, http_status)
-           VALUES ($1, $2, $3, $4, $5, 'bloqueado_duplicidade', $6, $7, $8, false, 0)`,
+           VALUES ($1, $2, $3, $4, $5, 'bloqueado_limite_diario', $6, $7, $8, false, 0)`,
           [cleanNumber, name || null, userId, userEmail, templateId, `Limite diário de ${limitePorUsuarioDia} envios atingido`, batchId, teamId]
         );
+
+        await registrarLogDisparo({
+          batchId,
+          leadNumber: cleanNumber,
+          leadName: name,
+          leadUf: uf,
+          leadCidade: cidade,
+          leadProduto: produto,
+          leadSituacao: situacao_contrato,
+          agentId,
+          agentName,
+          agentEmail: userEmail,
+          templateId,
+          templateName,
+          channelToken,
+          automationName,
+          tentativaNumero: 1,
+          statusEnvio: 'bloqueado',
+          motivoBloqueio: `Limite diário de ${limitePorUsuarioDia} envios atingido`,
+          disparadoEm: new Date(),
+          processadoEm: new Date(),
+          duracaoMs: 0,
+        });
 
         blockedDailyLimit++;
         continue;
