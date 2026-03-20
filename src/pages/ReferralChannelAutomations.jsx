@@ -31,7 +31,8 @@ import {
   Radio,
   Search,
   RefreshCw,
-  Key
+  Key,
+  Send
 } from "lucide-react";
 import {
   Dialog,
@@ -123,6 +124,9 @@ export default function ReferralChannelAutomations() {
   const [showDialog, setShowDialog] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [testPhone, setTestPhone] = useState("");
+  const [testPhoneError, setTestPhoneError] = useState("");
+  const [sendingTest, setSendingTest] = useState(false);
 
   const [channelToken, setChannelToken] = useState("");
   const [channelLabel, setChannelLabel] = useState("");
@@ -293,6 +297,8 @@ export default function ReferralChannelAutomations() {
       stop_on_trigger: false,
     });
     setEditingRule(null);
+    setTestPhone("");
+    setTestPhoneError("");
   };
 
   const handleEdit = (rule) => {
@@ -414,6 +420,47 @@ export default function ReferralChannelAutomations() {
       },
     });
     setShowTemplateSelector(false);
+  };
+
+  const validatePhone = (raw) => {
+    const cleaned = raw.replace(/[\s\-\(\)\+]/g, '');
+    if (!/^\d+$/.test(cleaned)) return 'Número deve conter apenas dígitos';
+    if (cleaned.length < 10 || cleaned.length > 15) return 'Número deve ter entre 10 e 15 dígitos (formato E.164)';
+    return '';
+  };
+
+  const handleTestSend = async () => {
+    const cleaned = testPhone.replace(/[\s\-\(\)\+]/g, '');
+    const error = validatePhone(cleaned);
+    if (error) {
+      setTestPhoneError(error);
+      return;
+    }
+    setTestPhoneError('');
+    setSendingTest(true);
+    try {
+      const token = localStorage.getItem('accessToken');
+      const resp = await fetch('/api/whatsapp/test-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          phone: cleaned,
+          templateId: formData.whatsapp_template_id,
+          templateName: formData.whatsapp_template_name,
+          channelToken: channelToken.trim(),
+        }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        toast.success('Mensagem de teste enviada com sucesso!');
+      } else {
+        toast.error(data.error || data.message || 'Erro ao enviar mensagem de teste');
+      }
+    } catch (err) {
+      toast.error(`Erro de conexão: ${err.message}`);
+    } finally {
+      setSendingTest(false);
+    }
   };
 
   const getTriggerLabel = (type) => {
@@ -905,6 +952,52 @@ export default function ReferralChannelAutomations() {
                       <p className="text-xs text-gray-500 mt-1">
                         ID: {formData.whatsapp_template_id}
                       </p>
+                    )}
+
+                    {formData.whatsapp_template_id && (
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Área de teste</p>
+                        <div className="space-y-2">
+                          <Label className="text-gray-500 text-sm">Testar envio</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              value={testPhone}
+                              onChange={(e) => {
+                                setTestPhone(e.target.value);
+                                setTestPhoneError('');
+                              }}
+                              placeholder="Ex: 5511999999999"
+                              className="bg-white flex-1"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={sendingTest || !testPhone.trim() || !formData.whatsapp_template_id}
+                              onClick={handleTestSend}
+                              className="text-gray-600 border-gray-300 hover:bg-gray-50"
+                            >
+                              {sendingTest ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                                  Enviando...
+                                </>
+                              ) : (
+                                <>
+                                  <Send className="w-4 h-4 mr-1" />
+                                  Enviar Teste
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                          {testPhoneError && (
+                            <p className="text-xs text-red-500">{testPhoneError}</p>
+                          )}
+                          <p className="text-xs text-gray-400">
+                            Digite o número com DDD e código do país (sem espaços ou caracteres especiais)
+                          </p>
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { getWhatsAppTemplates, getWhatsAppTemplatesByToken, sendWhatsAppMessage, setContactAttributes } from '../services/whatsappService.js';
+import { getWhatsAppTemplates, getWhatsAppTemplatesByToken, sendWhatsAppMessage, sendWhatsAppMessageWithToken, setContactAttributes } from '../services/whatsappService.js';
 import { query } from '../config/database.js';
 import { runAllAutomations, getAutomationLogs } from '../services/automationService.js';
 
@@ -27,6 +27,49 @@ router.get('/templates-by-token', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Error fetching WhatsApp templates by token:', error);
     res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/test-send', authMiddleware, async (req, res) => {
+  try {
+    const { phone, templateId, templateName, channelToken } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({ success: false, error: 'Número de telefone é obrigatório' });
+    }
+    if (!templateId) {
+      return res.status(400).json({ success: false, error: 'Template é obrigatório' });
+    }
+    if (!channelToken) {
+      return res.status(400).json({ success: false, error: 'Token do canal é obrigatório' });
+    }
+
+    const formattedPhone = phone.replace(/\D/g, '');
+
+    const mockLead = {
+      name: 'Teste de Envio',
+      full_name: 'Teste de Envio',
+      phone: formattedPhone,
+    };
+
+    const mockAgent = {
+      name: req.user?.full_name || req.user?.name || 'Vendedor Teste',
+      full_name: req.user?.full_name || req.user?.name || 'Vendedor Teste',
+      phone: req.user?.phone || '',
+      id: req.user?.id,
+    };
+
+    const result = await sendWhatsAppMessageWithToken(mockLead, mockAgent, templateId, channelToken, null);
+    res.json({ success: true, message: `Mensagem de teste enviada para ${formattedPhone}` });
+  } catch (error) {
+    console.error('Error in test-send:', error);
+
+    let userMessage = error.message;
+    if (error.message && error.message.includes('already open')) {
+      userMessage = 'Já existe uma conversa aberta com este número na plataforma WHU. Tente com outro número ou aguarde o chat ser fechado.';
+    }
+
+    res.status(500).json({ success: false, error: userMessage });
   }
 });
 
