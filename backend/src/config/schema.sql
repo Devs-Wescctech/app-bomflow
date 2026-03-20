@@ -919,6 +919,8 @@ CREATE TABLE IF NOT EXISTS gerador_leads_queue (
   scheduled_at TIMESTAMP
 );
 
+ALTER TABLE gerador_leads_queue ADD COLUMN IF NOT EXISTS channel_token VARCHAR(500);
+
 CREATE INDEX IF NOT EXISTS idx_glq_batch ON gerador_leads_queue (batch_id);
 CREATE INDEX IF NOT EXISTS idx_glq_status ON gerador_leads_queue (status_envio);
 CREATE INDEX IF NOT EXISTS idx_glq_batch_status ON gerador_leads_queue (batch_id, status_envio);

@@ -13,6 +13,7 @@ import { generateProposalPDF } from '../services/pdfService.js';
 import { sendWhatsAppMessage, sendDocument, sendTextMessage } from '../services/whatsappService.js';
 import { v4 as uuidv4 } from 'uuid';
 import { enqueueLeads, processQueue, retryFailed, getQueueStatus, getDashboardMetrics, getLogsWithPagination, normalizePhone, checkConversions, getConversionMetrics, getConversionsList } from '../services/whatsappQueueService.js';
+import { getEnvioRegulamentoConfig } from '../services/automationService.js';
 import { getAgentByErpId, getErpAgentMap, resolveAgentFromErp } from '../services/erpIntegrationService.js';
 import OpenAI from 'openai';
 import FormData from 'form-data';
@@ -318,8 +319,6 @@ router.get('/lead-generator-base', authMiddleware, async (req, res) => {
   }
 });
 
-const WHATSAPP_TEMPLATE_ID = '6878e30fed3085944b9841b1';
-
 const DISPATCH_FORBIDDEN_TYPES = ['vendas', 'sales', 'bom_auto_atendente', 'support', 'collection', 'pre_sales', 'post_sales'];
 
 async function getAgentForDispatchCheck(req) {
@@ -354,6 +353,13 @@ router.post('/lead-generator-whatsapp-send', authMiddleware, async (req, res) =>
       return res.status(403).json({ success: false, error: 'Você não tem permissão para realizar disparos de WhatsApp.' });
     }
 
+    let envioConfig;
+    try {
+      envioConfig = await getEnvioRegulamentoConfig();
+    } catch (configErr) {
+      return res.status(400).json({ success: false, error: configErr.message });
+    }
+
     const { leads, filtersUsed } = req.body;
     const userId = req.user?.id || null;
     const userEmail = req.user?.email || agent?.email || null;
@@ -369,14 +375,15 @@ router.post('/lead-generator-whatsapp-send', authMiddleware, async (req, res) =>
 
     const batchId = uuidv4();
 
-    console.log(`[WhatsAppQueue] Enqueuing batch ${batchId}: ${leads.length} leads by ${userEmail}`);
+    console.log(`[WhatsAppQueue] Enqueuing batch ${batchId}: ${leads.length} leads by ${userEmail} | template=${envioConfig.templateId} (${envioConfig.templateName})`);
 
     const summary = await enqueueLeads({
       leads,
       userId,
       userEmail,
       teamId,
-      templateId: WHATSAPP_TEMPLATE_ID,
+      templateId: envioConfig.templateId,
+      channelToken: envioConfig.channelToken,
       filtersUsed,
       batchId,
     });

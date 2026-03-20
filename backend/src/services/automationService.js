@@ -619,3 +619,32 @@ export async function getAutomationLogs(filters = {}) {
 
   return result.rows;
 }
+
+export async function getEnvioRegulamentoConfig() {
+  const result = await query(
+    `SELECT id, name, channel_token, whatsapp_template_id, whatsapp_template_name, active
+     FROM referral_channel_automations
+     WHERE name = 'Envio Regulamento' AND active = true
+     LIMIT 1`
+  );
+
+  if (result.rows.length === 0) {
+    throw new Error("Automação 'Envio Regulamento' não encontrada ou inativa. Configure-a em Indicações > Automações por Canal antes de disparar.");
+  }
+
+  const config = result.rows[0];
+
+  if (!config.channel_token) {
+    throw new Error("Token do canal não configurado na automação 'Envio Regulamento'.");
+  }
+
+  if (!config.whatsapp_template_id) {
+    throw new Error("Template WhatsApp não configurado na automação 'Envio Regulamento'.");
+  }
+
+  return {
+    channelToken: config.channel_token,
+    templateId: config.whatsapp_template_id,
+    templateName: config.whatsapp_template_name || '',
+  };
+}
