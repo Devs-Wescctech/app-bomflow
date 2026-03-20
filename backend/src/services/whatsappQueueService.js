@@ -1,5 +1,6 @@
 import { query } from '../config/database.js';
 import { getEnvioRegulamentoConfig } from './automationService.js';
+import { registrarLogDisparo } from './leadGeneratorLogger.js';
 
 const WHATSAPP_API_URL = 'https://api.wescctech.com.br/core/v2/api/chats/send-template';
 
@@ -37,7 +38,7 @@ async function getRateConfig() {
   }
 }
 
-export async function enqueueLeads({ leads, userId, userEmail, teamId, templateId, channelToken, filtersUsed, batchId }) {
+export async function enqueueLeads({ leads, userId, userEmail, teamId, templateId, channelToken, templateName, automationName, agentId, agentName, filtersUsed, batchId }) {
   const rateConfig = await getRateConfig();
   const bloqueioRecorrenciaDias = rateConfig.bloqueioRecorrenciaDias;
   const limitePorUsuarioDia = rateConfig.limitePorUsuarioDia;
@@ -56,7 +57,7 @@ export async function enqueueLeads({ leads, userId, userEmail, teamId, templateI
   let userDailyCount = dailyCountResult.rows[0]?.count || 0;
 
   for (const lead of leads) {
-    const { number, name, lead_id } = lead;
+    const { number, name, lead_id, uf, cidade, produto, situacao_contrato } = lead;
 
     if (!number) {
       skipped++;
@@ -78,9 +79,9 @@ export async function enqueueLeads({ leads, userId, userEmail, teamId, templateI
       if (block30Result.rows.length > 0) {
         await query(
           `INSERT INTO gerador_leads_queue
-            (batch_id, lead_id, lead_number, lead_name, template_id, channel_token, status_envio, user_id, user_email, team_id, filters_used, motivo_bloqueio)
-           VALUES ($1, $2, $3, $4, $5, $6, 'bloqueado_30_dias', $7, $8, $9, $10, $11)`,
-          [batchId, lead_id || null, cleanNumber, name || null, templateId, channelToken, userId, userEmail, teamId, filtersUsed ? JSON.stringify(filtersUsed) : null, `Envio realizado nos últimos ${bloqueioRecorrenciaDias} dias`]
+            (batch_id, lead_id, lead_number, lead_name, template_id, channel_token, template_name, automation_name, agent_id, agent_name, lead_uf, lead_cidade, lead_produto, lead_situacao, status_envio, user_id, user_email, team_id, filters_used, motivo_bloqueio)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'bloqueado_30_dias', $15, $16, $17, $18, $19)`,
+          [batchId, lead_id || null, cleanNumber, name || null, templateId, channelToken, templateName || null, automationName || null, agentId || null, agentName || null, uf || null, cidade || null, produto || null, situacao_contrato || null, userId, userEmail, teamId, filtersUsed ? JSON.stringify(filtersUsed) : null, `Envio realizado nos últimos ${bloqueioRecorrenciaDias} dias`]
         );
 
         await query(
@@ -107,9 +108,9 @@ export async function enqueueLeads({ leads, userId, userEmail, teamId, templateI
       if (dupResult.rows.length > 0) {
         await query(
           `INSERT INTO gerador_leads_queue
-            (batch_id, lead_id, lead_number, lead_name, template_id, channel_token, status_envio, user_id, user_email, team_id, filters_used, motivo_bloqueio)
-           VALUES ($1, $2, $3, $4, $5, $6, 'bloqueado_duplicidade', $7, $8, $9, $10, 'Envio já realizado hoje para este número')`,
-          [batchId, lead_id || null, cleanNumber, name || null, templateId, channelToken, userId, userEmail, teamId, filtersUsed ? JSON.stringify(filtersUsed) : null]
+            (batch_id, lead_id, lead_number, lead_name, template_id, channel_token, template_name, automation_name, agent_id, agent_name, lead_uf, lead_cidade, lead_produto, lead_situacao, status_envio, user_id, user_email, team_id, filters_used, motivo_bloqueio)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'bloqueado_duplicidade', $15, $16, $17, $18, 'Envio já realizado hoje para este número')`,
+          [batchId, lead_id || null, cleanNumber, name || null, templateId, channelToken, templateName || null, automationName || null, agentId || null, agentName || null, uf || null, cidade || null, produto || null, situacao_contrato || null, userId, userEmail, teamId, filtersUsed ? JSON.stringify(filtersUsed) : null]
         );
 
         await query(
@@ -126,9 +127,9 @@ export async function enqueueLeads({ leads, userId, userEmail, teamId, templateI
       if (userDailyCount + enqueued >= limitePorUsuarioDia) {
         await query(
           `INSERT INTO gerador_leads_queue
-            (batch_id, lead_id, lead_number, lead_name, template_id, channel_token, status_envio, user_id, user_email, team_id, filters_used, motivo_bloqueio)
-           VALUES ($1, $2, $3, $4, $5, $6, 'bloqueado_duplicidade', $7, $8, $9, $10, $11)`,
-          [batchId, lead_id || null, cleanNumber, name || null, templateId, channelToken, userId, userEmail, teamId, filtersUsed ? JSON.stringify(filtersUsed) : null, `Limite diário de ${limitePorUsuarioDia} envios atingido`]
+            (batch_id, lead_id, lead_number, lead_name, template_id, channel_token, template_name, automation_name, agent_id, agent_name, lead_uf, lead_cidade, lead_produto, lead_situacao, status_envio, user_id, user_email, team_id, filters_used, motivo_bloqueio)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'bloqueado_duplicidade', $15, $16, $17, $18, $19)`,
+          [batchId, lead_id || null, cleanNumber, name || null, templateId, channelToken, templateName || null, automationName || null, agentId || null, agentName || null, uf || null, cidade || null, produto || null, situacao_contrato || null, userId, userEmail, teamId, filtersUsed ? JSON.stringify(filtersUsed) : null, `Limite diário de ${limitePorUsuarioDia} envios atingido`]
         );
 
         await query(
@@ -144,9 +145,9 @@ export async function enqueueLeads({ leads, userId, userEmail, teamId, templateI
 
       await query(
         `INSERT INTO gerador_leads_queue
-          (batch_id, lead_id, lead_number, lead_name, template_id, channel_token, status_envio, user_id, user_email, team_id, filters_used)
-         VALUES ($1, $2, $3, $4, $5, $6, 'pendente', $7, $8, $9, $10)`,
-        [batchId, lead_id || null, cleanNumber, name || null, templateId, channelToken, userId, userEmail, teamId, filtersUsed ? JSON.stringify(filtersUsed) : null]
+          (batch_id, lead_id, lead_number, lead_name, template_id, channel_token, template_name, automation_name, agent_id, agent_name, lead_uf, lead_cidade, lead_produto, lead_situacao, status_envio, user_id, user_email, team_id, filters_used)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pendente', $15, $16, $17, $18)`,
+        [batchId, lead_id || null, cleanNumber, name || null, templateId, channelToken, templateName || null, automationName || null, agentId || null, agentName || null, uf || null, cidade || null, produto || null, situacao_contrato || null, userId, userEmail, teamId, filtersUsed ? JSON.stringify(filtersUsed) : null]
       );
 
       enqueued++;
@@ -223,6 +224,7 @@ export async function processQueue(batchId) {
     let apiResponse = null;
     let success = false;
     let messageSentId = null;
+    const disparadoEm = new Date();
 
     try {
       let itemToken = item.channel_token;
@@ -258,6 +260,8 @@ export async function processQueue(batchId) {
       success = false;
     }
 
+    const processadoEm = new Date();
+    const duracaoMs = processadoEm.getTime() - disparadoEm.getTime();
     const currentAttempt = item.tentativa_numero;
     const statusEnvio = success ? 'enviado' : (currentAttempt < item.max_tentativas ? 'reenvio_agendado' : 'falha');
 
@@ -286,6 +290,32 @@ export async function processQueue(batchId) {
     } catch (dbErr) {
       console.error(`[WhatsAppQueue] DB log error for ${item.lead_number}:`, dbErr.message);
     }
+
+    await registrarLogDisparo({
+      batchId,
+      leadNumber: item.lead_number,
+      leadName: item.lead_name,
+      leadUf: item.lead_uf,
+      leadCidade: item.lead_cidade,
+      leadProduto: item.lead_produto,
+      leadSituacao: item.lead_situacao,
+      agentId: item.agent_id,
+      agentName: item.agent_name,
+      agentEmail: item.user_email,
+      templateId: item.template_id,
+      templateName: item.template_name,
+      channelToken: item.channel_token,
+      automationName: item.automation_name,
+      tentativaNumero: currentAttempt,
+      statusEnvio,
+      httpStatus,
+      messageSentId: messageSentId ? String(messageSentId) : null,
+      apiResponse,
+      motivoBloqueio: null,
+      disparadoEm,
+      processadoEm,
+      duracaoMs,
+    });
 
     if (!success) {
       await query(

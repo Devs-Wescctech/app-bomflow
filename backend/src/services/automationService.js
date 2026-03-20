@@ -646,5 +646,6 @@ export async function getEnvioRegulamentoConfig() {
     channelToken: config.channel_token,
     templateId: config.whatsapp_template_id,
     templateName: config.whatsapp_template_name || '',
+    automationName: config.name || 'Envio Regulamento',
   };
 }
