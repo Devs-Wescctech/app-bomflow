@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { getWhatsAppTemplates, sendWhatsAppMessage, setContactAttributes } from '../services/whatsappService.js';
+import { getWhatsAppTemplates, getWhatsAppTemplatesByToken, sendWhatsAppMessage, setContactAttributes } from '../services/whatsappService.js';
 import { query } from '../config/database.js';
 import { runAllAutomations, getAutomationLogs } from '../services/automationService.js';
 
@@ -12,6 +12,20 @@ router.get('/templates', authMiddleware, async (req, res) => {
     res.json(templates);
   } catch (error) {
     console.error('Error fetching WhatsApp templates:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/templates-by-token', authMiddleware, async (req, res) => {
+  try {
+    const channelToken = req.headers['x-channel-token'];
+    if (!channelToken) {
+      return res.status(400).json({ message: 'Channel token is required (header "x-channel-token")' });
+    }
+    const templates = await getWhatsAppTemplatesByToken(channelToken);
+    res.json(templates);
+  } catch (error) {
+    console.error('Error fetching WhatsApp templates by token:', error);
     res.status(500).json({ message: error.message });
   }
 });

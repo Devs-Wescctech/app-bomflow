@@ -709,6 +709,39 @@ CREATE TABLE IF NOT EXISTS referral_automations (
 );
 
 -- =====================
+-- REFERRAL CHANNEL CONFIG (token per channel)
+-- =====================
+CREATE TABLE IF NOT EXISTS referral_channel_config (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    channel_token VARCHAR(500) NOT NULL,
+    channel_label VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- =====================
+-- REFERRAL CHANNEL AUTOMATIONS (per-channel token)
+-- =====================
+CREATE TABLE IF NOT EXISTS referral_channel_automations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    trigger_type VARCHAR(50),
+    trigger_config JSONB,
+    action_type VARCHAR(50),
+    action_config JSONB,
+    whatsapp_template_id VARCHAR(100),
+    whatsapp_template_name VARCHAR(255),
+    channel_token VARCHAR(500) NOT NULL,
+    channel_token_label VARCHAR(255),
+    priority INTEGER DEFAULT 0,
+    stop_on_trigger BOOLEAN DEFAULT FALSE,
+    active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- =====================
 -- AUTOMATION EXECUTION LOG
 -- =====================
 CREATE TABLE IF NOT EXISTS automation_logs (
