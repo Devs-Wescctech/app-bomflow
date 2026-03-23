@@ -78,6 +78,7 @@ import {
   Users,
   Shield,
   FileCheck,
+  Plug,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -257,6 +258,7 @@ const menuModules = [
       { title: "Templates", url: createPageUrl("Templates"), icon: FileText },
       { title: "Distribuição de Tickets", url: createPageUrl("DistributionRules"), icon: Zap },
       { title: "Agentes de IA", url: createPageUrl("AIAgents"), icon: User },
+      { title: "Integrações e APIs", url: createPageUrl("SystemsApiDocs"), icon: Plug },
     ]
   }
 ];
