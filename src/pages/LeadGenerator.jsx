@@ -51,7 +51,7 @@ export default function LeadGenerator() {
   });
 
   const [filters, setFilters] = useState({
-    canal: "todos", cidade: "todos", uf: "todos", produto: "todos", situacao_contrato: "todos",
+    canal: "todos", cidade: "todos", uf: "todos", produto: "todos", situacao_contrato: "todos", tempoAtivo: "todos",
   });
 
   const [selectedLeads, setSelectedLeads] = useState(new Set());
@@ -136,6 +136,21 @@ export default function LeadGenerator() {
       if (filters.uf !== 'todos') params.set('uf', filters.uf);
       if (filters.produto !== 'todos') params.set('produto', filters.produto);
       if (filters.situacao_contrato !== 'todos') params.set('situacao_contrato', filters.situacao_contrato);
+      if (filters.tempoAtivo !== 'todos') {
+        const faixas = {
+          '0-180': { min: 0, max: 180 },
+          '181-365': { min: 181, max: 365 },
+          '366-730': { min: 366, max: 730 },
+          '731-1095': { min: 731, max: 1095 },
+          '1096-1825': { min: 1096, max: 1825 },
+          '1826+': { min: 1826 },
+        };
+        const faixa = faixas[filters.tempoAtivo];
+        if (faixa) {
+          if (faixa.min !== undefined) params.set('tempoAtivoMin', String(faixa.min));
+          if (faixa.max !== undefined) params.set('tempoAtivoMax', String(faixa.max));
+        }
+      }
 
       const res = await fetch(`${API_BASE}/functions/lead-generator-base?${params.toString()}`, {
         headers: { ...getAuthHeaders() },
@@ -155,7 +170,7 @@ export default function LeadGenerator() {
   }
 
   function handleClearFilters() {
-    setFilters({ canal: "todos", cidade: "todos", uf: "todos", produto: "todos", situacao_contrato: "todos" });
+    setFilters({ canal: "todos", cidade: "todos", uf: "todos", produto: "todos", situacao_contrato: "todos", tempoAtivo: "todos" });
     setLeads([]);
     setTotalFound(0);
     setHasSearched(false);
@@ -511,7 +526,7 @@ export default function LeadGenerator() {
 
             {filtersOpen && (
               <form onSubmit={handleSearch} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-medium">Canal</Label>
                     <Select value={filters.canal} onValueChange={(val) => setFilters({ ...filters, canal: val })}>
@@ -559,6 +574,21 @@ export default function LeadGenerator() {
                       <SelectContent>
                         <SelectItem value="todos">Todos</SelectItem>
                         {filterOptions.situacao_contrato.map(s => <SelectItem key={s} value={s}>{situacaoLabel(s)} ({s})</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Tempo Ativo (dias)</Label>
+                    <Select value={filters.tempoAtivo} onValueChange={(val) => setFilters({ ...filters, tempoAtivo: val })}>
+                      <SelectTrigger className="border-gray-200 dark:border-gray-700"><SelectValue placeholder="Todos" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Todos</SelectItem>
+                        <SelectItem value="0-180">Até 180 dias</SelectItem>
+                        <SelectItem value="181-365">181 a 365 dias</SelectItem>
+                        <SelectItem value="366-730">366 a 730 dias</SelectItem>
+                        <SelectItem value="731-1095">731 a 1095 dias</SelectItem>
+                        <SelectItem value="1096-1825">1096 a 1825 dias</SelectItem>
+                        <SelectItem value="1826+">Acima de 1825 dias</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

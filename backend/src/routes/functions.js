@@ -311,8 +311,26 @@ router.get('/lead-generator-options', authMiddleware, async (req, res) => {
 
 router.get('/lead-generator-base', authMiddleware, async (req, res) => {
   try {
-    const data = await fetchLeadGeneratorFromERP(req.query);
-    console.log(`[LeadGenerator] Search returned ${data.length} leads`);
+    let data = await fetchLeadGeneratorFromERP(req.query);
+    console.log(`[LeadGenerator] Search returned ${data.length} leads from ERP`);
+
+    const tempoAtivoMin = req.query.tempoAtivoMin ? parseInt(req.query.tempoAtivoMin, 10) : null;
+    const tempoAtivoMax = req.query.tempoAtivoMax ? parseInt(req.query.tempoAtivoMax, 10) : null;
+
+    if (tempoAtivoMin !== null || tempoAtivoMax !== null) {
+      const before = data.length;
+      data = data.filter(lead => {
+        const val = lead.tempo_ativo_contrato;
+        if (val === null || val === undefined) return false;
+        const num = typeof val === 'number' ? val : parseInt(val, 10);
+        if (isNaN(num)) return false;
+        if (tempoAtivoMin !== null && num < tempoAtivoMin) return false;
+        if (tempoAtivoMax !== null && num > tempoAtivoMax) return false;
+        return true;
+      });
+      console.log(`[LeadGenerator] tempo_ativo_contrato filter: ${before} -> ${data.length} (min=${tempoAtivoMin}, max=${tempoAtivoMax})`);
+    }
+
     res.json(data);
   } catch (error) {
     console.error('Error fetching lead generator base:', error);
