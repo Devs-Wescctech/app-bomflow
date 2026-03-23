@@ -75,6 +75,7 @@ import PublicProposal from "./PublicProposal";
 import PublicContractSign from "./PublicContractSign";
 
 import Settings from "./Settings";
+import SystemsApiDocs from "./SystemsApiDocs";
 
 import AIAgents from "./AIAgents";
 
@@ -603,6 +604,8 @@ function PagesContent() {
                 
                 <Route path="/BomAutoPainel" element={<BomAutoPainel />} />
                 <Route path="/BomAutoRelatorio" element={<BomAutoRelatorio />} />
+                
+                <Route path="/SystemsApiDocs" element={<SystemsApiDocs />} />
                 
             </Routes>
         </Layout>
