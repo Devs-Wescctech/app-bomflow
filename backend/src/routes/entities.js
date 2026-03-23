@@ -784,9 +784,11 @@ router.post('/referrals', authMiddleware, async (req, res) => {
       await notifyReferralAssigned(referral, referral.agent_id);
     }
     
-    executeLeadCreatedAutomation(referral, 'referral').catch(err => {
-      console.error('[Automation] Error in referral_created automation:', err.message);
-    });
+    // TEMPORARIAMENTE DESATIVADO — template incorreto
+    // Reativar após correção do template
+    // executeLeadCreatedAutomation(referral, 'referral').catch(err => {
+    //   console.error('[Automation] Error in referral_created automation:', err.message);
+    // });
     
     res.status(201).json(convertKeysToCamel(referral));
   } catch (error) {
