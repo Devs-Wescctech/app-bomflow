@@ -135,7 +135,7 @@ export default function Login() {
           {/* Feature Cards - 2x2 Grid */}
           <div className="grid grid-cols-2 gap-4 mb-8">
             {/* Card 1 - Pipeline B2B */}
-            <div className="group p-5 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300" style={{ ':hover': { boxShadow: '0 20px 25px rgba(90,42,60,0.15)' } }}>
+            <div className="group p-5 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
               <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform" style={{ boxShadow: '0 8px 16px rgba(90,42,60,0.2)' }}>
                 <TrendingUp className="w-6 h-6 text-white" />
               </div>
@@ -174,7 +174,7 @@ export default function Login() {
             </div>
             
             {/* Card 4 - Gestão de Agentes */}
-            <div className="group p-5 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300" style={{ ':hover': { boxShadow: '0 20px 25px rgba(90,42,60,0.15)' } }}>
+            <div className="group p-5 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
               <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform" style={{ boxShadow: '0 8px 16px rgba(90,42,60,0.2)' }}>
                 <Shield className="w-6 h-6 text-white" />
               </div>
@@ -189,7 +189,7 @@ export default function Login() {
           
           {/* Bottom Stats */}
           <div className="flex items-center gap-6">
-            <div className="flex-1 p-4 rounded-xl bg-white/60 backdrop-blur-sm border border-gray-100 hover:shadow-lg transition-all" style={{ ':hover': { boxShadow: '0 10px 20px rgba(90,42,60,0.1)' } }}>
+            <div className="flex-1 p-4 rounded-xl bg-white/60 backdrop-blur-sm border border-gray-100 hover:shadow-lg transition-all">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-emerald-500 rounded-xl flex items-center justify-center" style={{ boxShadow: '0 4px 12px rgba(34,197,94,0.2)' }}>
                   <Activity className="w-5 h-5 text-white" />
@@ -200,7 +200,7 @@ export default function Login() {
                 </div>
               </div>
             </div>
-            <div className="flex-1 p-4 rounded-xl bg-white/60 backdrop-blur-sm border border-gray-100 hover:shadow-lg transition-all" style={{ ':hover': { boxShadow: '0 10px 20px rgba(90,42,60,0.1)' } }}>
+            <div className="flex-1 p-4 rounded-xl bg-white/60 backdrop-blur-sm border border-gray-100 hover:shadow-lg transition-all">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-xl flex items-center justify-center" style={{ boxShadow: '0 4px 12px rgba(59,130,246,0.2)' }}>
                   <Clock className="w-5 h-5 text-white" />
@@ -211,7 +211,7 @@ export default function Login() {
                 </div>
               </div>
             </div>
-            <div className="flex-1 p-4 rounded-xl bg-white/60 backdrop-blur-sm border border-gray-100 hover:shadow-lg transition-all" style={{ ':hover': { boxShadow: '0 10px 20px rgba(90,42,60,0.1)' } }}>
+            <div className="flex-1 p-4 rounded-xl bg-white/60 backdrop-blur-sm border border-gray-100 hover:shadow-lg transition-all">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-gradient-to-br from-purple-400 to-pink-500 rounded-xl flex items-center justify-center" style={{ boxShadow: '0 4px 12px rgba(168,85,247,0.2)' }}>
                   <Award className="w-5 h-5 text-white" />
