@@ -1,6 +1,32 @@
 import { query } from '../config/database.js';
 import { sendWhatsAppMessage, sendWhatsAppMessageWithToken } from './whatsappService.js';
 
+async function loadAutomationTeamIds(automations, junctionTable = 'lead_automation_teams') {
+  if (!automations || automations.length === 0) return automations;
+  const ids = automations.map(a => a.id);
+  const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ');
+  const teamsResult = await query(
+    `SELECT automation_id, team_id FROM ${junctionTable} WHERE automation_id IN (${placeholders})`,
+    ids
+  );
+  const teamMap = {};
+  for (const row of teamsResult.rows) {
+    if (!teamMap[row.automation_id]) teamMap[row.automation_id] = [];
+    teamMap[row.automation_id].push(row.team_id);
+  }
+  return automations.map(a => {
+    const fromJunction = teamMap[a.id] || [];
+    if (fromJunction.length > 0) {
+      a.team_ids = fromJunction;
+    } else if (a.team_id) {
+      a.team_ids = [a.team_id];
+    } else {
+      a.team_ids = [];
+    }
+    return a;
+  });
+}
+
 export async function checkAndExecuteLeadAutomations() {
   try {
     const automationsResult = await query(`
@@ -8,7 +34,7 @@ export async function checkAndExecuteLeadAutomations() {
       WHERE active = true 
       ORDER BY priority ASC
     `);
-    const automations = automationsResult.rows;
+    let automations = await loadAutomationTeamIds(automationsResult.rows);
 
     for (const automation of automations) {
       const triggerConfig = typeof automation.trigger_config === 'string' 
@@ -301,9 +327,12 @@ async function checkInactivityTrigger(automation, triggerConfig, automationType,
     
     const params = [hoursAgo.toISOString(), ...closedStages, automation.id, hoursAgo.toISOString()];
     let teamFilter = '';
-    if (automation.team_id) {
-      params.push(automation.team_id);
-      teamFilter = ` AND l.team_id = $${params.length}`;
+    if (automation.team_ids && automation.team_ids.length > 0) {
+      const teamPlaceholders = automation.team_ids.map((tid, i) => {
+        params.push(tid);
+        return `$${params.length}`;
+      }).join(', ');
+      teamFilter = ` AND l.team_id IN (${teamPlaceholders})`;
     }
 
     const leadsResult = await query(`
@@ -321,7 +350,7 @@ async function checkInactivityTrigger(automation, triggerConfig, automationType,
       LIMIT 10
     `, params);
 
-    console.log(`[Automation] ${automation.name}: Found ${leadsResult.rows.length} leads matching criteria${automation.team_id ? ` (team: ${automation.team_id})` : ''}`);
+    console.log(`[Automation] ${automation.name}: Found ${leadsResult.rows.length} leads matching criteria${automation.team_ids?.length ? ` (teams: ${automation.team_ids.join(', ')})` : ''}`);
 
     for (const lead of leadsResult.rows) {
       await executeAutomationAction(automation, lead, automationType);
@@ -551,7 +580,7 @@ export async function executeLeadCreatedAutomation(lead, leadType = 'lead') {
       ORDER BY priority ASC
     `);
     
-    const automations = automationsResult.rows;
+    let automations = await loadAutomationTeamIds(automationsResult.rows);
     
     if (automations.length === 0) {
       console.log(`[Automation] No lead_created automations configured for ${leadType}`);
@@ -571,8 +600,8 @@ export async function executeLeadCreatedAutomation(lead, leadType = 'lead') {
     };
 
     for (const automation of automations) {
-      if (automation.team_id && lead.team_id !== automation.team_id) {
-        console.log(`[Automation] Skipping ${automation.name} — lead team (${lead.team_id}) doesn't match automation team (${automation.team_id})`);
+      if (automation.team_ids && automation.team_ids.length > 0 && !automation.team_ids.includes(lead.team_id)) {
+        console.log(`[Automation] Skipping ${automation.name} — lead team (${lead.team_id}) not in automation teams (${automation.team_ids.join(', ')})`);
         continue;
       }
       console.log(`[Automation] Executing ${automation.name} for new ${leadType}`);

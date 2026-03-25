@@ -37,6 +37,7 @@ import {
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { Checkbox } from "@/components/ui/checkbox";
 import WhatsAppTemplateSelector from "@/components/whatsapp/WhatsAppTemplateSelector";
 import AutomationTestDialog from "@/components/whatsapp/AutomationTestDialog";
 import AutomationLogsPanel from "@/components/whatsapp/AutomationLogsPanel";
@@ -96,7 +97,7 @@ export default function LeadAutomations() {
     },
     whatsapp_template_id: "",
     whatsapp_template_name: "",
-    team_id: "",
+    team_ids: [],
   });
 
   const { data: rules = [], isLoading: rulesLoading } = useQuery({
@@ -201,7 +202,7 @@ export default function LeadAutomations() {
       },
       whatsapp_template_id: "",
       whatsapp_template_name: "",
-      team_id: "",
+      team_ids: [],
     });
     setEditingRule(null);
   };
@@ -276,7 +277,7 @@ export default function LeadAutomations() {
       },
       whatsapp_template_id: rule.whatsappTemplateId || actionConfig.whatsapp_template_id || actionConfig.whatsappTemplateId || "",
       whatsapp_template_name: rule.whatsappTemplateName || actionConfig.whatsapp_template_name || actionConfig.whatsappTemplateName || "",
-      team_id: rule.teamId || "",
+      team_ids: rule.teamIds || (rule.teamId ? [rule.teamId] : []),
     });
     setShowDialog(true);
   };
@@ -289,8 +290,8 @@ export default function LeadAutomations() {
       return;
     }
 
-    if (!formData.team_id) {
-      toast.error('Selecione um time para esta automação.');
+    if (!formData.team_ids || formData.team_ids.length === 0) {
+      toast.error('Selecione pelo menos um time para esta automação.');
       return;
     }
 
@@ -309,7 +310,7 @@ export default function LeadAutomations() {
       action_config: JSON.stringify(formData.action_config),
       whatsapp_template_id: formData.whatsapp_template_id || null,
       whatsapp_template_name: formData.whatsapp_template_name || null,
-      team_id: formData.team_id || null,
+      team_ids: formData.team_ids || [],
     };
 
     if (editingRule) {
@@ -450,8 +451,16 @@ export default function LeadAutomations() {
                         <Badge className={rule.active ? "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"}>
                           {rule.active ? 'Ativa' : 'Inativa'}
                         </Badge>
-                        <Badge variant="outline" className="text-xs">
-                          {rule.teamId ? (teams.find(t => t.id === rule.teamId)?.name || 'Time removido') : 'Todos os times'}
+                        <Badge variant="outline" className="text-xs" title={
+                          (rule.teamIds && rule.teamIds.length > 0)
+                            ? rule.teamIds.map(tid => teams.find(t => t.id === tid)?.name || 'Removido').join(', ')
+                            : 'Todos os times'
+                        }>
+                          {(rule.teamIds && rule.teamIds.length > 0)
+                            ? (rule.teamIds.length <= 2
+                                ? rule.teamIds.map(tid => teams.find(t => t.id === tid)?.name || 'Removido').join(', ')
+                                : `${rule.teamIds.length} times`)
+                            : 'Todos os times'}
                         </Badge>
                       </div>
                       
@@ -603,22 +612,37 @@ export default function LeadAutomations() {
               </div>
 
               <div>
-                <Label>Time <span className="text-red-500">*</span></Label>
-                <Select
-                  value={formData.team_id}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, team_id: value }))}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Selecione um time" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {teams.map(team => (
-                      <SelectItem key={team.id} value={team.id}>
-                        {team.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Times <span className="text-red-500">*</span></Label>
+                <div className="mt-1 border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto bg-white">
+                  {teams.length === 0 ? (
+                    <p className="text-sm text-gray-500">Nenhum time cadastrado</p>
+                  ) : (
+                    teams.map(team => (
+                      <div key={team.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`team-${team.id}`}
+                          checked={formData.team_ids.includes(team.id)}
+                          onCheckedChange={(checked) => {
+                            setFormData(prev => ({
+                              ...prev,
+                              team_ids: checked
+                                ? [...prev.team_ids, team.id]
+                                : prev.team_ids.filter(id => id !== team.id)
+                            }));
+                          }}
+                        />
+                        <label htmlFor={`team-${team.id}`} className="text-sm cursor-pointer">
+                          {team.name}
+                        </label>
+                      </div>
+                    ))
+                  )}
+                </div>
+                {formData.team_ids.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {formData.team_ids.length} {formData.team_ids.length === 1 ? 'time selecionado' : 'times selecionados'}
+                  </p>
+                )}
               </div>
             </div>
 

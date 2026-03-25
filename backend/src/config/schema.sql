@@ -683,6 +683,19 @@ ALTER TABLE lead_automations ADD COLUMN IF NOT EXISTS whatsapp_template_name VAR
 ALTER TABLE lead_automations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
 ALTER TABLE lead_automations ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id);
 
+CREATE TABLE IF NOT EXISTS lead_automation_teams (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  automation_id UUID NOT NULL REFERENCES lead_automations(id) ON DELETE CASCADE,
+  team_id UUID NOT NULL REFERENCES teams(id),
+  created_at TIMESTAMP DEFAULT now(),
+  UNIQUE(automation_id, team_id)
+);
+
+INSERT INTO lead_automation_teams (automation_id, team_id)
+SELECT id, team_id FROM lead_automations
+WHERE team_id IS NOT NULL
+ON CONFLICT (automation_id, team_id) DO NOTHING;
+
 ALTER TABLE lead_pj_automations ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 0;
 ALTER TABLE lead_pj_automations ADD COLUMN IF NOT EXISTS stop_on_trigger BOOLEAN DEFAULT FALSE;
 ALTER TABLE lead_pj_automations ADD COLUMN IF NOT EXISTS whatsapp_template_id VARCHAR(100);
