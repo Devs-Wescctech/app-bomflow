@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   Plus,
   Phone,
@@ -389,6 +390,7 @@ export default function ReferralPipeline() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showFilters, setShowFilters] = useState(false);
+  const [showConcluded, setShowConcluded] = useState(false);
   const [viewMode, setViewMode] = useState('kanban');
   const [filters, setFilters] = useState(() => {
     const saved = localStorage.getItem('referralPipelineFilters');
@@ -526,14 +528,14 @@ export default function ReferralPipeline() {
       const resolvedAgentId = resolvedAgent?.id;
 
       if (resolvedIsAdmin) {
-        return allReferrals.filter(r => !r.concluded && !r.lost);
+        return allReferrals.filter(r => !r.lost);
       }
 
       if (!resolvedAgent) return [];
 
       const canSeeAll = canViewAll(resolvedAgent, 'referrals');
       if (canSeeAll) {
-        return allReferrals.filter(r => !r.concluded && !r.lost);
+        return allReferrals.filter(r => !r.lost);
       }
 
       const canSeeTeam = canViewTeam(resolvedAgent, 'referrals');
@@ -543,13 +545,13 @@ export default function ReferralPipeline() {
           .map(a => String(a.id));
 
         return allReferrals.filter(r =>
-          (!r.concluded && !r.lost) &&
+          !r.lost &&
           (teamAgentIds.includes(String(r.agentId)) || teamAgentIds.includes(String(r.agent_id)))
         );
       }
 
       return allReferrals.filter(r =>
-        (!r.concluded && !r.lost) &&
+        !r.lost &&
         (String(r.agentId) === String(resolvedAgentId) || String(r.agent_id) === String(resolvedAgentId))
       );
     },
@@ -719,6 +721,8 @@ export default function ReferralPipeline() {
   }, [referrals]);
 
   const filteredReferrals = referrals.filter(referral => {
+    if (!showConcluded && referral.concluded) return false;
+
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
       if (
@@ -1167,14 +1171,24 @@ export default function ReferralPipeline() {
                     </div>
                   </div>
 
-                  {hasActiveFilters && (
-                    <div className="mt-4 flex justify-end">
+                  <div className="mt-4 flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        checked={showConcluded}
+                        onCheckedChange={setShowConcluded}
+                        id="showConcludedRef"
+                      />
+                      <label htmlFor="showConcludedRef" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
+                        Mostrar Convertidos
+                      </label>
+                    </div>
+                    {hasActiveFilters && (
                       <Button variant="ghost" size="sm" onClick={clearFilters}>
                         <X className="w-4 h-4 mr-2" />
                         Limpar Filtros
                       </Button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </motion.div>

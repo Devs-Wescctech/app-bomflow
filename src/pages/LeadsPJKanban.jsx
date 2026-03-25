@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   Plus,
   Phone,
@@ -393,6 +394,7 @@ export default function LeadsPJKanban() {
   const queryClient = useQueryClient();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [showConcluded, setShowConcluded] = useState(false);
   const [viewMode, setViewMode] = useState('kanban');
   const [filters, setFilters] = useState(() => {
     const saved = localStorage.getItem('leadsPJKanbanFilters');
@@ -531,34 +533,30 @@ export default function LeadsPJKanban() {
     queryFn: async () => {
       const allLeads = await base44.entities.LeadPJ.list('-created_at');
       
-      // Admin/supervisors see all leads
       if (isAdmin) {
-        return allLeads.filter(l => !l.concluded && !l.lost);
+        return allLeads.filter(l => !l.lost);
       }
 
       if (!currentAgent) return [];
 
-      // Check if user can see all leads
       const canSeeAll = canViewAll(currentAgent, 'leads-pj');
       if (canSeeAll) {
-        return allLeads.filter(l => !l.concluded && !l.lost);
+        return allLeads.filter(l => !l.lost);
       }
 
-      // Check if user can see team leads
       const canSeeTeam = canViewTeam(currentAgent, 'leads-pj');
       if (canSeeTeam) {
         const teamAgents = allAgents.filter(a => a.team_id === currentAgent.team_id);
         const teamAgentIds = teamAgents.map(a => a.id);
 
         return allLeads.filter(l =>
-          (!l.concluded && !l.lost) &&
+          !l.lost &&
           (teamAgentIds.includes(l.agentId) || teamAgentIds.includes(l.agent_id))
         );
       }
 
-      // Default: only show leads assigned to current agent
       return allLeads.filter(l =>
-        (!l.concluded && !l.lost) &&
+        !l.lost &&
         (l.agentId === currentAgent.id || l.agent_id === currentAgent.id)
       );
     },
@@ -696,6 +694,8 @@ export default function LeadsPJKanban() {
   const [localOrder, setLocalOrder] = useState({});
 
   const filteredLeads = leadsPJ.filter(lead => {
+    if (!showConcluded && lead.concluded) return false;
+
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
       if (
@@ -1181,14 +1181,24 @@ export default function LeadsPJKanban() {
                     </div>
                   </div>
 
-                  {hasActiveFilters && (
-                    <div className="mt-4 flex justify-end">
+                  <div className="mt-4 flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        checked={showConcluded}
+                        onCheckedChange={setShowConcluded}
+                        id="showConcludedPJ"
+                      />
+                      <label htmlFor="showConcludedPJ" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
+                        Mostrar Ganhos
+                      </label>
+                    </div>
+                    {hasActiveFilters && (
                       <Button variant="ghost" size="sm" onClick={clearFilters}>
                         <X className="w-4 h-4 mr-2" />
                         Limpar Filtros
                       </Button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </motion.div>

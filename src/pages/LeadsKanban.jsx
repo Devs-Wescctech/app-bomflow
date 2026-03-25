@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   Plus,
   Phone,
@@ -431,6 +432,7 @@ export default function LeadsKanban() {
   const queryClient = useQueryClient();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [showConcluded, setShowConcluded] = useState(false);
   const [viewMode, setViewMode] = useState('kanban');
   const [filters, setFilters] = useState(() => {
     const saved = localStorage.getItem('leadsKanbanFilters');
@@ -566,14 +568,14 @@ export default function LeadsKanban() {
       const allLeads = await base44.entities.Lead.list('-createdDate');
 
       if (isAdmin) {
-        return allLeads.filter(l => !l.concluded && !l.lost);
+        return allLeads.filter(l => !l.lost);
       }
 
       if (!currentAgent) return [];
 
       const canSeeAll = canViewAll(currentAgent, 'leads');
       if (canSeeAll) {
-        return allLeads.filter(l => !l.concluded && !l.lost);
+        return allLeads.filter(l => !l.lost);
       }
 
       const canSeeTeam = canViewTeam(currentAgent, 'leads');
@@ -582,13 +584,13 @@ export default function LeadsKanban() {
         const teamAgentIds = teamAgents.map(a => a.id);
 
         return allLeads.filter(l =>
-          (!l.concluded && !l.lost) &&
+          !l.lost &&
           (teamAgentIds.includes(l.agentId) || teamAgentIds.includes(l.promoterId))
         );
       }
 
       return allLeads.filter(l =>
-        (!l.concluded && !l.lost) &&
+        !l.lost &&
         (l.agentId === currentAgent.id || l.promoterId === currentAgent.id)
       );
     },
@@ -745,6 +747,8 @@ export default function LeadsKanban() {
   }, [leads]);
 
   const filteredLeads = leads.filter(lead => {
+    if (!showConcluded && lead.concluded) return false;
+
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
       if (
@@ -1211,14 +1215,24 @@ export default function LeadsKanban() {
                     </div>
                   </div>
 
-                  {hasActiveFilters && (
-                    <div className="mt-4 flex justify-end">
+                  <div className="mt-4 flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        checked={showConcluded}
+                        onCheckedChange={setShowConcluded}
+                        id="showConcludedPF"
+                      />
+                      <label htmlFor="showConcludedPF" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
+                        Mostrar Ganhos
+                      </label>
+                    </div>
+                    {hasActiveFilters && (
                       <Button variant="ghost" size="sm" onClick={clearFilters}>
                         <X className="w-4 h-4 mr-2" />
                         Limpar Filtros
                       </Button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </motion.div>
