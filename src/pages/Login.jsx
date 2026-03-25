@@ -93,16 +93,16 @@ export default function Login() {
         
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-16 w-full max-w-2xl">
           {/* Logo Section */}
-          <div className="mb-8">
-            <div className="w-full flex justify-start">
+          <div className="mb-8 pl-0">
+            <div className="flex justify-start -ml-1">
               <img 
                 src="/logo-saleswo.png" 
                 alt="Sales Two" 
-                className="h-24 xl:h-32 w-auto max-w-xs object-contain"
+                className="h-24 xl:h-32 w-auto object-contain"
                 style={{ mixBlendMode: 'multiply' }}
               />
             </div>
-            <div className="flex items-center justify-start gap-3 mt-4">
+            <div className="flex items-center justify-start gap-3 mt-4 -ml-1">
                 <span className="px-4 py-1.5 text-white text-xs font-bold rounded-full shadow-lg" style={{ background: 'linear-gradient(to right, #5A2A3C, #F98F6F)' }}>
                   CRM PRO
                 </span>
