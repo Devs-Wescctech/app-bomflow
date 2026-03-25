@@ -94,7 +94,7 @@ export default function Login() {
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-16 w-full max-w-2xl">
           {/* Logo Section */}
           <div className="mb-8">
-            <div className="w-full flex justify-center">
+            <div className="w-full flex justify-start">
               <img 
                 src="/logo-saleswo.png" 
                 alt="Sales Two" 
@@ -102,7 +102,7 @@ export default function Login() {
                 style={{ mixBlendMode: 'multiply' }}
               />
             </div>
-            <div className="flex items-center justify-center gap-3 mt-4">
+            <div className="flex items-center justify-start gap-3 mt-4">
                 <span className="px-4 py-1.5 text-white text-xs font-bold rounded-full shadow-lg" style={{ background: 'linear-gradient(to right, #5A2A3C, #F98F6F)' }}>
                   CRM PRO
                 </span>

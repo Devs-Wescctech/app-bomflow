@@ -99,7 +99,7 @@ const menuModules = [
     id: "sales_pj",
     title: "Vendas PJ",
     icon: Building2,
-    gradient: "from-[#5A2A3C] to-[#F98F6F]",
+    gradient: "from-orange-600 to-amber-500",
     items: [
       { title: "Dashboard", url: createPageUrl("SalesPJDashboard"), icon: LayoutDashboard },
       { title: "Dashboard Vendedores", url: createPageUrl("SalesPJAgentsDashboard"), icon: UserCheck, supervisorOnly: true },
