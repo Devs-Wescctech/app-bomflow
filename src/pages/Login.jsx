@@ -248,7 +248,7 @@ export default function Login() {
             <h2 className="text-2xl font-bold text-white">
               Bem-vindo de volta
             </h2>
-            <p className="text-blue-100 mt-2">
+            <p className="mt-2" style={{ color: 'rgba(255,255,255,0.9)' }}>
               Entre com suas credenciais para acessar o sistema
             </p>
           </div>
@@ -295,7 +295,8 @@ export default function Login() {
             
             <Button 
               type="submit" 
-              className="w-full h-12 text-base bg-white text-indigo-600 hover:bg-white/90 font-semibold" 
+              className="w-full h-12 text-base bg-white hover:bg-white/90 font-semibold" 
+              style={{ color: '#5A2A3C' }}
               disabled={loading}
             >
               {loading ? (
@@ -315,7 +316,7 @@ export default function Login() {
           </div>
         
         {/* Footer */}
-        <p className="absolute bottom-6 left-0 right-0 text-center text-sm text-blue-100">
+        <p className="absolute bottom-6 left-0 right-0 text-center text-sm" style={{ color: 'rgba(255,255,255,0.9)' }}>
           Powered by <a href="https://www.wescctech.com.br" target="_blank" rel="noopener noreferrer" className="font-semibold text-white hover:underline">Wescctech</a>
         </p>
       </div>
