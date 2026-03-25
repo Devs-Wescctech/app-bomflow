@@ -99,7 +99,7 @@ const menuModules = [
     id: "sales_pj",
     title: "Vendas PJ",
     icon: Building2,
-    gradient: "from-indigo-500 to-violet-500",
+    gradient: "from-[#5A2A3C] to-[#F98F6F]",
     items: [
       { title: "Dashboard", url: createPageUrl("SalesPJDashboard"), icon: LayoutDashboard },
       { title: "Dashboard Vendedores", url: createPageUrl("SalesPJAgentsDashboard"), icon: UserCheck, supervisorOnly: true },
@@ -175,8 +175,8 @@ function ModernSidebar({ user, filteredMenuModules, expandedModules, toggleModul
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ duration: 0.2 }}
-              src="/logo-bomflow.png" 
-              alt="Bomflow" 
+              src="/logo-saleswo.png" 
+              alt="Sales Two" 
               className="h-20 max-w-[200px] object-contain"
             />
           ) : (
@@ -186,8 +186,8 @@ function ModernSidebar({ user, filteredMenuModules, expandedModules, toggleModul
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ duration: 0.2 }}
-              src="/logo-bomflow-icon.png" 
-              alt="Bomflow" 
+              src="/logo-saleswo.png" 
+              alt="Sales Two" 
               className="h-16 w-auto object-contain"
             />
           )}
@@ -461,7 +461,7 @@ function ModernSidebar({ user, filteredMenuModules, expandedModules, toggleModul
                 <p className="font-semibold text-gray-900 dark:text-white">{user?.full_name}</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">{user?.email}</p>
                 {user?.role === 'admin' && (
-                  <Badge className="w-fit mt-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-0">
+                  <Badge className="w-fit mt-1 text-white border-0" style={{ background: 'linear-gradient(to right, #5A2A3C, #F98F6F)' }}>
                     Administrador
                   </Badge>
                 )}
@@ -512,8 +512,8 @@ function ModernHeader({ sidebarOpen, setCommandOpen, mobileMenuOpen, setMobileMe
           
           <div className="md:hidden flex items-center">
             <img 
-              src="/logo-bomflow.png" 
-              alt="Bomflow" 
+              src="/logo-saleswo.png" 
+              alt="Sales Two" 
               className="h-8 object-contain"
             />
           </div>
@@ -675,11 +675,11 @@ function LayoutContent({ children, currentPageName }) {
           className="text-center"
         >
           <div className="relative w-16 h-16 mx-auto mb-6">
-            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 animate-spin" 
-                 style={{ clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" }} />
+            <div className="absolute inset-0 rounded-full animate-spin" 
+                 style={{ background: 'linear-gradient(to right, #5A2A3C, #F98F6F)', clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" }} />
             <div className="absolute inset-2 rounded-full bg-white dark:bg-gray-900" />
             <div className="absolute inset-0 flex items-center justify-center">
-              <Sparkles className="w-6 h-6 text-blue-500" />
+              <Sparkles className="w-6 h-6" style={{ color: '#5A2A3C' }} />
             </div>
           </div>
           <p className="text-gray-600 dark:text-gray-400 font-medium">
@@ -729,8 +729,8 @@ function LayoutContent({ children, currentPageName }) {
             >
               <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
                 <img 
-                  src="/logo-bomflow.png" 
-                  alt="Bomflow" 
+                  src="/logo-saleswo.png" 
+                  alt="Sales Two" 
                   className="h-10 object-contain"
                 />
                 <button

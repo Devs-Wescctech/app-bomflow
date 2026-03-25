@@ -96,12 +96,12 @@ export default function Login() {
           <div className="mb-6">
             <div className="inline-block">
               <img 
-                src="/logo-bomflow.png" 
-                alt="Bomflow" 
+                src="/logo-saleswo.png" 
+                alt="Sales Two" 
                 className="h-24 xl:h-28 w-auto object-contain"
               />
               <div className="mt-3 flex items-center gap-3">
-                <span className="px-4 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs font-bold rounded-full shadow-lg shadow-indigo-500/30">
+                <span className="px-4 py-1.5 text-white text-xs font-bold rounded-full shadow-lg" style={{ background: 'linear-gradient(to right, #5A2A3C, #F98F6F)' }}>
                   CRM PRO
                 </span>
                 <span className="px-3 py-1 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">
@@ -122,7 +122,7 @@ export default function Login() {
           <div className="mb-8">
             <h1 className="text-4xl xl:text-5xl font-bold text-gray-900 mb-4 leading-tight">
               Vendas B2B
-              <span className="block bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 bg-clip-text text-transparent">
+              <span className="block bg-clip-text text-transparent" style={{ backgroundImage: 'linear-gradient(to right, #5A2A3C, #F98F6F)' }}>
                 com eficiência
               </span>
             </h1>
@@ -226,7 +226,7 @@ export default function Login() {
       </div>
       
       {/* Right Side - Login Form (Gradient) */}
-      <div className="w-full lg:w-[38%] flex flex-col justify-center px-6 sm:px-10 xl:px-14 bg-gradient-to-br from-indigo-600 via-blue-600 to-indigo-700 relative overflow-hidden shadow-[-30px_0_60px_-15px_rgba(79,70,229,0.5)]">
+      <div className="w-full lg:w-[38%] flex flex-col justify-center px-6 sm:px-10 xl:px-14 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #5A2A3C 0%, #F98F6F 100%)', boxShadow: '-30px 0 60px -15px rgba(90,42,60,0.3)' }}>
         {/* Background Pattern */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-0 right-0 w-80 h-80 bg-white rounded-full translate-x-1/2 -translate-y-1/2" />
