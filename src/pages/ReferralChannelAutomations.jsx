@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { getTemplatesByToken } from "@/api/channelApi";
@@ -169,18 +169,16 @@ export default function ReferralChannelAutomations() {
     staleTime: 2 * 60 * 1000,
   });
 
-  const configLoaded = useState(false);
-  if (configs.length > 0 && !configLoaded[0]) {
-    const cfg = configs[0];
-    const t = cfg.channelToken || cfg.channel_token || '';
-    const l = cfg.channelLabel || cfg.channel_label || '';
-    if (t) {
+  useEffect(() => {
+    if (configs.length > 0 && !activeConfigId) {
+      const cfg = configs[0];
+      const t = cfg.channelToken || cfg.channel_token || '';
+      const l = cfg.channelLabel || cfg.channel_label || '';
       setChannelToken(t);
       setChannelLabel(l);
       setActiveConfigId(cfg.id);
-      configLoaded[1](true);
     }
-  }
+  }, [configs]);
 
   const { data: rules = [], isLoading: rulesLoading } = useQuery({
     queryKey: ['referralChannelAutomations'],
@@ -246,6 +244,10 @@ export default function ReferralChannelAutomations() {
 
   const handleSaveConfig = async () => {
     if (!channelToken.trim()) {
+      if (activeConfigId) {
+        toast.error('O token do canal não pode ser removido. Informe um token válido.');
+        return;
+      }
       toast.error('Informe o token do canal');
       return;
     }

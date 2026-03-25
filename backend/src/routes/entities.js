@@ -96,7 +96,18 @@ for (const [route, options] of Object.entries(entities)) {
   router.get(`/${route}`, authMiddleware, crud.list);
   router.get(`/${route}/:id`, authMiddleware, crud.get);
   router.post(`/${route}`, authMiddleware, crud.create);
-  router.put(`/${route}/:id`, authMiddleware, crud.update);
+  if (route === 'referral-channel-config') {
+    router.put(`/${route}/:id`, authMiddleware, (req, res) => {
+      if (req.body.channel_token === null || req.body.channel_token === undefined || req.body.channel_token === '' ||
+          req.body.channelToken === null || req.body.channelToken === undefined || req.body.channelToken === '') {
+        delete req.body.channel_token;
+        delete req.body.channelToken;
+      }
+      return crud.update(req, res);
+    });
+  } else {
+    router.put(`/${route}/:id`, authMiddleware, crud.update);
+  }
   router.delete(`/${route}/:id`, authMiddleware, crud.delete);
   router.post(`/${route}/filter`, authMiddleware, crud.filter);
 }
