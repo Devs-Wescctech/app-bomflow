@@ -45,7 +45,7 @@ export default function Login() {
   return (
     <div className="min-h-screen flex">
       {/* Left Side - Branding & Features */}
-      <div className="hidden lg:flex lg:w-[62%] bg-gradient-to-br from-slate-50 via-white to-indigo-50 relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-[62%] bg-gradient-to-br from-slate-50 via-white to-orange-50 relative overflow-hidden">
         {/* Subtle Background Pattern */}
         <div 
           className="absolute inset-0 opacity-[0.03]"
@@ -61,7 +61,7 @@ export default function Login() {
           <div className="absolute -bottom-48 left-1/3 w-[450px] h-[450px] bg-gradient-to-br from-emerald-200/40 to-teal-200/40 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '6s' }} />
           
           {/* Floating Icons */}
-          <div className="absolute top-20 right-32 w-14 h-14 bg-white rounded-2xl shadow-xl shadow-indigo-200/50 flex items-center justify-center animate-bounce" style={{ animationDuration: '3s' }}>
+          <div className="absolute top-20 right-32 w-14 h-14 bg-white rounded-2xl flex items-center justify-center animate-bounce" style={{ animationDuration: '3s', boxShadow: '0 10px 25px rgba(90,42,60,0.15)' }}>
             <MessageSquare className="w-7 h-7 text-indigo-500" />
           </div>
           <div className="absolute top-40 right-16 w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl shadow-lg flex items-center justify-center animate-bounce" style={{ animationDuration: '3.5s', animationDelay: '0.5s' }}>
@@ -70,7 +70,7 @@ export default function Login() {
           <div className="absolute top-64 right-40 w-10 h-10 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-lg shadow-lg flex items-center justify-center animate-bounce" style={{ animationDuration: '4s', animationDelay: '1s' }}>
             <Star className="w-5 h-5 text-white" />
           </div>
-          <div className="absolute bottom-48 right-20 w-14 h-14 bg-white rounded-2xl shadow-xl shadow-blue-200/50 flex items-center justify-center animate-bounce" style={{ animationDuration: '3.2s', animationDelay: '0.3s' }}>
+          <div className="absolute bottom-48 right-20 w-14 h-14 bg-white rounded-2xl flex items-center justify-center animate-bounce" style={{ animationDuration: '3.2s', animationDelay: '0.3s', boxShadow: '0 10px 25px rgba(249,143,111,0.15)' }}>
             <PieChart className="w-7 h-7 text-blue-500" />
           </div>
           <div className="absolute bottom-32 right-48 w-11 h-11 bg-gradient-to-br from-orange-400 to-amber-500 rounded-xl shadow-lg flex items-center justify-center animate-bounce" style={{ animationDuration: '3.8s', animationDelay: '0.7s' }}>
@@ -98,7 +98,7 @@ export default function Login() {
               <img 
                 src="/logo-saleswo.png" 
                 alt="Sales Two" 
-                className="h-24 xl:h-32 w-auto object-contain"
+                className="h-32 xl:h-40 w-auto object-contain"
                 style={{ mixBlendMode: 'multiply' }}
               />
             </div>
@@ -135,8 +135,8 @@ export default function Login() {
           {/* Feature Cards - 2x2 Grid */}
           <div className="grid grid-cols-2 gap-4 mb-8">
             {/* Card 1 - Pipeline B2B */}
-            <div className="group p-5 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 hover:shadow-xl hover:shadow-indigo-100 hover:-translate-y-1 transition-all duration-300">
-              <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-indigo-500/30 group-hover:scale-110 transition-transform">
+            <div className="group p-5 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300" style={{ ':hover': { boxShadow: '0 20px 25px rgba(90,42,60,0.15)' } }}>
+              <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform" style={{ boxShadow: '0 8px 16px rgba(90,42,60,0.2)' }}>
                 <TrendingUp className="w-6 h-6 text-white" />
               </div>
               <h3 className="font-bold text-gray-900 mb-1">Pipeline B2B</h3>
@@ -174,8 +174,8 @@ export default function Login() {
             </div>
             
             {/* Card 4 - Gestão de Agentes */}
-            <div className="group p-5 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 hover:shadow-xl hover:shadow-blue-100 hover:-translate-y-1 transition-all duration-300">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-blue-500/30 group-hover:scale-110 transition-transform">
+            <div className="group p-5 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300" style={{ ':hover': { boxShadow: '0 20px 25px rgba(90,42,60,0.15)' } }}>
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform" style={{ boxShadow: '0 8px 16px rgba(90,42,60,0.2)' }}>
                 <Shield className="w-6 h-6 text-white" />
               </div>
               <h3 className="font-bold text-gray-900 mb-1">Gestão de Acesso</h3>
@@ -189,9 +189,9 @@ export default function Login() {
           
           {/* Bottom Stats */}
           <div className="flex items-center gap-6">
-            <div className="flex-1 p-4 rounded-xl bg-white/60 backdrop-blur-sm border border-indigo-100 hover:shadow-lg hover:shadow-indigo-100/50 transition-all">
+            <div className="flex-1 p-4 rounded-xl bg-white/60 backdrop-blur-sm border border-gray-100 hover:shadow-lg transition-all" style={{ ':hover': { boxShadow: '0 10px 20px rgba(90,42,60,0.1)' } }}>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/30">
+                <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-emerald-500 rounded-xl flex items-center justify-center" style={{ boxShadow: '0 4px 12px rgba(34,197,94,0.2)' }}>
                   <Activity className="w-5 h-5 text-white" />
                 </div>
                 <div>
@@ -200,9 +200,9 @@ export default function Login() {
                 </div>
               </div>
             </div>
-            <div className="flex-1 p-4 rounded-xl bg-white/60 backdrop-blur-sm border border-blue-100 hover:shadow-lg hover:shadow-blue-100/50 transition-all">
+            <div className="flex-1 p-4 rounded-xl bg-white/60 backdrop-blur-sm border border-gray-100 hover:shadow-lg transition-all" style={{ ':hover': { boxShadow: '0 10px 20px rgba(90,42,60,0.1)' } }}>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-xl flex items-center justify-center" style={{ boxShadow: '0 4px 12px rgba(59,130,246,0.2)' }}>
                   <Clock className="w-5 h-5 text-white" />
                 </div>
                 <div>
@@ -211,9 +211,9 @@ export default function Login() {
                 </div>
               </div>
             </div>
-            <div className="flex-1 p-4 rounded-xl bg-white/60 backdrop-blur-sm border border-purple-100 hover:shadow-lg hover:shadow-purple-100/50 transition-all">
+            <div className="flex-1 p-4 rounded-xl bg-white/60 backdrop-blur-sm border border-gray-100 hover:shadow-lg transition-all" style={{ ':hover': { boxShadow: '0 10px 20px rgba(90,42,60,0.1)' } }}>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-purple-400 to-pink-500 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/30">
+                <div className="w-10 h-10 bg-gradient-to-br from-purple-400 to-pink-500 rounded-xl flex items-center justify-center" style={{ boxShadow: '0 4px 12px rgba(168,85,247,0.2)' }}>
                   <Award className="w-5 h-5 text-white" />
                 </div>
                 <div>
