@@ -55,7 +55,7 @@ export default function ReferralAgenda() {
 
   const { data: activities = [], isLoading: loadingActivities } = useQuery({
     queryKey: ['activities'],
-    queryFn: () => base44.entities.Activity.list('-scheduledAt', 500),
+    queryFn: () => base44.entities.ReferralActivity.list('-scheduledAt', 500),
     staleTime: 1000 * 60 * 2,
   });
 
@@ -72,7 +72,7 @@ export default function ReferralAgenda() {
   });
 
   const updateActivityMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Activity.update(id, data),
+    mutationFn: ({ id, data }) => base44.entities.ReferralActivity.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['activities'] });
     },
@@ -88,7 +88,7 @@ export default function ReferralAgenda() {
   const isAdmin = currentAgent?.agentType === 'admin' || currentAgent?.agent_type === 'admin';
   const isSupervisor = currentAgent?.agentType === 'supervisor' || currentAgent?.agent_type === 'supervisor';
 
-  const referralActivities = activities.filter(act => act.leadId || act.lead_id);
+  const referralActivities = activities.filter(act => act.referralId || act.referral_id);
   
   const myActivities = referralActivities.filter(act => {
     if (isAdmin || isSupervisor) return true;
@@ -426,7 +426,7 @@ export default function ReferralAgenda() {
                                 .map((activity, index) => {
                                   const config = getActivityConfig(activity.type);
                                   const Icon = getActivityIcon(activity.type);
-                                  const lead = getReferralById(activity.leadId);
+                                  const lead = getReferralById(activity.referralId);
 
                                   return (
                                     <motion.div
@@ -648,7 +648,7 @@ export default function ReferralAgenda() {
                   {overdueActivities.slice(0, 5).map(activity => {
                     const config = getActivityConfig(activity.type);
                     const Icon = getActivityIcon(activity.type);
-                    const lead = getReferralById(activity.leadId);
+                    const lead = getReferralById(activity.referralId);
                     
                     return (
                       <div key={activity.id} className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-950/30 rounded-lg">
@@ -695,7 +695,7 @@ export default function ReferralAgenda() {
                   upcomingActivities.map(activity => {
                     const config = getActivityConfig(activity.type);
                     const Icon = getActivityIcon(activity.type);
-                    const lead = getReferralById(activity.leadId);
+                    const lead = getReferralById(activity.referralId);
                     
                     return (
                       <div key={activity.id} className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
