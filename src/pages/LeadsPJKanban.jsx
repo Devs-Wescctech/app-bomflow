@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import {
   Plus,
   Phone,
@@ -394,7 +393,6 @@ export default function LeadsPJKanban() {
   const queryClient = useQueryClient();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [showConcluded, setShowConcluded] = useState(false);
   const [viewMode, setViewMode] = useState('kanban');
   const [filters, setFilters] = useState(() => {
     const saved = localStorage.getItem('leadsPJKanbanFilters');
@@ -694,8 +692,6 @@ export default function LeadsPJKanban() {
   const [localOrder, setLocalOrder] = useState({});
 
   const filteredLeads = leadsPJ.filter(lead => {
-    if (!showConcluded && lead.concluded) return false;
-
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
       if (
@@ -1181,24 +1177,14 @@ export default function LeadsPJKanban() {
                     </div>
                   </div>
 
-                  <div className="mt-4 flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <Switch
-                        checked={showConcluded}
-                        onCheckedChange={setShowConcluded}
-                        id="showConcludedPJ"
-                      />
-                      <label htmlFor="showConcludedPJ" className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
-                        Mostrar Ganhos
-                      </label>
-                    </div>
-                    {hasActiveFilters && (
+                  {hasActiveFilters && (
+                    <div className="mt-4 flex justify-end">
                       <Button variant="ghost" size="sm" onClick={clearFilters}>
                         <X className="w-4 h-4 mr-2" />
                         Limpar Filtros
                       </Button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </motion.div>
