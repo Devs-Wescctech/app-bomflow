@@ -181,16 +181,21 @@ function ModernSidebar({ user, filteredMenuModules, expandedModules, toggleModul
               style={{ mixBlendMode: 'multiply' }}
             />
           ) : (
-            <motion.img
+            <motion.div
               key="logo-icon"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ duration: 0.2 }}
-              src="/logo-saleswo-icon-nobg.png" 
-              alt="Sales Two" 
-              className="h-44 w-auto object-contain"
-            />
+              className="w-12 h-12 overflow-hidden flex items-center justify-center"
+            >
+              <img 
+                src="/logo-saleswo-icon-nobg.png" 
+                alt="Sales Two" 
+                className="w-auto h-auto object-contain"
+                style={{ transform: 'scale(3.5)', transformOrigin: 'center center' }}
+              />
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
