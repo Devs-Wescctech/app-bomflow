@@ -89,10 +89,149 @@ const entities = {
   'call-audits': { tableName: 'call_audits', allowedFilters: ['agent_id', 'ticket_id', 'status'] },
 };
 
+async function syncAutomationTeams(automationId, teamIds) {
+  await query('DELETE FROM lead_automation_teams WHERE automation_id = $1', [automationId]);
+  if (teamIds && teamIds.length > 0) {
+    const valuePlaceholders = teamIds.map((_, i) => `(gen_random_uuid(), $1, $${i + 2}, now())`).join(', ');
+    await query(
+      `INSERT INTO lead_automation_teams (id, automation_id, team_id, created_at) VALUES ${valuePlaceholders} ON CONFLICT (automation_id, team_id) DO NOTHING`,
+      [automationId, ...teamIds]
+    );
+  }
+}
+
+async function enrichAutomationsWithTeams(automations) {
+  if (!automations || automations.length === 0) return automations;
+  const ids = automations.map(a => a.id);
+  const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ');
+  const teamsResult = await query(
+    `SELECT automation_id, team_id FROM lead_automation_teams WHERE automation_id IN (${placeholders})`,
+    ids
+  );
+  const teamMap = {};
+  for (const row of teamsResult.rows) {
+    if (!teamMap[row.automation_id]) teamMap[row.automation_id] = [];
+    teamMap[row.automation_id].push(row.team_id);
+  }
+  return automations.map(a => {
+    const fromJunction = teamMap[a.id] || [];
+    if (fromJunction.length > 0) {
+      return { ...a, team_ids: fromJunction };
+    } else if (a.teamId) {
+      return { ...a, team_ids: [a.teamId] };
+    }
+    return { ...a, team_ids: [] };
+  });
+}
+
 for (const [route, options] of Object.entries(entities)) {
   const tableName = options.tableName || route.replace(/-/g, '_');
   const crud = createCrudRouter(tableName, options);
   
+  if (route === 'lead-automations') {
+    router.get(`/${route}`, authMiddleware, async (req, res) => {
+      try {
+        const originalJson = res.json.bind(res);
+        await crud.list(req, {
+          ...res,
+          json: async (data) => {
+            const enriched = await enrichAutomationsWithTeams(data);
+            const result = enriched.map(a => ({ ...a, teamIds: a.team_ids }));
+            result.forEach(r => delete r.team_ids);
+            originalJson(result);
+          }
+        });
+      } catch (error) {
+        console.error('Error listing lead-automations with teams:', error);
+        res.status(500).json({ message: error.message });
+      }
+    });
+
+    router.get(`/${route}/:id`, authMiddleware, async (req, res) => {
+      try {
+        const originalJson = res.json.bind(res);
+        await crud.get(req, {
+          ...res,
+          json: async (data) => {
+            const enriched = await enrichAutomationsWithTeams([data]);
+            const result = { ...enriched[0], teamIds: enriched[0].team_ids };
+            delete result.team_ids;
+            originalJson(result);
+          }
+        });
+      } catch (error) {
+        console.error('Error getting lead-automation with teams:', error);
+        res.status(500).json({ message: error.message });
+      }
+    });
+
+    router.post(`/${route}`, authMiddleware, async (req, res) => {
+      try {
+        const teamIds = req.body.team_ids || req.body.teamIds || [];
+        delete req.body.team_ids;
+        delete req.body.teamIds;
+        const originalStatus = res.status.bind(res);
+        await crud.create(req, {
+          ...res,
+          status: (code) => {
+            const statusRes = originalStatus(code);
+            const origStatusJson = statusRes.json.bind(statusRes);
+            return {
+              ...statusRes,
+              json: async (data) => {
+                try {
+                  if (data && data.id && teamIds.length > 0) {
+                    await syncAutomationTeams(data.id, teamIds);
+                    data.teamIds = teamIds;
+                  }
+                } catch (err) {
+                  console.error('Error syncing teams on create:', err);
+                }
+                origStatusJson(data);
+              }
+            };
+          }
+        });
+      } catch (error) {
+        console.error('Error creating lead-automation with teams:', error);
+        res.status(500).json({ message: error.message });
+      }
+    });
+
+    router.put(`/${route}/:id`, authMiddleware, async (req, res) => {
+      try {
+        const hasTeamIds = 'team_ids' in req.body || 'teamIds' in req.body;
+        const teamIds = hasTeamIds ? (req.body.team_ids || req.body.teamIds || []) : null;
+        delete req.body.team_ids;
+        delete req.body.teamIds;
+        delete req.body.team_id;
+        delete req.body.teamId;
+        const originalJson = res.json.bind(res);
+        await crud.update(req, {
+          ...res,
+          json: async (data) => {
+            try {
+              if (hasTeamIds) {
+                await syncAutomationTeams(req.params.id, teamIds);
+                data.teamIds = teamIds;
+              }
+            } catch (err) {
+              console.error('Error syncing teams on update:', err);
+            }
+            originalJson(data);
+          }
+        });
+      } catch (error) {
+        console.error('Error updating lead-automation with teams:', error);
+        res.status(500).json({ message: error.message });
+      }
+    });
+
+    router.delete(`/${route}/:id`, authMiddleware, crud.delete);
+    router.post(`/${route}/filter`, authMiddleware, crud.filter);
+    continue;
+  }
+
   router.get(`/${route}`, authMiddleware, crud.list);
   router.get(`/${route}/:id`, authMiddleware, crud.get);
   router.post(`/${route}`, authMiddleware, crud.create);
