@@ -17,7 +17,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Zap, Edit, Trash2, Play, Pause, Building2, MessageSquare, Loader2, CheckCircle2, AlertCircle, TestTube2 } from "lucide-react";
+import { Plus, Zap, Edit, Trash2, Play, Pause, Building2, MessageSquare, Loader2, CheckCircle2, AlertCircle, TestTube2, Key, Save, Copy } from "lucide-react";
 import { toast } from "sonner";
 import WhatsAppTemplateSelector from "@/components/whatsapp/WhatsAppTemplateSelector";
 import AutomationTestDialog from "@/components/whatsapp/AutomationTestDialog";
@@ -60,6 +60,8 @@ export default function LeadPJAutomations() {
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [showTestDialog, setShowTestDialog] = useState(false);
   const [testingAutomation, setTestingAutomation] = useState(null);
+  const [isTokenDialogOpen, setIsTokenDialogOpen] = useState(false);
+  const [automationToken, setAutomationToken] = useState("");
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -104,6 +106,44 @@ export default function LeadPJAutomations() {
     queryKey: ['whatsappTemplates'],
     queryFn: () => base44.whatsapp.getTemplates(),
     staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: settings = [] } = useQuery({
+    queryKey: ['automationSettings'],
+    queryFn: () => base44.entities.SystemSettings.list(),
+    initialData: [],
+    onSuccess: (data) => {
+      const tokenSetting = data.find(s => s.setting_key === 'automation_token');
+      if (tokenSetting) {
+        setAutomationToken(tokenSetting.setting_value);
+      }
+    }
+  });
+
+  const saveTokenMutation = useMutation({
+    mutationFn: async (token) => {
+      const existingSetting = settings.find(s => s.setting_key === 'automation_token');
+      
+      const data = {
+        setting_key: 'automation_token',
+        setting_value: token,
+        setting_type: 'text',
+      };
+
+      if (existingSetting) {
+        return base44.entities.SystemSettings.update(existingSetting.id, data);
+      } else {
+        return base44.entities.SystemSettings.create(data);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['automationSettings'] });
+      setIsTokenDialogOpen(false);
+      toast.success('Token de automação salvo com sucesso!');
+    },
+    onError: () => {
+      toast.error('Erro ao salvar token de automação');
+    }
   });
 
   const selectTemplate = (template) => {
@@ -318,6 +358,51 @@ export default function LeadPJAutomations() {
             </Button>
           </div>
         </div>
+
+        {/* Token Configuration Card */}
+        <Card className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950 border-purple-200 dark:border-purple-800">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-lg">
+                  <Key className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div>
+                  <CardTitle className="text-purple-900 dark:text-purple-100">Token de Automações</CardTitle>
+                  <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">Configure o token padrão para suas automações</p>
+                </div>
+              </div>
+              <Button 
+                onClick={() => setIsTokenDialogOpen(true)} 
+                variant="outline"
+                className="border-purple-300 text-purple-700 hover:bg-purple-100 dark:border-purple-600 dark:text-purple-300 dark:hover:bg-purple-900"
+              >
+                <Edit className="w-4 h-4 mr-2" />
+                Editar
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2 p-3 bg-white dark:bg-gray-900 rounded-lg border border-purple-200 dark:border-purple-800">
+              <code className="text-sm font-mono text-gray-700 dark:text-gray-300 flex-1 truncate">
+                {automationToken ? `${automationToken.substring(0, 20)}...` : 'Nenhum token configurado'}
+              </code>
+              {automationToken && (
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard.writeText(automationToken);
+                    toast.success('Token copiado!');
+                  }}
+                  className="text-purple-600 hover:text-purple-700 dark:text-purple-400"
+                >
+                  <Copy className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-3 gap-4">
@@ -794,6 +879,59 @@ export default function LeadPJAutomations() {
         templateName={testingAutomation?.whatsappTemplateName}
         accentColor="indigo"
       />
+
+      {/* Token Configuration Dialog */}
+      <Dialog open={isTokenDialogOpen} onOpenChange={setIsTokenDialogOpen}>
+        <DialogContent className="max-w-lg bg-white dark:bg-gray-900">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900 dark:text-gray-100 flex items-center gap-2">
+              <Key className="w-5 h-5 text-purple-600" />
+              Configurar Token de Automações
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="automation-token" className="text-gray-900 dark:text-gray-100">Token Padrão</Label>
+              <Input
+                id="automation-token"
+                value={automationToken}
+                onChange={(e) => setAutomationToken(e.target.value)}
+                placeholder="Cole o token de automação aqui"
+                className="mt-2"
+              />
+              <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
+                Este token será usado como padrão para todas as suas automações. Você pode obtê-lo junto a seu provedor de serviços de automação.
+              </p>
+            </div>
+
+            <Alert className="bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800">
+              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+              <AlertDescription className="text-amber-800 dark:text-amber-200 text-sm">
+                O token é armazenado de forma segura e será usado em suas automações de WhatsApp.
+              </AlertDescription>
+            </Alert>
+          </div>
+
+          <DialogFooter className="mt-6">
+            <Button
+              variant="outline"
+              onClick={() => setIsTokenDialogOpen(false)}
+              className="mr-2"
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => saveTokenMutation.mutate(automationToken)}
+              disabled={saveTokenMutation.isPending || !automationToken}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              {saveTokenMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {saveTokenMutation.isPending ? 'Salvando...' : 'Salvar Token'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
