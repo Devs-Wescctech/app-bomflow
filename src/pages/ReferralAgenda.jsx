@@ -230,10 +230,10 @@ export default function ReferralAgenda() {
                 Tarefas
               </Button>
             </Link>
-            <Link to={createPageUrl("NewReferral")}>
+            <Link to={createPageUrl("ReferralCreate")}>
               <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white">
                 <Plus className="w-4 h-4 mr-2" />
-                Novo Referral
+                Nova Indicação
               </Button>
             </Link>
           </div>
