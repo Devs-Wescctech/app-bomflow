@@ -1213,7 +1213,7 @@ export default function ReferralPipeline() {
             delay={0.1}
             helpText="Soma dos valores de todas as indicações ativas no pipeline"
           />
-          {currentAgentType !== 'sales' && (
+          {currentAgentType !== 'indicacoes_atendente' && (
             <StatsCard
               title="Comissões"
               value={formatCurrency(totalCommissions)}
