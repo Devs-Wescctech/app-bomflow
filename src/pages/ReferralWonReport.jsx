@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { canAccessReports, canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
+import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 
 const createPageUrl = (pageName) => `/${pageName}`;
@@ -44,9 +44,8 @@ export default function ReferralWonReport() {
 
   const currentAgent = user?.agent;
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
-  const isSupervisor = currentAgentType?.includes('supervisor') || currentAgentType === 'supervisor';
-  const hasPermission = isAdmin || isSupervisor || canAccessReports(currentAgent);
+  const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor';
+  const hasPermission = !!user;
 
   const { data: teams = [] } = useQuery({
     queryKey: ['teams'],
@@ -60,12 +59,12 @@ export default function ReferralWonReport() {
   });
 
   const { data: referrals = [], isLoading } = useQuery({
-    queryKey: ['referrals-won-report', isAdmin ? 'admin' : isSupervisor ? 'supervisor' : currentAgent?.id, allAgents.length],
+    queryKey: ['referrals-won-report', isAdmin ? 'admin' : currentAgent?.id, allAgents.length],
     queryFn: async () => {
       const allReferrals = await base44.entities.Referral.list('-createdDate', 10000);
       const wonReferrals = allReferrals.filter(r => r.concluded || r.stage === 'convertido');
 
-      if (isAdmin || isSupervisor) return wonReferrals;
+      if (isAdmin) return wonReferrals;
       if (!currentAgent) return [];
       if (canViewAll(currentAgent, 'referrals')) return wonReferrals;
 
