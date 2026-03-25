@@ -93,7 +93,7 @@ export default function Login() {
         
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-16 w-full max-w-2xl">
           {/* Logo Section */}
-          <div className="mb-8 pl-0 -ml-4">
+          <div className="mb-8">
             <div className="flex justify-start">
               <img 
                 src="/logo-saleswo.png" 
