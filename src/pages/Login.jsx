@@ -64,19 +64,19 @@ export default function Login() {
           <div className="absolute top-20 right-32 w-14 h-14 bg-white rounded-2xl flex items-center justify-center animate-bounce" style={{ animationDuration: '3s', boxShadow: '0 10px 25px rgba(90,42,60,0.15)' }}>
             <MessageSquare className="w-7 h-7 text-indigo-500" />
           </div>
-          <div className="absolute top-40 right-16 w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl shadow-lg flex items-center justify-center animate-bounce" style={{ animationDuration: '3.5s', animationDelay: '0.5s' }}>
+          <div className="absolute top-40 right-16 w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center animate-bounce" style={{ animationDuration: '3.5s', animationDelay: '0.5s', boxShadow: '0 8px 16px rgba(90,42,60,0.2)' }}>
             <TrendingUp className="w-6 h-6 text-white" />
           </div>
-          <div className="absolute top-64 right-40 w-10 h-10 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-lg shadow-lg flex items-center justify-center animate-bounce" style={{ animationDuration: '4s', animationDelay: '1s' }}>
+          <div className="absolute top-64 right-40 w-10 h-10 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-lg flex items-center justify-center animate-bounce" style={{ animationDuration: '4s', animationDelay: '1s', boxShadow: '0 8px 16px rgba(90,42,60,0.2)' }}>
             <Star className="w-5 h-5 text-white" />
           </div>
           <div className="absolute bottom-48 right-20 w-14 h-14 bg-white rounded-2xl flex items-center justify-center animate-bounce" style={{ animationDuration: '3.2s', animationDelay: '0.3s', boxShadow: '0 10px 25px rgba(249,143,111,0.15)' }}>
             <PieChart className="w-7 h-7 text-blue-500" />
           </div>
-          <div className="absolute bottom-32 right-48 w-11 h-11 bg-gradient-to-br from-orange-400 to-amber-500 rounded-xl shadow-lg flex items-center justify-center animate-bounce" style={{ animationDuration: '3.8s', animationDelay: '0.7s' }}>
+          <div className="absolute bottom-32 right-48 w-11 h-11 bg-gradient-to-br from-orange-400 to-amber-500 rounded-xl flex items-center justify-center animate-bounce" style={{ animationDuration: '3.8s', animationDelay: '0.7s', boxShadow: '0 8px 16px rgba(90,42,60,0.2)' }}>
             <Bell className="w-5 h-5 text-white" />
           </div>
-          <div className="absolute top-1/2 right-8 w-12 h-12 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-xl shadow-lg flex items-center justify-center animate-bounce" style={{ animationDuration: '4.2s', animationDelay: '1.2s' }}>
+          <div className="absolute top-1/2 right-8 w-12 h-12 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-xl flex items-center justify-center animate-bounce" style={{ animationDuration: '4.2s', animationDelay: '1.2s', boxShadow: '0 8px 16px rgba(90,42,60,0.2)' }}>
             <Calendar className="w-6 h-6 text-white" />
           </div>
           
@@ -148,8 +148,8 @@ export default function Login() {
             </div>
             
             {/* Card 2 - Relatórios */}
-            <div className="group p-5 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 hover:shadow-xl hover:shadow-emerald-100 hover:-translate-y-1 transition-all duration-300">
-              <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/30 group-hover:scale-110 transition-transform">
+            <div className="group p-5 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+              <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform" style={{ boxShadow: '0 8px 16px rgba(90,42,60,0.2)' }}>
                 <BarChart3 className="w-6 h-6 text-white" />
               </div>
               <h3 className="font-bold text-gray-900 mb-1">Relatórios</h3>
@@ -161,8 +161,8 @@ export default function Login() {
             </div>
             
             {/* Card 3 - Automações */}
-            <div className="group p-5 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 hover:shadow-xl hover:shadow-orange-100 hover:-translate-y-1 transition-all duration-300">
-              <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-amber-500 rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-orange-500/30 group-hover:scale-110 transition-transform">
+            <div className="group p-5 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+              <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-amber-500 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform" style={{ boxShadow: '0 8px 16px rgba(90,42,60,0.2)' }}>
                 <Zap className="w-6 h-6 text-white" />
               </div>
               <h3 className="font-bold text-gray-900 mb-1">Automações</h3>
@@ -202,7 +202,7 @@ export default function Login() {
             </div>
             <div className="flex-1 p-4 rounded-xl bg-white/60 backdrop-blur-sm border border-gray-100 hover:shadow-lg transition-all">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-xl flex items-center justify-center" style={{ boxShadow: '0 4px 12px rgba(59,130,246,0.2)' }}>
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-xl flex items-center justify-center" style={{ boxShadow: '0 4px 12px rgba(90,42,60,0.2)' }}>
                   <Clock className="w-5 h-5 text-white" />
                 </div>
                 <div>
