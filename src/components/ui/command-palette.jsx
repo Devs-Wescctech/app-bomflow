@@ -10,35 +10,33 @@ import { Input } from "@/components/ui/input";
 import { 
   Search, 
   LayoutDashboard, 
-  Inbox, 
-  ClipboardList, 
   Plus,
   TrendingUp,
-  MapPin,
   CheckSquare,
   UserCheck,
   FileText,
-  BookOpen,
   UserCog,
-  FileType
+  CalendarIcon,
+  FileBarChart,
+  Trophy,
+  Zap,
+  Building2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 const commands = [
-  { id: 1, title: "Dashboard", url: "Dashboard", icon: LayoutDashboard, category: "Atendimento" },
-  { id: 2, title: "Criar Ticket", url: "CreateTicket", icon: Plus, category: "Atendimento", highlight: true },
-  { id: 3, title: "Board de Filas", url: "QueueBoard", icon: Inbox, category: "Atendimento" },
-  { id: 4, title: "Meus Tickets", url: "MyTickets", icon: ClipboardList, category: "Atendimento" },
-  { id: 5, title: "Base de Conhecimento", url: "KnowledgeBase", icon: BookOpen, category: "Atendimento" },
-  { id: 6, title: "Dashboard de Vendas", url: "SalesDashboard", icon: LayoutDashboard, category: "Vendas" },
-  { id: 7, title: "Novo Lead", url: "NewLead", icon: Plus, category: "Vendas", highlight: true },
-  { id: 8, title: "Pipeline de Vendas", url: "LeadsKanban", icon: TrendingUp, category: "Vendas" },
-  { id: 9, title: "Mapa de Leads", url: "LeadsMap", icon: MapPin, category: "Vendas" },
-  { id: 10, title: "Tarefas e Follow-ups", url: "SalesTasks", icon: CheckSquare, category: "Vendas" },
-  { id: 11, title: "Agentes de Vendas", url: "SalesAgents", icon: UserCheck, category: "Vendas" },
-  { id: 12, title: "Templates de Proposta", url: "ProposalTemplates", icon: FileText, category: "Vendas" },
-  { id: 13, title: "Agentes", url: "Agents", icon: UserCog, category: "Configurações" },
-  { id: 14, title: "Tipos de Ticket", url: "TicketTypes", icon: FileType, category: "Configurações" },
+  { id: 1, title: "Dashboard PJ", url: "SalesPJDashboard", icon: LayoutDashboard, category: "Vendas PJ" },
+  { id: 2, title: "Dashboard Vendedores", url: "SalesPJAgentsDashboard", icon: UserCheck, category: "Vendas PJ" },
+  { id: 3, title: "Novo Lead PJ", url: "NewLeadPJ", icon: Plus, category: "Vendas PJ", highlight: true },
+  { id: 4, title: "Pipeline B2B", url: "LeadsPJKanban", icon: TrendingUp, category: "Vendas PJ" },
+  { id: 5, title: "Busca de Leads", url: "LeadPJSearch", icon: Search, category: "Vendas PJ" },
+  { id: 6, title: "Agenda", url: "SalesAgenda", icon: CalendarIcon, category: "Vendas PJ" },
+  { id: 7, title: "Relatórios PJ", url: "SalesPJReports", icon: FileBarChart, category: "Vendas PJ" },
+  { id: 8, title: "Rel. de Ganhos", url: "SalesPJWonReport", icon: Trophy, category: "Vendas PJ" },
+  { id: 9, title: "Automações", url: "LeadPJAutomations", icon: Zap, category: "Vendas PJ" },
+  { id: 10, title: "Tarefas", url: "SalesTasks", icon: CheckSquare, category: "Vendas PJ" },
+  { id: 11, title: "Templates de Proposta", url: "ProposalTemplates", icon: FileText, category: "Vendas PJ" },
+  { id: 12, title: "Agentes", url: "Agents", icon: UserCog, category: "Configurações" },
 ];
 
 export default function CommandPalette({ open, onOpenChange }) {

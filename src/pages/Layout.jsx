@@ -40,45 +40,27 @@ import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
 import {
   LayoutDashboard,
-  Inbox,
-  ClipboardList,
-  MessageSquare,
   Plus,
-  FileType,
   UserCog,
-  BookOpen,
   TrendingUp,
-  MapPin,
   CheckSquare,
   UserCheck,
   FileText,
   Search,
-  Bell,
   Moon,
   Sun,
   Settings,
-  ShoppingCart,
   FileBarChart,
   CalendarIcon,
   LogOut,
-  User,
-  Navigation,
   Zap,
   ChevronDown,
   ChevronRight,
   ChevronLeft,
-  Headphones,
-  DollarSign,
-  Gift,
   Building2,
-  Activity,
   Menu,
   X,
   Sparkles,
-  Users,
-  Shield,
-  FileCheck,
-  Plug,
   Trophy,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -98,26 +80,15 @@ import NotificationBell from "@/components/ui/notification-bell";
 import { filterMenuItems } from "@/components/utils/permissions";
 
 const PUBLIC_PAGES = [
-  'Login', 'login', 'PortalHome', 'portal-home', 'PortalLogin',
-  'PortalValidateToken', 'PortalTickets', 'PortalTicketView',
-  'PortalCreateTicket', 'PortalContract', 'PortalBoletos',
-  'PortalUpdateData', 'PortalOffers', 'PortalReferralCreate',
-  'PortalReferralList', 'PublicSignature', 'PublicProposal',
-  'NPSSurvey', 'npssurvey',
+  'Login', 'login', 'PublicSignature', 'PublicProposal',
+  'PublicContractSign',
 ];
 
 const isPublicRoute = (pathname) => {
   const publicPaths = [
-    '/login', '/portalhome', '/portal-home', '/portallogin', '/portal-login',
-    '/portalvalidatetoken', '/portal-validate-token', '/portaltickets',
-    '/portal-tickets', '/portalticketview', '/portal-ticket-view',
-    '/portalcreateticket', '/portal-create-ticket', '/portalcontract',
-    '/portal-contract', '/portalboletos', '/portal-boletos',
-    '/portalupdatedata', '/portal-update-data', '/portaloffers',
-    '/portal-offers', '/portalreferralcreate', '/portal-referral-create',
-    '/portalreferrallist', '/portal-referral-list', '/assinatura',
-    '/publicsignature', '/proposta-publica', '/publicproposal',
-    '/nps', '/npssurvey', '/NPSSurvey',
+    '/login', '/assinatura', '/publicsignature',
+    '/proposta-publica', '/publicproposal',
+    '/publiccontractsign',
   ];
   const lowerPath = pathname.toLowerCase();
   return publicPaths.some(path => lowerPath.includes(path));
@@ -125,73 +96,12 @@ const isPublicRoute = (pathname) => {
 
 const menuModules = [
   {
-    id: "my_dashboard",
-    title: "Meu Dashboard",
-    icon: User,
-    gradient: "from-cyan-500 to-blue-500",
-    singleItem: true,
-    url: createPageUrl("AgentMyDashboard"),
-    salesOnly: true,
-    items: []
-  },
-  {
-    id: "support",
-    title: "Atendimento",
-    icon: Headphones,
-    gradient: "from-blue-500 to-cyan-500",
-    items: [
-      { title: "Dashboard", url: createPageUrl("Dashboard"), icon: LayoutDashboard },
-      { title: "Criar Ticket", url: createPageUrl("CreateTicket"), icon: Plus, highlight: true },
-      { title: "Atendimento Rápido", url: createPageUrl("QuickServiceRegister"), icon: Zap, highlight: true },
-      { title: "Board de Filas", url: createPageUrl("QueueBoard"), icon: Inbox },
-      { title: "Controle de Tickets", url: createPageUrl("TicketControl"), icon: ClipboardList },
-      { title: "Atendimentos Rápidos", url: createPageUrl("QuickServiceList"), icon: FileBarChart },
-      { title: "Monitoria de Qualidade", url: createPageUrl("QualityMonitor"), icon: Activity },
-      { title: "Relatórios", url: createPageUrl("TicketReports"), icon: FileBarChart },
-      { title: "Dashboard NPS", url: createPageUrl("NPSDashboard"), icon: TrendingUp },
-      { title: "Meus Tickets", url: createPageUrl("MyTickets"), icon: CheckSquare },
-      { title: "Base de Conhecimento", url: createPageUrl("KnowledgeBase"), icon: BookOpen },
-    ]
-  },
-  {
-    id: "presales",
-    title: "Pré e Pós Vendas",
-    icon: ShoppingCart,
-    gradient: "from-purple-500 to-pink-500",
-    items: [
-      { title: "Board de Vendas", url: createPageUrl("SalesQueueBoard"), icon: Inbox },
-      { title: "Criar Ticket", url: createPageUrl("CreateSalesTicket"), icon: Plus, highlight: true },
-      { title: "Tickets de Vendas", url: createPageUrl("SalesTickets"), icon: ShoppingCart },
-    ]
-  },
-  {
-    id: "sales",
-    title: "Vendas PF",
-    icon: TrendingUp,
-    gradient: "from-emerald-500 to-teal-500",
-    items: [
-      { title: "Dashboard", url: createPageUrl("SalesDashboard"), icon: LayoutDashboard, supervisorOnly: true },
-      { title: "Dashboard Vendedores", url: createPageUrl("SalesAgentsDashboard"), icon: UserCheck, supervisorOnly: true },
-      { title: "Novo Lead", url: createPageUrl("NewLead"), icon: Plus, highlight: true },
-      { title: "Pipeline", url: createPageUrl("LeadsKanban"), icon: TrendingUp },
-      { title: "Agenda", url: createPageUrl("SalesAgenda"), icon: CalendarIcon },
-      { title: "Busca de Leads", url: createPageUrl("LeadSearch"), icon: Search },
-      { title: "Mapa de Leads", url: createPageUrl("LeadsMap"), icon: MapPin },
-      { title: "Rota Inteligente", url: createPageUrl("SalesRoutes"), icon: Navigation },
-      { title: "Relatórios", url: createPageUrl("SalesReports"), icon: FileBarChart, supervisorOnly: true },
-      { title: "Rel. de Ganhos", url: createPageUrl("SalesWonReport"), icon: Trophy },
-      { title: "Automações", url: createPageUrl("LeadAutomations"), icon: Zap, supervisorOnly: true },
-      { title: "Tarefas", url: createPageUrl("SalesTasks"), icon: CheckSquare },
-      { title: "Templates", url: createPageUrl("ProposalTemplates"), icon: FileText, supervisorOnly: true },
-    ]
-  },
-  {
     id: "sales_pj",
     title: "Vendas PJ",
     icon: Building2,
     gradient: "from-indigo-500 to-violet-500",
     items: [
-      { title: "Dashboard", url: createPageUrl("SalesPJDashboard"), icon: LayoutDashboard, supervisorOnly: true },
+      { title: "Dashboard", url: createPageUrl("SalesPJDashboard"), icon: LayoutDashboard },
       { title: "Dashboard Vendedores", url: createPageUrl("SalesPJAgentsDashboard"), icon: UserCheck, supervisorOnly: true },
       { title: "Novo Lead PJ", url: createPageUrl("NewLeadPJ"), icon: Plus, highlight: true },
       { title: "Pipeline B2B", url: createPageUrl("LeadsPJKanban"), icon: TrendingUp },
@@ -205,75 +115,12 @@ const menuModules = [
     ]
   },
   {
-    id: "referral_meu_painel",
-    moduleId: "referral",
-    title: "Meu Painel",
-    icon: LayoutDashboard,
-    gradient: "from-cyan-500 to-blue-500",
-    singleItem: true,
-    url: createPageUrl("IndicacoesMeuPainel"),
-    requiredSubmenu: "IndicacoesMeuPainel",
-    items: []
-  },
-  {
-    id: "referral",
-    title: "Indicações",
-    icon: Gift,
-    gradient: "from-amber-500 to-orange-500",
-    items: [
-      { title: "Dashboard", url: createPageUrl("ReferralDashboard"), icon: LayoutDashboard, supervisorOnly: true },
-      { title: "Dashboard Vendedores", url: createPageUrl("ReferralAgentsDashboard"), icon: UserCheck, supervisorOnly: true },
-      { title: "Nova Indicação", url: createPageUrl("ReferralCreate"), icon: Plus, highlight: true },
-      { title: "Gerador de Leads", url: createPageUrl("LeadGenerator"), icon: Users },
-      { title: "Auditoria de Métricas", url: createPageUrl("LeadGeneratorAudit"), icon: Shield, supervisorOnly: true },
-      { title: "Pipeline", url: createPageUrl("ReferralPipeline"), icon: TrendingUp },
-      { title: "Agenda", url: createPageUrl("ReferralAgenda"), icon: CalendarIcon },
-      { title: "Tarefas", url: createPageUrl("ReferralTasks"), icon: CheckSquare },
-      { title: "Relatórios", url: createPageUrl("ReferralReports"), icon: FileBarChart, supervisorOnly: true },
-      { title: "Rel. de Convertidos", url: createPageUrl("ReferralWonReport"), icon: Trophy },
-      { title: "Comissões", url: createPageUrl("ReferralCommissions"), icon: DollarSign, supervisorOnly: true },
-      { title: "Ctrl. Pagamento", url: createPageUrl("CommissionPaymentControl"), icon: FileCheck, supervisorOnly: true },
-      { title: "Reconciliação", url: createPageUrl("CommissionReconciliation"), icon: Shield, supervisorOnly: true },
-      { title: "Automações", url: createPageUrl("ReferralAutomations"), icon: Zap, supervisorOnly: true },
-      { title: "Automações por Canal", url: createPageUrl("ReferralChannelAutomations"), icon: Activity, supervisorOnly: true },
-    ]
-  },
-  {
-    id: "collection",
-    title: "Cobrança",
-    icon: DollarSign,
-    gradient: "from-red-500 to-rose-500",
-    items: [
-      { title: "Dashboard", url: createPageUrl("CollectionDashboard"), icon: LayoutDashboard },
-      { title: "Board", url: createPageUrl("CollectionBoard"), icon: Inbox },
-      { title: "Agenda", url: createPageUrl("CollectionAgenda"), icon: CalendarIcon },
-      { title: "Criar Cobrança", url: createPageUrl("CreateCollectionTicket"), icon: Plus, highlight: true },
-      { title: "Relatórios", url: createPageUrl("CollectionReports"), icon: FileBarChart },
-    ]
-  },
-  {
-    id: "bom_auto",
-    title: "Bom Auto",
-    icon: Navigation,
-    gradient: "from-sky-500 to-cyan-500",
-    items: [
-      { title: "Consulta Cliente", url: createPageUrl("BomAutoConsulta"), icon: Search },
-      { title: "Painel Operacional", url: createPageUrl("BomAutoPainel"), icon: ClipboardList },
-      { title: "Relatório de Utilizações", url: createPageUrl("BomAutoRelatorio"), icon: FileBarChart },
-    ]
-  },
-  {
     id: "config",
     title: "Configurações",
     icon: Settings,
     gradient: "from-slate-500 to-gray-600",
     items: [
       { title: "Agentes", url: createPageUrl("Agents"), icon: UserCog },
-      { title: "Tipos de Ticket", url: createPageUrl("TicketTypes"), icon: FileType },
-      { title: "Templates", url: createPageUrl("Templates"), icon: FileText },
-      { title: "Distribuição de Tickets", url: createPageUrl("DistributionRules"), icon: Zap },
-      { title: "Agentes de IA", url: createPageUrl("AIAgents"), icon: User },
-      { title: "Integrações e APIs", url: createPageUrl("SystemsApiDocs"), icon: Plug },
     ]
   }
 ];
@@ -724,7 +571,7 @@ function LayoutContent({ children, currentPageName }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [commandOpen, setCommandOpen] = useState(false);
-  const [expandedModules, setExpandedModules] = useState(["support"]);
+  const [expandedModules, setExpandedModules] = useState(["sales_pj"]);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -793,7 +640,7 @@ function LayoutContent({ children, currentPageName }) {
           currentModule = matchingModules.find(m => m.id === lastSalesModule);
         }
         
-        if ((currentModule.id === 'sales_pf' || currentModule.id === 'sales_pj')) {
+        if (currentModule.id === 'sales_pj') {
           setLastSalesModule(currentModule.id);
         }
         
@@ -805,7 +652,7 @@ function LayoutContent({ children, currentPageName }) {
   }, [location.pathname, isPublicPage, lastSalesModule]);
 
   const filteredMenuModules = user?.role === 'admin'
-    ? menuModules.filter(m => !m.salesOnly)
+    ? menuModules
     : currentAgent
       ? filterMenuItems(currentAgent, menuModules)
       : [];

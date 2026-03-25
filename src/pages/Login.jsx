@@ -7,9 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
-  Loader2, LogIn, AlertCircle, Headphones, Users, BarChart3, Shield, Zap, CheckCircle,
-  MessageSquare, TrendingUp, Calendar, Bell, FileText, Target, PieChart, Mail,
-  Phone, Clock, Star, Award, Sparkles, Activity
+  Loader2, LogIn, AlertCircle, BarChart3, Shield, Zap,
+  MessageSquare, TrendingUp, Calendar, Bell, PieChart,
+  Clock, Star, Award, Activity
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,27 +33,7 @@ export default function Login() {
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
       toast.success("Login realizado com sucesso!");
       
-      const agentType = user?.agent?.agentType || user?.agent_type;
-      const agentModules = user?.agent?.modules || [];
-      const allowedSubmenus = user?.agent?.allowedSubmenus || [];
-      const hasSubmenuRestrictions = allowedSubmenus.length > 0;
-
-      const canAccessIndicacoesMeuPainel =
-        (agentModules.includes('referral') || agentModules.includes('all')) &&
-        (!hasSubmenuRestrictions || allowedSubmenus.includes('IndicacoesMeuPainel'));
-
-      const salesTypes = ['sales', 'sales_supervisor'];
-      const supervisorTypes = ['sales_supervisor', 'supervisor'];
-
-      if (canAccessIndicacoesMeuPainel) {
-        navigate("/IndicacoesMeuPainel");
-      } else if (agentType && supervisorTypes.includes(agentType)) {
-        navigate("/SalesDashboard");
-      } else if (agentType && salesTypes.includes(agentType)) {
-        navigate("/AgentMyDashboard");
-      } else {
-        navigate("/Dashboard");
-      }
+      navigate("/SalesPJDashboard");
     } catch (err) {
       console.error("Login error:", err);
       setError(err.message || "Email ou senha incorretos");
@@ -141,45 +121,32 @@ export default function Login() {
           {/* Tagline */}
           <div className="mb-8">
             <h1 className="text-4xl xl:text-5xl font-bold text-gray-900 mb-4 leading-tight">
-              Gerencie seu negócio
+              Vendas B2B
               <span className="block bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 bg-clip-text text-transparent">
                 com eficiência
               </span>
             </h1>
             <p className="text-lg text-gray-600 max-w-md">
-              Plataforma completa para atendimento, vendas e relacionamento com clientes
+              Plataforma focada em gestão de vendas PJ, pipeline B2B e relacionamento com empresas
             </p>
           </div>
           
           {/* Feature Cards - 2x2 Grid */}
           <div className="grid grid-cols-2 gap-4 mb-8">
-            {/* Card 1 - Helpdesk */}
+            {/* Card 1 - Pipeline B2B */}
             <div className="group p-5 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 hover:shadow-xl hover:shadow-indigo-100 hover:-translate-y-1 transition-all duration-300">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-blue-500/30 group-hover:scale-110 transition-transform">
-                <Headphones className="w-6 h-6 text-white" />
+              <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-indigo-500/30 group-hover:scale-110 transition-transform">
+                <TrendingUp className="w-6 h-6 text-white" />
               </div>
-              <h3 className="font-bold text-gray-900 mb-1">Helpdesk</h3>
-              <p className="text-sm text-gray-500">Tickets, SLA e CSAT</p>
+              <h3 className="font-bold text-gray-900 mb-1">Pipeline B2B</h3>
+              <p className="text-sm text-gray-500">Gestão completa de leads PJ</p>
               <div className="mt-3 flex items-center gap-2">
-                <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">Kanban</span>
-                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-medium rounded">Macros</span>
+                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-medium rounded">Kanban</span>
+                <span className="px-2 py-0.5 bg-violet-100 text-violet-700 text-xs font-medium rounded">Propostas</span>
               </div>
             </div>
             
-            {/* Card 2 - Vendas */}
-            <div className="group p-5 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 hover:shadow-xl hover:shadow-purple-100 hover:-translate-y-1 transition-all duration-300">
-              <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-purple-500/30 group-hover:scale-110 transition-transform">
-                <Users className="w-6 h-6 text-white" />
-              </div>
-              <h3 className="font-bold text-gray-900 mb-1">CRM Vendas</h3>
-              <p className="text-sm text-gray-500">Pipeline B2C e B2B</p>
-              <div className="mt-3 flex items-center gap-2">
-                <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded">Leads</span>
-                <span className="px-2 py-0.5 bg-pink-100 text-pink-700 text-xs font-medium rounded">Propostas</span>
-              </div>
-            </div>
-            
-            {/* Card 3 - Relatórios */}
+            {/* Card 2 - Relatórios */}
             <div className="group p-5 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 hover:shadow-xl hover:shadow-emerald-100 hover:-translate-y-1 transition-all duration-300">
               <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/30 group-hover:scale-110 transition-transform">
                 <BarChart3 className="w-6 h-6 text-white" />
@@ -192,7 +159,7 @@ export default function Login() {
               </div>
             </div>
             
-            {/* Card 4 - Automações */}
+            {/* Card 3 - Automações */}
             <div className="group p-5 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 hover:shadow-xl hover:shadow-orange-100 hover:-translate-y-1 transition-all duration-300">
               <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-amber-500 rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-orange-500/30 group-hover:scale-110 transition-transform">
                 <Zap className="w-6 h-6 text-white" />
@@ -202,6 +169,19 @@ export default function Login() {
               <div className="mt-3 flex items-center gap-2">
                 <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-medium rounded">Triggers</span>
                 <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded">Actions</span>
+              </div>
+            </div>
+            
+            {/* Card 4 - Gestão de Agentes */}
+            <div className="group p-5 rounded-2xl bg-white/80 backdrop-blur-sm border border-gray-100 hover:shadow-xl hover:shadow-blue-100 hover:-translate-y-1 transition-all duration-300">
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-blue-500/30 group-hover:scale-110 transition-transform">
+                <Shield className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="font-bold text-gray-900 mb-1">Gestão de Acesso</h3>
+              <p className="text-sm text-gray-500">Usuários e permissões</p>
+              <div className="mt-3 flex items-center gap-2">
+                <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">Perfis</span>
+                <span className="px-2 py-0.5 bg-cyan-100 text-cyan-700 text-xs font-medium rounded">Regras</span>
               </div>
             </div>
           </div>
