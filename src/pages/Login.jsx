@@ -237,9 +237,9 @@ export default function Login() {
         {/* Mobile Logo */}
         <div className="lg:hidden mb-8 flex justify-center relative z-10">
           <img 
-            src="/logo-bomflow.png" 
-            alt="Bomflow" 
-            className="h-12 w-auto object-contain brightness-0 invert"
+            src="/logo-saleswo.png" 
+            alt="Sales Two" 
+            className="h-16 w-auto object-contain brightness-0 invert"
           />
         </div>
         
