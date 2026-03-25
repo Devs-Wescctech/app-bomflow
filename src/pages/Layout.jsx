@@ -202,6 +202,17 @@ const menuModules = [
     ]
   },
   {
+    id: "referral_meu_painel",
+    moduleId: "referral",
+    title: "Meu Painel",
+    icon: LayoutDashboard,
+    gradient: "from-cyan-500 to-blue-500",
+    singleItem: true,
+    url: createPageUrl("IndicacoesMeuPainel"),
+    requiredSubmenu: "IndicacoesMeuPainel",
+    items: []
+  },
+  {
     id: "referral",
     title: "Indicações",
     icon: Gift,
