@@ -177,7 +177,8 @@ function ModernSidebar({ user, filteredMenuModules, expandedModules, toggleModul
               transition={{ duration: 0.2 }}
               src="/logo-saleswo.png" 
               alt="Sales Two" 
-              className="h-20 max-w-[200px] object-contain"
+              className="h-24 max-w-[250px] object-contain"
+              style={{ mixBlendMode: 'multiply' }}
             />
           ) : (
             <motion.img
@@ -188,7 +189,8 @@ function ModernSidebar({ user, filteredMenuModules, expandedModules, toggleModul
               transition={{ duration: 0.2 }}
               src="/logo-saleswo.png" 
               alt="Sales Two" 
-              className="h-16 w-auto object-contain"
+              className="h-20 w-auto object-contain"
+              style={{ mixBlendMode: 'multiply' }}
             />
           )}
         </AnimatePresence>
@@ -514,7 +516,8 @@ function ModernHeader({ sidebarOpen, setCommandOpen, mobileMenuOpen, setMobileMe
             <img 
               src="/logo-saleswo.png" 
               alt="Sales Two" 
-              className="h-8 object-contain"
+              className="h-10 object-contain"
+              style={{ mixBlendMode: 'multiply' }}
             />
           </div>
           
@@ -731,7 +734,8 @@ function LayoutContent({ children, currentPageName }) {
                 <img 
                   src="/logo-saleswo.png" 
                   alt="Sales Two" 
-                  className="h-10 object-contain"
+                  className="h-12 object-contain"
+                  style={{ mixBlendMode: 'multiply' }}
                 />
                 <button
                   onClick={() => setMobileMenuOpen(false)}
