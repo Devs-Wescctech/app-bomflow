@@ -1213,14 +1213,16 @@ export default function ReferralPipeline() {
             delay={0.1}
             helpText="Soma dos valores de todas as indicações ativas no pipeline"
           />
-          <StatsCard
-            title="Comissões"
-            value={formatCurrency(totalCommissions)}
-            icon={Gift}
-            color="orange"
-            delay={0.2}
-            helpText="Total de comissões geradas por todas as indicações (pendentes + pagas)"
-          />
+          {currentAgentType !== 'sales' && (
+            <StatsCard
+              title="Comissões"
+              value={formatCurrency(totalCommissions)}
+              icon={Gift}
+              color="orange"
+              delay={0.2}
+              helpText="Total de comissões geradas por todas as indicações (pendentes + pagas)"
+            />
+          )}
           <StatsCard
             title="Taxa de Conversão"
             value={`${conversionRate}%`}
