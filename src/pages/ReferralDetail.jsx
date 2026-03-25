@@ -518,43 +518,23 @@ export default function ReferralDetail() {
   const isConverted = referral.status === 'convertido' || referral.stage === 'fechado_ganho';
   const isLost = referral.status === 'perdido' || referral.stage === 'fechado_perdido';
 
-  if (isConverted || isLost) {
+  if (isLost) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50 dark:bg-gray-950">
         <Card className="max-w-md bg-white dark:bg-gray-900">
           <CardContent className="p-8 text-center">
-            {isConverted ? (
-              <>
-                <CheckCircle className="w-16 h-16 mx-auto mb-4 text-green-600 dark:text-green-400" />
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Indicação Convertida!</h2>
-                <p className="text-gray-600 dark:text-gray-400 mb-4">
-                  Esta indicação foi convertida em {referral.convertedAt && !isNaN(new Date(referral.convertedAt)) 
-                    ? format(new Date(referral.convertedAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
-                    : 'data não disponível'}
-                </p>
-                {referral.commissionStatus === 'aprovada' && (
-                  <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100 mb-4">
-                    <Gift className="w-3 h-3 mr-1" />
-                    Comissão Aprovada: R$ {parseFloat(referral.commissionValue || 0).toFixed(2)}
-                  </Badge>
-                )}
-              </>
-            ) : (
-              <>
-                <XCircle className="w-16 h-16 mx-auto mb-4 text-red-600 dark:text-red-400" />
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Indicação Perdida</h2>
-                <p className="text-gray-600 dark:text-gray-400 mb-4">
-                  Esta indicação foi marcada como perdida em {referral.lostAt && !isNaN(new Date(referral.lostAt))
-                    ? format(new Date(referral.lostAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
-                    : 'data não disponível'}
-                </p>
-                {referral.lostReason && (
-                  <div className="p-3 bg-red-50 dark:bg-red-950 rounded-lg mb-4">
-                    <p className="text-sm font-semibold text-red-900 dark:text-red-300">Motivo:</p>
-                    <p className="text-sm text-red-700 dark:text-red-400">{referral.lostReason}</p>
-                  </div>
-                )}
-              </>
+            <XCircle className="w-16 h-16 mx-auto mb-4 text-red-600 dark:text-red-400" />
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Indicação Perdida</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              Esta indicação foi marcada como perdida em {referral.lostAt && !isNaN(new Date(referral.lostAt))
+                ? format(new Date(referral.lostAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+                : 'data não disponível'}
+            </p>
+            {referral.lostReason && (
+              <div className="p-3 bg-red-50 dark:bg-red-950 rounded-lg mb-4">
+                <p className="text-sm font-semibold text-red-900 dark:text-red-300">Motivo:</p>
+                <p className="text-sm text-red-700 dark:text-red-400">{referral.lostReason}</p>
+              </div>
             )}
             <Button onClick={() => navigate(createPageUrl("ReferralPipeline"))}>
               <ArrowLeft className="w-4 h-4 mr-2" />
@@ -583,6 +563,14 @@ export default function ReferralDetail() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      {isConverted && (
+        <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-4 mx-3 sm:mx-6 mt-3 flex items-center gap-2">
+          <CheckCircle className="text-green-600 dark:text-green-400 w-5 h-5 flex-shrink-0" />
+          <span className="text-green-800 dark:text-green-300 font-medium text-sm">
+            Indicação Convertida — este registro pode ser visualizado e editado normalmente.
+          </span>
+        </div>
+      )}
       {/* Top Navigation Bar */}
       <div className="sticky top-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-gray-800">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 py-3">
