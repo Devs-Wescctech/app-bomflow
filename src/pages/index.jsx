@@ -191,6 +191,10 @@ import BomAutoConsulta from "./BomAutoConsulta";
 import BomAutoPainel from "./BomAutoPainel";
 import BomAutoRelatorio from "./BomAutoRelatorio";
 
+import SalesWonReport from "./SalesWonReport";
+import SalesPJWonReport from "./SalesPJWonReport";
+import ReferralWonReport from "./ReferralWonReport";
+
 import Login from "./Login";
 
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
@@ -383,6 +387,10 @@ const PAGES = {
     
     BomAutoPainel: BomAutoPainel,
     BomAutoRelatorio: BomAutoRelatorio,
+
+    SalesWonReport: SalesWonReport,
+    SalesPJWonReport: SalesPJWonReport,
+    ReferralWonReport: ReferralWonReport,
     
 }
 
@@ -606,6 +614,10 @@ function PagesContent() {
                 <Route path="/BomAutoRelatorio" element={<BomAutoRelatorio />} />
                 
                 <Route path="/SystemsApiDocs" element={<SystemsApiDocs />} />
+
+                <Route path="/SalesWonReport" element={<SalesWonReport />} />
+                <Route path="/SalesPJWonReport" element={<SalesPJWonReport />} />
+                <Route path="/ReferralWonReport" element={<ReferralWonReport />} />
                 
             </Routes>
         </Layout>

@@ -79,6 +79,7 @@ import {
   Shield,
   FileCheck,
   Plug,
+  Trophy,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -178,6 +179,7 @@ const menuModules = [
       { title: "Mapa de Leads", url: createPageUrl("LeadsMap"), icon: MapPin },
       { title: "Rota Inteligente", url: createPageUrl("SalesRoutes"), icon: Navigation },
       { title: "Relatórios", url: createPageUrl("SalesReports"), icon: FileBarChart, supervisorOnly: true },
+      { title: "Rel. de Ganhos", url: createPageUrl("SalesWonReport"), icon: Trophy, supervisorOnly: true },
       { title: "Automações", url: createPageUrl("LeadAutomations"), icon: Zap, supervisorOnly: true },
       { title: "Tarefas", url: createPageUrl("SalesTasks"), icon: CheckSquare },
       { title: "Templates", url: createPageUrl("ProposalTemplates"), icon: FileText, supervisorOnly: true },
@@ -196,6 +198,7 @@ const menuModules = [
       { title: "Agenda", url: createPageUrl("SalesAgenda"), icon: CalendarIcon },
       { title: "Busca de Leads", url: createPageUrl("LeadPJSearch"), icon: Search },
       { title: "Relatórios", url: createPageUrl("SalesPJReports"), icon: FileBarChart, supervisorOnly: true },
+      { title: "Rel. de Ganhos", url: createPageUrl("SalesPJWonReport"), icon: Trophy, supervisorOnly: true },
       { title: "Automações", url: createPageUrl("LeadPJAutomations"), icon: Zap, supervisorOnly: true },
       { title: "Tarefas", url: createPageUrl("SalesTasks"), icon: CheckSquare },
       { title: "Templates", url: createPageUrl("ProposalTemplates"), icon: FileText, supervisorOnly: true },
@@ -227,6 +230,7 @@ const menuModules = [
       { title: "Agenda", url: createPageUrl("ReferralAgenda"), icon: CalendarIcon },
       { title: "Tarefas", url: createPageUrl("ReferralTasks"), icon: CheckSquare },
       { title: "Relatórios", url: createPageUrl("ReferralReports"), icon: FileBarChart, supervisorOnly: true },
+      { title: "Rel. de Convertidos", url: createPageUrl("ReferralWonReport"), icon: Trophy, supervisorOnly: true },
       { title: "Comissões", url: createPageUrl("ReferralCommissions"), icon: DollarSign, supervisorOnly: true },
       { title: "Ctrl. Pagamento", url: createPageUrl("CommissionPaymentControl"), icon: FileCheck, supervisorOnly: true },
       { title: "Reconciliação", url: createPageUrl("CommissionReconciliation"), icon: Shield, supervisorOnly: true },
