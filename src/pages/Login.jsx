@@ -56,8 +56,8 @@ export default function Login() {
         {/* Animated Background Elements */}
         <div className="absolute inset-0 overflow-hidden">
           {/* Gradient Orbs */}
-          <div className="absolute -top-32 -left-32 w-[500px] h-[500px] bg-gradient-to-br from-indigo-200/60 to-purple-200/60 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '4s' }} />
-          <div className="absolute top-1/2 -right-48 w-[400px] h-[400px] bg-gradient-to-br from-blue-200/50 to-cyan-200/50 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '5s' }} />
+          <div className="absolute -top-32 -left-32 w-[500px] h-[500px] rounded-full blur-3xl animate-pulse" style={{ animationDuration: '4s', background: 'linear-gradient(to bottom right, rgba(90,42,60,0.3), rgba(249,143,111,0.2))' }} />
+          <div className="absolute top-1/2 -right-48 w-[400px] h-[400px] rounded-full blur-3xl animate-pulse" style={{ animationDuration: '5s', background: 'linear-gradient(to bottom right, rgba(249,143,111,0.25), rgba(90,42,60,0.15))' }} />
           <div className="absolute -bottom-48 left-1/3 w-[450px] h-[450px] bg-gradient-to-br from-emerald-200/40 to-teal-200/40 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '6s' }} />
           
           {/* Floating Icons */}
