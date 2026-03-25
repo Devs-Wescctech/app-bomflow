@@ -1390,7 +1390,7 @@ export default function ReferralDetail() {
                       <Badge className="bg-blue-100 text-blue-800">Nível 1</Badge>
                     )}
                     <span className="text-xs text-gray-600 dark:text-gray-400">
-                      {referral.referrerTotalConversions || 0} conversão{(referral.referrerTotalConversions || 0) !== 1 ? 'ões' : ''}
+                      {referral.referrerTotalConversions || 0} {(referral.referrerTotalConversions || 0) !== 1 ? 'conversões' : 'conversão'}
                     </span>
                   </div>
                 </div>
