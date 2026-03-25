@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { canAccessReports, canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
+import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 
 const createPageUrl = (pageName) => `/${pageName}`;
@@ -52,9 +52,8 @@ export default function SalesPJWonReport() {
 
   const currentAgent = user?.agent;
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
-  const isSupervisor = currentAgentType?.includes('supervisor') || currentAgentType === 'supervisor';
-  const hasPermission = isAdmin || isSupervisor || canAccessReports(currentAgent);
+  const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor';
+  const hasPermission = !!user;
 
   const { data: teams = [] } = useQuery({
     queryKey: ['teams'],
@@ -68,12 +67,12 @@ export default function SalesPJWonReport() {
   });
 
   const { data: leadsPJ = [], isLoading } = useQuery({
-    queryKey: ['leads-pj-won-report', isAdmin ? 'admin' : isSupervisor ? 'supervisor' : currentAgent?.id, allAgents.length],
+    queryKey: ['leads-pj-won-report', isAdmin ? 'admin' : currentAgent?.id, allAgents.length],
     queryFn: async () => {
       const allLeads = await base44.entities.LeadPJ.list('-createdDate', 10000);
       const wonLeads = allLeads.filter(l => l.concluded || l.stage === 'fechado_ganho');
 
-      if (isAdmin || isSupervisor) return wonLeads;
+      if (isAdmin) return wonLeads;
       if (!currentAgent) return [];
       if (canViewAll(currentAgent, 'leads-pj')) return wonLeads;
 
