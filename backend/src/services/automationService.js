@@ -290,7 +290,6 @@ async function executeChannelAutomationAction(automation, lead, automationType, 
 
 async function checkInactivityTrigger(automation, triggerConfig, automationType, tableName) {
   try {
-    // Calculate hours from various config formats
     const hours = Number(triggerConfig.hours) || 
                   (Number(triggerConfig.days) ? Number(triggerConfig.days) * 24 : 
                   (Number(triggerConfig.duration_days) ? Number(triggerConfig.duration_days) * 24 : 
@@ -300,7 +299,13 @@ async function checkInactivityTrigger(automation, triggerConfig, automationType,
 
     const closedStages = ['fechado_ganho', 'fechado_perdido', 'convertido', 'perdido', 'cancelado'];
     
-    // Use created_at instead of updated_at to avoid resetting timer on any lead update
+    const params = [hoursAgo.toISOString(), ...closedStages, automation.id, hoursAgo.toISOString()];
+    let teamFilter = '';
+    if (automation.team_id) {
+      params.push(automation.team_id);
+      teamFilter = ` AND l.team_id = $${params.length}`;
+    }
+
     const leadsResult = await query(`
       SELECT l.*, a.name as agent_name, a.phone as agent_phone, a.email as agent_email
       FROM ${tableName} l
@@ -312,11 +317,11 @@ async function checkInactivityTrigger(automation, triggerConfig, automationType,
           WHERE al.lead_id = l.id 
             AND al.automation_id = $7
             AND al.executed_at > $8
-        )
+        )${teamFilter}
       LIMIT 10
-    `, [hoursAgo.toISOString(), ...closedStages, automation.id, hoursAgo.toISOString()]);
+    `, params);
 
-    console.log(`[Automation] ${automation.name}: Found ${leadsResult.rows.length} leads matching criteria`);
+    console.log(`[Automation] ${automation.name}: Found ${leadsResult.rows.length} leads matching criteria${automation.team_id ? ` (team: ${automation.team_id})` : ''}`);
 
     for (const lead of leadsResult.rows) {
       await executeAutomationAction(automation, lead, automationType);
@@ -566,6 +571,10 @@ export async function executeLeadCreatedAutomation(lead, leadType = 'lead') {
     };
 
     for (const automation of automations) {
+      if (automation.team_id && lead.team_id !== automation.team_id) {
+        console.log(`[Automation] Skipping ${automation.name} — lead team (${lead.team_id}) doesn't match automation team (${automation.team_id})`);
+        continue;
+      }
       console.log(`[Automation] Executing ${automation.name} for new ${leadType}`);
       await executeAutomationAction(automation, enrichedLead, leadType);
     }

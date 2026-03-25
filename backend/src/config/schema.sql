@@ -681,6 +681,7 @@ ALTER TABLE lead_automations ADD COLUMN IF NOT EXISTS stop_on_trigger BOOLEAN DE
 ALTER TABLE lead_automations ADD COLUMN IF NOT EXISTS whatsapp_template_id VARCHAR(100);
 ALTER TABLE lead_automations ADD COLUMN IF NOT EXISTS whatsapp_template_name VARCHAR(255);
 ALTER TABLE lead_automations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+ALTER TABLE lead_automations ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id);
 
 ALTER TABLE lead_pj_automations ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 0;
 ALTER TABLE lead_pj_automations ADD COLUMN IF NOT EXISTS stop_on_trigger BOOLEAN DEFAULT FALSE;

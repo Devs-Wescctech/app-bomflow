@@ -96,6 +96,7 @@ export default function LeadAutomations() {
     },
     whatsapp_template_id: "",
     whatsapp_template_name: "",
+    team_id: "",
   });
 
   const { data: rules = [], isLoading: rulesLoading } = useQuery({
@@ -110,6 +111,12 @@ export default function LeadAutomations() {
     queryKey: ['whatsappTemplates'],
     queryFn: () => base44.whatsapp.getTemplates(),
     staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: teams = [] } = useQuery({
+    queryKey: ['teams'],
+    queryFn: () => base44.entities.Team.list(),
+    staleTime: 60000,
   });
 
   const { data: connectionTest } = useQuery({
@@ -194,6 +201,7 @@ export default function LeadAutomations() {
       },
       whatsapp_template_id: "",
       whatsapp_template_name: "",
+      team_id: "",
     });
     setEditingRule(null);
   };
@@ -268,6 +276,7 @@ export default function LeadAutomations() {
       },
       whatsapp_template_id: rule.whatsappTemplateId || actionConfig.whatsapp_template_id || actionConfig.whatsappTemplateId || "",
       whatsapp_template_name: rule.whatsappTemplateName || actionConfig.whatsapp_template_name || actionConfig.whatsappTemplateName || "",
+      team_id: rule.teamId || "",
     });
     setShowDialog(true);
   };
@@ -277,6 +286,11 @@ export default function LeadAutomations() {
     
     if (!formData.name) {
       toast.error('Nome da regra é obrigatório!');
+      return;
+    }
+
+    if (!formData.team_id) {
+      toast.error('Selecione um time para esta automação.');
       return;
     }
 
@@ -295,6 +309,7 @@ export default function LeadAutomations() {
       action_config: JSON.stringify(formData.action_config),
       whatsapp_template_id: formData.whatsapp_template_id || null,
       whatsapp_template_name: formData.whatsapp_template_name || null,
+      team_id: formData.team_id || null,
     };
 
     if (editingRule) {
@@ -434,6 +449,9 @@ export default function LeadAutomations() {
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{rule.name}</h3>
                         <Badge className={rule.active ? "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"}>
                           {rule.active ? 'Ativa' : 'Inativa'}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          {rule.teamId ? (teams.find(t => t.id === rule.teamId)?.name || 'Time removido') : 'Todos os times'}
                         </Badge>
                       </div>
                       
@@ -582,6 +600,25 @@ export default function LeadAutomations() {
                   rows={2}
                   className="mt-1"
                 />
+              </div>
+
+              <div>
+                <Label>Time <span className="text-red-500">*</span></Label>
+                <Select
+                  value={formData.team_id}
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, team_id: value }))}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Selecione um time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teams.map(team => (
+                      <SelectItem key={team.id} value={team.id}>
+                        {team.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
