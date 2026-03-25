@@ -189,7 +189,7 @@ function ModernSidebar({ user, filteredMenuModules, expandedModules, toggleModul
               transition={{ duration: 0.2 }}
               src="/logo-saleswo-icon.png" 
               alt="Sales Two" 
-              className="h-20 w-auto object-contain"
+              className="h-32 w-auto object-contain"
               style={{ mixBlendMode: 'multiply' }}
             />
           )}
