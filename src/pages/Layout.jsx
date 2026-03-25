@@ -187,10 +187,9 @@ function ModernSidebar({ user, filteredMenuModules, expandedModules, toggleModul
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ duration: 0.2 }}
-              src="/logo-saleswo-icon.png" 
+              src="/logo-saleswo-icon-nobg.png" 
               alt="Sales Two" 
-              className="h-32 w-auto object-contain"
-              style={{ mixBlendMode: 'multiply' }}
+              className="h-44 w-auto object-contain"
             />
           )}
         </AnimatePresence>
