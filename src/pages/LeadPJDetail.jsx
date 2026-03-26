@@ -592,40 +592,6 @@ export default function LeadPJDetail() {
             </div>
           </CardContent>
         </Card>
-        
-        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-          <DialogContent className="bg-white dark:bg-gray-900">
-            <div className="p-6 text-center">
-              <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-600 dark:text-red-400" />
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Excluir Lead Permanentemente?</h2>
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
-                Esta ação não pode ser desfeita. Todos os dados, atividades e documentos deste lead serão removidos.
-              </p>
-              <div className="flex gap-3 justify-center">
-                <Button onClick={() => setShowDeleteDialog(false)} variant="outline">
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={() => deleteLeadMutation.mutate()}
-                  disabled={deleteLeadMutation.isPending}
-                  variant="destructive"
-                >
-                  {deleteLeadMutation.isPending ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Excluindo...
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Excluir Lead
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
     );
   }
@@ -1673,6 +1639,41 @@ export default function LeadPJDetail() {
               </Button>
             </div>
           </CardContent>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Excluir Lead */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="bg-white dark:bg-gray-900">
+          <div className="p-6 text-center">
+            <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-600 dark:text-red-400" />
+            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Excluir Lead Permanentemente?</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              Esta ação não pode ser desfeita. Todos os dados, atividades e documentos deste lead serão removidos.
+            </p>
+            <div className="flex gap-3 justify-center">
+              <Button onClick={() => setShowDeleteDialog(false)} variant="outline">
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => deleteLeadMutation.mutate()}
+                disabled={deleteLeadMutation.isPending}
+                variant="destructive"
+              >
+                {deleteLeadMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Excluindo...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Excluir Lead
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
