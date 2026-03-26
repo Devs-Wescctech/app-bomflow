@@ -442,11 +442,9 @@ export default function ReferralChannelAutomations() {
   };
 
   const handleTestSend = async () => {
-    console.log('[DEBUG handleTestSend] CALLED', { testPhone, templateId: formData.whatsapp_template_id, channelToken: channelToken ? `len=${channelToken.length}` : 'EMPTY' });
     const cleaned = testPhone.replace(/[\s\-\(\)\+]/g, '');
     const error = validatePhone(cleaned);
     if (error) {
-      console.log('[DEBUG handleTestSend] VALIDATION FAILED:', error);
       setTestPhoneError(error);
       return;
     }
@@ -454,7 +452,6 @@ export default function ReferralChannelAutomations() {
     setSendingTest(true);
     try {
       const token = localStorage.getItem('accessToken');
-      console.log('[DEBUG handleTestSend] SENDING fetch', { phone: cleaned, hasToken: !!token, hasChannelToken: !!channelToken.trim() });
       const resp = await fetch('/api/whatsapp/test-send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -466,14 +463,12 @@ export default function ReferralChannelAutomations() {
         }),
       });
       const data = await resp.json();
-      console.log('[DEBUG handleTestSend] RESPONSE', { status: resp.status, ok: resp.ok, data });
       if (resp.ok && data.success) {
         toast.success('Mensagem de teste enviada com sucesso!');
       } else {
         toast.error(data.error || data.message || 'Erro ao enviar mensagem de teste');
       }
     } catch (err) {
-      console.error('[DEBUG handleTestSend] CATCH ERROR:', err);
       toast.error(`Erro de conexão: ${err.message}`);
     } finally {
       setSendingTest(false);
@@ -992,7 +987,7 @@ export default function ReferralChannelAutomations() {
                               variant="outline"
                               size="sm"
                               disabled={sendingTest || !testPhone.trim() || !formData.whatsapp_template_id}
-                              onClick={() => { console.log('[DEBUG CLICK] Enviar Teste button clicked'); handleTestSend(); }}
+                              onClick={handleTestSend}
                               className="text-gray-600 border-gray-300 hover:bg-gray-50"
                             >
                               {sendingTest ? (
