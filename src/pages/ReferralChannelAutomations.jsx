@@ -992,7 +992,7 @@ export default function ReferralChannelAutomations() {
                               variant="outline"
                               size="sm"
                               disabled={sendingTest || !testPhone.trim() || !formData.whatsapp_template_id}
-                              onClick={handleTestSend}
+                              onClick={() => { console.log('[DEBUG CLICK] Enviar Teste button clicked'); handleTestSend(); }}
                               className="text-gray-600 border-gray-300 hover:bg-gray-50"
                             >
                               {sendingTest ? (
