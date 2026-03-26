@@ -1,7 +1,13 @@
-# Bomflow - Vendas PJ
+# SalesTwo - Vendas B2B
 
 ## Overview
-Bomflow Vendas PJ is a focused B2B sales management platform built on a streamlined version of the original Wescctech CRM. The system is designed exclusively for managing B2B (Pessoa Jurídica) sales operations, including lead management, pipeline tracking, proposals, and agent/access management. All other modules (Helpdesk, Vendas PF, Indicações, Cobrança, Bom Auto, Portal do Cliente) have been removed to keep the system lean and purpose-driven.
+SalesTwo is a focused B2B sales management platform built on a streamlined version of the original Wescctech CRM. The system is designed exclusively for managing B2B (Pessoa Jurídica) sales operations, including lead management, pipeline tracking, proposals, and agent/access management.
+
+## Brand Identity
+- **Primary Colors**: Burgundy (#5A2A3C) + Coral (#F98F6F)
+- **Logo**: `/public/logo-saleswo.png` (full), `/public/logo-saleswo-icon-nobg.png` (icon, transparent)
+- **Favicon**: `/public/logo-saleswo-icon-nobg.png`
+- **Page Title**: "SalesTwo - Vendas B2B"
 
 ## Active Modules
 1. **Vendas PJ** — Main module: B2B lead pipeline, dashboards, proposals, automations, reports
@@ -37,6 +43,13 @@ Bomflow Vendas PJ is a focused B2B sales management platform built on a streamli
 - **Public**: PublicSignature, PublicProposal, PublicContractSign
 - **Auth**: Login
 
+### WhatsApp Automation Token
+- Token is stored in `system_settings` table as `automation_token`
+- Backend `whatsappService.js` uses `getConfiguredToken()` which reads from DB first, falls back to `RUDO_WHATSAPP_TOKEN` env var
+- Frontend configuration UI available in LeadPJAutomations page
+- Token is masked in UI for security (shows first 6 + last 4 chars)
+- Saving a new token auto-refreshes WhatsApp templates
+
 ### UI/UX Design
 - **Kanban Boards**: Advanced drag-and-drop implementation using `@dnd-kit` with sticky headers, auto-scroll, and mobile responsiveness.
 - **Component Library**: Radix UI for accessibility, styled with Tailwind CSS.
@@ -53,6 +66,7 @@ Bomflow Vendas PJ is a focused B2B sales management platform built on a streamli
 - **Optimistic UI**: Implemented for Kanban drag-and-drop interactions.
 - **Dashboard Filters**: Reusable `DashboardFilters` component with period presets, team, agent, and stage filters.
 - **Token Auto-Refresh**: Global fetch interceptor for transparently refreshing expired access tokens.
+- **Configurable Automation Token**: WhatsApp automation token configurable via UI, stored in system_settings DB table.
 
 ## External Dependencies
 - **PostgreSQL**: Primary database for the system.

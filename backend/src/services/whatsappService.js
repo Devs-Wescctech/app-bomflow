@@ -1,10 +1,26 @@
+import { query } from '../config/database.js';
+
 const RUDO_API_BASE = 'https://api.wescctech.com.br/core/v2/api';
 
+async function getConfiguredToken() {
+  try {
+    const result = await query(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'automation_token' LIMIT 1"
+    );
+    if (result.rows.length > 0 && result.rows[0].setting_value) {
+      return result.rows[0].setting_value;
+    }
+  } catch (err) {
+    console.error('[WhatsApp] Error fetching automation_token from DB:', err.message);
+  }
+  return process.env.RUDO_WHATSAPP_TOKEN || null;
+}
+
 export async function getWhatsAppTemplates() {
-  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  const token = await getConfiguredToken();
   
   if (!token) {
-    throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+    throw new Error('Token de automação não configurado. Configure o token no menu de Automações.');
   }
 
   const response = await fetch(`${RUDO_API_BASE}/action-cards/templates`, {
@@ -45,9 +61,9 @@ export async function getWhatsAppTemplatesByToken(channelToken) {
 }
 
 export async function createChatWithToken(params, channelToken) {
-  const token = channelToken || process.env.RUDO_WHATSAPP_TOKEN;
+  const token = channelToken || await getConfiguredToken();
   if (!token) {
-    throw new Error('No WhatsApp token available');
+    throw new Error('Token de automação não configurado. Configure o token no menu de Automações.');
   }
 
   const { number, templateId, templateComponents } = params;
@@ -81,9 +97,9 @@ export async function createChatWithToken(params, channelToken) {
 }
 
 export async function sendTemplateWithToken(params, channelToken) {
-  const token = channelToken || process.env.RUDO_WHATSAPP_TOKEN;
+  const token = channelToken || await getConfiguredToken();
   if (!token) {
-    throw new Error('No WhatsApp token available');
+    throw new Error('Token de automação não configurado. Configure o token no menu de Automações.');
   }
 
   const { number, templateId, templateComponents } = params;
@@ -160,10 +176,10 @@ export async function sendWhatsAppMessageWithToken(lead, agent, templateId, chan
 }
 
 export async function createChat(params) {
-  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  const token = await getConfiguredToken();
   
   if (!token) {
-    throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+    throw new Error('Token de automação não configurado. Configure o token no menu de Automações.');
   }
 
   const { number, templateId, templateComponents } = params;
@@ -197,10 +213,10 @@ export async function createChat(params) {
 }
 
 export async function sendTemplate(params) {
-  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  const token = await getConfiguredToken();
   
   if (!token) {
-    throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+    throw new Error('Token de automação não configurado. Configure o token no menu de Automações.');
   }
 
   const { number, templateId, templateComponents } = params;
@@ -232,10 +248,10 @@ export async function sendTemplate(params) {
 }
 
 export async function sendTextMessage(params) {
-  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  const token = await getConfiguredToken();
   
   if (!token) {
-    throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+    throw new Error('Token de automação não configurado. Configure o token no menu de Automações.');
   }
 
   const { number, message } = params;
@@ -265,10 +281,10 @@ export async function sendTextMessage(params) {
 }
 
 export async function sendDocument(params) {
-  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  const token = await getConfiguredToken();
   
   if (!token) {
-    throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+    throw new Error('Token de automação não configurado. Configure o token no menu de Automações.');
   }
 
   const { number, documentUrl, caption, filename } = params;
@@ -301,10 +317,10 @@ export async function sendDocument(params) {
 }
 
 export async function getContactByPhone(phoneNumber) {
-  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  const token = await getConfiguredToken();
   
   if (!token) {
-    throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+    throw new Error('Token de automação não configurado. Configure o token no menu de Automações.');
   }
 
   const formattedNumber = phoneNumber.replace(/\D/g, '');
@@ -340,10 +356,10 @@ export async function getContactByPhone(phoneNumber) {
 }
 
 export async function setContactAttributes(contactId, attributes) {
-  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  const token = await getConfiguredToken();
   
   if (!token) {
-    throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+    throw new Error('Token de automação não configurado. Configure o token no menu de Automações.');
   }
 
   const response = await fetch(`${RUDO_API_BASE}/contacts/${contactId}/set-attributes`, {

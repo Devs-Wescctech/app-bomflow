@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -112,17 +112,20 @@ export default function LeadPJAutomations() {
     queryKey: ['automationSettings'],
     queryFn: () => base44.entities.SystemSettings.list(),
     initialData: [],
-    onSuccess: (data) => {
-      const tokenSetting = data.find(s => s.setting_key === 'automation_token');
+  });
+
+  useEffect(() => {
+    if (settings.length > 0) {
+      const tokenSetting = settings.find(s => s.settingKey === 'automation_token' || s.setting_key === 'automation_token');
       if (tokenSetting) {
-        setAutomationToken(tokenSetting.setting_value);
+        setAutomationToken(tokenSetting.settingValue || tokenSetting.setting_value);
       }
     }
-  });
+  }, [settings]);
 
   const saveTokenMutation = useMutation({
     mutationFn: async (token) => {
-      const existingSetting = settings.find(s => s.setting_key === 'automation_token');
+      const existingSetting = settings.find(s => s.settingKey === 'automation_token' || s.setting_key === 'automation_token');
       
       const data = {
         setting_key: 'automation_token',
@@ -138,8 +141,9 @@ export default function LeadPJAutomations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['automationSettings'] });
+      queryClient.invalidateQueries({ queryKey: ['whatsappTemplates'] });
       setIsTokenDialogOpen(false);
-      toast.success('Token de automação salvo com sucesso!');
+      toast.success('Token salvo! Templates sincronizados automaticamente.');
     },
     onError: () => {
       toast.error('Erro ao salvar token de automação');
@@ -385,20 +389,15 @@ export default function LeadPJAutomations() {
           <CardContent>
             <div className="flex items-center gap-2 p-3 bg-white dark:bg-gray-900 rounded-lg border border-purple-200 dark:border-purple-800">
               <code className="text-sm font-mono text-gray-700 dark:text-gray-300 flex-1 truncate">
-                {automationToken ? `${automationToken.substring(0, 20)}...` : 'Nenhum token configurado'}
+                {automationToken 
+                  ? `${automationToken.substring(0, 6)}${'•'.repeat(20)}${automationToken.substring(automationToken.length - 4)}` 
+                  : 'Nenhum token configurado'}
               </code>
               {automationToken && (
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => {
-                    navigator.clipboard.writeText(automationToken);
-                    toast.success('Token copiado!');
-                  }}
-                  className="text-purple-600 hover:text-purple-700 dark:text-purple-400"
-                >
-                  <Copy className="w-4 h-4" />
-                </Button>
+                <Badge className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 text-xs">
+                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                  Configurado
+                </Badge>
               )}
             </div>
           </CardContent>
