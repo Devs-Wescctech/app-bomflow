@@ -442,11 +442,9 @@ export default function ReferralChannelAutomations() {
   };
 
   const handleTestSend = async () => {
-    console.log('[DEBUG-TEST] handleTestSend called', { testPhone, templateId: formData.whatsapp_template_id, channelToken: channelToken ? 'SET' : 'EMPTY' });
     const cleaned = testPhone.replace(/[\s\-\(\)\+]/g, '');
     const error = validatePhone(cleaned);
     if (error) {
-      console.log('[DEBUG-TEST] validation failed:', error);
       setTestPhoneError(error);
       return;
     }
@@ -454,7 +452,6 @@ export default function ReferralChannelAutomations() {
     setSendingTest(true);
     try {
       const token = localStorage.getItem('accessToken');
-      console.log('[DEBUG-TEST] sending fetch to /api/whatsapp/test-send', { phone: cleaned, hasToken: !!token });
       const resp = await fetch('/api/whatsapp/test-send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -1001,7 +998,7 @@ export default function ReferralChannelAutomations() {
                               ) : (
                                 <>
                                   <Send className="w-4 h-4 mr-1" />
-                                  TESTAR ENVIO v2
+                                  Enviar Teste
                                 </>
                               )}
                             </Button>
