@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   ArrowLeft,
   Phone,
@@ -78,6 +78,9 @@ export default function ReferralDetail() {
   const [generatingProposal, setGeneratingProposal] = useState(false);
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [proposalUrl, setProposalUrl] = useState("");
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [waMessage, setWaMessage] = useState("");
+  const [sendingWaMessage, setSendingWaMessage] = useState(false);
   const [uploadingContract, setUploadingContract] = useState(false);
   const [sendingContractAutentique, setSendingContractAutentique] = useState(false);
   const [sendingContractLink, setSendingContractLink] = useState(false);
@@ -395,6 +398,35 @@ export default function ReferralDetail() {
     setSendingWhatsApp(false);
   };
 
+  const currentAgent = user?.agent;
+  const isIndicacoesAtendente = currentAgent?.agentType === 'indicacoes_atendente';
+  const leadPhone = referral?.referredPhone || referral?.referred_phone;
+
+  const handleSendWaMessage = async () => {
+    if (!waMessage.trim()) return;
+    setSendingWaMessage(true);
+    try {
+      const token = localStorage.getItem('accessToken');
+      const resp = await fetch(`/api/whatsapp/indications/leads/${referralId}/whatsapp-send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ message: waMessage.trim() }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        toast.success('Mensagem enviada pelo seu canal WhatsApp.');
+        setShowWhatsAppModal(false);
+        setWaMessage('');
+      } else {
+        toast.error(data.error || 'Erro ao enviar mensagem.');
+      }
+    } catch (err) {
+      toast.error('Erro ao enviar mensagem. Tente novamente.');
+    } finally {
+      setSendingWaMessage(false);
+    }
+  };
+
   const handleContractUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -630,6 +662,18 @@ export default function ReferralDetail() {
                       Converter
                     </>
                   )}
+                </Button>
+              )}
+              {isIndicacoesAtendente && (
+                <Button
+                  onClick={() => { setWaMessage(''); setShowWhatsAppModal(true); }}
+                  size="sm"
+                  disabled={!leadPhone}
+                  title={!leadPhone ? 'Este lead não possui telefone.' : 'Conversar no WhatsApp'}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">WhatsApp</span>
                 </Button>
               )}
               <Button
@@ -1589,6 +1633,70 @@ export default function ReferralDetail() {
               </Button>
             </div>
           </CardContent>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Conversar no WhatsApp */}
+      <Dialog open={showWhatsAppModal} onOpenChange={(open) => { setShowWhatsAppModal(open); if (!open) setWaMessage(''); }}>
+        <DialogContent className="bg-white dark:bg-gray-900 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-700 dark:text-green-400">
+              <MessageSquare className="w-5 h-5" />
+              Conversar no WhatsApp
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div>
+                <Label className="text-xs text-gray-500 dark:text-gray-400">Nome do lead</Label>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">{referral?.referredName || referral?.referred_name || '—'}</p>
+              </div>
+              <div>
+                <Label className="text-xs text-gray-500 dark:text-gray-400">Telefone</Label>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">{leadPhone || '—'}</p>
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="wa-msg" className="text-sm font-medium">Mensagem</Label>
+              <Textarea
+                id="wa-msg"
+                value={waMessage}
+                onChange={(e) => setWaMessage(e.target.value)}
+                placeholder="Digite sua mensagem..."
+                rows={4}
+                className="mt-1.5 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 pt-1">
+              <Button
+                variant="outline"
+                onClick={() => { setShowWhatsAppModal(false); setWaMessage(''); }}
+                className="flex-1"
+                disabled={sendingWaMessage}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleSendWaMessage}
+                disabled={!waMessage.trim() || sendingWaMessage}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+              >
+                {sendingWaMessage ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4 mr-2" />
+                    Enviar
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
