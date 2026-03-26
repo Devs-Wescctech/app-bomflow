@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Edit, Trash2, UserCheck, UserX, Activity, Upload, Loader2, MessageSquare, Copy, Check, ExternalLink, MoreVertical, Clock, Users, Building2, Layers, Settings, ShieldX, KeyRound } from "lucide-react";
+import { Plus, Edit, Trash2, UserCheck, UserX, Activity, Upload, Loader2, MessageSquare, Copy, Check, ExternalLink, MoreVertical, Clock, Users, Building2, Layers, Settings, ShieldX, KeyRound, Eye, EyeOff } from "lucide-react";
 import { canManageAgents } from "@/components/utils/permissions.jsx";
 import {
   Dialog,
@@ -164,11 +164,9 @@ export default function Agents() {
   const hasPermission = isAdmin || canManageAgents(currentAgent);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
-  const [selectedAgentForWhatsApp, setSelectedAgentForWhatsApp] = useState(null);
-  const [generatingToken, setGeneratingToken] = useState(false);
-  const [generatedTokenData, setGeneratedTokenData] = useState(null);
-  const [copiedUrl, setCopiedUrl] = useState(false);
+  const [showTokenField, setShowTokenField] = useState(false);
+  const [channelTokenInput, setChannelTokenInput] = useState("");
+  const [channelTokenChanged, setChannelTokenChanged] = useState(false);
   const [editingAgent, setEditingAgent] = useState(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   
@@ -415,38 +413,6 @@ export default function Agents() {
     }
   };
 
-  const handleGenerateWhatsAppToken = async (agent) => {
-    setSelectedAgentForWhatsApp(agent);
-    setWhatsappDialogOpen(true);
-    setGeneratingToken(true);
-    setGeneratedTokenData(null);
-
-    try {
-      const response = await base44.functions.invoke('generateWhatsAppToken', {
-        agent_id: agent.id,
-        validity_days: 90
-      });
-
-      if (response.data.success) {
-        setGeneratedTokenData(response.data);
-        await queryClient.invalidateQueries({ queryKey: ['agents'] });
-        toast.success('Token WhatsApp gerado com sucesso!');
-      } else {
-        toast.error(response.data.error || 'Erro ao gerar token');
-      }
-    } catch (error) {
-      console.error('Erro ao gerar token:', error);
-      toast.error('Erro ao gerar token: ' + error.message);
-    }
-    setGeneratingToken(false);
-  };
-
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    setCopiedUrl(true);
-    toast.success('Link copiado para a área de transferência!');
-    setTimeout(() => setCopiedUrl(false), 2000);
-  };
 
   const handleResetPassword = async () => {
     if (!selectedAgentForReset || !newPassword) return;
@@ -524,6 +490,9 @@ export default function Agents() {
       }
     });
     setEditingAgent(null);
+    setChannelTokenInput("");
+    setChannelTokenChanged(false);
+    setShowTokenField(false);
   };
 
   const resetTeamForm = () => {
@@ -604,7 +573,7 @@ export default function Agents() {
     return { ...defaults, ...parsed };
   };
 
-  const handleEdit = (agent) => {
+  const handleEdit = async (agent) => {
     setEditingAgent(agent);
     setFormData({
       name: agent.name || "",
@@ -624,6 +593,26 @@ export default function Agents() {
       workingHours: agent.workingHours || { start: "08:00", end: "18:00", days: [1, 2, 3, 4, 5] },
       permissions: normalizePermissions(agent.permissions)
     });
+    setShowTokenField(false);
+    setChannelTokenChanged(false);
+    if (agent.agentType === 'indicacoes_atendente') {
+      try {
+        const token = localStorage.getItem('accessToken');
+        const resp = await fetch(`/api/agents/${agent.id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          setChannelTokenInput(data.whatsappChannelToken || "");
+        } else {
+          setChannelTokenInput("");
+        }
+      } catch {
+        setChannelTokenInput("");
+      }
+    } else {
+      setChannelTokenInput("");
+    }
     setIsDialogOpen(true);
   };
 
@@ -710,6 +699,9 @@ export default function Agents() {
     if (editingAgent) {
       if (!dataToSend.password) {
         delete dataToSend.password;
+      }
+      if (channelTokenChanged) {
+        dataToSend.whatsappChannelToken = channelTokenInput || null;
       }
       updateAgentMutation.mutate({
         id: editingAgent.id,
@@ -854,8 +846,6 @@ export default function Agents() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {agents.map(agent => {
               const typeBadge = getAgentTypeBadge(agent.agentType);
-              const hasWhatsAppToken = !!agent.whatsappAccessToken;
-              const tokenExpired = agent.whatsappTokenExpiresAt && new Date(agent.whatsappTokenExpiresAt) < new Date();
               
               return (
                 <Card key={agent.id} className={`border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-md transition-shadow ${!agent.active ? 'opacity-60' : ''}`}>
@@ -896,10 +886,6 @@ export default function Agents() {
                           <DropdownMenuItem onClick={() => handleEdit(agent)} className="cursor-pointer">
                             <Edit className="w-4 h-4 mr-2" />
                             Editar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleGenerateWhatsAppToken(agent)} className="cursor-pointer">
-                            <MessageSquare className="w-4 h-4 mr-2 text-green-600" />
-                            {hasWhatsAppToken ? 'Renovar WhatsApp' : 'Gerar Link WhatsApp'}
                           </DropdownMenuItem>
                           <DropdownMenuItem 
                             onClick={() => {
@@ -957,14 +943,6 @@ export default function Agents() {
                         </div>
                       )}
                       
-                      {hasWhatsAppToken && (
-                        <div className="flex items-center gap-2 pt-2">
-                          <MessageSquare className="w-3 h-3 text-green-600 dark:text-green-400" />
-                          <span className={`text-xs ${tokenExpired ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                            WhatsApp {tokenExpired ? 'Expirado' : 'Ativo'}
-                          </span>
-                        </div>
-                      )}
                       
                       <div className="flex items-center gap-2 pt-2">
                         {agent.online ? (
@@ -1298,82 +1276,6 @@ export default function Agents() {
         </TabsContent>
       </Tabs>
 
-      {/* Dialog WhatsApp Token */}
-      <Dialog open={whatsappDialogOpen} onOpenChange={setWhatsappDialogOpen}>
-        <DialogContent className="max-w-2xl bg-white dark:bg-gray-900">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-gray-900 dark:text-gray-100">
-              <MessageSquare className="w-5 h-5 text-green-600 dark:text-green-400" />
-              Link de Acesso WhatsApp
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-4">
-            {generatingToken ? (
-              <div className="text-center py-8">
-                <Loader2 className="w-12 h-12 animate-spin text-green-600 dark:text-green-400 mx-auto mb-4" />
-                <p className="text-gray-600 dark:text-gray-400">Gerando token de acesso...</p>
-              </div>
-            ) : generatedTokenData ? (
-              <>
-                <Alert className="bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800">
-                  <MessageSquare className="w-4 h-4 text-green-600 dark:text-green-400" />
-                  <AlertDescription className="text-green-800 dark:text-green-300">
-                    <strong>Link gerado com sucesso!</strong>
-                    <p className="text-sm mt-1">
-                      Configure este link no seu plugin de WhatsApp para permitir que <strong>{selectedAgentForWhatsApp?.name}</strong> acesse o CRM.
-                    </p>
-                  </AlertDescription>
-                </Alert>
-
-                <div>
-                  <Label className="text-gray-900 dark:text-gray-100 mb-2 block">URL do Quick Action:</Label>
-                  <div className="flex gap-2">
-                    <Input 
-                      value={generatedTokenData.quickActionUrl || ''} 
-                      readOnly 
-                      className="font-mono text-xs bg-gray-50 dark:bg-gray-800"
-                    />
-                    <Button 
-                      variant="outline" 
-                      size="icon"
-                      onClick={() => copyToClipboard(generatedTokenData.quickActionUrl)}
-                    >
-                      {copiedUrl ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg text-sm">
-                  <p className="font-medium text-gray-900 dark:text-gray-100 mb-2">Instruções:</p>
-                  <ol className="list-decimal list-inside space-y-1 text-gray-600 dark:text-gray-400">
-                    <li>Copie o link acima</li>
-                    <li>Acesse as configurações do seu plugin de WhatsApp</li>
-                    <li>Cole o link no campo de Quick Action</li>
-                    <li>O agente poderá criar Leads, Tickets e Cobranças direto do WhatsApp</li>
-                    <li>O token expira automaticamente em 90 dias</li>
-                  </ol>
-                </div>
-              </>
-            ) : (
-              <p className="text-gray-600 dark:text-gray-400">Ocorreu um erro ao gerar o token.</p>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button 
-              onClick={() => {
-                setWhatsappDialogOpen(false);
-                setGeneratedTokenData(null);
-                setCopiedUrl(false);
-              }}
-            >
-              Fechar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Dialog Reset Password */}
       <Dialog open={resetPasswordDialogOpen} onOpenChange={setResetPasswordDialogOpen}>
         <DialogContent className="max-w-md bg-white dark:bg-gray-900">
@@ -1633,6 +1535,47 @@ export default function Agents() {
                 <p className="text-xs text-gray-400 mt-1">Identificador do agente no sistema ERP (opcional)</p>
               </div>
             </div>
+
+            {editingAgent && formData.agentType === 'indicacoes_atendente' && (
+              <div>
+                <Label className="text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-green-600" />
+                  Token do Canal WhatsApp (Rudo/WHU)
+                </Label>
+                <div className="flex gap-2 mt-1">
+                  <div className="relative flex-1">
+                    <Input
+                      type={showTokenField ? "text" : "password"}
+                      value={channelTokenInput}
+                      onChange={(e) => { setChannelTokenInput(e.target.value); setChannelTokenChanged(true); }}
+                      placeholder="Cole o token do canal aqui"
+                      className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                      onClick={() => setShowTokenField(!showTokenField)}
+                    >
+                      {showTokenField ? <EyeOff className="w-4 h-4 text-gray-400" /> : <Eye className="w-4 h-4 text-gray-400" />}
+                    </Button>
+                  </div>
+                  {channelTokenInput && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-red-600 border-red-200 hover:bg-red-50"
+                      onClick={() => { setChannelTokenInput(""); setChannelTokenChanged(true); }}
+                    >
+                      Limpar
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Token usado para enviar mensagens WhatsApp pela API Rudo. Salve o agente para aplicar.</p>
+              </div>
+            )}
 
             <div>
               <Label className="text-gray-900 dark:text-gray-100 mb-2 block">Filas de Atendimento *</Label>
