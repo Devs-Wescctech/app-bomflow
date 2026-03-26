@@ -1001,7 +1001,7 @@ export default function ReferralChannelAutomations() {
                               ) : (
                                 <>
                                   <Send className="w-4 h-4 mr-1" />
-                                  Enviar Teste
+                                  TESTAR ENVIO v2
                                 </>
                               )}
                             </Button>
