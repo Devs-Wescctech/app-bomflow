@@ -580,12 +580,12 @@ export default function LeadPJDetail() {
                 <p className="text-sm text-red-700 dark:text-red-400">{lead.lost_reason}</p>
               </div>
             )}
-            <div className="flex gap-2 justify-center">
-              <Button onClick={() => navigate(createPageUrl("LeadsPJKanban"))}>
+            <div className="flex flex-col gap-3 w-full">
+              <Button onClick={() => navigate(createPageUrl("LeadsPJKanban"))} className="w-full">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Voltar ao Pipeline B2B
               </Button>
-              <Button onClick={() => setShowDeleteDialog(true)} variant="destructive">
+              <Button onClick={() => setShowDeleteDialog(true)} variant="destructive" className="w-full">
                 <Trash2 className="w-4 h-4 mr-2" />
                 Excluir Permanentemente
               </Button>
@@ -717,14 +717,24 @@ export default function LeadPJDetail() {
                 </Button>
               )}
               {!lead.lost && (
-                <Button
-                  onClick={() => setShowLostDialog(true)}
-                  variant="outline"
-                  size="sm"
-                  className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-950"
-                >
-                  <XCircle className="w-4 h-4" />
-                </Button>
+                <>
+                  <Button
+                    onClick={() => setShowLostDialog(true)}
+                    variant="outline"
+                    size="sm"
+                    className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-950"
+                  >
+                    <XCircle className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    onClick={() => setShowDeleteDialog(true)}
+                    variant="outline"
+                    size="sm"
+                    className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-950"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </>
               )}
             </div>
           </div>
