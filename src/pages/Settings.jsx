@@ -36,14 +36,13 @@ export default function Settings() {
   });
 
   const createOrUpdateSettingMutation = useMutation({
-    mutationFn: async ({ key, value, type, category }) => {
-      const existingSetting = settings.find(s => s.setting_key === key);
+    mutationFn: async ({ key, value, type }) => {
+      const existingSetting = settings.find(s => (s.setting_key || s.settingKey) === key);
       
       const data = {
         setting_key: key,
         setting_value: value,
         setting_type: type || 'text',
-        category: category || 'general',
       };
 
       if (existingSetting) {
@@ -75,7 +74,6 @@ export default function Settings() {
         key: 'company_logo',
         value: uploadResult.file_url,
         type: 'image',
-        category: 'branding'
       });
       
       toast.success('Logo atualizado com sucesso!');
@@ -96,7 +94,6 @@ export default function Settings() {
       key: 'company_name',
       value: companyName,
       type: 'text',
-      category: 'branding'
     });
   };
 
@@ -105,11 +102,10 @@ export default function Settings() {
       key: 'primary_color',
       value: primaryColor,
       type: 'color',
-      category: 'branding'
     });
   };
 
-  const logoUrl = settings.find(s => s.setting_key === 'company_logo')?.setting_value;
+  const logoUrl = settings.find(s => (s.setting_key || s.settingKey) === 'company_logo')?.setting_value || settings.find(s => (s.setting_key || s.settingKey) === 'company_logo')?.settingValue;
 
   // Verificar se é admin
   const isAdmin = user?.role === 'admin';
