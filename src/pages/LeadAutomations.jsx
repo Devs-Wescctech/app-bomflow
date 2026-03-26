@@ -155,6 +155,17 @@ export default function LeadAutomations() {
     },
   });
 
+  const toggleActiveMutation = useMutation({
+    mutationFn: ({ id, active }) => base44.entities.LeadAutomation.update(id, { active }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leadAutomations'] });
+      toast.success('Automação atualizada.');
+    },
+    onError: (error) => {
+      toast.error(error?.message || 'Erro ao atualizar automação. Tente novamente.');
+    },
+  });
+
   const deleteRuleMutation = useMutation({
     mutationFn: (id) => base44.entities.LeadAutomation.delete(id),
     onSuccess: () => {
@@ -335,9 +346,9 @@ export default function LeadAutomations() {
   };
 
   const handleToggleActive = (rule) => {
-    updateRuleMutation.mutate({
+    toggleActiveMutation.mutate({
       id: rule.id,
-      data: { ...rule, active: !rule.active }
+      active: !rule.active,
     });
   };
 
