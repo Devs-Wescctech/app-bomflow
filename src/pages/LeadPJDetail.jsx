@@ -187,12 +187,9 @@ export default function LeadPJDetail() {
 
   const markAsLostMutation = useMutation({
     mutationFn: async ({ reason }) => {
-      const currentUser = await base44.auth.me();
       return base44.entities.LeadPJ.update(leadId, {
         lost: true,
-        lostAt: new Date().toISOString(),
-        lostBy: currentUser.email,
-        lostReason: reason,
+        lost_reason: reason,
         stage: 'fechado_perdido',
       });
     },
