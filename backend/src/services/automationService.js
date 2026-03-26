@@ -57,7 +57,7 @@ export async function checkAndExecuteLeadPJAutomations() {
       WHERE active = true 
       ORDER BY priority ASC
     `);
-    const automations = automationsResult.rows;
+    let automations = await loadAutomationTeamIds(automationsResult.rows, 'lead_pj_automation_teams');
 
     for (const automation of automations) {
       const triggerConfig = typeof automation.trigger_config === 'string' 
@@ -580,7 +580,8 @@ export async function executeLeadCreatedAutomation(lead, leadType = 'lead') {
       ORDER BY priority ASC
     `);
     
-    let automations = await loadAutomationTeamIds(automationsResult.rows);
+    const junctionTable = leadType === 'lead_pj' ? 'lead_pj_automation_teams' : 'lead_automation_teams';
+    let automations = await loadAutomationTeamIds(automationsResult.rows, junctionTable);
     
     if (automations.length === 0) {
       console.log(`[Automation] No lead_created automations configured for ${leadType}`);

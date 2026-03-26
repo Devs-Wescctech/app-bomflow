@@ -702,6 +702,22 @@ ALTER TABLE lead_pj_automations ADD COLUMN IF NOT EXISTS whatsapp_template_id VA
 ALTER TABLE lead_pj_automations ADD COLUMN IF NOT EXISTS whatsapp_template_name VARCHAR(255);
 ALTER TABLE lead_pj_automations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
 
+ALTER TABLE leads_pj ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id);
+ALTER TABLE lead_pj_automations ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id);
+
+CREATE TABLE IF NOT EXISTS lead_pj_automation_teams (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  automation_id UUID NOT NULL REFERENCES lead_pj_automations(id) ON DELETE CASCADE,
+  team_id UUID NOT NULL REFERENCES teams(id),
+  created_at TIMESTAMP DEFAULT now(),
+  UNIQUE(automation_id, team_id)
+);
+
+INSERT INTO lead_pj_automation_teams (automation_id, team_id)
+SELECT id, team_id FROM lead_pj_automations
+WHERE team_id IS NOT NULL
+ON CONFLICT (automation_id, team_id) DO NOTHING;
+
 -- =====================
 -- REFERRAL AUTOMATIONS
 -- =====================

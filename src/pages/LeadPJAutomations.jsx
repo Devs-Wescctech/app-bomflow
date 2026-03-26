@@ -17,7 +17,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Zap, Edit, Trash2, Play, Pause, Building2, MessageSquare, Loader2, CheckCircle2, AlertCircle, TestTube2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Plus, Zap, Edit, Trash2, Play, Pause, Building2, MessageSquare, Loader2, CheckCircle2, AlertCircle, TestTube2, Users } from "lucide-react";
 import { toast } from "sonner";
 import WhatsAppTemplateSelector from "@/components/whatsapp/WhatsAppTemplateSelector";
 import AutomationTestDialog from "@/components/whatsapp/AutomationTestDialog";
@@ -84,6 +85,13 @@ export default function LeadPJAutomations() {
     },
     whatsapp_template_id: "",
     whatsapp_template_name: "",
+    team_ids: [],
+  });
+
+  const { data: teams = [] } = useQuery({
+    queryKey: ['teams'],
+    queryFn: () => base44.entities.Team.list(),
+    initialData: [],
   });
 
   const { data: automations = [], isLoading: automationsLoading } = useQuery({
@@ -206,6 +214,7 @@ export default function LeadPJAutomations() {
       },
       whatsapp_template_id: "",
       whatsapp_template_name: "",
+      team_ids: [],
     });
     setEditingAutomation(null);
   };
@@ -251,6 +260,7 @@ export default function LeadPJAutomations() {
       },
       whatsapp_template_id: automation.whatsappTemplateId || actionConfig.whatsapp_template_id || actionConfig.whatsappTemplateId || "",
       whatsapp_template_name: automation.whatsappTemplateName || actionConfig.whatsapp_template_name || actionConfig.whatsappTemplateName || "",
+      team_ids: automation.teamIds || [],
     });
     setIsDialogOpen(true);
   };
@@ -258,6 +268,11 @@ export default function LeadPJAutomations() {
   const handleSubmit = () => {
     if (!formData.name || !formData.trigger_type) {
       toast.error('Preencha os campos obrigatórios');
+      return;
+    }
+
+    if (!formData.team_ids || formData.team_ids.length === 0) {
+      toast.error('Selecione pelo menos um time para esta automação.');
       return;
     }
 
@@ -276,6 +291,7 @@ export default function LeadPJAutomations() {
       action_config: JSON.stringify(formData.action_config),
       whatsapp_template_id: formData.whatsapp_template_id || null,
       whatsapp_template_name: formData.whatsapp_template_name || null,
+      team_ids: formData.team_ids,
     };
 
     if (editingAutomation) {
@@ -403,6 +419,16 @@ export default function LeadPJAutomations() {
                         </h3>
                         <Badge className={automation.active ? "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"}>
                           {automation.active ? 'Ativa' : 'Inativa'}
+                        </Badge>
+                        <Badge variant="outline" className="text-indigo-600 border-indigo-300 dark:text-indigo-400 dark:border-indigo-700">
+                          <Users className="w-3 h-3 mr-1" />
+                          {(() => {
+                            const tIds = automation.teamIds || [];
+                            if (tIds.length === 0) return 'Todos os times';
+                            const tNames = tIds.map(tid => teams.find(t => t.id === tid)?.name).filter(Boolean);
+                            if (tNames.length <= 2) return tNames.join(', ');
+                            return `${tNames.length} times`;
+                          })()}
                         </Badge>
                       </div>
                       
@@ -553,6 +579,36 @@ export default function LeadPJAutomations() {
                 rows={2}
                 className="mt-1"
               />
+            </div>
+
+            <div>
+              <Label>Times <span className="text-red-500">*</span></Label>
+              <div className="mt-2 space-y-2">
+                {teams.map(team => (
+                  <div key={team.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`team-pj-${team.id}`}
+                      checked={formData.team_ids.includes(team.id)}
+                      onCheckedChange={(checked) => {
+                        setFormData(prev => ({
+                          ...prev,
+                          team_ids: checked
+                            ? [...prev.team_ids, team.id]
+                            : prev.team_ids.filter(id => id !== team.id)
+                        }));
+                      }}
+                    />
+                    <label htmlFor={`team-pj-${team.id}`} className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                      {team.name}
+                    </label>
+                  </div>
+                ))}
+              </div>
+              {formData.team_ids.length > 0 && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  {formData.team_ids.length} time(s) selecionado(s)
+                </p>
+              )}
             </div>
 
             {/* Trigger */}

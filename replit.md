@@ -49,7 +49,7 @@ Wescctech CRM is a comprehensive, self-hosted Customer Relationship Management s
 - **Authentication & Authorization**: JWT-based authentication with a comprehensive Role-Based Access Control (RBAC) system supporting 7 agent types and 4 team structures, with dynamic database management and hardcoded fallbacks.
 - **Dynamic Ticket Distribution**: Algorithms for Round Robin and Least Active agent assignment.
 - **SLA Management**: Configurable Service Level Agreements with priority-based deadlines.
-- **Lead Automation**: Automated triggers and actions based on lead stage and inactivity. Supports multi-team assignment via `lead_automation_teams` junction table (many-to-many). Automations filter leads by assigned teams; automations without teams apply to all leads (retrocompatibility).
+- **Lead Automation (PF & PJ)**: Automated triggers and actions based on lead stage and inactivity. Both PF and PJ support multi-team assignment via junction tables (`lead_automation_teams` for PF, `lead_pj_automation_teams` for PJ) with many-to-many relationships. Automations filter leads by assigned teams; automations without teams apply to all leads (retrocompatibility). Shared helpers `syncAutomationTeams()` and `enrichAutomationsWithTeams()` accept a `junctionTable` parameter. `executeLeadCreatedAutomation()` resolves the correct junction table by `leadType`.
 - **WhatsApp Automation**: Integration with WHU API for automated messaging and template support.
 - **Digital Contract Signing**: Public-facing module for digital contract signatures with token-based access.
 - **Optimistic UI**: Implemented for Kanban drag-and-drop interactions.
