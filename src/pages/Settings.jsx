@@ -1,11 +1,11 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings as SettingsIcon, Upload, Image as ImageIcon, Save, Loader2, Building2, Palette, Bell } from "lucide-react";
+import { Settings as SettingsIcon, Upload, Image as ImageIcon, Save, Loader2, Building2, Palette, Bell, ListChecks, Plus, X, GripVertical } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 
@@ -147,6 +147,10 @@ export default function Settings() {
           <TabsTrigger value="branding" className="data-[state=active]:bg-blue-50 dark:data-[state=active]:bg-blue-950">
             <Palette className="w-4 h-4 mr-2" />
             Marca e Visual
+          </TabsTrigger>
+          <TabsTrigger value="sales-fields" className="data-[state=active]:bg-blue-50 dark:data-[state=active]:bg-blue-950">
+            <ListChecks className="w-4 h-4 mr-2" />
+            Campos de Vendas
           </TabsTrigger>
           <TabsTrigger value="general" className="data-[state=active]:bg-blue-50 dark:data-[state=active]:bg-blue-950">
             <Building2 className="w-4 h-4 mr-2" />
@@ -296,6 +300,10 @@ export default function Settings() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="sales-fields" className="space-y-6">
+          <SalesFieldsManager settings={settings} onSave={createOrUpdateSettingMutation} />
+        </TabsContent>
+
         <TabsContent value="general" className="space-y-6">
           <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
             <CardContent className="pt-6">
@@ -316,6 +324,169 @@ export default function Settings() {
           </Card>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function OptionListEditor({ title, description, settingKey, settings, onSave }) {
+  const getOptions = () => {
+    const setting = settings.find(s => s.setting_key === settingKey || s.settingKey === settingKey);
+    if (setting) {
+      try { return JSON.parse(setting.setting_value || setting.settingValue); } catch {}
+    }
+    return [];
+  };
+
+  const [options, setOptions] = useState([]);
+  const [initialized, setInitialized] = useState(false);
+  const [newOption, setNewOption] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!initialized && settings.length > 0) {
+      const loaded = getOptions();
+      if (loaded.length > 0) {
+        setOptions(loaded);
+        setInitialized(true);
+      }
+    }
+  }, [settings, initialized]);
+
+  const handleAdd = () => {
+    const trimmed = newOption.trim();
+    if (!trimmed) return;
+    if (options.includes(trimmed)) {
+      toast.error('Esta opção já existe');
+      return;
+    }
+    setOptions([...options, trimmed]);
+    setNewOption("");
+  };
+
+  const handleRemove = (index) => {
+    setOptions(options.filter((_, i) => i !== index));
+  };
+
+  const handleSave = async () => {
+    if (options.length === 0) {
+      toast.error('Adicione pelo menos uma opção antes de salvar');
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave.mutateAsync({
+        key: settingKey,
+        value: JSON.stringify(options),
+        type: 'json',
+      });
+    } catch (error) {
+      toast.error('Erro ao salvar opções');
+    }
+    setSaving(false);
+  };
+
+  return (
+    <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+      <CardHeader className="border-b border-gray-200 dark:border-gray-800">
+        <CardTitle className="text-gray-900 dark:text-gray-100 text-base">{title}</CardTitle>
+        {description && (
+          <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
+        )}
+      </CardHeader>
+      <CardContent className="pt-4 space-y-3">
+        <div className="space-y-2">
+          {options.map((option, index) => (
+            <div key={index} className="flex items-center gap-2 group">
+              <GripVertical className="w-4 h-4 text-gray-300 dark:text-gray-600" />
+              <div className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-lg text-sm text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700">
+                {option}
+              </div>
+              <button
+                onClick={() => handleRemove(index)}
+                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-2 pt-2">
+          <Input
+            value={newOption}
+            onChange={(e) => setNewOption(e.target.value)}
+            placeholder="Nova opção..."
+            className="flex-1 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+            onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+          />
+          <Button
+            onClick={handleAdd}
+            variant="outline"
+            size="icon"
+            disabled={!newOption.trim()}
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
+        </div>
+
+        <div className="pt-2">
+          <Button
+            onClick={handleSave}
+            disabled={saving}
+            style={{ backgroundColor: '#5A2A3C' }}
+            className="text-white hover:opacity-90"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                Salvar Opções
+              </>
+            )}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SalesFieldsManager({ settings, onSave }) {
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <OptionListEditor
+          title="Interesses - Vendas PJ"
+          description="Opções de interesse para leads de pessoa jurídica"
+          settingKey="interest_options_pj"
+          settings={settings}
+          onSave={onSave}
+        />
+        <OptionListEditor
+          title="Origens - Vendas PJ"
+          description="Fontes de origem para leads de pessoa jurídica"
+          settingKey="source_options_pj"
+          settings={settings}
+          onSave={onSave}
+        />
+        <OptionListEditor
+          title="Interesses - Vendas PF"
+          description="Opções de interesse para leads de pessoa física"
+          settingKey="interest_options_pf"
+          settings={settings}
+          onSave={onSave}
+        />
+        <OptionListEditor
+          title="Origens - Vendas PF"
+          description="Fontes de origem para leads de pessoa física"
+          settingKey="source_options_pf"
+          settings={settings}
+          onSave={onSave}
+        />
+      </div>
     </div>
   );
 }

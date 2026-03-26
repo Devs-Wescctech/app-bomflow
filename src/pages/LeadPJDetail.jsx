@@ -63,7 +63,7 @@ const STAGES_PJ = [
   { value: "fechado_perdido", label: "Fechado - Perdido", color: "bg-red-500", badge: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100" },
 ];
 
-const INTEREST_OPTIONS = [
+const DEFAULT_INTEREST_OPTIONS_PJ = [
   "Plano Funeral Empresarial",
   "Plano de Saúde Corporativo",
   "Seguro Empresarial",
@@ -100,6 +100,20 @@ export default function LeadPJDetail() {
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
+
+  const { data: systemSettings = [] } = useQuery({
+    queryKey: ['systemSettings'],
+    queryFn: () => base44.entities.SystemSettings.list(),
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const INTEREST_OPTIONS = (() => {
+    const setting = systemSettings.find(s => s.settingKey === 'interest_options_pj' || s.setting_key === 'interest_options_pj');
+    if (setting) {
+      try { return JSON.parse(setting.settingValue || setting.setting_value); } catch {}
+    }
+    return DEFAULT_INTEREST_OPTIONS_PJ;
+  })();
 
   const { data: lead, isLoading } = useQuery({
     queryKey: ['leadPJ', leadId],

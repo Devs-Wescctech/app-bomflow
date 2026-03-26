@@ -71,7 +71,7 @@ const STAGES = [
   { value: "fechado_perdido", label: "Fechado - Perdido", color: "bg-red-500", badge: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100" },
 ];
 
-const INTEREST_OPTIONS = [
+const DEFAULT_INTEREST_OPTIONS_PF = [
   "Plano Funeral Básico",
   "Plano Funeral Premium",
   "Plano Familiar",
@@ -82,7 +82,7 @@ const INTEREST_OPTIONS = [
   "Outro",
 ];
 
-const SOURCE_OPTIONS = [
+const DEFAULT_SOURCE_OPTIONS_PF = [
   "Porta a Porta",
   "Indicação",
   "Facebook Ads",
@@ -125,6 +125,28 @@ export default function LeadDetail() {
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
+
+  const { data: systemSettings = [] } = useQuery({
+    queryKey: ['systemSettings'],
+    queryFn: () => base44.entities.SystemSettings.list(),
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const INTEREST_OPTIONS = (() => {
+    const setting = systemSettings.find(s => s.settingKey === 'interest_options_pf' || s.setting_key === 'interest_options_pf');
+    if (setting) {
+      try { return JSON.parse(setting.settingValue || setting.setting_value); } catch {}
+    }
+    return DEFAULT_INTEREST_OPTIONS_PF;
+  })();
+
+  const SOURCE_OPTIONS = (() => {
+    const setting = systemSettings.find(s => s.settingKey === 'source_options_pf' || s.setting_key === 'source_options_pf');
+    if (setting) {
+      try { return JSON.parse(setting.settingValue || setting.setting_value); } catch {}
+    }
+    return DEFAULT_SOURCE_OPTIONS_PF;
+  })();
 
   const { data: lead, isLoading } = useQuery({
     queryKey: ['lead', leadId],

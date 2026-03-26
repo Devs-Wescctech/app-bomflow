@@ -63,6 +63,20 @@ SalesTwo is a focused B2B sales management platform built on a streamlined versi
 - **Visual Design System**: Indigo/violet gradient theme for B2B sales, glassmorphism sidebar, temperature badges.
 - **Mobile Responsiveness**: Full support with hamburger menu, collapsible sidebar, touch-friendly Kanban, and responsive grids.
 
+### Configurable Sales Fields
+- Interest and source options for leads (PF and PJ) are stored in `system_settings` as JSON arrays:
+  - `interest_options_pj`, `source_options_pj` — for PJ leads
+  - `interest_options_pf`, `source_options_pf` — for PF leads
+- Managed via Settings page > "Campos de Vendas" tab (add/remove options)
+- Used by: `LeadPJDetail.jsx`, `LeadDetail.jsx`, `QuickLeadPJForm.jsx`, `NewLead.jsx`
+- Falls back to hardcoded defaults if settings not loaded
+
+### Agents & Permissions
+- Admin agent: `admin@wescctech.com` / `123456`, agent_type `admin`
+- Active agent_types: `admin`, `sales`, `sales_supervisor`
+- Permissions driven by `agent_types.modules` array from DB; fallback to `AGENT_PERMISSIONS` in `permissions.jsx`
+- Team: "Vendas" (single active team)
+
 ### Technical Implementations
 - **Monorepo Structure**: Frontend and Backend coexist within a single repository.
 - **API Design**: RESTful API with standardized CRUD operations.

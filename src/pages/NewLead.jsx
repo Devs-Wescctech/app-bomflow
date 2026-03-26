@@ -20,7 +20,7 @@ import { debounce } from "lodash";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-const INTERESTS = [
+const DEFAULT_INTERESTS = [
   "Essencial",
   "Total +",
   "Bom Med",
@@ -71,6 +71,20 @@ export default function NewLead() {
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
+
+  const { data: systemSettings = [] } = useQuery({
+    queryKey: ['systemSettings'],
+    queryFn: () => base44.entities.SystemSettings.list(),
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const INTERESTS = (() => {
+    const setting = systemSettings.find(s => s.settingKey === 'interest_options_pf' || s.setting_key === 'interest_options_pf');
+    if (setting) {
+      try { return JSON.parse(setting.settingValue || setting.setting_value); } catch {}
+    }
+    return DEFAULT_INTERESTS;
+  })();
 
   const { data: agents = [], isLoading: agentsLoading } = useQuery({
     queryKey: ['salesAgentsForNewLead'],

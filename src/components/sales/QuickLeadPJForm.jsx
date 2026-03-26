@@ -10,7 +10,7 @@ import { Loader2, Search, Building2, CheckCircle, AlertCircle } from "lucide-rea
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-const INTEREST_OPTIONS = [
+const DEFAULT_INTEREST_OPTIONS_PJ = [
   "Plano Funeral Empresarial",
   "Plano de Saúde Corporativo",
   "Seguro Empresarial",
@@ -20,7 +20,7 @@ const INTEREST_OPTIONS = [
   "Outro",
 ];
 
-const SOURCE_OPTIONS = [
+const DEFAULT_SOURCE_OPTIONS_PJ = [
   "Indicação",
   "Site",
   "LinkedIn",
@@ -36,6 +36,28 @@ export default function QuickLeadPJForm({ onSuccess, onCancel }) {
   const [searchingCNPJ, setSearchingCNPJ] = useState(false);
   const [cnpjFound, setCnpjFound] = useState(false);
   const [duplicateError, setDuplicateError] = useState(null);
+
+  const { data: systemSettings = [] } = useQuery({
+    queryKey: ['systemSettings'],
+    queryFn: () => base44.entities.SystemSettings.list(),
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const INTEREST_OPTIONS = (() => {
+    const setting = systemSettings.find(s => s.settingKey === 'interest_options_pj' || s.setting_key === 'interest_options_pj');
+    if (setting) {
+      try { return JSON.parse(setting.settingValue || setting.setting_value); } catch {}
+    }
+    return DEFAULT_INTEREST_OPTIONS_PJ;
+  })();
+
+  const SOURCE_OPTIONS = (() => {
+    const setting = systemSettings.find(s => s.settingKey === 'source_options_pj' || s.setting_key === 'source_options_pj');
+    if (setting) {
+      try { return JSON.parse(setting.settingValue || setting.setting_value); } catch {}
+    }
+    return DEFAULT_SOURCE_OPTIONS_PJ;
+  })();
   const [formData, setFormData] = useState({
     cnpj: "",
     razaoSocial: "",

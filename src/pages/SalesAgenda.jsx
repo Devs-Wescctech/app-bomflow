@@ -251,7 +251,7 @@ export default function SalesAgenda() {
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold" style={{ background: 'linear-gradient(to right, #5A2A3C, #F98F6F)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               Agenda de Vendas
             </h1>
             <p className="text-gray-500 dark:text-gray-400 mt-1">
@@ -266,7 +266,7 @@ export default function SalesAgenda() {
               </Button>
             </Link>
             <Link to={createPageUrl("NewLead")}>
-              <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white">
+              <Button style={{ background: 'linear-gradient(to right, #5A2A3C, #F98F6F)' }} className="text-white hover:opacity-90">
                 <Plus className="w-4 h-4 mr-2" />
                 Novo Lead
               </Button>
@@ -280,15 +280,15 @@ export default function SalesAgenda() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
           >
-            <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white overflow-hidden">
+            <Card className="border-0 shadow-lg text-white overflow-hidden" style={{ background: 'linear-gradient(135deg, #5A2A3C, #7A3A4C)' }}>
               <CardContent className="p-6 relative">
                 <div className="absolute right-4 top-4 opacity-20">
                   <CalendarIcon className="w-16 h-16" />
                 </div>
                 <div>
-                  <p className="text-blue-100 text-sm font-medium">Hoje</p>
+                  <p className="text-white/70 text-sm font-medium">Hoje</p>
                   <p className="text-4xl font-bold mt-1">{todayActivities.length}</p>
-                  <p className="text-blue-200 text-sm mt-2">
+                  <p className="text-white/60 text-sm mt-2">
                     {todayCompleted} concluídas, {todayPending} pendentes
                   </p>
                 </div>
@@ -343,15 +343,15 @@ export default function SalesAgenda() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
           >
-            <Card className="border-0 shadow-lg bg-gradient-to-br from-purple-500 to-purple-600 text-white overflow-hidden">
+            <Card className="border-0 shadow-lg text-white overflow-hidden" style={{ background: 'linear-gradient(135deg, #F98F6F, #E07050)' }}>
               <CardContent className="p-6 relative">
                 <div className="absolute right-4 top-4 opacity-20">
                   <MapPin className="w-16 h-16" />
                 </div>
                 <div>
-                  <p className="text-purple-100 text-sm font-medium">Visitas Hoje</p>
+                  <p className="text-white/70 text-sm font-medium">Visitas Hoje</p>
                   <p className="text-4xl font-bold mt-1">{todayVisits.length}</p>
-                  <p className="text-purple-200 text-sm mt-2">
+                  <p className="text-white/60 text-sm mt-2">
                     Realizadas
                   </p>
                 </div>
@@ -366,7 +366,7 @@ export default function SalesAgenda() {
               <CardHeader className="border-b bg-gray-50 dark:bg-gray-800/50">
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <CardTitle className="flex items-center gap-2">
-                    <CalendarIcon className="w-5 h-5 text-blue-600" />
+                    <CalendarIcon className="w-5 h-5" style={{ color: '#5A2A3C' }} />
                     Minha Agenda
                   </CardTitle>
                   <div className="flex items-center gap-4">
@@ -375,7 +375,8 @@ export default function SalesAgenda() {
                         variant={filterType === 'all' ? 'default' : 'outline'}
                         size="sm"
                         onClick={() => setFilterType('all')}
-                        className={filterType === 'all' ? 'bg-blue-600' : ''}
+                        style={filterType === 'all' ? { backgroundColor: '#5A2A3C' } : {}}
+                        className={filterType === 'all' ? '' : ''}
                       >
                         Todas
                       </Button>
