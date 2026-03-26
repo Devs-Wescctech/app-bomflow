@@ -72,6 +72,7 @@ export default function LeadAutomations() {
   const queryClient = useQueryClient();
   const [showDialog, setShowDialog] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [showTestDialog, setShowTestDialog] = useState(false);
   const [testingAutomation, setTestingAutomation] = useState(null);
@@ -135,6 +136,9 @@ export default function LeadAutomations() {
       setShowDialog(false);
       resetForm();
     },
+    onError: (error) => {
+      toast.error(error?.message || 'Erro ao criar automação. Tente novamente.');
+    },
   });
 
   const updateRuleMutation = useMutation({
@@ -144,6 +148,9 @@ export default function LeadAutomations() {
       toast.success('Regra atualizada!');
       setShowDialog(false);
       resetForm();
+    },
+    onError: (error) => {
+      toast.error(error?.message || 'Erro ao salvar automação. Tente novamente.');
     },
   });
 
@@ -205,6 +212,7 @@ export default function LeadAutomations() {
       team_ids: [],
     });
     setEditingRule(null);
+    setSubmitAttempted(false);
   };
 
   const selectTemplate = (template) => {
@@ -279,11 +287,13 @@ export default function LeadAutomations() {
       whatsapp_template_name: rule.whatsappTemplateName || actionConfig.whatsapp_template_name || actionConfig.whatsappTemplateName || "",
       team_ids: rule.teamIds || (rule.teamId ? [rule.teamId] : []),
     });
+    setSubmitAttempted(false);
     setShowDialog(true);
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    setSubmitAttempted(true);
     
     if (!formData.name) {
       toast.error('Nome da regra é obrigatório!');
@@ -431,7 +441,7 @@ export default function LeadAutomations() {
                 <p className="text-sm text-gray-500 dark:text-gray-500 mb-4">
                   Crie automações para otimizar seu processo de vendas
                 </p>
-                <Button onClick={() => setShowDialog(true)} variant="outline">
+                <Button onClick={() => { resetForm(); setShowDialog(true); }} variant="outline">
                   <Plus className="w-4 h-4 mr-2" />
                   Criar primeira automação
                 </Button>
@@ -579,7 +589,7 @@ export default function LeadAutomations() {
         </div>
 
         {/* Dialog de Criação/Edição */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+      <Dialog open={showDialog} onOpenChange={(open) => { if (!open) { setSubmitAttempted(false); } setShowDialog(open); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
@@ -641,6 +651,11 @@ export default function LeadAutomations() {
                 {formData.team_ids.length > 0 && (
                   <p className="text-xs text-gray-500 mt-1">
                     {formData.team_ids.length} {formData.team_ids.length === 1 ? 'time selecionado' : 'times selecionados'}
+                  </p>
+                )}
+                {submitAttempted && formData.team_ids.length === 0 && (
+                  <p className="text-sm text-red-500 mt-1">
+                    Selecione pelo menos um time.
                   </p>
                 )}
               </div>

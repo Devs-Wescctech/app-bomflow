@@ -61,6 +61,7 @@ export default function LeadPJAutomations() {
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [showTestDialog, setShowTestDialog] = useState(false);
   const [testingAutomation, setTestingAutomation] = useState(null);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -153,6 +154,9 @@ export default function LeadPJAutomations() {
       resetForm();
       toast.success('Automação criada com sucesso!');
     },
+    onError: (error) => {
+      toast.error(error?.message || 'Erro ao criar automação. Tente novamente.');
+    },
   });
 
   const updateAutomationMutation = useMutation({
@@ -162,6 +166,9 @@ export default function LeadPJAutomations() {
       setIsDialogOpen(false);
       resetForm();
       toast.success('Automação atualizada com sucesso!');
+    },
+    onError: (error) => {
+      toast.error(error?.message || 'Erro ao salvar automação. Tente novamente.');
     },
   });
 
@@ -217,6 +224,7 @@ export default function LeadPJAutomations() {
       team_ids: [],
     });
     setEditingAutomation(null);
+    setSubmitAttempted(false);
   };
 
   const handleEdit = (automation) => {
@@ -262,10 +270,13 @@ export default function LeadPJAutomations() {
       whatsapp_template_name: automation.whatsappTemplateName || actionConfig.whatsapp_template_name || actionConfig.whatsappTemplateName || "",
       team_ids: automation.teamIds || [],
     });
+    setSubmitAttempted(false);
     setIsDialogOpen(true);
   };
 
   const handleSubmit = () => {
+    setSubmitAttempted(true);
+
     if (!formData.name || !formData.trigger_type) {
       toast.error('Preencha os campos obrigatórios');
       return;
@@ -328,7 +339,7 @@ export default function LeadPJAutomations() {
           </div>
           <div className="flex items-center gap-2">
             <AutomationLogsPanel automationType="lead_pj" colorScheme="indigo" />
-            <Button onClick={() => setIsDialogOpen(true)} className="bg-indigo-600 hover:bg-indigo-700">
+            <Button onClick={() => { resetForm(); setIsDialogOpen(true); }} className="bg-indigo-600 hover:bg-indigo-700">
               <Plus className="w-4 h-4 mr-2" />
               Nova Automação
             </Button>
@@ -398,7 +409,7 @@ export default function LeadPJAutomations() {
                 <p className="text-sm text-gray-500 dark:text-gray-500 mb-4">
                   Crie automações para otimizar seu processo de vendas B2B
                 </p>
-                <Button onClick={() => setIsDialogOpen(true)} variant="outline">
+                <Button onClick={() => { resetForm(); setIsDialogOpen(true); }} variant="outline">
                   <Plus className="w-4 h-4 mr-2" />
                   Criar primeira automação
                 </Button>
@@ -550,7 +561,7 @@ export default function LeadPJAutomations() {
       </div>
 
       {/* Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) { setSubmitAttempted(false); } setIsDialogOpen(open); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white dark:bg-gray-900">
           <DialogHeader>
             <DialogTitle className="text-gray-900 dark:text-gray-100 flex items-center gap-2">
@@ -607,6 +618,11 @@ export default function LeadPJAutomations() {
               {formData.team_ids.length > 0 && (
                 <p className="text-sm text-muted-foreground mt-1">
                   {formData.team_ids.length} time(s) selecionado(s)
+                </p>
+              )}
+              {submitAttempted && formData.team_ids.length === 0 && (
+                <p className="text-sm text-red-500 mt-1">
+                  Selecione pelo menos um time.
                 </p>
               )}
             </div>
