@@ -672,7 +672,7 @@ export default function ReferralChannelAutomations() {
                   Configure o token do canal acima e crie automações específicas
                 </p>
                 {channelToken.trim() && (
-                  <Button onClick={() => setShowDialog(true)} variant="outline">
+                  <Button onClick={() => { resetForm(); setShowDialog(true); }} variant="outline">
                     <Plus className="w-4 h-4 mr-2" />
                     Criar primeira automação
                   </Button>
@@ -792,7 +792,7 @@ export default function ReferralChannelAutomations() {
           )}
         </div>
 
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+      <Dialog open={showDialog} onOpenChange={(open) => { if (!open) resetForm(); setShowDialog(open); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
@@ -1099,7 +1099,7 @@ export default function ReferralChannelAutomations() {
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setShowDialog(false)}>
+              <Button type="button" variant="outline" onClick={() => { resetForm(); setShowDialog(false); }}>
                 Cancelar
               </Button>
               <Button 
