@@ -250,11 +250,11 @@ export default function LeadDetail() {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       
       createActivityMutation.mutate({
-        leadId: leadId,
+        lead_id: leadId,
         type: 'note',
         title: 'Lead Perdido',
         description: `Lead marcado como PERDIDO\nMotivo: ${lostReason}`,
-        assignedTo: leadAgentId || 'Sistema',
+        assigned_to: leadAgentId,
       });
       
       toast.success('Lead marcado como perdido');

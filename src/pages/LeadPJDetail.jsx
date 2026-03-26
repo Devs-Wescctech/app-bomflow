@@ -201,11 +201,11 @@ export default function LeadPJDetail() {
       queryClient.invalidateQueries({ queryKey: ['leadsPJ'] });
       
       createActivityMutation.mutate({
-        leadPjId: leadId,
+        lead_id: leadId,
         type: 'note',
         title: 'Lead PJ Perdido',
         description: `Lead marcado como PERDIDO\nMotivo: ${lostReason}`,
-        assignedTo: leadAgentId || 'Sistema',
+        assigned_to: leadAgentId,
       });
       
       toast.success('Lead marcado como perdido');
