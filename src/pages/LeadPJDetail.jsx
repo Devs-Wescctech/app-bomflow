@@ -555,7 +555,7 @@ export default function LeadPJDetail() {
             <XCircle className="w-16 h-16 mx-auto mb-4 text-red-600 dark:text-red-400" />
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Lead Perdido</h2>
             <p className="text-gray-600 dark:text-gray-400 mb-4">
-              Este lead foi marcado como perdido em {format(new Date(lead.lost_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+              Este lead foi marcado como perdido.
             </p>
             {lead.lost_reason && (
               <div className="p-3 bg-red-50 dark:bg-red-950 rounded-lg mb-4">
@@ -563,9 +563,6 @@ export default function LeadPJDetail() {
                 <p className="text-sm text-red-700 dark:text-red-400">{lead.lost_reason}</p>
               </div>
             )}
-            <p className="text-sm text-gray-500 dark:text-gray-500 mb-6">
-              Por: {lead.lost_by}
-            </p>
             <Button onClick={() => navigate(createPageUrl("LeadsPJKanban"))}>
               <ArrowLeft className="w-4 h-4 mr-2" />
               Voltar ao Pipeline B2B
