@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { getWhatsAppTemplates, getWhatsAppTemplatesByToken, sendWhatsAppMessage, sendWhatsAppMessageWithToken, setContactAttributes } from '../services/whatsappService.js';
+import { getWhatsAppTemplates, getWhatsAppTemplatesByToken, sendWhatsAppMessage, sendWhatsAppMessageWithToken, sendTextMessageWithToken, setContactAttributes } from '../services/whatsappService.js';
 import { query } from '../config/database.js';
 import { runAllAutomations, getAutomationLogs } from '../services/automationService.js';
 import { createLeadWhatsAppContact, getLeadWhatsAppContacts } from '../services/leadWhatsAppContactService.js';
@@ -284,6 +284,76 @@ router.delete('/automation-logs', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Error clearing automation logs:', error);
     res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/indications/leads/:leadId/whatsapp-send', authMiddleware, async (req, res) => {
+  try {
+    const { leadId } = req.params;
+    const { message } = req.body;
+    const agentId = req.user.id;
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({ success: false, error: 'Mensagem é obrigatória.' });
+    }
+
+    const agentResult = await query('SELECT id, name, agent_type, whatsapp_channel_token FROM agents WHERE id = $1', [agentId]);
+    if (agentResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Agente não encontrado.' });
+    }
+    const agent = agentResult.rows[0];
+
+    if (agent.agent_type !== 'indicacoes_atendente') {
+      return res.status(403).json({ success: false, error: 'Apenas atendentes de indicações podem enviar mensagens por esta rota.' });
+    }
+
+    if (!agent.whatsapp_channel_token) {
+      return res.status(400).json({ success: false, error: 'Seu canal WhatsApp não está configurado. Fale com o administrador.' });
+    }
+
+    const leadResult = await query('SELECT id, referred_name, referred_phone FROM referrals WHERE id = $1', [leadId]);
+    if (leadResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Lead não encontrado.' });
+    }
+    const lead = leadResult.rows[0];
+
+    if (!lead.referred_phone) {
+      return res.status(400).json({ success: false, error: 'Este lead não possui telefone cadastrado.' });
+    }
+
+    try {
+      await sendTextMessageWithToken({
+        number: lead.referred_phone,
+        message: message.trim(),
+        channelToken: agent.whatsapp_channel_token,
+      });
+    } catch (sendError) {
+      const apiMsg = sendError.apiMessage || sendError.message || '';
+      if (apiMsg.toLowerCase().includes('channel cannot be found')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Token inválido ou canal desativado na plataforma WHU. Peça ao administrador para atualizar o seu token.',
+        });
+      }
+      console.error('[WhatsApp Agent Send] Error:', sendError);
+      return res.status(500).json({ success: false, error: `Erro ao enviar mensagem: ${apiMsg}` });
+    }
+
+    try {
+      await createLeadWhatsAppContact({
+        leadId,
+        agentId,
+        message: message.trim(),
+        channelToken: agent.whatsapp_channel_token,
+      });
+    } catch (logError) {
+      console.error('[WhatsApp Agent Send] Log insert failed (message was sent):', logError);
+    }
+
+    res.json({ success: true, message: `Mensagem enviada para ${lead.referred_name || 'o lead'}.` });
+  } catch (error) {
+    console.error('[WhatsApp Agent Send] Unexpected error:', error);
+    res.status(500).json({ success: false, error: 'Erro interno ao enviar mensagem.' });
   }
 });
 

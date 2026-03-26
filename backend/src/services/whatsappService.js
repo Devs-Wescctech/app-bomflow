@@ -300,6 +300,36 @@ export async function sendDocument(params) {
   return responseData;
 }
 
+export async function sendTextMessageWithToken({ number, message, channelToken }) {
+  if (!channelToken) {
+    throw new Error('No WhatsApp channel token provided');
+  }
+
+  const cleanNumber = number.replace(/\D/g, '');
+  const brazilNumber = cleanNumber.startsWith('55') ? cleanNumber : `55${cleanNumber}`;
+
+  const response = await fetch(`${RUDO_API_BASE}/chats/send-text`, {
+    method: 'POST',
+    headers: {
+      'access-token': channelToken,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify({ number: brazilNumber, message, forceSend: true }),
+  });
+
+  const responseData = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const errorMsg = responseData.msg || response.statusText;
+    const error = new Error(`Failed to send message: ${errorMsg}`);
+    error.apiMessage = errorMsg;
+    throw error;
+  }
+
+  return responseData;
+}
+
 export async function getContactByPhone(phoneNumber) {
   const token = process.env.RUDO_WHATSAPP_TOKEN;
   
