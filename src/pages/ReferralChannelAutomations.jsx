@@ -135,6 +135,7 @@ export default function ReferralChannelAutomations() {
   const [tokenTemplateCount, setTokenTemplateCount] = useState(null);
   const [verifyingToken, setVerifyingToken] = useState(false);
   const [activeConfigId, setActiveConfigId] = useState(null);
+  const [originalToken, setOriginalToken] = useState('');
 
   const [formData, setFormData] = useState({
     name: "",
@@ -175,6 +176,7 @@ export default function ReferralChannelAutomations() {
       const t = cfg.channelToken || cfg.channel_token || '';
       const l = cfg.channelLabel || cfg.channel_label || '';
       setChannelToken(t);
+      setOriginalToken(t);
       setChannelLabel(l);
       setActiveConfigId(cfg.id);
     }
@@ -243,20 +245,27 @@ export default function ReferralChannelAutomations() {
   };
 
   const handleSaveConfig = async () => {
-    if (!channelToken.trim()) {
-      if (activeConfigId) {
-        toast.error('O token do canal não pode ser removido. Informe um token válido.');
-        return;
-      }
-      toast.error('Informe o token do canal');
+    const tokenChanged = channelToken.trim() !== originalToken.trim();
+
+    if (!activeConfigId && !channelToken.trim()) {
+      toast.error('O token do canal é obrigatório.');
       return;
     }
+
+    if (tokenChanged && !channelToken.trim()) {
+      toast.error('O token do canal não pode ser vazio.');
+      return;
+    }
+
     try {
       if (activeConfigId) {
-        await channelConfigApi.update(activeConfigId, {
-          channel_token: channelToken.trim(),
+        const configPayload = {
           channel_label: channelLabel.trim(),
-        });
+        };
+        if (tokenChanged) {
+          configPayload.channel_token = channelToken.trim();
+        }
+        await channelConfigApi.update(activeConfigId, configPayload);
       } else {
         const result = await channelConfigApi.create({
           channel_token: channelToken.trim(),
@@ -264,6 +273,7 @@ export default function ReferralChannelAutomations() {
         });
         setActiveConfigId(result.id);
       }
+      setOriginalToken(channelToken.trim());
       queryClient.invalidateQueries({ queryKey: ['referralChannelConfig'] });
       toast.success('Configuração do canal salva!');
     } catch (err) {
@@ -538,6 +548,7 @@ export default function ReferralChannelAutomations() {
                       setTokenTemplateCount(null);
                     }}
                     placeholder="Cole o token do canal aqui..."
+                    autoComplete="off"
                     className="pr-10"
                   />
                   <button
@@ -563,7 +574,7 @@ export default function ReferralChannelAutomations() {
               </Button>
               <Button
                 onClick={handleSaveConfig}
-                disabled={!channelToken.trim()}
+                disabled={!activeConfigId && !channelToken.trim()}
                 className="bg-orange-600 hover:bg-orange-700"
               >
                 <Save className="w-4 h-4 mr-2" />
