@@ -472,20 +472,6 @@ function SalesFieldsManager({ settings, onSave }) {
           settings={settings}
           onSave={onSave}
         />
-        <OptionListEditor
-          title="Interesses - Vendas PF"
-          description="Opções de interesse para leads de pessoa física"
-          settingKey="interest_options_pf"
-          settings={settings}
-          onSave={onSave}
-        />
-        <OptionListEditor
-          title="Origens - Vendas PF"
-          description="Fontes de origem para leads de pessoa física"
-          settingKey="source_options_pf"
-          settings={settings}
-          onSave={onSave}
-        />
       </div>
     </div>
   );
