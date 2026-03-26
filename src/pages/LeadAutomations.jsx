@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -73,6 +73,7 @@ export default function LeadAutomations() {
   const [showDialog, setShowDialog] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const teamsFieldRef = useRef(null);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [showTestDialog, setShowTestDialog] = useState(false);
   const [testingAutomation, setTestingAutomation] = useState(null);
@@ -302,6 +303,9 @@ export default function LeadAutomations() {
 
     if (!formData.team_ids || formData.team_ids.length === 0) {
       toast.error('Selecione pelo menos um time para esta automação.');
+      setTimeout(() => {
+        teamsFieldRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
       return;
     }
 
@@ -621,7 +625,7 @@ export default function LeadAutomations() {
                 />
               </div>
 
-              <div>
+              <div ref={teamsFieldRef}>
                 <Label>Times <span className="text-red-500">*</span></Label>
                 <div className="mt-1 border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto bg-white">
                   {teams.length === 0 ? (
