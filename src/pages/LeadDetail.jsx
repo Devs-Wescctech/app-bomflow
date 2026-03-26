@@ -50,6 +50,7 @@ import {
   AlertCircle,
   Presentation,
   Users,
+  Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -118,6 +119,7 @@ export default function LeadDetail() {
   const [sendingAcceptLink, setSendingAcceptLink] = useState(false);
   const [showLostDialog, setShowLostDialog] = useState(false);
   const [lostReason, setLostReason] = useState("");
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
@@ -261,6 +263,21 @@ export default function LeadDetail() {
       setTimeout(() => {
         navigate(createPageUrl("LeadsKanban"));
       }, 2000);
+    },
+  });
+
+  const deleteLeadMutation = useMutation({
+    mutationFn: () => base44.entities.Lead.delete(leadId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      toast.success('Lead excluído permanentemente');
+      setShowDeleteDialog(false);
+      setTimeout(() => {
+        navigate(createPageUrl("LeadsKanban"));
+      }, 1000);
+    },
+    onError: () => {
+      toast.error('Erro ao excluir o lead');
     },
   });
 
@@ -621,25 +638,60 @@ export default function LeadDetail() {
             <XCircle className="w-16 h-16 mx-auto mb-4 text-red-600 dark:text-red-400" />
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Lead Perdido</h2>
             <p className="text-gray-600 dark:text-gray-400 mb-4">
-              Este lead foi marcado como perdido em {lead.lostAt && !isNaN(new Date(lead.lostAt))
-                ? format(new Date(lead.lostAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
-                : 'data não disponível'}
+              Este lead foi marcado como perdido.
             </p>
-            {lead.lostReason && (
+            {lead.lost_reason && (
               <div className="p-3 bg-red-50 dark:bg-red-950 rounded-lg mb-4">
                 <p className="text-sm font-semibold text-red-900 dark:text-red-300">Motivo:</p>
-                <p className="text-sm text-red-700 dark:text-red-400">{lead.lostReason}</p>
+                <p className="text-sm text-red-700 dark:text-red-400">{lead.lost_reason}</p>
               </div>
             )}
-            <p className="text-sm text-gray-500 dark:text-gray-500 mb-6">
-              Por: {lead.lostBy}
-            </p>
-            <Button onClick={() => navigate(createPageUrl("LeadsKanban"))}>
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Voltar ao Pipeline
-            </Button>
+            <div className="flex gap-2 justify-center">
+              <Button onClick={() => navigate(createPageUrl("LeadsKanban"))}>
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Voltar ao Pipeline
+              </Button>
+              <Button onClick={() => setShowDeleteDialog(true)} variant="destructive">
+                <Trash2 className="w-4 h-4 mr-2" />
+                Excluir Permanentemente
+              </Button>
+            </div>
           </CardContent>
         </Card>
+        
+        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <DialogContent className="bg-white dark:bg-gray-900">
+            <div className="p-6 text-center">
+              <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-600 dark:text-red-400" />
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Excluir Lead Permanentemente?</h2>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
+                Esta ação não pode ser desfeita. Todos os dados, atividades e documentos deste lead serão removidos.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <Button onClick={() => setShowDeleteDialog(false)} variant="outline">
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={() => deleteLeadMutation.mutate()}
+                  disabled={deleteLeadMutation.isPending}
+                  variant="destructive"
+                >
+                  {deleteLeadMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Excluindo...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Excluir Lead
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
