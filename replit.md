@@ -55,6 +55,15 @@ SalesTwo is a focused B2B sales management platform built on a streamlined versi
 - `SalesAgenda` combines activities from both `activities` (PF) and `activities_pj` (PJ) tables
 - PJ activities link to `LeadPJDetail`, PF activities link to `LeadDetail`
 - Activity types include: visit, call, whatsapp, email, task, meeting
+- Redesigned layout with: metric bar, day/week/month views, mini calendar sidebar, overdue/upcoming panels
+- **Google Calendar Integration**: OAuth2 flow via `googleCalendarService.js`
+  - Config: Client ID + Secret stored in `system_settings` (keys: `google_calendar_client_id`, `google_calendar_client_secret`)
+  - Tokens: `google_calendar_access_token`, `google_calendar_refresh_token`, `google_calendar_token_expiry`, `google_calendar_connected`
+  - OAuth state protection via `google_calendar_oauth_state`
+  - Admin-only routes for: auth-url, sync, disconnect
+  - `activities_pj.google_event_id` column tracks synced events
+  - Settings page > "Google Agenda" tab for config/connect/disconnect
+  - Sync pushes pending PJ activities to Google Calendar; events displayed in agenda views
 
 ### UI/UX Design
 - **Kanban Boards**: Advanced drag-and-drop implementation using `@dnd-kit` with sticky headers, auto-scroll, and mobile responsiveness.

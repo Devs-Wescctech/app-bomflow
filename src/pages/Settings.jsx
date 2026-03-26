@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings as SettingsIcon, Upload, Image as ImageIcon, Save, Loader2, Building2, Palette, Bell, ListChecks, Plus, X, GripVertical } from "lucide-react";
+import { Settings as SettingsIcon, Upload, Image as ImageIcon, Save, Loader2, Building2, Palette, Bell, ListChecks, Plus, X, GripVertical, Calendar, Link2, Unlink, ExternalLink } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 
@@ -155,6 +155,10 @@ export default function Settings() {
           <TabsTrigger value="notifications" className="data-[state=active]:bg-blue-50 dark:data-[state=active]:bg-blue-950">
             <Bell className="w-4 h-4 mr-2" />
             Notificações
+          </TabsTrigger>
+          <TabsTrigger value="google-calendar" className="data-[state=active]:bg-blue-50 dark:data-[state=active]:bg-blue-950">
+            <Calendar className="w-4 h-4 mr-2" />
+            Google Agenda
           </TabsTrigger>
         </TabsList>
 
@@ -319,6 +323,10 @@ export default function Settings() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="google-calendar" className="space-y-6">
+          <GoogleCalendarSettings settings={settings} onSave={createOrUpdateSettingMutation} />
+        </TabsContent>
       </Tabs>
     </div>
   );
@@ -469,6 +477,188 @@ function SalesFieldsManager({ settings, onSave }) {
           onSave={onSave}
         />
       </div>
+    </div>
+  );
+}
+
+function GoogleCalendarSettings({ settings, onSave }) {
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const queryClient = useQueryClient();
+
+  const { data: gcalStatus, refetch: refetchStatus } = useQuery({
+    queryKey: ["gcalStatus"],
+    queryFn: async () => {
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/functions/google-calendar/status", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { configured: false, connected: false };
+      return res.json();
+    },
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("gcal") === "connected") {
+      toast.success("Google Calendar conectado com sucesso!");
+      refetchStatus();
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (settings.length > 0) {
+      const idSetting = settings.find(s => (s.setting_key || s.settingKey) === "google_calendar_client_id");
+      const secretSetting = settings.find(s => (s.setting_key || s.settingKey) === "google_calendar_client_secret");
+      if (idSetting) setClientId((idSetting.setting_value || idSetting.settingValue) || "");
+      if (secretSetting) setClientSecret((secretSetting.setting_value || secretSetting.settingValue) || "");
+    }
+  }, [settings]);
+
+  const handleSaveCredentials = async () => {
+    if (!clientId.trim() || !clientSecret.trim()) {
+      toast.error("Preencha Client ID e Client Secret");
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave.mutateAsync({ key: "google_calendar_client_id", value: clientId.trim(), type: "text" });
+      await onSave.mutateAsync({ key: "google_calendar_client_secret", value: clientSecret.trim(), type: "text" });
+      toast.success("Credenciais salvas!");
+      refetchStatus();
+    } catch {
+      toast.error("Erro ao salvar credenciais");
+    }
+    setSaving(false);
+  };
+
+  const handleConnect = async () => {
+    setConnecting(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/functions/google-calendar/auth-url", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        toast.error(data.error || "Erro ao obter URL de autorização");
+      }
+    } catch {
+      toast.error("Erro ao conectar");
+    }
+    setConnecting(false);
+  };
+
+  const handleDisconnect = async () => {
+    setDisconnecting(true);
+    try {
+      const token = localStorage.getItem("token");
+      await fetch("/api/functions/google-calendar/disconnect", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toast.success("Google Calendar desconectado");
+      refetchStatus();
+      queryClient.invalidateQueries({ queryKey: ["googleCalendarEvents"] });
+    } catch {
+      toast.error("Erro ao desconectar");
+    }
+    setDisconnecting(false);
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+        <CardHeader className="border-b border-gray-200 dark:border-gray-800">
+          <CardTitle className="flex items-center gap-2 text-gray-900 dark:text-gray-100">
+            <Calendar className="w-5 h-5" />
+            Integração Google Calendar
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-6 space-y-6">
+          <div className="p-4 rounded-lg" style={{ backgroundColor: gcalStatus?.connected ? "#f0fdf4" : "#fef3c7" }}>
+            <div className="flex items-center gap-2">
+              {gcalStatus?.connected ? (
+                <>
+                  <Link2 className="w-5 h-5 text-green-600" />
+                  <span className="text-sm font-medium text-green-700">Google Calendar conectado</span>
+                </>
+              ) : (
+                <>
+                  <Unlink className="w-5 h-5 text-amber-600" />
+                  <span className="text-sm font-medium text-amber-700">
+                    {gcalStatus?.configured ? "Configurado, mas não conectado" : "Não configurado"}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <Label>Google Client ID</Label>
+              <Input
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                placeholder="Seu Client ID do Google Cloud Console"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label>Google Client Secret</Label>
+              <Input
+                value={clientSecret}
+                onChange={(e) => setClientSecret(e.target.value)}
+                type="password"
+                placeholder="Seu Client Secret do Google Cloud Console"
+                className="mt-1"
+              />
+            </div>
+            <Button onClick={handleSaveCredentials} disabled={saving} className="w-full" variant="outline">
+              {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+              Salvar Credenciais
+            </Button>
+          </div>
+
+          <div className="border-t pt-4 space-y-3">
+            {gcalStatus?.connected ? (
+              <Button onClick={handleDisconnect} disabled={disconnecting} variant="destructive" className="w-full">
+                {disconnecting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Unlink className="w-4 h-4 mr-2" />}
+                Desconectar Google Calendar
+              </Button>
+            ) : (
+              <Button
+                onClick={handleConnect}
+                disabled={connecting || !gcalStatus?.configured}
+                className="w-full text-white"
+                style={{ background: "linear-gradient(135deg, #5A2A3C, #F98F6F)" }}
+              >
+                {connecting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
+                Conectar com Google Calendar
+              </Button>
+            )}
+          </div>
+
+          <div className="text-xs text-gray-500 space-y-1 border-t pt-4">
+            <p className="font-medium">Como configurar:</p>
+            <ol className="list-decimal ml-4 space-y-1">
+              <li>Acesse o Google Cloud Console</li>
+              <li>Crie um projeto ou selecione um existente</li>
+              <li>Ative a API Google Calendar</li>
+              <li>Crie credenciais OAuth 2.0 (tipo "Aplicativo Web")</li>
+              <li>Adicione a URL de redirecionamento autorizada</li>
+              <li>Copie o Client ID e Client Secret acima</li>
+              <li>Salve e clique em "Conectar"</li>
+            </ol>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

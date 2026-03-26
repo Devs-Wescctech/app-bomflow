@@ -20,6 +20,16 @@ import OpenAI from 'openai';
 import FormData from 'form-data';
 import axios from 'axios';
 import https from 'https';
+import {
+  getAuthUrl,
+  handleCallback,
+  validateOAuthState,
+  getCalendarEvents,
+  syncActivitiesToGoogle,
+  getConnectionStatus,
+  disconnect as disconnectGoogle,
+  createCalendarEvent,
+} from '../services/googleCalendarService.js';
 
 const router = Router();
 
@@ -4204,6 +4214,98 @@ router.put('/portal/indicadores-pix/:cpf', async (req, res) => {
     res.json({ success: true, data: result.rows[0] });
   } catch (error) {
     console.error('[PIX Portal] Erro ao salvar PIX:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/google-calendar/status', authMiddleware, async (req, res) => {
+  try {
+    const status = await getConnectionStatus();
+    res.json(status);
+  } catch (error) {
+    console.error('[Google Calendar] Status error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/google-calendar/auth-url', authMiddleware, loadAgentMiddleware, requireRole('admin'), async (req, res) => {
+  try {
+    const url = await getAuthUrl();
+    res.json({ url });
+  } catch (error) {
+    console.error('[Google Calendar] Auth URL error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/google-calendar/callback', async (req, res) => {
+  try {
+    const { code, state, error: oauthError } = req.query;
+    if (oauthError) {
+      console.error('[Google Calendar] OAuth error:', oauthError);
+      return res.status(400).send(`Erro na autorização: ${oauthError}`);
+    }
+    if (!code || !state) {
+      return res.status(400).send('Código de autorização não encontrado.');
+    }
+    const validState = await validateOAuthState(state);
+    if (!validState) {
+      return res.status(403).send('Estado OAuth inválido. Tente conectar novamente.');
+    }
+    await handleCallback(code);
+    const frontendUrl = process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : process.env.APP_URL || 'http://localhost:5173';
+    res.redirect(`${frontendUrl}/settings?gcal=connected`);
+  } catch (error) {
+    console.error('[Google Calendar] Callback error:', error.message);
+    res.status(500).send(`Erro ao conectar Google Calendar: ${error.message}`);
+  }
+});
+
+router.get('/google-calendar/events', authMiddleware, async (req, res) => {
+  try {
+    const { timeMin, timeMax } = req.query;
+    const events = await getCalendarEvents(timeMin, timeMax);
+    res.json(events);
+  } catch (error) {
+    console.error('[Google Calendar] Events error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/google-calendar/sync', authMiddleware, loadAgentMiddleware, requireRole('admin'), async (req, res) => {
+  try {
+    const result = await syncActivitiesToGoogle();
+    res.json(result);
+  } catch (error) {
+    console.error('[Google Calendar] Sync error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/google-calendar/disconnect', authMiddleware, loadAgentMiddleware, requireRole('admin'), async (req, res) => {
+  try {
+    await disconnectGoogle();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[Google Calendar] Disconnect error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/google-calendar/create-event', authMiddleware, async (req, res) => {
+  try {
+    if (!req.body.scheduledAt && !req.body.scheduled_at) {
+      return res.status(400).json({ error: 'Data de agendamento é obrigatória' });
+    }
+    const event = await createCalendarEvent(req.body);
+    if (!event) {
+      return res.status(400).json({ error: 'Google Calendar não conectado' });
+    }
+    res.json(event);
+  } catch (error) {
+    console.error('[Google Calendar] Create event error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
