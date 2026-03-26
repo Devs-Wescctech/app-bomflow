@@ -1213,3 +1213,20 @@ CREATE INDEX IF NOT EXISTS idx_log_est_lead_number ON gerador_leads_log_estrutur
 CREATE INDEX IF NOT EXISTS idx_log_est_agent_id ON gerador_leads_log_estruturado(agent_id);
 CREATE INDEX IF NOT EXISTS idx_log_est_status_envio ON gerador_leads_log_estruturado(status_envio);
 CREATE INDEX IF NOT EXISTS idx_log_est_convertido ON gerador_leads_log_estruturado(convertido);
+
+-- Whatsapp channel token per agent (indicacoes_atendente)
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS whatsapp_channel_token VARCHAR(128);
+
+-- Lead WhatsApp contact log
+CREATE TABLE IF NOT EXISTS lead_whatsapp_contacts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  lead_id UUID NOT NULL,
+  agent_id UUID NOT NULL REFERENCES agents(id),
+  message TEXT,
+  channel_token_masked VARCHAR(20),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_lead_wa_contacts_lead ON lead_whatsapp_contacts(lead_id);
+CREATE INDEX IF NOT EXISTS idx_lead_wa_contacts_agent ON lead_whatsapp_contacts(agent_id);
+CREATE INDEX IF NOT EXISTS idx_lead_wa_contacts_created ON lead_whatsapp_contacts(created_at);

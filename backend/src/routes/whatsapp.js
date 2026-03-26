@@ -3,6 +3,21 @@ import { authMiddleware } from '../middleware/auth.js';
 import { getWhatsAppTemplates, getWhatsAppTemplatesByToken, sendWhatsAppMessage, sendWhatsAppMessageWithToken, setContactAttributes } from '../services/whatsappService.js';
 import { query } from '../config/database.js';
 import { runAllAutomations, getAutomationLogs } from '../services/automationService.js';
+import { createLeadWhatsAppContact, getLeadWhatsAppContacts } from '../services/leadWhatsAppContactService.js';
+
+function snakeToCamel(str) {
+  return str.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+function convertKeysToCamel(obj) {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(item => typeof item === 'object' && item !== null ? convertKeysToCamel(item) : item);
+  if (obj instanceof Date) return obj.toISOString();
+  return Object.keys(obj).reduce((acc, key) => {
+    acc[snakeToCamel(key)] = convertKeysToCamel(obj[key]);
+    return acc;
+  }, {});
+}
 
 const router = Router();
 
@@ -268,6 +283,52 @@ router.delete('/automation-logs', authMiddleware, async (req, res) => {
     res.json({ message: 'Logs limpos' });
   } catch (error) {
     console.error('Error clearing automation logs:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/my-channel-token', authMiddleware, async (req, res) => {
+  try {
+    const agentId = req.user.id;
+    const result = await query(
+      'SELECT whatsapp_channel_token FROM agents WHERE id = $1',
+      [agentId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Agent not found' });
+    }
+    res.json({ channelToken: result.rows[0].whatsapp_channel_token || null });
+  } catch (error) {
+    console.error('Error fetching agent channel token:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/lead-contacts', authMiddleware, async (req, res) => {
+  try {
+    const { leadId, message, channelToken } = req.body;
+    if (!leadId) {
+      return res.status(400).json({ message: 'leadId is required' });
+    }
+    const contact = await createLeadWhatsAppContact({
+      leadId,
+      agentId: req.user.id,
+      message,
+      channelToken,
+    });
+    res.status(201).json(convertKeysToCamel(contact));
+  } catch (error) {
+    console.error('Error creating lead WhatsApp contact log:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/lead-contacts/:leadId', authMiddleware, async (req, res) => {
+  try {
+    const contacts = await getLeadWhatsAppContacts(req.params.leadId);
+    res.json(contacts.map(convertKeysToCamel));
+  } catch (error) {
+    console.error('Error fetching lead WhatsApp contacts:', error);
     res.status(500).json({ message: error.message });
   }
 });

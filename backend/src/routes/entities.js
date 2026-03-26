@@ -366,7 +366,10 @@ router.get('/agents', authMiddleware, async (req, res) => {
       ORDER BY created_at DESC 
       LIMIT 100
     `);
-    res.json(result.rows.map(convertKeysToCamel));
+    res.json(result.rows.map(row => {
+      delete row.whatsapp_channel_token;
+      return convertKeysToCamel(row);
+    }));
   } catch (error) {
     console.error('Error listing agents:', error);
     res.status(500).json({ message: error.message });
@@ -380,7 +383,9 @@ router.get('/agents/:id', authMiddleware, async (req, res) => {
       SELECT id, name, cpf, email, agent_type, team_id, skills, active, 
              photo_url, permissions, level, online, capacity, working_hours, 
              queue_ids, work_unit, role, must_reset_password, erp_agent_id,
-             whatsapp_access_token, whatsapp_token_expires_at, created_at, updated_at
+             whatsapp_access_token, whatsapp_token_expires_at,
+             whatsapp_channel_token,
+             created_at, updated_at
       FROM agents WHERE id = $1
     `, [id]);
     
@@ -388,7 +393,14 @@ router.get('/agents/:id', authMiddleware, async (req, res) => {
       return res.status(404).json({ message: 'Agent not found' });
     }
     
-    res.json(convertKeysToCamel(result.rows[0]));
+    const agent = result.rows[0];
+    const isAdminOrSupervisor = ['admin', 'supervisor'].includes(req.user.role);
+    const isSelf = req.user.id === id;
+    if (!isAdminOrSupervisor && !isSelf) {
+      delete agent.whatsapp_channel_token;
+    }
+
+    res.json(convertKeysToCamel(agent));
   } catch (error) {
     console.error('Error getting agent:', error);
     res.status(500).json({ message: error.message });
