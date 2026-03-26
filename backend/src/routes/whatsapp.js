@@ -26,6 +26,11 @@ router.get('/templates-by-token', authMiddleware, async (req, res) => {
     res.json(templates);
   } catch (error) {
     console.error('Error fetching WhatsApp templates by token:', error);
+    if (error.message?.includes('Channel cannot be found')) {
+      return res.status(400).json({
+        message: 'Token inválido ou canal desativado na plataforma WHU. Acesse o painel da Rudo/WHU, verifique se o canal está ativo e gere um novo token se necessário.'
+      });
+    }
     res.status(500).json({ message: error.message });
   }
 });
@@ -65,7 +70,13 @@ router.post('/test-send', authMiddleware, async (req, res) => {
     console.error('Error in test-send:', error);
 
     let userMessage = error.message;
-    if (error.message && error.message.includes('already open')) {
+    if (error.message?.includes('Channel cannot be found')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Token inválido ou canal desativado na plataforma WHU. Acesse o painel da Rudo/WHU, verifique se o canal está ativo e gere um novo token se necessário.'
+      });
+    }
+    if (error.message?.includes('already open')) {
       userMessage = 'Já existe uma conversa aberta com este número na plataforma WHU. Tente com outro número ou aguarde o chat ser fechado.';
     }
 

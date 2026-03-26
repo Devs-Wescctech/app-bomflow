@@ -241,7 +241,12 @@ export default function ReferralChannelAutomations() {
     } catch (err) {
       setTokenVerified(false);
       setTokenTemplateCount(null);
-      toast.error(`Token inválido ou erro de conexão: ${err.message}`);
+      const msg = err.message || '';
+      if (msg.includes('Token inválido') || msg.includes('Channel cannot be found') || msg.includes('canal desativado')) {
+        toast.error('Token inválido ou canal não encontrado na plataforma WHU. Verifique o token no painel da Rudo e cole o novo token aqui.');
+      } else {
+        toast.error(`Erro ao verificar token: ${msg}`);
+      }
     } finally {
       setVerifyingToken(false);
     }
