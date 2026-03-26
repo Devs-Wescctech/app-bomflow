@@ -49,6 +49,12 @@ SalesTwo is a focused B2B sales management platform built on a streamlined versi
 - Frontend configuration UI available in LeadPJAutomations page
 - Token is masked in UI for security (shows first 6 + last 4 chars)
 - Saving a new token auto-refreshes WhatsApp templates
+- Template parameter count is dynamically detected from template definition (no hardcoded IDs)
+
+### Activities/Agenda
+- `SalesAgenda` combines activities from both `activities` (PF) and `activities_pj` (PJ) tables
+- PJ activities link to `LeadPJDetail`, PF activities link to `LeadDetail`
+- Activity types include: visit, call, whatsapp, email, task, meeting
 
 ### UI/UX Design
 - **Kanban Boards**: Advanced drag-and-drop implementation using `@dnd-kit` with sticky headers, auto-scroll, and mobile responsiveness.

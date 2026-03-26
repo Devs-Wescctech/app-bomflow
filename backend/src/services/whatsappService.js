@@ -2,6 +2,47 @@ import { query } from '../config/database.js';
 
 const RUDO_API_BASE = 'https://api.wescctech.com.br/core/v2/api';
 
+function getTemplateParamCount(templateDef) {
+  const sources = [
+    templateDef.dynamicComponents,
+    templateDef.staticComponents,
+    templateDef.components,
+  ];
+  
+  for (const source of sources) {
+    if (!source) continue;
+    const body = source.find(c => c.type === 'BODY');
+    if (body?.text) {
+      const matches = body.text.match(/\{\{\d+\}\}/g);
+      if (matches) return matches.length;
+    }
+  }
+  return 0;
+}
+
+function buildTemplateComponents(paramCount, leadName, agentName, lead) {
+  if (paramCount === 0) return [];
+
+  const availableValues = [
+    leadName,
+    agentName,
+    lead.email || '',
+    lead.company_name || lead.companyName || '',
+    lead.phone || '',
+    '',
+  ];
+
+  const parameters = [];
+  for (let i = 0; i < paramCount; i++) {
+    parameters.push({
+      type: 'text',
+      text: availableValues[i] || `Param ${i + 1}`,
+    });
+  }
+
+  return [{ type: 'BODY', parameters }];
+}
+
 async function getConfiguredToken() {
   try {
     const result = await query(
@@ -140,15 +181,25 @@ export async function sendWhatsAppMessageWithToken(lead, agent, templateId, chan
   const formattedNumber = phone.replace(/\D/g, '');
   const brazilNumber = formattedNumber.startsWith('55') ? formattedNumber : `55${formattedNumber}`;
   const leadName = lead.name || lead.referred_name || lead.contact_name || 'Cliente';
+  const agentName = agent?.name || agent?.full_name || 'Consultor';
 
-  const components = templateComponents || [
-    {
-      type: 'BODY',
-      parameters: [
-        { type: 'text', text: leadName },
-      ],
-    },
-  ];
+  let components = templateComponents;
+
+  if (!components) {
+    let paramCount = 1;
+    try {
+      const tokenToUse = channelToken || await getConfiguredToken();
+      const templates = tokenToUse ? await getWhatsAppTemplatesByToken(tokenToUse) : await getWhatsAppTemplates();
+      const templateDef = templates.find(t => t.id === templateId);
+      if (templateDef) {
+        paramCount = getTemplateParamCount(templateDef);
+      }
+    } catch (err) {
+      console.error('[WhatsApp] Failed to fetch template definition for token, using fallback:', err.message);
+    }
+
+    components = buildTemplateComponents(paramCount, leadName, agentName, lead);
+  }
 
   let result;
   let usedFallback = false;
@@ -391,30 +442,24 @@ export async function sendWhatsAppMessage(lead, agent, templateId, templateCompo
   const brazilNumber = formattedNumber.startsWith('55') ? formattedNumber : `55${formattedNumber}`;
 
   const leadName = lead.name || lead.referred_name || lead.contact_name || 'Cliente';
+  const agentName = agent?.name || agent?.full_name || 'Consultor';
 
-  // Templates with 2 parameters (nome_cliente + nome_vendedor)
-  const twoParamTemplates = [
-    '6973d5184440c6fe0394dd2e', // apresentacao (boas-vindas)
-  ];
-  
-  // Templates with 1 parameter (only nome_cliente)
-  // alguma_duvida, agendar_horario, reforco_importante
-  
-  const usesTwoParams = twoParamTemplates.includes(templateId);
-  
-  const components = templateComponents || [
-    {
-      type: 'BODY',
-      parameters: usesTwoParams 
-        ? [
-            { type: 'text', text: leadName },
-            { type: 'text', text: agent?.name || 'Consultor' },
-          ]
-        : [
-            { type: 'text', text: leadName },
-          ],
-    },
-  ];
+  let components = templateComponents;
+
+  if (!components) {
+    let paramCount = 1;
+    try {
+      const templates = await getWhatsAppTemplates();
+      const templateDef = templates.find(t => t.id === templateId);
+      if (templateDef) {
+        paramCount = getTemplateParamCount(templateDef);
+      }
+    } catch (err) {
+      console.error('[WhatsApp] Failed to fetch template definition, using fallback params:', err.message);
+    }
+
+    components = buildTemplateComponents(paramCount, leadName, agentName, lead);
+  }
 
   let result;
   let usedFallback = false;

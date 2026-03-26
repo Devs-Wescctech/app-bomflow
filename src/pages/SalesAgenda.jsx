@@ -39,6 +39,7 @@ const ACTIVITY_TYPES = {
   whatsapp: { label: "WhatsApp", icon: MessageSquare, color: "bg-emerald-500", gradient: "from-emerald-500 to-emerald-600", bgLight: "bg-emerald-50 dark:bg-emerald-950/50", textColor: "text-emerald-700 dark:text-emerald-300" },
   email: { label: "E-mail", icon: Mail, color: "bg-purple-500", gradient: "from-purple-500 to-purple-600", bgLight: "bg-purple-50 dark:bg-purple-950/50", textColor: "text-purple-700 dark:text-purple-300" },
   task: { label: "Tarefa", icon: CheckCircle2, color: "bg-orange-500", gradient: "from-orange-500 to-orange-600", bgLight: "bg-orange-50 dark:bg-orange-950/50", textColor: "text-orange-700 dark:text-orange-300" },
+  meeting: { label: "Reunião", icon: CalendarIcon, color: "bg-indigo-500", gradient: "from-indigo-500 to-indigo-600", bgLight: "bg-indigo-50 dark:bg-indigo-950/50", textColor: "text-indigo-700 dark:text-indigo-300" },
 };
 
 export default function SalesAgenda() {
@@ -53,15 +54,34 @@ export default function SalesAgenda() {
     queryFn: () => base44.auth.me(),
   });
 
-  const { data: activities = [], isLoading: loadingActivities } = useQuery({
+  const { data: activitiesPF = [], isLoading: loadingActivitiesPF } = useQuery({
     queryKey: ['activities'],
     queryFn: () => base44.entities.Activity.list('-scheduledAt', 500),
     staleTime: 1000 * 60 * 2,
   });
 
+  const { data: activitiesPJ = [], isLoading: loadingActivitiesPJ } = useQuery({
+    queryKey: ['activitiesPJ'],
+    queryFn: () => base44.entities.ActivityPJ.list('-scheduledAt', 500),
+    staleTime: 1000 * 60 * 2,
+  });
+
+  const loadingActivities = loadingActivitiesPF || loadingActivitiesPJ;
+
+  const activities = [
+    ...activitiesPF.map(a => ({ ...a, _leadType: 'pf' })),
+    ...activitiesPJ.map(a => ({ ...a, _leadType: 'pj' })),
+  ];
+
   const { data: leads = [] } = useQuery({
     queryKey: ['leads'],
     queryFn: () => base44.entities.Lead.list(),
+    staleTime: 1000 * 60 * 2,
+  });
+
+  const { data: leadsPJ = [] } = useQuery({
+    queryKey: ['leadsPJ'],
+    queryFn: () => base44.entities.LeadPJ.list(),
     staleTime: 1000 * 60 * 2,
   });
 
@@ -72,9 +92,15 @@ export default function SalesAgenda() {
   });
 
   const updateActivityMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Activity.update(id, data),
+    mutationFn: ({ id, data, leadType }) => {
+      if (leadType === 'pj') {
+        return base44.entities.ActivityPJ.update(id, data);
+      }
+      return base44.entities.Activity.update(id, data);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['activities'] });
+      queryClient.invalidateQueries({ queryKey: ['activitiesPJ'] });
     },
   });
 
@@ -91,7 +117,9 @@ export default function SalesAgenda() {
   const myActivities = activities.filter(act => {
     if (isAdmin || isSupervisor) return true;
     if (!currentAgent) return true;
-    return act.assignedTo === user?.email || act.assignedTo === currentAgent?.id || act.createdBy === currentAgent?.id || !act.assignedTo;
+    const assignedTo = act.assignedTo || act.assigned_to;
+    const createdBy = act.createdBy || act.created_by;
+    return assignedTo === user?.email || assignedTo === currentAgent?.id || createdBy === currentAgent?.id || !assignedTo;
   });
 
   const filteredActivities = filterType === 'all' 
@@ -122,7 +150,7 @@ export default function SalesAgenda() {
       const actDate = parseISO(act.scheduledAt);
       return isValid(actDate) && isFuture(actDate) && !isSameDay(actDate, today);
     } catch { return false; }
-  }).slice(0, 10);
+  }).sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt)).slice(0, 10);
 
   const selectedDateActivities = filteredActivities.filter(act => {
     if (!act.scheduledAt) return false;
@@ -154,9 +182,17 @@ export default function SalesAgenda() {
   });
   const weekCompleted = weekActivities.filter(a => a.completed).length;
 
-  const getLeadById = (leadId) => {
+  const getLeadById = (leadId, leadType) => {
     if (!leadId) return null;
-    return leads.find(l => l.id === leadId || String(l.id) === String(leadId));
+    if (leadType === 'pj') {
+      const pjLead = leadsPJ.find(l => l.id === leadId || String(l.id) === String(leadId));
+      if (pjLead) return { ...pjLead, _leadType: 'pj' };
+    }
+    const pfLead = leads.find(l => l.id === leadId || String(l.id) === String(leadId));
+    if (pfLead) return { ...pfLead, _leadType: 'pf' };
+    const pjFallback = leadsPJ.find(l => l.id === leadId || String(l.id) === String(leadId));
+    if (pjFallback) return { ...pjFallback, _leadType: 'pj' };
+    return null;
   };
 
   const getActivityIcon = (type) => {
@@ -167,12 +203,13 @@ export default function SalesAgenda() {
     return ACTIVITY_TYPES[type] || ACTIVITY_TYPES.task;
   };
 
-  const handleToggleComplete = (activityId, currentStatus) => {
+  const handleToggleComplete = (activityId, currentStatus, leadType) => {
     updateActivityMutation.mutate({
       id: activityId,
+      leadType: leadType,
       data: {
         completed: !currentStatus,
-        completedAt: !currentStatus ? new Date().toISOString() : null
+        completed_at: !currentStatus ? new Date().toISOString() : null
       }
     });
     toast.success(currentStatus ? 'Atividade reaberta' : 'Atividade concluída!');
@@ -424,7 +461,8 @@ export default function SalesAgenda() {
                                 .map((activity, index) => {
                                   const config = getActivityConfig(activity.type);
                                   const Icon = getActivityIcon(activity.type);
-                                  const lead = getLeadById(activity.leadId);
+                                  const leadId = activity.leadId || activity.lead_id;
+                                  const lead = getLeadById(leadId, activity._leadType);
 
                                   return (
                                     <motion.div
@@ -442,7 +480,7 @@ export default function SalesAgenda() {
                                         <CardContent className="p-4">
                                           <div className="flex items-start gap-4">
                                             <button
-                                              onClick={() => handleToggleComplete(activity.id, activity.completed)}
+                                              onClick={() => handleToggleComplete(activity.id, activity.completed, activity._leadType)}
                                               className={`mt-1 flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
                                                 activity.completed
                                                   ? 'bg-green-500 border-green-500 text-white'
@@ -469,11 +507,12 @@ export default function SalesAgenda() {
                                                   )}
                                                   {lead && (
                                                     <Link 
-                                                      to={createPageUrl("LeadDetail", { id: lead.id })}
+                                                      to={createPageUrl(lead._leadType === 'pj' ? "LeadPJDetail" : "LeadDetail", { id: lead.id })}
                                                       className="inline-flex items-center gap-1.5 mt-2 px-2 py-1 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg text-sm hover:bg-purple-100 transition-colors"
                                                     >
                                                       <User className="w-3.5 h-3.5" />
-                                                      {lead.name}
+                                                      {lead.name || lead.company_name || lead.companyName}
+                                                      {lead._leadType === 'pj' && <Badge className="bg-blue-100 text-blue-700 text-[10px] px-1 py-0">PJ</Badge>}
                                                       <ExternalLink className="w-3 h-3" />
                                                     </Link>
                                                   )}
@@ -646,7 +685,8 @@ export default function SalesAgenda() {
                   {overdueActivities.slice(0, 5).map(activity => {
                     const config = getActivityConfig(activity.type);
                     const Icon = getActivityIcon(activity.type);
-                    const lead = getLeadById(activity.leadId);
+                    const leadId = activity.leadId || activity.lead_id;
+                    const lead = getLeadById(leadId, activity._leadType);
                     
                     return (
                       <div key={activity.id} className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-950/30 rounded-lg">
@@ -656,14 +696,17 @@ export default function SalesAgenda() {
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm truncate">{activity.title || 'Atividade'}</p>
                           {lead && (
-                            <p className="text-xs text-gray-500 truncate">{lead.name}</p>
+                            <p className="text-xs text-gray-500 truncate">
+                              {lead.name || lead.company_name || lead.companyName}
+                              {activity._leadType === 'pj' ? ' (PJ)' : ''}
+                            </p>
                           )}
                           <p className="text-xs text-red-600 mt-1">
                             {activity.scheduledAt && format(parseISO(activity.scheduledAt), "dd/MM 'às' HH:mm", { locale: ptBR })}
                           </p>
                         </div>
                         <button
-                          onClick={() => handleToggleComplete(activity.id, false)}
+                          onClick={() => handleToggleComplete(activity.id, false, activity._leadType)}
                           className="p-1.5 text-green-600 hover:bg-green-100 rounded transition-colors"
                           title="Marcar como concluída"
                         >
@@ -693,7 +736,8 @@ export default function SalesAgenda() {
                   upcomingActivities.map(activity => {
                     const config = getActivityConfig(activity.type);
                     const Icon = getActivityIcon(activity.type);
-                    const lead = getLeadById(activity.leadId);
+                    const leadId = activity.leadId || activity.lead_id;
+                    const lead = getLeadById(leadId, activity._leadType);
                     
                     return (
                       <div key={activity.id} className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
@@ -704,10 +748,11 @@ export default function SalesAgenda() {
                           <p className="font-medium text-sm truncate">{activity.title || 'Atividade'}</p>
                           {lead && (
                             <Link 
-                              to={createPageUrl("LeadDetail", { id: lead.id })}
+                              to={createPageUrl(lead._leadType === 'pj' ? "LeadPJDetail" : "LeadDetail", { id: lead.id })}
                               className="text-xs text-purple-600 hover:underline"
                             >
-                              {lead.name}
+                              {lead.name || lead.company_name || lead.companyName}
+                              {lead._leadType === 'pj' ? ' (PJ)' : ''}
                             </Link>
                           )}
                           <p className="text-xs text-gray-500 mt-1">

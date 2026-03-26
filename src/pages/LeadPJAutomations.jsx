@@ -111,21 +111,25 @@ export default function LeadPJAutomations() {
   const { data: settings = [] } = useQuery({
     queryKey: ['automationSettings'],
     queryFn: () => base44.entities.SystemSettings.list(),
-    initialData: [],
   });
 
   useEffect(() => {
-    if (settings.length > 0) {
-      const tokenSetting = settings.find(s => s.settingKey === 'automation_token' || s.setting_key === 'automation_token');
+    if (settings && settings.length > 0) {
+      const tokenSetting = settings.find(s => 
+        (s.settingKey || s.setting_key) === 'automation_token'
+      );
       if (tokenSetting) {
-        setAutomationToken(tokenSetting.settingValue || tokenSetting.setting_value);
+        const val = tokenSetting.settingValue || tokenSetting.setting_value;
+        if (val) setAutomationToken(val);
       }
     }
   }, [settings]);
 
   const saveTokenMutation = useMutation({
     mutationFn: async (token) => {
-      const existingSetting = settings.find(s => s.settingKey === 'automation_token' || s.setting_key === 'automation_token');
+      const existingSetting = settings?.find(s => 
+        (s.settingKey || s.setting_key) === 'automation_token'
+      );
       
       const data = {
         setting_key: 'automation_token',
@@ -139,13 +143,15 @@ export default function LeadPJAutomations() {
         return base44.entities.SystemSettings.create(data);
       }
     },
-    onSuccess: () => {
+    onSuccess: (_, token) => {
+      setAutomationToken(token);
       queryClient.invalidateQueries({ queryKey: ['automationSettings'] });
       queryClient.invalidateQueries({ queryKey: ['whatsappTemplates'] });
       setIsTokenDialogOpen(false);
       toast.success('Token salvo! Templates sincronizados automaticamente.');
     },
-    onError: () => {
+    onError: (error) => {
+      console.error('Error saving token:', error);
       toast.error('Erro ao salvar token de automação');
     }
   });
