@@ -221,6 +221,9 @@ export default function ReferralChannelAutomations() {
       queryClient.invalidateQueries({ queryKey: ['referralChannelAutomations'] });
       toast.success('Automação excluída!');
     },
+    onError: (error) => {
+      toast.error(error?.message || 'Erro ao excluir automação. Tente novamente.');
+    },
   });
 
   const handleVerifyToken = async () => {
