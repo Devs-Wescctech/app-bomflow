@@ -2,7 +2,9 @@ import { query } from '../config/database.js';
 import { getEnvioRegulamentoConfig } from './automationService.js';
 import { registrarLogDisparo } from './leadGeneratorLogger.js';
 
-const WHATSAPP_API_URL = 'https://api.wescctech.com.br/core/v2/api/chats/send-template';
+const WHATSAPP_API_BASE = 'https://api.wescctech.com.br/core/v2/api';
+const WHATSAPP_API_URL = `${WHATSAPP_API_BASE}/chats/send-template`;
+const WHATSAPP_CREATE_NEW_URL = `${WHATSAPP_API_BASE}/chats/create-new`;
 
 export function normalizePhone(phone) {
   if (!phone) return '';
@@ -271,7 +273,23 @@ export async function processQueue(batchId) {
       [item.id]
     );
 
-    const payload = {
+    const createNewPayload = {
+      number: item.lead_number,
+      quickAnswerId: item.template_id,
+      quickAnswerComponents: [
+        {
+          type: "BODY",
+          parameters: [
+            {
+              type: "text",
+              text: item.lead_name || ''
+            }
+          ]
+        }
+      ]
+    };
+
+    const sendTemplatePayload = {
       number: item.lead_number,
       templateId: item.template_id,
       forceSend: true,
@@ -293,6 +311,9 @@ export async function processQueue(batchId) {
     let apiResponse = null;
     let success = false;
     let messageSentId = null;
+    let whuChatId = null;
+    let whuContactId = null;
+    let endpointUsed = 'create-new';
     const disparadoEm = new Date();
 
     try {
@@ -304,14 +325,16 @@ export async function processQueue(batchId) {
         await query('UPDATE gerador_leads_queue SET channel_token = $1 WHERE id = $2', [itemToken, item.id]);
       }
 
-      const waRes = await fetch(WHATSAPP_API_URL, {
+      const requestHeaders = {
+        'access-token': itemToken,
+        'Content-Type': 'application/json',
+        'accept': 'application/json'
+      };
+
+      let waRes = await fetch(WHATSAPP_CREATE_NEW_URL, {
         method: 'POST',
-        headers: {
-          'access-token': itemToken,
-          'Content-Type': 'application/json',
-          'accept': 'application/json'
-        },
-        body: JSON.stringify(payload)
+        headers: requestHeaders,
+        body: JSON.stringify(createNewPayload)
       });
 
       httpStatus = waRes.status;
@@ -322,7 +345,35 @@ export async function processQueue(batchId) {
         apiResponse = { raw: rawText };
       }
       success = httpStatus >= 200 && httpStatus < 300;
+
+      if (!success) {
+        const errorMsg = (apiResponse?.msg || apiResponse?.message || '').toLowerCase();
+        if (errorMsg.includes('already open') || errorMsg.includes('already exists') || errorMsg.includes('chat already')) {
+          console.log(`[WhatsAppQueue] create-new returned "already open" for ${item.lead_number}, falling back to send-template`);
+          endpointUsed = 'send-template';
+
+          waRes = await fetch(WHATSAPP_API_URL, {
+            method: 'POST',
+            headers: requestHeaders,
+            body: JSON.stringify(sendTemplatePayload)
+          });
+
+          httpStatus = waRes.status;
+          try {
+            apiResponse = await waRes.json();
+          } catch {
+            const rawText = await waRes.text();
+            apiResponse = { raw: rawText };
+          }
+          success = httpStatus >= 200 && httpStatus < 300;
+        }
+      }
+
       messageSentId = apiResponse?.messageSentId || apiResponse?.message_sent_id || apiResponse?.id || null;
+      if (endpointUsed === 'create-new' && success) {
+        whuChatId = apiResponse?.chatId || apiResponse?.chat_id || apiResponse?.chatID || null;
+        whuContactId = apiResponse?.contactId || apiResponse?.contact_id || apiResponse?.contactID || null;
+      }
     } catch (fetchErr) {
       httpStatus = 0;
       apiResponse = { error: fetchErr.message };
@@ -337,8 +388,8 @@ export async function processQueue(batchId) {
     try {
       await query(
         `INSERT INTO gerador_leads_whatsapp_logs
-          (lead_number, lead_name, user_id, user_email, sent_at, http_status, api_response, success, message_sent_id, filters_used, template_id, status_envio, tentativa_numero, batch_id, team_id)
-         VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          (lead_number, lead_name, user_id, user_email, sent_at, http_status, api_response, success, message_sent_id, filters_used, template_id, status_envio, tentativa_numero, batch_id, team_id, whu_chat_id, whu_contact_id, endpoint_used)
+         VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
         [
           item.lead_number,
           item.lead_name,
@@ -353,7 +404,10 @@ export async function processQueue(batchId) {
           statusEnvio,
           currentAttempt,
           batchId,
-          item.team_id
+          item.team_id,
+          whuChatId ? String(whuChatId) : null,
+          whuContactId ? String(whuContactId) : null,
+          endpointUsed
         ]
       );
     } catch (dbErr) {
@@ -384,6 +438,9 @@ export async function processQueue(batchId) {
       disparadoEm,
       processadoEm,
       duracaoMs,
+      whuChatId: whuChatId ? String(whuChatId) : null,
+      whuContactId: whuContactId ? String(whuContactId) : null,
+      endpointUsed,
     });
 
     if (!success) {

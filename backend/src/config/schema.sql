@@ -921,6 +921,9 @@ ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS status_envio VA
 ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS tentativa_numero INTEGER DEFAULT 1;
 ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS motivo_bloqueio TEXT;
 ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS batch_id UUID;
+ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS whu_chat_id VARCHAR(64);
+ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS whu_contact_id VARCHAR(64);
+ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS endpoint_used VARCHAR(32);
 
 CREATE INDEX IF NOT EXISTS idx_glwl_block_check ON gerador_leads_whatsapp_logs (lead_number, success, sent_at);
 CREATE INDEX IF NOT EXISTS idx_glwl_sent_at ON gerador_leads_whatsapp_logs (sent_at);
@@ -1206,6 +1209,10 @@ CREATE TABLE IF NOT EXISTS gerador_leads_log_estruturado (
   data_conversao TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE gerador_leads_log_estruturado ADD COLUMN IF NOT EXISTS whu_chat_id VARCHAR(64);
+ALTER TABLE gerador_leads_log_estruturado ADD COLUMN IF NOT EXISTS whu_contact_id VARCHAR(64);
+ALTER TABLE gerador_leads_log_estruturado ADD COLUMN IF NOT EXISTS endpoint_used VARCHAR(32);
 
 CREATE INDEX IF NOT EXISTS idx_log_est_batch_id ON gerador_leads_log_estruturado(batch_id);
 CREATE INDEX IF NOT EXISTS idx_log_est_disparado_em ON gerador_leads_log_estruturado(disparado_em);

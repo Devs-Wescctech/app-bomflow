@@ -24,6 +24,9 @@ export async function registrarLogDisparo({
   disparadoEm,
   processadoEm,
   duracaoMs,
+  whuChatId,
+  whuContactId,
+  endpointUsed,
 }) {
   try {
     await query(
@@ -32,8 +35,8 @@ export async function registrarLogDisparo({
          agent_id, agent_name, agent_email,
          template_id, template_name, channel_token, automation_name,
          tentativa_numero, status_envio, http_status, message_sent_id, api_response, motivo_bloqueio,
-         disparado_em, processado_em, duracao_ms)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
+         disparado_em, processado_em, duracao_ms, whu_chat_id, whu_contact_id, endpoint_used)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)`,
       [
         batchId,
         leadNumber,
@@ -58,6 +61,9 @@ export async function registrarLogDisparo({
         disparadoEm || new Date(),
         processadoEm || null,
         duracaoMs || null,
+        whuChatId || null,
+        whuContactId || null,
+        endpointUsed || null,
       ]
     );
   } catch (err) {
