@@ -645,16 +645,35 @@ function GoogleCalendarSettings({ settings, onSave }) {
             )}
           </div>
 
-          <div className="text-xs text-gray-500 space-y-1 border-t pt-4">
-            <p className="font-medium">Como configurar:</p>
-            <ol className="list-decimal ml-4 space-y-1">
-              <li>Acesse o Google Cloud Console</li>
-              <li>Crie um projeto ou selecione um existente</li>
-              <li>Ative a API Google Calendar</li>
-              <li>Crie credenciais OAuth 2.0 (tipo "Aplicativo Web")</li>
-              <li>Adicione a URL de redirecionamento autorizada</li>
-              <li>Copie o Client ID e Client Secret acima</li>
-              <li>Salve e clique em "Conectar"</li>
+          <div className="text-sm text-gray-600 dark:text-gray-400 space-y-3 border-t pt-4">
+            <p className="font-semibold text-gray-800 dark:text-gray-200">Como obter o Client ID e Client Secret:</p>
+            <ol className="list-decimal ml-4 space-y-2">
+              <li>
+                Acesse o <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800">Google Cloud Console</a>
+              </li>
+              <li>Crie um novo projeto (ou selecione um existente)</li>
+              <li>
+                No menu lateral, vá em <strong>APIs e Serviços → Biblioteca</strong> e ative a <strong>Google Calendar API</strong>
+              </li>
+              <li>
+                Vá em <strong>APIs e Serviços → Credenciais</strong> e clique em <strong>"Criar Credenciais" → "ID do cliente OAuth"</strong>
+              </li>
+              <li>
+                Se for a primeira vez, configure a <strong>Tela de consentimento OAuth</strong> (tipo: Externo, preencha nome do app e e-mail)
+              </li>
+              <li>
+                Selecione tipo <strong>"Aplicativo da Web"</strong>
+              </li>
+              <li>
+                Em <strong>"URIs de redirecionamento autorizados"</strong>, adicione:<br />
+                <code className="block mt-1 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs break-all">
+                  {window.location.origin}/api/functions/google-calendar/callback
+                </code>
+              </li>
+              <li>
+                Clique em <strong>"Criar"</strong>. Serão exibidos o <strong>Client ID</strong> e o <strong>Client Secret</strong>
+              </li>
+              <li>Cole os valores acima, clique em <strong>"Salvar Credenciais"</strong> e depois em <strong>"Conectar com Google Calendar"</strong></li>
             </ol>
           </div>
         </CardContent>

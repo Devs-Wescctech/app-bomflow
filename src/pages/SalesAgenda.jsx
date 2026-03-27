@@ -5,6 +5,7 @@ import { base44 } from "@/api/base44Client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import StatsCard from "@/components/dashboard/StatsCard";
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -314,23 +315,39 @@ export default function SalesAgenda() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: "Hoje", value: stats.today, sub: `${stats.todayDone} feitas · ${stats.todayPending} pendentes`, bg: BRAND.burgundy },
-            { label: "Atrasadas", value: stats.overdue, sub: "Requer atenção", bg: "#dc2626" },
-            { label: "Semana", value: stats.week, sub: `${stats.weekDone} concluídas`, bg: "#16a34a" },
-            { label: "Google Cal", value: googleEvents.length, sub: gcalStatus?.connected ? "Eventos sincronizados" : "Não conectado", bg: BRAND.coral },
-          ].map((s, i) => (
-            <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-              <Card className="border-0 shadow-sm overflow-hidden">
-                <CardContent className="p-4 relative" style={{ borderLeft: `4px solid ${s.bg}` }}>
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{s.label}</p>
-                  <p className="text-2xl font-bold mt-0.5" style={{ color: s.bg }}>{s.value}</p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">{s.sub}</p>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <StatsCard
+            title="Atividades Hoje"
+            value={stats.today}
+            icon={CalendarIcon}
+            color="blue"
+            subtitle={`${stats.todayDone} feitas · ${stats.todayPending} pendentes`}
+            delay={0}
+          />
+          <StatsCard
+            title="Atrasadas"
+            value={stats.overdue}
+            icon={AlertCircle}
+            color="red"
+            subtitle="Requer atenção"
+            delay={0.05}
+          />
+          <StatsCard
+            title="Esta Semana"
+            value={stats.week}
+            icon={CalendarDays}
+            color="green"
+            subtitle={`${stats.weekDone} concluídas`}
+            delay={0.1}
+          />
+          <StatsCard
+            title="Google Calendar"
+            value={googleEvents.length}
+            icon={CalendarRange}
+            color="orange"
+            subtitle={gcalStatus?.connected ? "Eventos sincronizados" : "Não conectado"}
+            delay={0.15}
+          />
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap">
