@@ -10,11 +10,7 @@ import entityRoutes from './routes/entities.js';
 import uploadRoutes from './routes/upload.js';
 import functionRoutes from './routes/functions.js';
 import whatsappRoutes from './routes/whatsapp.js';
-import bomAutoRoutes from './routes/bomAuto.js';
 import { runAllAutomations } from './services/automationService.js';
-import cron from 'node-cron';
-import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport } from './routes/functions.js';
-import { recoverStuckQueues } from './services/whatsappQueueService.js';
 import { syncAllAgents } from './services/googleCalendarService.js';
 import { createNotification } from './services/notificationService.js';
 import { query as dbQuery } from './config/database.js';
@@ -55,7 +51,6 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
-app.use('/data/bom-auto-images', express.static(path.join(__dirname, '../../data/bom-auto-images')));
 app.use('/proposals', express.static(path.join(__dirname, '../public/proposals')));
 app.use(express.static(distPath));
 
@@ -64,7 +59,6 @@ app.use('/api', entityRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/functions', functionRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
-app.use('/api/bom-auto', bomAutoRoutes);
 
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api')) {
@@ -104,60 +98,6 @@ initDatabase()
     
     console.log(`[Automations] Scheduler initialized. Running every ${AUTOMATION_INTERVAL / 60000} minutes.`);
 
-    cron.schedule('0 3 * * *', async () => {
-      console.log('[Lead Generator Audit] Iniciando auditoria automática diária...');
-      try {
-        const { divergencias } = await runLeadGeneratorAudit();
-        console.log(`[Lead Generator Audit] Auditoria diária concluída. Divergências: ${divergencias}`);
-      } catch (error) {
-        console.error('[Lead Generator Audit] Erro na auditoria automática:', error.message);
-      }
-    });
-    console.log('[Lead Generator Audit] Cron agendado: todos os dias às 03:00.');
-
-    cron.schedule('0 4 * * *', async () => {
-      console.log('[Commission Reconciliation] Iniciando reconciliação automática diária...');
-      try {
-        const result = await runCommissionReconciliation();
-        console.log(`[Commission Reconciliation] Reconciliação concluída. Inconsistências: ${result.issuesFound || 0}`);
-      } catch (error) {
-        console.error('[Commission Reconciliation] Erro na reconciliação automática:', error.message);
-      }
-    });
-    console.log('[Commission Reconciliation] Cron agendado: todos os dias às 04:00.');
-
-    cron.schedule('0 5 * * 3', async () => {
-      console.log('[Commission Batch] Iniciando geração de lote semanal (quarta-feira)...');
-      try {
-        const result = await runWeeklyCommissionBatch();
-        console.log(`[Commission Batch] Lote gerado. Novas comissões: ${result.newCommissions || 0}, Lote: ${result.batchId || 'N/A'}`);
-      } catch (error) {
-        console.error('[Commission Batch] Erro na geração de lote:', error.message);
-      }
-    });
-    console.log('[Commission Batch] Cron agendado: quartas-feiras às 05:00.');
-
-    cron.schedule('0 8 * * 3', async () => {
-      console.log('[Commission Email] Iniciando envio automático de relatório semanal...');
-      try {
-        const result = await sendCommissionReport({ tipo_envio: 'automatico', usuario_envio: 'system' });
-        if (result.skipped) {
-          console.log(`[Commission Email] Envio pulado: ${result.message}`);
-        } else {
-          console.log(`[Commission Email] Relatório enviado. Indicadores: ${result.totalIndicadores}, Valor: R$ ${result.valorTotal?.toFixed(2)}`);
-        }
-      } catch (error) {
-        console.error('[Commission Email] Erro no envio automático:', error.message);
-      }
-    });
-    console.log('[Commission Email] Cron agendado: quartas-feiras às 08:00.');
-
-    try {
-      await recoverStuckQueues();
-    } catch (err) {
-      console.error('[Recovery] Falha no recovery de itens presos (não impede inicialização):', err.message);
-    }
-
     setInterval(() => {
       syncAllAgents().catch(err => console.error('[GCal Sync] Erro na sincronização periódica:', err.message));
     }, 5 * 60 * 1000);
@@ -167,21 +107,6 @@ initDatabase()
       try {
         const now = new Date();
         const in15min = new Date(now.getTime() + 15 * 60 * 1000);
-
-        const activitiesResult = await dbQuery(`
-          SELECT a.id, a.title, a.description, a.type, a.scheduled_at, a.created_by, a.assigned_to,
-                 ag.email as agent_email, ag.name as agent_name
-          FROM activities a
-          LEFT JOIN agents ag ON ag.id = a.created_by
-          WHERE a.completed = false
-            AND a.scheduled_at > $1
-            AND a.scheduled_at <= $2
-            AND a.id NOT IN (
-              SELECT entity_id FROM notifications
-              WHERE entity_type = 'activity_reminder'
-              AND entity_id IS NOT NULL
-            )
-        `, [now.toISOString(), in15min.toISOString()]);
 
         const activitiesPJResult = await dbQuery(`
           SELECT a.id, a.description, a.type, a.scheduled_at, a.created_by,
@@ -198,12 +123,7 @@ initDatabase()
             )
         `, [now.toISOString(), in15min.toISOString()]);
 
-        const allUpcoming = [
-          ...activitiesResult.rows.map(r => ({ ...r, _table: 'activities' })),
-          ...activitiesPJResult.rows.map(r => ({ ...r, _table: 'activities_pj' })),
-        ];
-
-        for (const act of allUpcoming) {
+        for (const act of activitiesPJResult.rows) {
           const email = act.agent_email;
           if (!email) continue;
 
@@ -215,16 +135,16 @@ initDatabase()
             userEmail: email,
             type: 'activity_reminder',
             title: `Atividade ${timeLabel}`,
-            message: `"${act.title || act.description || 'Atividade'}" está agendada para ${scheduledAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`,
+            message: `"${act.description || 'Atividade'}" está agendada para ${scheduledAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`,
             link: '/Agenda',
-            entityType: act._table === 'activities' ? 'activity_reminder' : 'activity_pj_reminder',
+            entityType: 'activity_pj_reminder',
             entityId: String(act.id),
             priority: 'high',
           });
         }
 
-        if (allUpcoming.length > 0) {
-          console.log(`[Activity Reminder] ${allUpcoming.length} notificação(ões) de atividade(s) próxima(s) enviada(s).`);
+        if (activitiesPJResult.rows.length > 0) {
+          console.log(`[Activity Reminder] ${activitiesPJResult.rows.length} notificação(ões) de atividade(s) próxima(s) enviada(s).`);
         }
       } catch (err) {
         console.error('[Activity Reminder] Erro ao verificar atividades próximas:', err.message);

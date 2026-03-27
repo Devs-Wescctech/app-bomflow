@@ -133,51 +133,40 @@ export default function SalesTasks() {
   });
 
   const { data: activities = [], isLoading: loadingActivities } = useQuery({
-    queryKey: ['activities'],
-    queryFn: () => base44.entities.Activity.list('-scheduledAt', 500),
+    queryKey: ['activitiesPJ'],
+    queryFn: () => base44.entities.ActivityPJ.list('-scheduledAt', 500),
     staleTime: 1000 * 60 * 2,
   });
 
-  const { data: leads = [], isLoading: loadingLeads } = useQuery({
-    queryKey: ['leads'],
-    queryFn: () => base44.entities.Lead.list(),
-    staleTime: 1000 * 60 * 2,
-  });
-
-  const { data: leadsPJ = [] } = useQuery({
+  const { data: leadsPJ = [], isLoading: loadingLeads } = useQuery({
     queryKey: ['leadsPJ'],
     queryFn: () => base44.entities.LeadPJ.list(),
     staleTime: 1000 * 60 * 2,
   });
 
-  const allLeads = useMemo(() => [
-    ...leads.map(l => ({ ...l, _leadType: 'pf' })),
-    ...leadsPJ.map(l => ({ ...l, _leadType: 'pj' })),
-  ], [leads, leadsPJ]);
-
-  const pfLeadsForForm = useMemo(() =>
-    leads.map(l => ({ ...l, _leadType: 'pf' })),
-  [leads]);
+  const allLeads = useMemo(() =>
+    leadsPJ.map(l => ({ ...l, _leadType: 'pj' })),
+  [leadsPJ]);
 
   const updateActivityMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Activity.update(id, data),
+    mutationFn: ({ id, data }) => base44.entities.ActivityPJ.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['activities'] });
+      queryClient.invalidateQueries({ queryKey: ['activitiesPJ'] });
     },
   });
 
   const deleteActivityMutation = useMutation({
-    mutationFn: (id) => base44.entities.Activity.delete(id),
+    mutationFn: (id) => base44.entities.ActivityPJ.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['activities'] });
+      queryClient.invalidateQueries({ queryKey: ['activitiesPJ'] });
       toast.success('Tarefa excluída!');
     },
   });
 
   const createActivityMutation = useMutation({
-    mutationFn: (data) => base44.entities.Activity.create(data),
+    mutationFn: (data) => base44.entities.ActivityPJ.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['activities'] });
+      queryClient.invalidateQueries({ queryKey: ['activitiesPJ'] });
       toast.success('Atividade criada com sucesso!');
       setShowDialog(false);
       setFormData({ title: '', description: '', leadId: '', type: 'task', priority: 'media', scheduledAt: '' });
@@ -291,14 +280,16 @@ export default function SalesTasks() {
   };
 
   const filteredLeadsForSearch = useMemo(() => {
-    if (!leadSearchQuery) return pfLeadsForForm;
+    if (!leadSearchQuery) return allLeads;
     const query = leadSearchQuery.toLowerCase();
-    return pfLeadsForForm.filter(l => 
+    return allLeads.filter(l => 
       l.name?.toLowerCase().includes(query) ||
       l.phone?.includes(query) ||
-      l.email?.toLowerCase().includes(query)
+      l.email?.toLowerCase().includes(query) ||
+      l.company_name?.toLowerCase().includes(query) ||
+      l.companyName?.toLowerCase().includes(query)
     );
-  }, [pfLeadsForForm, leadSearchQuery]);
+  }, [allLeads, leadSearchQuery]);
 
   const getFilteredTasks = () => {
     let filtered = tasks;
@@ -562,12 +553,11 @@ export default function SalesTasks() {
                             <div className="flex items-center gap-2">
                               {lead && (
                                 <Link
-                                  to={createPageUrl(lead._leadType === 'pj' ? "LeadPJDetail" : "LeadDetail", { id: lead.id })}
+                                  to={createPageUrl("LeadPJDetail", { id: lead.id })}
                                   className="flex items-center gap-1.5 px-2 py-1 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg text-sm hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors"
                                 >
                                   <User className="w-3.5 h-3.5" />
                                   <span className="max-w-[120px] truncate">{lead.name || lead.company_name || lead.companyName}</span>
-                                  {lead._leadType === 'pj' && <Badge className="text-[9px] px-1 py-0 bg-blue-100 text-blue-700">PJ</Badge>}
                                   <ExternalLink className="w-3 h-3" />
                                 </Link>
                               )}
@@ -816,7 +806,7 @@ export default function SalesTasks() {
                 </PopoverContent>
               </Popover>
               <p className="text-xs text-gray-500">
-                {filteredLeadsForSearch.length} de {pfLeadsForForm.length} leads {leadSearchQuery && '(filtrados)'}
+                {filteredLeadsForSearch.length} de {allLeads.length} leads {leadSearchQuery && '(filtrados)'}
               </p>
             </div>
 

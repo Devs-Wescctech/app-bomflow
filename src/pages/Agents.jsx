@@ -42,51 +42,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 
 const MENU_MODULES = [
   {
-    id: "support",
-    title: "Atendimento",
-    items: [
-      { id: "Dashboard", title: "Dashboard" },
-      { id: "CreateTicket", title: "Criar Ticket" },
-      { id: "QuickServiceRegister", title: "Atendimento Rápido" },
-      { id: "QueueBoard", title: "Board de Filas" },
-      { id: "TicketControl", title: "Controle de Tickets" },
-      { id: "QuickServiceList", title: "Atendimentos Rápidos" },
-      { id: "QualityMonitor", title: "Monitoria de Qualidade" },
-      { id: "TicketReports", title: "Relatórios" },
-      { id: "NPSDashboard", title: "Dashboard NPS" },
-      { id: "MyTickets", title: "Meus Tickets" },
-      { id: "KnowledgeBase", title: "Base de Conhecimento" },
-    ]
-  },
-  {
-    id: "presales",
-    title: "Pré e Pós Vendas",
-    items: [
-      { id: "SalesQueueBoard", title: "Board de Vendas" },
-      { id: "CreateSalesTicket", title: "Criar Ticket" },
-      { id: "SalesTickets", title: "Tickets de Vendas" },
-    ]
-  },
-  {
-    id: "sales",
-    title: "Vendas PF",
-    items: [
-      { id: "SalesDashboard", title: "Dashboard" },
-      { id: "SalesAgentsDashboard", title: "Dashboard Vendedores" },
-      { id: "NewLead", title: "Novo Lead" },
-      { id: "LeadsKanban", title: "Pipeline" },
-      { id: "SalesAgenda", title: "Agenda" },
-      { id: "LeadSearch", title: "Busca de Leads" },
-      { id: "LeadsMap", title: "Mapa de Leads" },
-      { id: "SalesRoutes", title: "Rota Inteligente" },
-      { id: "SalesReports", title: "Relatórios" },
-      { id: "LeadAutomations", title: "Automações" },
-      { id: "AutomationLogs", title: "Logs de Automações" },
-      { id: "SalesTasks", title: "Tarefas" },
-      { id: "ProposalTemplates", title: "Templates" },
-    ]
-  },
-  {
     id: "sales_pj",
     title: "Vendas PJ",
     items: [
@@ -97,44 +52,11 @@ const MENU_MODULES = [
       { id: "SalesAgenda", title: "Agenda" },
       { id: "LeadPJSearch", title: "Busca de Leads" },
       { id: "SalesPJReports", title: "Relatórios" },
+      { id: "SalesPJWonReport", title: "Rel. de Ganhos" },
       { id: "LeadPJAutomations", title: "Automações" },
+      { id: "AutomationLogs", title: "Logs de Automações" },
       { id: "SalesTasks", title: "Tarefas" },
       { id: "ProposalTemplates", title: "Templates" },
-    ]
-  },
-  {
-    id: "referral",
-    title: "Indicações",
-    items: [
-      { id: "IndicacoesMeuPainel", title: "Meu Painel" },
-      { id: "ReferralDashboard", title: "Dashboard" },
-      { id: "ReferralAgentsDashboard", title: "Dashboard Vendedores" },
-      { id: "ReferralCreate", title: "Nova Indicação" },
-      { id: "ReferralPipeline", title: "Pipeline" },
-      { id: "ReferralReports", title: "Relatórios" },
-      { id: "ReferralCommissions", title: "Comissões" },
-      { id: "ReferralAutomations", title: "Automações" },
-      { id: "LeadGenerator", title: "Gerador de Leads" },
-    ]
-  },
-  {
-    id: "collection",
-    title: "Cobrança",
-    items: [
-      { id: "CollectionDashboard", title: "Dashboard" },
-      { id: "CollectionBoard", title: "Board" },
-      { id: "CollectionAgenda", title: "Agenda" },
-      { id: "CreateCollectionTicket", title: "Criar Cobrança" },
-      { id: "CollectionReports", title: "Relatórios" },
-    ]
-  },
-  {
-    id: "bom_auto",
-    title: "Bom Auto",
-    items: [
-      { id: "BomAutoConsulta", title: "Consulta Cliente" },
-      { id: "BomAutoPainel", title: "Painel Operacional" },
-      { id: "BomAutoRelatorio", title: "Relatório de Utilizações" },
     ]
   },
   {
@@ -142,10 +64,7 @@ const MENU_MODULES = [
     title: "Configurações",
     items: [
       { id: "Agents", title: "Agentes" },
-      { id: "TicketTypes", title: "Tipos de Ticket" },
-      { id: "Templates", title: "Templates" },
-      { id: "DistributionRules", title: "Distribuição de Tickets" },
-      { id: "AIAgents", title: "Agentes de IA" },
+      { id: "Settings", title: "Configurações do Sistema" },
     ]
   }
 ];
@@ -767,11 +686,11 @@ export default function Agents() {
     admin: { label: "Admin", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300", description: "Acesso irrestrito a todas as configurações e dados" },
     supervisor: { label: "Supervisor", color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300", description: "Gestão de equipes, vê tickets/leads do time" },
     sales_supervisor: { label: "Supervisor de Vendas", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300", description: "Gestão de equipe de vendas PF/PJ e indicações" },
-    support: { label: "Suporte", color: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300", description: "Agente de atendimento N1/N2" },
+    support: { label: "Suporte", color: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300", description: "Agente (legado)" },
     sales: { label: "Vendas", color: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300", description: "Fechamento de vendas e carteira de clientes" },
     pre_sales: { label: "Pré-Vendas", color: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300", description: "SDR/BDR - Qualificação de leads (Pre-Sales)" },
     post_sales: { label: "Pós-Vendas", color: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300", description: "Customer Success e retenção" },
-    collection: { label: "Cobrança", color: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300", description: "Recuperação de crédito e acordos" },
+    collection: { label: "Cobrança", color: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300", description: "Agente (legado)" },
   };
 
   const PRIORITY_CONFIG = {

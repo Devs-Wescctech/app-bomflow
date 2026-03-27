@@ -114,30 +114,15 @@ export default function SalesAgenda() {
     queryFn: () => base44.auth.me(),
   });
 
-  const { data: activitiesPJ = [], isLoading: loadingPJ } = useQuery({
+  const { data: activitiesPJ = [], isLoading: loading } = useQuery({
     queryKey: ["activitiesPJ"],
     queryFn: () => base44.entities.ActivityPJ.list("-scheduledAt", 500),
     staleTime: 1000 * 60 * 2,
   });
 
-  const { data: activitiesPF = [], isLoading: loadingPF } = useQuery({
-    queryKey: ["activities"],
-    queryFn: () => base44.entities.Activity.list("-scheduledAt", 500),
-    staleTime: 1000 * 60 * 2,
-  });
-
-  const loading = loadingPJ || loadingPF;
-
-  const activities = useMemo(() => [
-    ...activitiesPF.map((a) => ({ ...a, _leadType: "pf" })),
-    ...activitiesPJ.map((a) => ({ ...a, _leadType: "pj" })),
-  ], [activitiesPF, activitiesPJ]);
-
-  const { data: leads = [] } = useQuery({
-    queryKey: ["leads"],
-    queryFn: () => base44.entities.Lead.list(),
-    staleTime: 1000 * 60 * 2,
-  });
+  const activities = useMemo(() =>
+    activitiesPJ.map((a) => ({ ...a, _leadType: "pj" })),
+  [activitiesPJ]);
 
   const { data: leadsPJ = [] } = useQuery({
     queryKey: ["leadsPJ"],
@@ -202,20 +187,15 @@ export default function SalesAgenda() {
   };
 
   const updateActivityMutation = useMutation({
-    mutationFn: ({ id, data, leadType }) => {
-      if (leadType === "pj") return base44.entities.ActivityPJ.update(id, data);
-      return base44.entities.Activity.update(id, data);
-    },
+    mutationFn: ({ id, data }) => base44.entities.ActivityPJ.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["activities"] });
       queryClient.invalidateQueries({ queryKey: ["activitiesPJ"] });
     },
   });
 
   const createActivityMutation = useMutation({
-    mutationFn: (data) => base44.entities.Activity.create(data),
+    mutationFn: (data) => base44.entities.ActivityPJ.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["activities"] });
       queryClient.invalidateQueries({ queryKey: ["activitiesPJ"] });
       toast.success("Atividade criada com sucesso!");
       setShowCreateSheet(false);
@@ -308,21 +288,15 @@ export default function SalesAgenda() {
     });
   }, [showGoogleEvents, googleEvents]);
 
-  const getLeadById = (leadId, leadType) => {
+  const getLeadById = (leadId) => {
     if (!leadId) return null;
-    if (leadType === "pj") {
-      const pj = leadsPJ.find((l) => String(l.id) === String(leadId));
-      if (pj) return { ...pj, _leadType: "pj" };
-    }
-    const pf = leads.find((l) => String(l.id) === String(leadId));
-    if (pf) return { ...pf, _leadType: "pf" };
-    const pjFallback = leadsPJ.find((l) => String(l.id) === String(leadId));
-    if (pjFallback) return { ...pjFallback, _leadType: "pj" };
+    const pj = leadsPJ.find((l) => String(l.id) === String(leadId));
+    if (pj) return { ...pj, _leadType: "pj" };
     return null;
   };
 
-  const handleToggle = (id, current, leadType) => {
-    updateActivityMutation.mutate({ id, leadType, data: { completed: !current, completed_at: !current ? new Date().toISOString() : null } });
+  const handleToggle = (id, current) => {
+    updateActivityMutation.mutate({ id, data: { completed: !current, completed_at: !current ? new Date().toISOString() : null } });
     toast.success(current ? "Atividade reaberta" : "Atividade concluída!");
   };
 
@@ -922,7 +896,7 @@ function ActivityPopover({ activity, getLeadById, handleToggle, onClose }) {
   const cfg = ACTIVITY_TYPES[activity.type] || ACTIVITY_TYPES.task;
   const Icon = cfg.icon;
   const leadId = getVal(activity, "leadId", "lead_id");
-  const lead = getLeadById(leadId, activity._leadType);
+  const lead = getLeadById(leadId);
   const scheduledAt = activity.scheduledAt ? parseISO(activity.scheduledAt) : null;
 
   return (
@@ -972,13 +946,12 @@ function ActivityPopover({ activity, getLeadById, handleToggle, onClose }) {
             )}
             {lead && (
               <Link
-                to={createPageUrl(lead._leadType === "pj" ? "LeadPJDetail" : "LeadDetail", { id: lead.id })}
+                to={createPageUrl("LeadPJDetail", { id: lead.id })}
                 className="flex items-center gap-2 hover:underline"
                 style={{ color: BRAND.burgundy }}
               >
                 <User className="w-4 h-4 flex-shrink-0" />
                 <span>{lead.name || lead.company_name || lead.companyName}</span>
-                {lead._leadType === "pj" && <Badge className="text-[9px] px-1 py-0 bg-blue-100 text-blue-700">PJ</Badge>}
                 <ExternalLink className="w-3 h-3" />
               </Link>
             )}
@@ -990,7 +963,7 @@ function ActivityPopover({ activity, getLeadById, handleToggle, onClose }) {
               variant={activity.completed ? "outline" : "default"}
               className="flex-1 text-xs h-8"
               style={activity.completed ? {} : { background: `linear-gradient(135deg, ${BRAND.burgundy}, ${BRAND.coral})` }}
-              onClick={() => { handleToggle(activity.id, activity.completed, activity._leadType); onClose(); }}
+              onClick={() => { handleToggle(activity.id, activity.completed); onClose(); }}
             >
               <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
               {activity.completed ? "Reabrir" : "Concluir"}

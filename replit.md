@@ -52,12 +52,11 @@ SalesTwo is a focused B2B sales management platform built on a streamlined versi
 - Template parameter count is dynamically detected from template definition (no hardcoded IDs)
 
 ### Activities/Agenda
-- `SalesAgenda` combines activities from both `activities` (PF) and `activities_pj` (PJ) tables
-- PJ activities link to `LeadPJDetail`, PF activities link to `LeadDetail`
+- `SalesAgenda` and `SalesTasks` use only `activities_pj` table and `LeadPJ` entities (PF removed)
+- All activities link to `LeadPJDetail`
 - Activity types include: visit, call, whatsapp, email, task, meeting
 - **Create activity button** in SalesAgenda header — opens Sheet form with title, type, priority, datetime
-- **SalesTasks** page shows PF leads in the form picker (PJ leads can't link to `activities.lead_id` due to FK constraint); `getLeadById` searches both PF+PJ for display
-- **Activity reminders**: Backend cron every 5min checks activities/activities_pj due within 15min, creates notification via `notificationService`; entity_type `activity_reminder`/`activity_pj_reminder` prevents duplicates
+- **Activity reminders**: Backend setInterval every 5min checks `activities_pj` due within 15min, creates notification via `notificationService`; entity_type `activity_pj_reminder` prevents duplicates
 - Notification bell shows `CalendarClock` icon for `activity_reminder` type
 - Google Calendar-inspired layout: full-height time grid (day/week), month grid with event pills, mini calendar sidebar, activity filters, summary stats, current-time red line indicator
 - Internal activities render above Google events (z-index layering); all-day Google events supported in all views
