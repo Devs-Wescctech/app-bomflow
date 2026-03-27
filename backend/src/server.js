@@ -15,6 +15,7 @@ import { runAllAutomations } from './services/automationService.js';
 import cron from 'node-cron';
 import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport } from './routes/functions.js';
 import { recoverStuckQueues } from './services/whatsappQueueService.js';
+import { syncAllAgents } from './services/googleCalendarService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -154,6 +155,11 @@ initDatabase()
     } catch (err) {
       console.error('[Recovery] Falha no recovery de itens presos (não impede inicialização):', err.message);
     }
+
+    setInterval(() => {
+      syncAllAgents().catch(err => console.error('[GCal Sync] Erro na sincronização periódica:', err.message));
+    }, 5 * 60 * 1000);
+    console.log('[Google Calendar] Sync periódico agendado: a cada 5 minutos.');
   })
   .catch((error) => {
     console.error('Database initialization failed:', error);

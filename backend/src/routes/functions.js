@@ -21,8 +21,15 @@ import FormData from 'form-data';
 import axios from 'axios';
 import https from 'https';
 import {
-  getCalendarEvents,
   getConnectionStatus,
+  getAgentConnectionStatus,
+  getAuthUrl,
+  validateOAuthState,
+  handleCallback,
+  disconnectAgent,
+  fetchGoogleEvents,
+  syncGoogleToSalesTwo,
+  syncAllAgents,
 } from '../services/googleCalendarService.js';
 
 const router = Router();
@@ -4212,23 +4219,98 @@ router.put('/portal/indicadores-pix/:cpf', async (req, res) => {
   }
 });
 
-router.get('/google-calendar/status', authMiddleware, async (req, res) => {
+router.get('/google-calendar/status', authMiddleware, loadAgentMiddleware, async (req, res) => {
   try {
-    const status = await getConnectionStatus();
-    res.json(status);
+    const agentId = req.agent?.id;
+    if (agentId) {
+      const status = await getAgentConnectionStatus(agentId);
+      res.json(status);
+    } else {
+      const status = await getConnectionStatus();
+      res.json(status);
+    }
   } catch (error) {
     console.error('[Google Calendar] Status error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
-router.get('/google-calendar/events', authMiddleware, async (req, res) => {
+router.get('/google-calendar/auth-url', authMiddleware, loadAgentMiddleware, async (req, res) => {
   try {
+    const agentId = req.agent?.id;
+    if (!agentId) return res.status(400).json({ error: 'Agente não encontrado' });
+    const url = await getAuthUrl(agentId);
+    res.json({ url });
+  } catch (error) {
+    console.error('[Google Calendar] Auth URL error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/google-calendar/callback', async (req, res) => {
+  try {
+    const { code, state, error: oauthError } = req.query;
+    if (oauthError) {
+      console.error('[Google Calendar] OAuth error:', oauthError);
+      const frontendUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}` : 'http://localhost:5173';
+      return res.redirect(`${frontendUrl}/settings?gcal=error&reason=${oauthError}`);
+    }
+    if (!code || !state) {
+      return res.status(400).send('Código de autorização não encontrado.');
+    }
+    const agentId = await validateOAuthState(state);
+    if (!agentId) {
+      return res.status(403).send('Estado OAuth inválido. Tente conectar novamente.');
+    }
+    await handleCallback(code, agentId);
+
+    await syncGoogleToSalesTwo(agentId);
+
+    const frontendUrl = process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}` : 'http://localhost:5173';
+    res.redirect(`${frontendUrl}/settings?gcal=connected`);
+  } catch (error) {
+    console.error('[Google Calendar] Callback error:', error.message);
+    const frontendUrl = process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}` : 'http://localhost:5173';
+    res.redirect(`${frontendUrl}/settings?gcal=error&reason=${encodeURIComponent(error.message)}`);
+  }
+});
+
+router.get('/google-calendar/events', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const agentId = req.agent?.id;
+    if (!agentId) return res.json([]);
     const { timeMin, timeMax } = req.query;
-    const events = await getCalendarEvents(timeMin, timeMax);
+    const events = await fetchGoogleEvents(agentId, timeMin, timeMax);
     res.json(events);
   } catch (error) {
     console.error('[Google Calendar] Events error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/google-calendar/sync', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const agentId = req.agent?.id;
+    if (!agentId) return res.status(400).json({ error: 'Agente não encontrado' });
+    const result = await syncGoogleToSalesTwo(agentId);
+    res.json(result);
+  } catch (error) {
+    console.error('[Google Calendar] Sync error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/google-calendar/disconnect', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const agentId = req.agent?.id;
+    if (!agentId) return res.status(400).json({ error: 'Agente não encontrado' });
+    await disconnectAgent(agentId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[Google Calendar] Disconnect error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });

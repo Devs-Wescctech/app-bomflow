@@ -166,9 +166,20 @@ export default function SalesAgenda() {
     staleTime: 1000 * 60 * 3,
   });
 
-  const handleRefreshGcal = () => {
-    queryClient.invalidateQueries({ queryKey: ["googleCalendarEvents"] });
-    toast.success("Eventos do Google Calendar atualizados!");
+  const handleRefreshGcal = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/functions/google-calendar/sync", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["googleCalendarEvents"] });
+      queryClient.invalidateQueries({ queryKey: ["activitiesPJ"] });
+      toast.success(`Sincronizado! ${data.synced || 0} novos eventos importados.`);
+    } catch {
+      toast.error("Erro ao sincronizar");
+    }
   };
 
   const updateActivityMutation = useMutation({

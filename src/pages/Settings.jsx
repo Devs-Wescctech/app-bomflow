@@ -112,18 +112,12 @@ export default function Settings() {
 
   if (!isAdmin) {
     return (
-      <div className="p-6 min-h-screen bg-gray-50 dark:bg-gray-950">
-        <Card className="max-w-2xl mx-auto">
-          <CardContent className="pt-6 text-center">
-            <SettingsIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
-              Acesso Restrito
-            </h2>
-            <p className="text-gray-600 dark:text-gray-400">
-              Apenas administradores podem acessar as configurações do sistema.
-            </p>
-          </CardContent>
-        </Card>
+      <div className="p-6 min-h-screen bg-gray-50 dark:bg-gray-950 space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Minha Conta</h1>
+          <p className="text-gray-500">Gerencie suas integrações pessoais</p>
+        </div>
+        <GoogleCalendarSettings settings={settings} onSave={createOrUpdateSettingMutation} isAdmin={false} />
       </div>
     );
   }
@@ -325,7 +319,7 @@ export default function Settings() {
         </TabsContent>
 
         <TabsContent value="google-calendar" className="space-y-6">
-          <GoogleCalendarSettings settings={settings} onSave={createOrUpdateSettingMutation} />
+          <GoogleCalendarSettings settings={settings} onSave={createOrUpdateSettingMutation} isAdmin={isAdmin} />
         </TabsContent>
       </Tabs>
     </div>
@@ -481,54 +475,116 @@ function SalesFieldsManager({ settings, onSave }) {
   );
 }
 
-function GoogleCalendarSettings({ settings, onSave }) {
-  const [icsUrl, setIcsUrl] = useState("");
+function GoogleCalendarSettings({ settings, onSave, isAdmin }) {
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
   const [saving, setSaving] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const queryClient = useQueryClient();
 
   const getSetting = (key) => {
     const s = settings.find(s => (s.setting_key || s.settingKey) === key);
     return (s?.setting_value || s?.settingValue) || "";
   };
 
+  const { data: gcalStatus, refetch: refetchStatus } = useQuery({
+    queryKey: ["gcalStatus"],
+    queryFn: async () => {
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/functions/google-calendar/status", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { configured: false, connected: false };
+      return res.json();
+    },
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("gcal") === "connected") {
+      toast.success("Google Calendar conectado com sucesso! Seus eventos serão sincronizados automaticamente.");
+      refetchStatus();
+      queryClient.invalidateQueries({ queryKey: ["googleCalendarEvents"] });
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (params.get("gcal") === "error") {
+      toast.error("Erro ao conectar: " + (params.get("reason") || "tente novamente"));
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
   useEffect(() => {
     if (settings.length > 0) {
-      setIcsUrl(getSetting("google_calendar_ics_url"));
+      setClientId(getSetting("google_calendar_client_id"));
+      setClientSecret(getSetting("google_calendar_client_secret"));
     }
   }, [settings]);
 
-  const isConnected = !!getSetting("google_calendar_ics_url");
-
-  const handleSave = async () => {
-    if (!icsUrl.trim()) {
-      toast.error("Cole a URL do calendário");
-      return;
-    }
-    if (!icsUrl.includes("calendar.google.com") && !icsUrl.endsWith(".ics")) {
-      toast.error("URL inválida. Use o link ICS do Google Calendar.");
+  const handleSaveCredentials = async () => {
+    if (!clientId.trim() || !clientSecret.trim()) {
+      toast.error("Preencha Client ID e Client Secret");
       return;
     }
     setSaving(true);
     try {
-      await onSave.mutateAsync({ key: "google_calendar_ics_url", value: icsUrl.trim(), type: "text" });
-      await onSave.mutateAsync({ key: "google_calendar_connected", value: "true", type: "text" });
-      toast.success("Google Calendar conectado!");
+      await onSave.mutateAsync({ key: "google_calendar_client_id", value: clientId.trim(), type: "text" });
+      await onSave.mutateAsync({ key: "google_calendar_client_secret", value: clientSecret.trim(), type: "text" });
+      toast.success("Credenciais salvas!");
+      refetchStatus();
     } catch {
-      toast.error("Erro ao salvar");
+      toast.error("Erro ao salvar credenciais");
     }
     setSaving(false);
   };
 
-  const handleDisconnect = async () => {
-    setSaving(true);
+  const handleConnect = async () => {
+    setConnecting(true);
     try {
-      await onSave.mutateAsync({ key: "google_calendar_ics_url", value: "", type: "text" });
-      await onSave.mutateAsync({ key: "google_calendar_connected", value: "false", type: "text" });
-      setIcsUrl("");
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/functions/google-calendar/auth-url", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        toast.error(data.error || "Erro ao obter URL de autorização");
+      }
+    } catch {
+      toast.error("Erro ao conectar");
+    }
+    setConnecting(false);
+  };
+
+  const handleDisconnect = async () => {
+    setConnecting(true);
+    try {
+      const token = localStorage.getItem("token");
+      await fetch("/api/functions/google-calendar/disconnect", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
       toast.success("Google Calendar desconectado");
+      refetchStatus();
+      queryClient.invalidateQueries({ queryKey: ["googleCalendarEvents"] });
     } catch {
       toast.error("Erro ao desconectar");
     }
-    setSaving(false);
+    setConnecting(false);
+  };
+
+  const handleManualSync = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/functions/google-calendar/sync", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      toast.success(`Sincronização concluída! ${data.synced || 0} novos eventos importados.`);
+      queryClient.invalidateQueries({ queryKey: ["activitiesPJ"] });
+    } catch {
+      toast.error("Erro ao sincronizar");
+    }
   };
 
   return (
@@ -537,66 +593,111 @@ function GoogleCalendarSettings({ settings, onSave }) {
         <CardHeader className="border-b border-gray-200 dark:border-gray-800">
           <CardTitle className="flex items-center gap-2 text-gray-900 dark:text-gray-100">
             <Calendar className="w-5 h-5" />
-            Integração Google Calendar
+            Google Calendar
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-6 space-y-6">
-          <div className="p-4 rounded-lg" style={{ backgroundColor: isConnected ? "#f0fdf4" : "#fef3c7" }}>
+          <div className="p-4 rounded-lg" style={{ backgroundColor: gcalStatus?.connected ? "#f0fdf4" : gcalStatus?.configured ? "#fef3c7" : "#fef2f2" }}>
             <div className="flex items-center gap-2">
-              {isConnected ? (
+              {gcalStatus?.connected ? (
                 <>
                   <Link2 className="w-5 h-5 text-green-600" />
-                  <span className="text-sm font-medium text-green-700">Google Calendar conectado</span>
+                  <div>
+                    <span className="text-sm font-medium text-green-700">Conectado ao Google Calendar</span>
+                    {gcalStatus.calendarEmail && (
+                      <p className="text-xs text-green-600">{gcalStatus.calendarEmail}</p>
+                    )}
+                    {gcalStatus.lastSync && (
+                      <p className="text-xs text-green-500">Última sincronização: {new Date(gcalStatus.lastSync).toLocaleString("pt-BR")}</p>
+                    )}
+                  </div>
+                </>
+              ) : gcalStatus?.configured ? (
+                <>
+                  <Unlink className="w-5 h-5 text-amber-600" />
+                  <span className="text-sm font-medium text-amber-700">Credenciais configuradas. Clique em "Conectar" para autorizar sua conta Google.</span>
                 </>
               ) : (
                 <>
-                  <Unlink className="w-5 h-5 text-amber-600" />
-                  <span className="text-sm font-medium text-amber-700">Não configurado</span>
+                  <Unlink className="w-5 h-5 text-red-500" />
+                  <span className="text-sm font-medium text-red-600">Não configurado. {isAdmin ? "Configure as credenciais abaixo." : "Peça ao admin para configurar."}</span>
                 </>
               )}
             </div>
           </div>
 
-          <div className="space-y-4">
-            <div>
-              <Label>URL do Calendário (ICS)</Label>
-              <Input
-                value={icsUrl}
-                onChange={(e) => setIcsUrl(e.target.value)}
-                placeholder="https://calendar.google.com/calendar/ical/...basic.ics"
-                className="mt-1"
-              />
-              <p className="text-xs text-gray-500 mt-1">Cole aqui o endereço secreto no formato iCal do seu Google Calendar</p>
-            </div>
-
+          {gcalStatus?.connected && (
             <div className="flex gap-2">
-              <Button onClick={handleSave} disabled={saving} className="flex-1 text-white" style={{ background: "linear-gradient(135deg, #5A2A3C, #F98F6F)" }}>
-                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                {isConnected ? "Atualizar" : "Conectar"}
+              <Button onClick={handleManualSync} variant="outline" className="flex-1">
+                <Save className="w-4 h-4 mr-2" />
+                Sincronizar Agora
               </Button>
-              {isConnected && (
-                <Button onClick={handleDisconnect} disabled={saving} variant="destructive">
-                  <Unlink className="w-4 h-4 mr-1" /> Desconectar
-                </Button>
-              )}
+              <Button onClick={handleDisconnect} disabled={connecting} variant="destructive">
+                {connecting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Unlink className="w-4 h-4 mr-1" />}
+                Desconectar
+              </Button>
             </div>
-          </div>
+          )}
 
-          <div className="border-t pt-4">
-            <p className="font-semibold text-sm text-gray-800 dark:text-gray-200 mb-3">Como obter a URL do calendário:</p>
-            <ol className="list-decimal ml-4 space-y-2 text-sm text-gray-600 dark:text-gray-400">
-              <li>Abra o <a href="https://calendar.google.com/calendar/r/settings" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800">Google Calendar</a> no seu computador</li>
-              <li>No menu lateral esquerdo, clique nos <strong>3 pontinhos</strong> ao lado do calendário desejado</li>
-              <li>Clique em <strong>"Configurações e compartilhamento"</strong></li>
-              <li>Role até <strong>"Endereço secreto no formato iCal"</strong></li>
-              <li>Copie a URL que termina em <strong>.ics</strong></li>
-              <li>Cole a URL no campo acima e clique em <strong>"Conectar"</strong></li>
-            </ol>
-            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
-              <p className="text-xs text-blue-700 dark:text-blue-300">
-                <strong>Dica:</strong> Além de visualizar seus eventos do Google na agenda, ao criar atividades no sistema, você poderá enviá-las diretamente para o Google Calendar com um clique.
-              </p>
+          {!gcalStatus?.connected && gcalStatus?.configured && (
+            <Button
+              onClick={handleConnect}
+              disabled={connecting}
+              className="w-full text-white"
+              style={{ background: "linear-gradient(135deg, #5A2A3C, #F98F6F)" }}
+            >
+              {connecting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Calendar className="w-4 h-4 mr-2" />}
+              Conectar minha Conta Google
+            </Button>
+          )}
+
+          {isAdmin && (
+            <div className="border-t pt-4 space-y-4">
+              <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Configuração do Admin (uma única vez)</p>
+              <div>
+                <Label>Google Client ID</Label>
+                <Input
+                  value={clientId}
+                  onChange={(e) => setClientId(e.target.value)}
+                  placeholder="Seu Client ID do Google Cloud Console"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Google Client Secret</Label>
+                <Input
+                  value={clientSecret}
+                  onChange={(e) => setClientSecret(e.target.value)}
+                  type="password"
+                  placeholder="Seu Client Secret do Google Cloud Console"
+                  className="mt-1"
+                />
+              </div>
+              <Button onClick={handleSaveCredentials} disabled={saving} className="w-full" variant="outline">
+                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                Salvar Credenciais
+              </Button>
+
+              <div className="text-sm text-gray-600 dark:text-gray-400 space-y-2 border-t pt-3">
+                <p className="font-semibold text-gray-800 dark:text-gray-200">Como obter (feito uma única vez):</p>
+                <ol className="list-decimal ml-4 space-y-1">
+                  <li>Acesse o <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Google Cloud Console</a></li>
+                  <li>Crie um projeto e ative a <strong>Google Calendar API</strong></li>
+                  <li>Vá em <strong>Credenciais → Criar Credenciais → ID do cliente OAuth</strong></li>
+                  <li>Configure a Tela de Consentimento (tipo Externo)</li>
+                  <li>Tipo: <strong>Aplicativo da Web</strong></li>
+                  <li>URI de redirecionamento: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs break-all">{window.location.origin}/api/functions/google-calendar/callback</code></li>
+                  <li>Copie Client ID e Client Secret e salve acima</li>
+                </ol>
+              </div>
             </div>
+          )}
+
+          <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
+            <p className="text-xs text-blue-700 dark:text-blue-300">
+              <strong>Sincronização automática:</strong> Atividades criadas no SalesTwo vão automaticamente para o Google Calendar.
+              Eventos criados no Google Calendar são importados a cada 5 minutos. Tudo funciona de forma transparente.
+            </p>
           </div>
         </CardContent>
       </Card>

@@ -419,7 +419,7 @@ CREATE TABLE IF NOT EXISTS activities_pj (
     outcome VARCHAR(100),
     created_by UUID REFERENCES agents(id),
     created_at TIMESTAMP DEFAULT NOW(),
-    google_event_id VARCHAR(255)
+    google_event_id VARCHAR(255) UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS lead_pj_automations (
@@ -1198,3 +1198,18 @@ CREATE INDEX IF NOT EXISTS idx_log_est_lead_number ON gerador_leads_log_estrutur
 CREATE INDEX IF NOT EXISTS idx_log_est_agent_id ON gerador_leads_log_estruturado(agent_id);
 CREATE INDEX IF NOT EXISTS idx_log_est_status_envio ON gerador_leads_log_estruturado(status_envio);
 CREATE INDEX IF NOT EXISTS idx_log_est_convertido ON gerador_leads_log_estruturado(convertido);
+
+CREATE TABLE IF NOT EXISTS google_calendar_tokens (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    agent_id UUID REFERENCES agents(id) ON DELETE CASCADE UNIQUE,
+    access_token TEXT NOT NULL,
+    refresh_token TEXT NOT NULL,
+    token_expiry TIMESTAMPTZ,
+    calendar_email VARCHAR(255),
+    last_sync_at TIMESTAMPTZ,
+    sync_token TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_gcal_tokens_agent ON google_calendar_tokens(agent_id);

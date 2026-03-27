@@ -1,5 +1,6 @@
+import { google } from 'googleapis';
 import { query } from '../config/database.js';
-import https from 'https';
+import crypto from 'crypto';
 
 async function getSetting(key) {
   const result = await query(
@@ -9,152 +10,382 @@ async function getSetting(key) {
   return result.rows[0]?.setting_value || null;
 }
 
-const ALLOWED_HOSTS = ['calendar.google.com'];
-const MAX_REDIRECTS = 3;
-const FETCH_TIMEOUT = 10000;
-const MAX_BODY_SIZE = 5 * 1024 * 1024;
+async function getOAuth2Client() {
+  const clientId = await getSetting('google_calendar_client_id');
+  const clientSecret = await getSetting('google_calendar_client_secret');
+  if (!clientId || !clientSecret) return null;
 
-function validateUrl(url) {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'https:') return false;
-    if (!ALLOWED_HOSTS.some(h => parsed.hostname === h || parsed.hostname.endsWith('.' + h))) return false;
-    return true;
-  } catch {
-    return false;
-  }
+  const redirectUri = process.env.REPLIT_DEV_DOMAIN
+    ? `https://${process.env.REPLIT_DEV_DOMAIN}/api/functions/google-calendar/callback`
+    : (process.env.APP_URL || 'http://localhost:5173') + '/api/functions/google-calendar/callback';
+
+  return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 }
 
-function fetchUrl(url, redirectCount = 0) {
-  return new Promise((resolve, reject) => {
-    if (!validateUrl(url)) {
-      return reject(new Error('URL não permitida. Apenas URLs do Google Calendar (HTTPS) são aceitas.'));
-    }
-    if (redirectCount > MAX_REDIRECTS) {
-      return reject(new Error('Muitos redirecionamentos'));
-    }
+async function getAuthenticatedClient(agentId) {
+  const oauth2 = await getOAuth2Client();
+  if (!oauth2) return null;
 
-    const req = https.get(url, { timeout: FETCH_TIMEOUT }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        return fetchUrl(res.headers.location, redirectCount + 1).then(resolve).catch(reject);
+  const result = await query(
+    'SELECT * FROM google_calendar_tokens WHERE agent_id = $1',
+    [agentId]
+  );
+  const tokenRow = result.rows[0];
+  if (!tokenRow) return null;
+
+  oauth2.setCredentials({
+    access_token: tokenRow.access_token,
+    refresh_token: tokenRow.refresh_token,
+    expiry_date: tokenRow.token_expiry ? new Date(tokenRow.token_expiry).getTime() : undefined,
+  });
+
+  oauth2.on('tokens', async (tokens) => {
+    try {
+      const updates = [];
+      const values = [];
+      let idx = 1;
+      if (tokens.access_token) {
+        updates.push(`access_token = $${idx++}`);
+        values.push(tokens.access_token);
       }
-      let data = '';
-      let size = 0;
-      res.on('data', (chunk) => {
-        size += chunk.length;
-        if (size > MAX_BODY_SIZE) {
-          res.destroy();
-          return reject(new Error('Resposta muito grande'));
-        }
-        data += chunk;
-      });
-      res.on('end', () => resolve(data));
-      res.on('error', reject);
-    });
+      if (tokens.expiry_date) {
+        updates.push(`token_expiry = $${idx++}`);
+        values.push(new Date(tokens.expiry_date).toISOString());
+      }
+      updates.push(`updated_at = NOW()`);
+      values.push(agentId);
+      await query(
+        `UPDATE google_calendar_tokens SET ${updates.join(', ')} WHERE agent_id = $${idx}`,
+        values
+      );
+    } catch (err) {
+      console.error('[GCal] Error refreshing token:', err.message);
+    }
+  });
 
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('Timeout ao buscar calendário'));
-    });
-    req.on('error', reject);
+  return oauth2;
+}
+
+export async function getAuthUrl(agentId) {
+  const oauth2 = await getOAuth2Client();
+  if (!oauth2) throw new Error('Google Calendar não configurado. Admin deve informar Client ID e Secret nas Configurações.');
+
+  const state = crypto.randomBytes(20).toString('hex') + ':' + agentId;
+
+  await query(
+    `INSERT INTO system_settings (id, setting_key, setting_value)
+     VALUES (uuid_generate_v4(), 'gcal_oauth_state_' || $1, $2)
+     ON CONFLICT (setting_key) DO UPDATE SET setting_value = $2`,
+    [agentId, state]
+  );
+
+  return oauth2.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: ['https://www.googleapis.com/auth/calendar'],
+    state: state,
   });
 }
 
-function parseICS(icsData) {
-  const events = [];
-  const lines = icsData.replace(/\r\n /g, '').split(/\r?\n/);
-  let currentEvent = null;
-
-  for (const line of lines) {
-    if (line === 'BEGIN:VEVENT') {
-      currentEvent = {};
-    } else if (line === 'END:VEVENT' && currentEvent) {
-      events.push(currentEvent);
-      currentEvent = null;
-    } else if (currentEvent) {
-      const colonIndex = line.indexOf(':');
-      if (colonIndex === -1) continue;
-      const key = line.substring(0, colonIndex);
-      const value = line.substring(colonIndex + 1);
-      const baseKey = key.split(';')[0];
-
-      if (baseKey === 'SUMMARY') {
-        currentEvent.summary = value.replace(/\\,/g, ',').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
-      } else if (baseKey === 'DESCRIPTION') {
-        currentEvent.description = value.replace(/\\,/g, ',').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
-      } else if (baseKey === 'DTSTART') {
-        currentEvent.start = parseICSDate(value, key);
-      } else if (baseKey === 'DTEND') {
-        currentEvent.end = parseICSDate(value, key);
-      } else if (baseKey === 'UID') {
-        currentEvent.id = value;
-      } else if (baseKey === 'LOCATION') {
-        currentEvent.location = value.replace(/\\,/g, ',');
-      }
-    }
+export async function validateOAuthState(state) {
+  const agentId = state.split(':').pop();
+  const result = await query(
+    'SELECT setting_value FROM system_settings WHERE setting_key = $1',
+    ['gcal_oauth_state_' + agentId]
+  );
+  const stored = result.rows[0]?.setting_value;
+  if (stored === state) {
+    await query('DELETE FROM system_settings WHERE setting_key = $1', ['gcal_oauth_state_' + agentId]);
+    return agentId;
   }
-
-  return events;
+  return null;
 }
 
-function parseICSDate(value, fullKey) {
-  if (!value) return null;
-  const clean = value.replace('Z', '');
+export async function handleCallback(code, agentId) {
+  const oauth2 = await getOAuth2Client();
+  if (!oauth2) throw new Error('Google Calendar não configurado');
 
-  if (clean.length === 8) {
-    return {
-      date: `${clean.substring(0, 4)}-${clean.substring(4, 6)}-${clean.substring(6, 8)}`,
-    };
+  const { tokens } = await oauth2.getToken(code);
+  oauth2.setCredentials(tokens);
+
+  let calendarEmail = null;
+  try {
+    const calendar = google.calendar({ version: 'v3', auth: oauth2 });
+    const calList = await calendar.calendarList.get({ calendarId: 'primary' });
+    calendarEmail = calList.data.id;
+  } catch { }
+
+  if (tokens.refresh_token) {
+    await query(
+      `INSERT INTO google_calendar_tokens (id, agent_id, access_token, refresh_token, token_expiry, calendar_email)
+       VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5)
+       ON CONFLICT (agent_id) DO UPDATE SET
+         access_token = $2, refresh_token = $3, token_expiry = $4, calendar_email = $5, updated_at = NOW()`,
+      [
+        agentId,
+        tokens.access_token,
+        tokens.refresh_token,
+        tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
+        calendarEmail,
+      ]
+    );
+  } else {
+    await query(
+      `INSERT INTO google_calendar_tokens (id, agent_id, access_token, refresh_token, token_expiry, calendar_email)
+       VALUES (uuid_generate_v4(), $1, $2, '', $3, $4)
+       ON CONFLICT (agent_id) DO UPDATE SET
+         access_token = $2, token_expiry = $3, calendar_email = $4, updated_at = NOW()`,
+      [
+        agentId,
+        tokens.access_token,
+        tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
+        calendarEmail,
+      ]
+    );
   }
 
-  if (clean.length >= 15) {
-    const iso = `${clean.substring(0, 4)}-${clean.substring(4, 6)}-${clean.substring(6, 8)}T${clean.substring(9, 11)}:${clean.substring(11, 13)}:${clean.substring(13, 15)}`;
-
-    if (value.endsWith('Z')) {
-      return { dateTime: iso + 'Z' };
-    }
-
-    const tzMatch = fullKey && fullKey.match(/TZID=([^;:]+)/);
-    if (tzMatch) {
-      return { dateTime: iso, timeZone: tzMatch[1] };
-    }
-
-    return { dateTime: iso };
-  }
-  return { date: value };
+  return { success: true, email: calendarEmail };
 }
 
-export async function getCalendarEvents(timeMin, timeMax) {
-  const icsUrl = await getSetting('google_calendar_ics_url');
-  if (!icsUrl) return [];
+export async function disconnectAgent(agentId) {
+  await query('DELETE FROM google_calendar_tokens WHERE agent_id = $1', [agentId]);
+  return { success: true };
+}
+
+export async function getAgentConnectionStatus(agentId) {
+  const clientId = await getSetting('google_calendar_client_id');
+  const clientSecret = await getSetting('google_calendar_client_secret');
+  const configured = !!clientId && !!clientSecret;
+
+  const result = await query(
+    'SELECT calendar_email, last_sync_at FROM google_calendar_tokens WHERE agent_id = $1',
+    [agentId]
+  );
+  const tokenRow = result.rows[0];
+
+  return {
+    configured,
+    connected: configured && !!tokenRow,
+    calendarEmail: tokenRow?.calendar_email || null,
+    lastSync: tokenRow?.last_sync_at || null,
+  };
+}
+
+export async function getConnectionStatus() {
+  const clientId = await getSetting('google_calendar_client_id');
+  const clientSecret = await getSetting('google_calendar_client_secret');
+  return {
+    configured: !!clientId && !!clientSecret,
+    connected: false,
+  };
+}
+
+const ACTIVITY_TYPE_LABELS = {
+  visit: 'Visita', call: 'Ligação', whatsapp: 'WhatsApp',
+  email: 'E-mail', task: 'Tarefa', meeting: 'Reunião',
+};
+
+function activityToGCalEvent(activity) {
+  const scheduledAt = new Date(activity.scheduled_at);
+  if (isNaN(scheduledAt.getTime())) return null;
+
+  const endTime = new Date(scheduledAt.getTime() + 60 * 60 * 1000);
+  const typeLabel = ACTIVITY_TYPE_LABELS[activity.type] || activity.type || 'Atividade';
+
+  return {
+    summary: `[SalesTwo] ${typeLabel}: ${activity.description || 'Atividade'}`,
+    description: `Tipo: ${typeLabel}\n${activity.description || ''}\n\nCriado pelo SalesTwo`,
+    start: { dateTime: scheduledAt.toISOString(), timeZone: 'America/Sao_Paulo' },
+    end: { dateTime: endTime.toISOString(), timeZone: 'America/Sao_Paulo' },
+    colorId: activity.type === 'visit' ? '2' : activity.type === 'call' ? '7' : '9',
+  };
+}
+
+export async function createGoogleEvent(agentId, activity) {
+  const oauth2 = await getAuthenticatedClient(agentId);
+  if (!oauth2) return null;
+
+  const event = activityToGCalEvent(activity);
+  if (!event) return null;
 
   try {
-    const icsData = await fetchUrl(icsUrl);
-    const allEvents = parseICS(icsData);
+    const calendar = google.calendar({ version: 'v3', auth: oauth2 });
+    const result = await calendar.events.insert({
+      calendarId: 'primary',
+      requestBody: event,
+    });
 
-    const minDate = timeMin ? new Date(timeMin) : new Date();
-    const maxDate = timeMax ? new Date(timeMax) : null;
+    if (result.data.id && activity.id) {
+      await query(
+        'UPDATE activities_pj SET google_event_id = $1 WHERE id = $2',
+        [result.data.id, activity.id]
+      );
+    }
 
-    return allEvents.filter((ev) => {
-      const startStr = ev.start?.dateTime || ev.start?.date;
-      if (!startStr) return false;
-      const eventDate = new Date(startStr);
-      if (eventDate < minDate) return false;
-      if (maxDate && eventDate > maxDate) return false;
-      return true;
-    }).slice(0, 100);
+    console.log(`[GCal] Event created: ${result.data.id} for activity ${activity.id}`);
+    return result.data.id;
   } catch (error) {
-    console.error('Error fetching ICS calendar:', error.message);
+    console.error('[GCal] Error creating event:', error.message);
+    if (error.code === 401) {
+      await query('DELETE FROM google_calendar_tokens WHERE agent_id = $1', [agentId]);
+    }
+    return null;
+  }
+}
+
+export async function updateGoogleEvent(agentId, googleEventId, activity) {
+  const oauth2 = await getAuthenticatedClient(agentId);
+  if (!oauth2 || !googleEventId) return null;
+
+  const event = activityToGCalEvent(activity);
+  if (!event) return null;
+
+  if (activity.completed) {
+    event.summary = `✅ ${event.summary}`;
+    event.colorId = '8';
+  }
+
+  try {
+    const calendar = google.calendar({ version: 'v3', auth: oauth2 });
+    await calendar.events.update({
+      calendarId: 'primary',
+      eventId: googleEventId,
+      requestBody: event,
+    });
+    console.log(`[GCal] Event updated: ${googleEventId}`);
+    return true;
+  } catch (error) {
+    console.error('[GCal] Error updating event:', error.message);
+    return null;
+  }
+}
+
+export async function deleteGoogleEvent(agentId, googleEventId) {
+  const oauth2 = await getAuthenticatedClient(agentId);
+  if (!oauth2 || !googleEventId) return null;
+
+  try {
+    const calendar = google.calendar({ version: 'v3', auth: oauth2 });
+    await calendar.events.delete({
+      calendarId: 'primary',
+      eventId: googleEventId,
+    });
+    console.log(`[GCal] Event deleted: ${googleEventId}`);
+    return true;
+  } catch (error) {
+    console.error('[GCal] Error deleting event:', error.message);
+    return null;
+  }
+}
+
+export async function fetchGoogleEvents(agentId, timeMin, timeMax) {
+  const oauth2 = await getAuthenticatedClient(agentId);
+  if (!oauth2) return [];
+
+  try {
+    const calendar = google.calendar({ version: 'v3', auth: oauth2 });
+    const result = await calendar.events.list({
+      calendarId: 'primary',
+      timeMin: timeMin || new Date().toISOString(),
+      timeMax: timeMax || undefined,
+      maxResults: 100,
+      singleEvents: true,
+      orderBy: 'startTime',
+    });
+    return result.data.items || [];
+  } catch (error) {
+    console.error('[GCal] Error fetching events:', error.message);
+    if (error.code === 401) {
+      await query('DELETE FROM google_calendar_tokens WHERE agent_id = $1', [agentId]);
+    }
     return [];
   }
 }
 
-export async function getConnectionStatus() {
-  const icsUrl = await getSetting('google_calendar_ics_url');
-  const connected = await getSetting('google_calendar_connected');
+export async function syncGoogleToSalesTwo(agentId) {
+  const oauth2 = await getAuthenticatedClient(agentId);
+  if (!oauth2) return { synced: 0, error: 'Não conectado' };
 
-  return {
-    configured: !!icsUrl,
-    connected: connected === 'true' && !!icsUrl,
-  };
+  try {
+    const calendar = google.calendar({ version: 'v3', auth: oauth2 });
+
+    const now = new Date();
+    const threeMonthsAhead = new Date(now);
+    threeMonthsAhead.setMonth(threeMonthsAhead.getMonth() + 3);
+
+    const result = await calendar.events.list({
+      calendarId: 'primary',
+      timeMin: now.toISOString(),
+      timeMax: threeMonthsAhead.toISOString(),
+      maxResults: 200,
+      singleEvents: true,
+      orderBy: 'startTime',
+    });
+
+    const events = result.data.items || [];
+    let synced = 0;
+
+    for (const event of events) {
+      if (!event.summary || event.summary.startsWith('[SalesTwo]')) continue;
+
+      const existing = await query(
+        'SELECT id FROM activities_pj WHERE google_event_id = $1',
+        [event.id]
+      );
+      if (existing.rows.length > 0) continue;
+
+      const startDateTime = event.start?.dateTime || event.start?.date;
+      if (!startDateTime) continue;
+
+      let actType = 'meeting';
+      const lowerSummary = (event.summary || '').toLowerCase();
+      if (lowerSummary.includes('ligação') || lowerSummary.includes('call') || lowerSummary.includes('ligar')) actType = 'call';
+      else if (lowerSummary.includes('visita') || lowerSummary.includes('visit')) actType = 'visit';
+      else if (lowerSummary.includes('email') || lowerSummary.includes('e-mail')) actType = 'email';
+      else if (lowerSummary.includes('whatsapp') || lowerSummary.includes('wpp')) actType = 'whatsapp';
+      else if (lowerSummary.includes('tarefa') || lowerSummary.includes('task')) actType = 'task';
+
+      const insertResult = await query(
+        `INSERT INTO activities_pj (id, type, description, scheduled_at, created_by, google_event_id)
+         VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5)
+         ON CONFLICT (google_event_id) DO NOTHING
+         RETURNING id`,
+        [actType, event.summary, startDateTime, agentId, event.id]
+      );
+      if (insertResult.rows.length === 0) continue;
+      synced++;
+    }
+
+    await query(
+      'UPDATE google_calendar_tokens SET last_sync_at = NOW() WHERE agent_id = $1',
+      [agentId]
+    );
+
+    console.log(`[GCal] Synced ${synced} events from Google for agent ${agentId}`);
+    return { synced };
+  } catch (error) {
+    console.error('[GCal] Sync from Google error:', error.message);
+    if (error.code === 401) {
+      await query('DELETE FROM google_calendar_tokens WHERE agent_id = $1', [agentId]);
+    }
+    return { synced: 0, error: error.message };
+  }
+}
+
+export async function syncAllAgents() {
+  try {
+    const result = await query('SELECT agent_id FROM google_calendar_tokens');
+    let totalSynced = 0;
+    for (const row of result.rows) {
+      const { synced } = await syncGoogleToSalesTwo(row.agent_id);
+      totalSynced += synced;
+    }
+    if (totalSynced > 0) {
+      console.log(`[GCal] Periodic sync complete: ${totalSynced} new events imported`);
+    }
+    return totalSynced;
+  } catch (error) {
+    console.error('[GCal] syncAllAgents error:', error.message);
+    return 0;
+  }
 }

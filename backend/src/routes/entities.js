@@ -13,6 +13,7 @@ import {
   notifyProposalStatus
 } from '../services/notificationService.js';
 import { executeLeadCreatedAutomation } from '../services/automationService.js';
+import { createGoogleEvent, updateGoogleEvent, deleteGoogleEvent } from '../services/googleCalendarService.js';
 
 const router = Router();
 
@@ -228,6 +229,89 @@ for (const [route, options] of Object.entries(entities)) {
     });
 
     router.delete(`/${route}/:id`, authMiddleware, crud.delete);
+    router.post(`/${route}/filter`, authMiddleware, crud.filter);
+    continue;
+  }
+
+  if (route === 'activities-pj') {
+    router.get(`/${route}`, authMiddleware, crud.list);
+    router.get(`/${route}/:id`, authMiddleware, crud.get);
+
+    router.post(`/${route}`, authMiddleware, async (req, res) => {
+      try {
+        const originalStatus = res.status.bind(res);
+        await crud.create(req, {
+          ...res,
+          status: (code) => {
+            const statusRes = originalStatus(code);
+            const origStatusJson = statusRes.json.bind(statusRes);
+            return {
+              ...statusRes,
+              json: async (data) => {
+                if (data && data.id && data.createdBy) {
+                  createGoogleEvent(data.createdBy, {
+                    id: data.id,
+                    type: data.type,
+                    description: data.description,
+                    scheduled_at: data.scheduledAt || data.scheduled_at,
+                  }).catch(err => console.error('[GCal Hook] create error:', err.message));
+                }
+                origStatusJson(data);
+              }
+            };
+          }
+        });
+      } catch (error) {
+        console.error('Error creating activity-pj with gcal hook:', error);
+        res.status(500).json({ message: error.message });
+      }
+    });
+
+    router.put(`/${route}/:id`, authMiddleware, async (req, res) => {
+      try {
+        const originalJson = res.json.bind(res);
+        await crud.update(req, {
+          ...res,
+          json: async (data) => {
+            if (data && data.googleEventId && data.createdBy) {
+              updateGoogleEvent(data.createdBy, data.googleEventId, {
+                type: data.type,
+                description: data.description,
+                scheduled_at: data.scheduledAt || data.scheduled_at,
+                completed: data.completed,
+              }).catch(err => console.error('[GCal Hook] update error:', err.message));
+            }
+            originalJson(data);
+          }
+        });
+      } catch (error) {
+        console.error('Error updating activity-pj with gcal hook:', error);
+        res.status(500).json({ message: error.message });
+      }
+    });
+
+    router.delete(`/${route}/:id`, authMiddleware, async (req, res) => {
+      try {
+        const existing = await query('SELECT created_by, google_event_id FROM activities_pj WHERE id = $1', [req.params.id]);
+        const row = existing.rows[0];
+
+        const originalJson = res.json.bind(res);
+        await crud.delete(req, {
+          ...res,
+          json: async (data) => {
+            if (row && row.google_event_id && row.created_by) {
+              deleteGoogleEvent(row.created_by, row.google_event_id)
+                .catch(err => console.error('[GCal Hook] delete error:', err.message));
+            }
+            originalJson(data);
+          }
+        });
+      } catch (error) {
+        console.error('Error deleting activity-pj with gcal hook:', error);
+        res.status(500).json({ message: error.message });
+      }
+    });
+
     router.post(`/${route}/filter`, authMiddleware, crud.filter);
     continue;
   }
