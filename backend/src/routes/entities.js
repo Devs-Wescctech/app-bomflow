@@ -239,6 +239,9 @@ for (const [route, options] of Object.entries(entities)) {
 
     router.post(`/${route}`, authMiddleware, async (req, res) => {
       try {
+        if (!req.body.created_by && !req.body.createdBy && req.user?.id) {
+          req.body.created_by = req.user.id;
+        }
         const originalStatus = res.status.bind(res);
         await crud.create(req, {
           ...res,
@@ -248,10 +251,12 @@ for (const [route, options] of Object.entries(entities)) {
             return {
               ...statusRes,
               json: async (data) => {
-                if (data && data.id && data.createdBy) {
-                  createGoogleEvent(data.createdBy, {
+                const agentId = data?.createdBy || data?.created_by;
+                if (data && data.id && agentId) {
+                  console.log('[GCal Hook] Creating Google event for agent', agentId, 'activity', data.id);
+                  createGoogleEvent(agentId, {
                     id: data.id,
-                    type: data.type,
+                    type: data.type || data.Type,
                     description: data.description,
                     scheduled_at: data.scheduledAt || data.scheduled_at,
                   }).catch(err => console.error('[GCal Hook] create error:', err.message));
@@ -273,9 +278,12 @@ for (const [route, options] of Object.entries(entities)) {
         await crud.update(req, {
           ...res,
           json: async (data) => {
-            if (data && data.googleEventId && data.createdBy) {
-              updateGoogleEvent(data.createdBy, data.googleEventId, {
-                type: data.type,
+            const googleEventId = data?.googleEventId || data?.google_event_id;
+            const agentId = data?.createdBy || data?.created_by;
+            if (data && googleEventId && agentId) {
+              console.log('[GCal Hook] Updating Google event', googleEventId, 'for agent', agentId);
+              updateGoogleEvent(agentId, googleEventId, {
+                type: data.type || data.Type,
                 description: data.description,
                 scheduled_at: data.scheduledAt || data.scheduled_at,
                 completed: data.completed,

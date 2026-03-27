@@ -303,8 +303,12 @@ export async function fetchGoogleEvents(agentId, timeMin, timeMax) {
 }
 
 export async function syncGoogleToSalesTwo(agentId) {
+  console.log('[GCal Sync] Starting sync from Google for agent', agentId);
   const oauth2 = await getAuthenticatedClient(agentId);
-  if (!oauth2) return { synced: 0, error: 'Não conectado' };
+  if (!oauth2) {
+    console.log('[GCal Sync] No OAuth2 client for agent', agentId);
+    return { synced: 0, error: 'Não conectado' };
+  }
 
   try {
     const calendar = google.calendar({ version: 'v3', auth: oauth2 });
@@ -345,14 +349,20 @@ export async function syncGoogleToSalesTwo(agentId) {
       else if (lowerSummary.includes('whatsapp') || lowerSummary.includes('wpp')) actType = 'whatsapp';
       else if (lowerSummary.includes('tarefa') || lowerSummary.includes('task')) actType = 'task';
 
-      const insertResult = await query(
+      const existingCheck = await query(
+        `SELECT id FROM activities_pj WHERE google_event_id = $1`,
+        [event.id]
+      );
+      if (existingCheck.rows.length > 0) {
+        console.log('[GCal Sync] Event already synced, skipping:', event.id);
+        continue;
+      }
+
+      await query(
         `INSERT INTO activities_pj (id, type, description, scheduled_at, created_by, google_event_id)
-         VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5)
-         ON CONFLICT (google_event_id) DO NOTHING
-         RETURNING id`,
+         VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5)`,
         [actType, event.summary, startDateTime, agentId, event.id]
       );
-      if (insertResult.rows.length === 0) continue;
       synced++;
     }
 
@@ -374,11 +384,19 @@ export async function syncGoogleToSalesTwo(agentId) {
 
 export async function syncAllAgents() {
   try {
+    console.log('[GCal Sync] Running periodic sync for all agents');
     const result = await query('SELECT agent_id FROM google_calendar_tokens');
+    console.log('[GCal Sync] Found', result.rows.length, 'agents with tokens');
+    
     let totalSynced = 0;
     for (const row of result.rows) {
-      const { synced } = await syncGoogleToSalesTwo(row.agent_id);
-      totalSynced += synced;
+      const { synced, error } = await syncGoogleToSalesTwo(row.agent_id);
+      if (error) {
+        console.log('[GCal Sync] Agent', row.agent_id, '- error:', error);
+      } else {
+        console.log('[GCal Sync] Agent', row.agent_id, '- synced', synced, 'events');
+        totalSynced += synced;
+      }
     }
     if (totalSynced > 0) {
       console.log(`[GCal] Periodic sync complete: ${totalSynced} new events imported`);
