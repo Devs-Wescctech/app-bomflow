@@ -4,6 +4,24 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -27,6 +45,7 @@ import {
   Unlink,
   Link2,
   X,
+  Flag,
 } from "lucide-react";
 import {
   format,
@@ -81,6 +100,14 @@ export default function SalesAgenda() {
   const [filterType, setFilterType] = useState("all");
   const [showGoogleEvents, setShowGoogleEvents] = useState(true);
   const [selectedActivity, setSelectedActivity] = useState(null);
+  const [showCreateSheet, setShowCreateSheet] = useState(false);
+  const [newTaskForm, setNewTaskForm] = useState({
+    title: '',
+    description: '',
+    type: 'task',
+    priority: 'media',
+    scheduledAt: '',
+  });
 
   const { data: user } = useQuery({
     queryKey: ["currentUser"],
@@ -184,6 +211,43 @@ export default function SalesAgenda() {
       queryClient.invalidateQueries({ queryKey: ["activitiesPJ"] });
     },
   });
+
+  const createActivityMutation = useMutation({
+    mutationFn: (data) => base44.entities.Activity.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["activities"] });
+      queryClient.invalidateQueries({ queryKey: ["activitiesPJ"] });
+      toast.success("Atividade criada com sucesso!");
+      setShowCreateSheet(false);
+      setNewTaskForm({ title: '', description: '', type: 'task', priority: 'media', scheduledAt: '' });
+    },
+    onError: (error) => {
+      toast.error("Erro ao criar atividade: " + error.message);
+    },
+  });
+
+  const handleCreateTask = () => {
+    if (!newTaskForm.title.trim()) {
+      toast.error("Digite o título da atividade");
+      return;
+    }
+    createActivityMutation.mutate({
+      type: newTaskForm.type,
+      title: newTaskForm.title,
+      description: newTaskForm.description || null,
+      priority: newTaskForm.priority,
+      scheduledAt: newTaskForm.scheduledAt ? new Date(newTaskForm.scheduledAt).toISOString() : null,
+      completed: false,
+    });
+  };
+
+  const openCreateAtDate = (date) => {
+    setNewTaskForm(prev => ({
+      ...prev,
+      scheduledAt: format(date, "yyyy-MM-dd'T'HH:mm"),
+    }));
+    setShowCreateSheet(true);
+  };
 
   const currentAgent = user?.agent || agents.find((a) => a.userEmail === user?.email || a.email === user?.email);
   const isAdmin = currentAgent?.agentType === "admin" || currentAgent?.agent_type === "admin";
@@ -314,6 +378,17 @@ export default function SalesAgenda() {
         </h2>
 
         <div className="ml-auto flex items-center gap-2">
+          <Button
+            size="sm"
+            className="text-xs h-8 gap-1 text-white"
+            style={{ background: `linear-gradient(135deg, ${BRAND.burgundy}, ${BRAND.coral})` }}
+            onClick={() => {
+              setNewTaskForm({ title: '', description: '', type: 'task', priority: 'media', scheduledAt: format(selectedDate, "yyyy-MM-dd'T'09:00") });
+              setShowCreateSheet(true);
+            }}
+          >
+            <Plus className="w-3.5 h-3.5" /> Nova Atividade
+          </Button>
           {gcalStatus?.connected && (
             <Button variant="ghost" size="sm" onClick={handleRefreshGcal} className="text-xs h-8 gap-1 text-gray-600">
               <RefreshCw className="w-3.5 h-3.5" /> Sincronizar
@@ -461,6 +536,102 @@ export default function SalesAgenda() {
           />
         )}
       </AnimatePresence>
+
+      {/* Create Activity Sheet */}
+      <Sheet open={showCreateSheet} onOpenChange={setShowCreateSheet}>
+        <SheetContent className="sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${BRAND.burgundy}, ${BRAND.coral})` }}>
+                <Plus className="w-4 h-4 text-white" />
+              </div>
+              Nova Atividade
+            </SheetTitle>
+            <SheetDescription>Crie uma nova tarefa ou atividade na agenda</SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Título *</Label>
+              <Input
+                value={newTaskForm.title}
+                onChange={(e) => setNewTaskForm({ ...newTaskForm, title: e.target.value })}
+                placeholder="Ex: Reunião com cliente..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Descrição</Label>
+              <Textarea
+                value={newTaskForm.description}
+                onChange={(e) => setNewTaskForm({ ...newTaskForm, description: e.target.value })}
+                placeholder="Detalhes da atividade..."
+                rows={3}
+                className="resize-none"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium flex items-center gap-1.5">
+                  <CalendarIcon className="w-3.5 h-3.5 text-gray-500" /> Tipo
+                </Label>
+                <Select value={newTaskForm.type} onValueChange={(v) => setNewTaskForm({ ...newTaskForm, type: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(ACTIVITY_TYPES).map(([key, cfg]) => {
+                      const TypeIcon = cfg.icon;
+                      return (
+                        <SelectItem key={key} value={key}>
+                          <div className="flex items-center gap-2">
+                            <TypeIcon className="w-3.5 h-3.5" style={{ color: cfg.color }} />
+                            {cfg.label}
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium flex items-center gap-1.5">
+                  <Flag className="w-3.5 h-3.5 text-gray-500" /> Prioridade
+                </Label>
+                <Select value={newTaskForm.priority} onValueChange={(v) => setNewTaskForm({ ...newTaskForm, priority: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="baixa">Baixa</SelectItem>
+                    <SelectItem value="media">Média</SelectItem>
+                    <SelectItem value="alta">Alta</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-gray-500" /> Data e Hora
+              </Label>
+              <Input
+                type="datetime-local"
+                value={newTaskForm.scheduledAt}
+                onChange={(e) => setNewTaskForm({ ...newTaskForm, scheduledAt: e.target.value })}
+              />
+            </div>
+          </div>
+          <SheetFooter className="gap-2 pt-2">
+            <Button variant="outline" onClick={() => setShowCreateSheet(false)}>Cancelar</Button>
+            <Button
+              onClick={handleCreateTask}
+              disabled={createActivityMutation.isPending}
+              className="text-white"
+              style={{ background: `linear-gradient(135deg, ${BRAND.burgundy}, ${BRAND.coral})` }}
+            >
+              {createActivityMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Criando...</>
+              ) : (
+                <><Plus className="w-4 h-4 mr-1" /> Criar Atividade</>
+              )}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

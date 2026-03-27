@@ -144,6 +144,21 @@ export default function SalesTasks() {
     staleTime: 1000 * 60 * 2,
   });
 
+  const { data: leadsPJ = [] } = useQuery({
+    queryKey: ['leadsPJ'],
+    queryFn: () => base44.entities.LeadPJ.list(),
+    staleTime: 1000 * 60 * 2,
+  });
+
+  const allLeads = useMemo(() => [
+    ...leads.map(l => ({ ...l, _leadType: 'pf' })),
+    ...leadsPJ.map(l => ({ ...l, _leadType: 'pj' })),
+  ], [leads, leadsPJ]);
+
+  const pfLeadsForForm = useMemo(() =>
+    leads.map(l => ({ ...l, _leadType: 'pf' })),
+  [leads]);
+
   const updateActivityMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Activity.update(id, data),
     onSuccess: () => {
@@ -272,18 +287,18 @@ export default function SalesTasks() {
 
   const getLeadById = (leadId) => {
     if (!leadId) return null;
-    return leads.find(l => l.id === leadId || String(l.id) === String(leadId));
+    return allLeads.find(l => l.id === leadId || String(l.id) === String(leadId));
   };
 
   const filteredLeadsForSearch = useMemo(() => {
-    if (!leadSearchQuery) return leads;
+    if (!leadSearchQuery) return pfLeadsForForm;
     const query = leadSearchQuery.toLowerCase();
-    return leads.filter(l => 
+    return pfLeadsForForm.filter(l => 
       l.name?.toLowerCase().includes(query) ||
       l.phone?.includes(query) ||
       l.email?.toLowerCase().includes(query)
     );
-  }, [leads, leadSearchQuery]);
+  }, [pfLeadsForForm, leadSearchQuery]);
 
   const getFilteredTasks = () => {
     let filtered = tasks;
@@ -547,11 +562,12 @@ export default function SalesTasks() {
                             <div className="flex items-center gap-2">
                               {lead && (
                                 <Link
-                                  to={createPageUrl("LeadDetail", { id: lead.id })}
+                                  to={createPageUrl(lead._leadType === 'pj' ? "LeadPJDetail" : "LeadDetail", { id: lead.id })}
                                   className="flex items-center gap-1.5 px-2 py-1 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg text-sm hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors"
                                 >
                                   <User className="w-3.5 h-3.5" />
-                                  <span className="max-w-[120px] truncate">{lead.name}</span>
+                                  <span className="max-w-[120px] truncate">{lead.name || lead.company_name || lead.companyName}</span>
+                                  {lead._leadType === 'pj' && <Badge className="text-[9px] px-1 py-0 bg-blue-100 text-blue-700">PJ</Badge>}
                                   <ExternalLink className="w-3 h-3" />
                                 </Link>
                               )}
@@ -776,11 +792,14 @@ export default function SalesTasks() {
                               )}
                             />
                             <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0">
-                                <User className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${lead._leadType === 'pj' ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-purple-100 dark:bg-purple-900/30'}`}>
+                                <User className={`w-4 h-4 ${lead._leadType === 'pj' ? 'text-blue-600 dark:text-blue-400' : 'text-purple-600 dark:text-purple-400'}`} />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <div className="font-medium truncate">{lead.name || 'Lead sem nome'}</div>
+                                <div className="font-medium truncate flex items-center gap-1.5">
+                                  {lead.name || lead.company_name || lead.companyName || 'Lead sem nome'}
+                                  {lead._leadType === 'pj' && <Badge className="text-[9px] px-1 py-0 bg-blue-100 text-blue-700 flex-shrink-0">PJ</Badge>}
+                                </div>
                                 {lead.phone && (
                                   <div className="text-xs text-gray-400 flex items-center gap-1">
                                     <Phone className="w-3 h-3" />
@@ -797,7 +816,7 @@ export default function SalesTasks() {
                 </PopoverContent>
               </Popover>
               <p className="text-xs text-gray-500">
-                {filteredLeadsForSearch.length} de {leads.length} leads {leadSearchQuery && '(filtrados)'}
+                {filteredLeadsForSearch.length} de {pfLeadsForForm.length} leads {leadSearchQuery && '(filtrados)'}
               </p>
             </div>
 

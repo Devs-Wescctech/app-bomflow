@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useNavigate } from "react-router-dom";
-import { Bell, Check, CheckCheck, X, AlertCircle, Clock, TrendingUp, DollarSign, FileText, MessageSquare } from "lucide-react";
+import { Bell, Check, CheckCheck, X, AlertCircle, Clock, TrendingUp, DollarSign, FileText, MessageSquare, CalendarClock } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -28,6 +28,7 @@ const notificationIcons = {
   signature_pending: { icon: FileText, color: "text-purple-600 dark:text-purple-400", bg: "bg-purple-100 dark:bg-purple-950" },
   agreement_made: { icon: DollarSign, color: "text-green-600 dark:text-green-400", bg: "bg-green-100 dark:bg-green-950" },
   ticket_reopened: { icon: AlertCircle, color: "text-orange-600 dark:text-orange-400", bg: "bg-orange-100 dark:bg-orange-950" },
+  activity_reminder: { icon: CalendarClock, color: "text-indigo-600 dark:text-indigo-400", bg: "bg-indigo-100 dark:bg-indigo-950" },
 };
 
 export default function NotificationBell() {

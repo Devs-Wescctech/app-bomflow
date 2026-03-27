@@ -16,6 +16,8 @@ import cron from 'node-cron';
 import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport } from './routes/functions.js';
 import { recoverStuckQueues } from './services/whatsappQueueService.js';
 import { syncAllAgents } from './services/googleCalendarService.js';
+import { createNotification } from './services/notificationService.js';
+import { query as dbQuery } from './config/database.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -160,6 +162,77 @@ initDatabase()
       syncAllAgents().catch(err => console.error('[GCal Sync] Erro na sincronização periódica:', err.message));
     }, 5 * 60 * 1000);
     console.log('[Google Calendar] Sync periódico agendado: a cada 5 minutos.');
+
+    async function checkUpcomingActivities() {
+      try {
+        const now = new Date();
+        const in15min = new Date(now.getTime() + 15 * 60 * 1000);
+
+        const activitiesResult = await dbQuery(`
+          SELECT a.id, a.title, a.description, a.type, a.scheduled_at, a.created_by, a.assigned_to,
+                 ag.email as agent_email, ag.name as agent_name
+          FROM activities a
+          LEFT JOIN agents ag ON ag.id = a.created_by
+          WHERE a.completed = false
+            AND a.scheduled_at > $1
+            AND a.scheduled_at <= $2
+            AND a.id NOT IN (
+              SELECT entity_id FROM notifications
+              WHERE entity_type = 'activity_reminder'
+              AND entity_id IS NOT NULL
+            )
+        `, [now.toISOString(), in15min.toISOString()]);
+
+        const activitiesPJResult = await dbQuery(`
+          SELECT a.id, a.description, a.type, a.scheduled_at, a.created_by,
+                 ag.email as agent_email, ag.name as agent_name
+          FROM activities_pj a
+          LEFT JOIN agents ag ON ag.id = a.created_by
+          WHERE a.completed = false
+            AND a.scheduled_at > $1
+            AND a.scheduled_at <= $2
+            AND CAST(a.id AS TEXT) NOT IN (
+              SELECT entity_id FROM notifications
+              WHERE entity_type = 'activity_pj_reminder'
+              AND entity_id IS NOT NULL
+            )
+        `, [now.toISOString(), in15min.toISOString()]);
+
+        const allUpcoming = [
+          ...activitiesResult.rows.map(r => ({ ...r, _table: 'activities' })),
+          ...activitiesPJResult.rows.map(r => ({ ...r, _table: 'activities_pj' })),
+        ];
+
+        for (const act of allUpcoming) {
+          const email = act.agent_email;
+          if (!email) continue;
+
+          const scheduledAt = new Date(act.scheduled_at);
+          const minutesUntil = Math.round((scheduledAt - now) / 60000);
+          const timeLabel = minutesUntil <= 1 ? 'em 1 minuto' : `em ${minutesUntil} minutos`;
+
+          await createNotification({
+            userEmail: email,
+            type: 'activity_reminder',
+            title: `Atividade ${timeLabel}`,
+            message: `"${act.title || act.description || 'Atividade'}" está agendada para ${scheduledAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`,
+            link: '/Agenda',
+            entityType: act._table === 'activities' ? 'activity_reminder' : 'activity_pj_reminder',
+            entityId: String(act.id),
+            priority: 'high',
+          });
+        }
+
+        if (allUpcoming.length > 0) {
+          console.log(`[Activity Reminder] ${allUpcoming.length} notificação(ões) de atividade(s) próxima(s) enviada(s).`);
+        }
+      } catch (err) {
+        console.error('[Activity Reminder] Erro ao verificar atividades próximas:', err.message);
+      }
+    }
+
+    setInterval(checkUpcomingActivities, 5 * 60 * 1000);
+    console.log('[Activity Reminder] Verificação agendada: a cada 5 minutos.');
   })
   .catch((error) => {
     console.error('Database initialization failed:', error);
