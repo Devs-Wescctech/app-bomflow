@@ -370,8 +370,8 @@ export async function processQueue(batchId) {
       }
 
       messageSentId = apiResponse?.messageSentId || apiResponse?.message_sent_id || apiResponse?.id || null;
-      if (endpointUsed === 'create-new' && success) {
-        whuChatId = apiResponse?.chatId || apiResponse?.chat_id || apiResponse?.chatID || null;
+      if (success) {
+        whuChatId = apiResponse?.chatId || apiResponse?.chat_id || apiResponse?.chatID || apiResponse?.currentChatId || null;
         whuContactId = apiResponse?.contactId || apiResponse?.contact_id || apiResponse?.contactID || null;
       }
     } catch (fetchErr) {
