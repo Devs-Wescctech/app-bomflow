@@ -317,7 +317,7 @@ export default function Login() {
         
         {/* Footer */}
         <p className="absolute bottom-6 left-0 right-0 text-center text-sm" style={{ color: 'rgba(255,255,255,0.9)' }}>
-          Powered by <a href="https://www.wescctech.com.br" target="_blank" rel="noopener noreferrer" className="font-semibold text-white hover:underline">Wescctech</a>
+          Powered by <a href="https://www.wescctech.com.br" target="_blank" rel="noopener noreferrer" className="font-semibold text-white hover:underline">SalesTwo</a>
         </p>
       </div>
     </div>

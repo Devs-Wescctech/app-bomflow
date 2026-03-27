@@ -148,7 +148,7 @@ function ModernSidebar({ user, filteredMenuModules, expandedModules, toggleModul
   });
 
   const logoUrl = settings.find(s => s.setting_key === 'company_logo')?.setting_value;
-  const companyName = settings.find(s => s.setting_key === 'company_name')?.setting_value || 'Wescctech';
+  const companyName = settings.find(s => s.setting_key === 'company_name')?.setting_value || 'SalesTwo';
 
   const handleLogout = () => {
     base44.auth.logout();
@@ -869,7 +869,7 @@ function LayoutContent({ children, currentPageName }) {
 
 export default function Layout({ children, currentPageName }) {
   return (
-    <ThemeProvider defaultTheme="light" storageKey="wescc-theme">
+    <ThemeProvider defaultTheme="light" storageKey="salestwo-theme">
       <LayoutContent currentPageName={currentPageName}>{children}</LayoutContent>
     </ThemeProvider>
   );

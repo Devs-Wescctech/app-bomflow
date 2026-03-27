@@ -44,7 +44,7 @@ export default function PublicSignature() {
       await base44.entities.TicketMessage.create({
         ticket_id: ticket.id,
         message_type: 'system_event',
-        author_email: 'sistema@wescctech.com',
+        author_email: 'sistema@salestwo.com.br',
         body: 'Assinatura realizada via link do WhatsApp',
         channel: ticket.channel,
       });
@@ -155,7 +155,7 @@ export default function PublicSignature() {
       <div className="w-full max-w-3xl">
         <div className="text-center mb-6">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Wescctech - Plano Funeral
+            SalesTwo - Vendas B2B
           </h1>
           <p className="text-gray-600">
             Ticket #{ticket.id.slice(0, 8)} - {ticket.subject}

@@ -5,7 +5,7 @@ const ThemeContext = createContext({
   setTheme: () => null,
 });
 
-export function ThemeProvider({ children, defaultTheme = "light", storageKey = "wescc-theme" }) {
+export function ThemeProvider({ children, defaultTheme = "light", storageKey = "salestwo-theme" }) {
   const [theme, setTheme] = useState(
     () => (typeof window !== "undefined" && localStorage.getItem(storageKey)) || defaultTheme
   );

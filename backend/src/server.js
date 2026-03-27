@@ -22,7 +22,7 @@ const app = express();
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 3001;
 
 const distPath = path.join(process.cwd(), 'dist');
-let indexHtml = '<!DOCTYPE html><html><head><title>Wescctech CRM</title></head><body><h1>OK</h1></body></html>';
+let indexHtml = '<!DOCTYPE html><html><head><title>SalesTwo - Vendas B2B</title></head><body><h1>OK</h1></body></html>';
 
 try {
   const indexPath = path.join(distPath, 'index.html');
