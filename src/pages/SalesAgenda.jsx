@@ -70,6 +70,22 @@ function getVal(obj, ...keys) {
   return null;
 }
 
+function buildGCalLink(activity) {
+  const scheduledAt = new Date(activity.scheduledAt || activity.scheduled_at);
+  if (isNaN(scheduledAt.getTime())) return "#";
+  const endTime = new Date(scheduledAt.getTime() + 60 * 60 * 1000);
+  const fmtD = (d) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const typeLabels = { visit: "Visita", call: "Ligação", whatsapp: "WhatsApp", email: "E-mail", task: "Tarefa", meeting: "Reunião" };
+  const title = `[SalesTwo] ${typeLabels[activity.type] || activity.type}: ${activity.title || activity.description || "Atividade"}`;
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: title,
+    dates: `${fmtD(scheduledAt)}/${fmtD(endTime)}`,
+    details: activity.description || "",
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
 export default function SalesAgenda() {
   const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -150,20 +166,10 @@ export default function SalesAgenda() {
     staleTime: 1000 * 60 * 3,
   });
 
-  const syncMutation = useMutation({
-    mutationFn: async () => {
-      const token = localStorage.getItem("token");
-      const res = await fetch("/api/functions/google-calendar/sync", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      return res.json();
-    },
-    onSuccess: (data) => {
-      toast.success(`Sincronizado! ${data.synced} eventos enviados ao Google Calendar.`);
-      queryClient.invalidateQueries({ queryKey: ["googleCalendarEvents"] });
-    },
-  });
+  const handleRefreshGcal = () => {
+    queryClient.invalidateQueries({ queryKey: ["googleCalendarEvents"] });
+    toast.success("Eventos do Google Calendar atualizados!");
+  };
 
   const updateActivityMutation = useMutation({
     mutationFn: ({ id, data, leadType }) => {
@@ -290,12 +296,11 @@ export default function SalesAgenda() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => syncMutation.mutate()}
-                disabled={syncMutation.isPending}
+                onClick={handleRefreshGcal}
                 className="text-xs"
               >
-                {syncMutation.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
-                Sincronizar Google
+                <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                Atualizar Google
               </Button>
             )}
             {gcalStatus?.connected ? (
@@ -600,6 +605,16 @@ function ActivityRow({ activity, index, getLeadById, handleToggle, fmtTime }) {
             )}
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            <a
+              href={buildGCalLink(activity)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Enviar ao Google Calendar"
+              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-500 transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <CalendarIcon className="w-3.5 h-3.5" />
+            </a>
             <Icon className="w-3.5 h-3.5" style={{ color: cfg.dot }} />
             <span className="text-[11px] font-medium" style={{ color: cfg.dot }}>{cfg.label}</span>
           </div>
