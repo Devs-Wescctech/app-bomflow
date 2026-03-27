@@ -63,6 +63,49 @@ app.use('/api/functions', functionRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/bom-auto', bomAutoRoutes);
 
+app.post('/api/api_chatid_indicacoes', async (req, res) => {
+  try {
+    const apiHash = req.headers['x-api-hash'];
+    const expectedHash = process.env.API_HASH_WHU;
+
+    if (!expectedHash || apiHash !== expectedHash) {
+      console.log('[api_chatid_indicacoes] Unauthorized request (invalid or missing x-api-hash)');
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { chatId } = req.body;
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: 'chatId é obrigatório' });
+    }
+
+    const { query: dbQuery } = await import('./config/database.js');
+
+    const result = await dbQuery(
+      'SELECT id FROM gerador_leads_whatsapp_logs WHERE whu_chat_id = $1 LIMIT 1',
+      [String(chatId)]
+    );
+
+    const found = result.rows.length > 0;
+
+    if (found) {
+      await dbQuery(
+        'UPDATE gerador_leads_whatsapp_logs SET retorno_whu = true WHERE whu_chat_id = $1',
+        [String(chatId)]
+      );
+    }
+
+    console.log(`[api_chatid_indicacoes] chatId=${chatId} → retorno_whu=${found}`);
+
+    return res.json({
+      success: found,
+      message: found ? 'Chat encontrado' : 'Chat não encontrado'
+    });
+  } catch (error) {
+    console.error('[api_chatid_indicacoes] Error:', error.message);
+    return res.status(500).json({ success: false, message: 'Erro interno do servidor' });
+  }
+});
+
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api')) {
     return next();

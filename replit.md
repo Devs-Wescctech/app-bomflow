@@ -1,7 +1,7 @@
 # Wescctech CRM
 
 ## Overview
-Wescctech CRM is a comprehensive, self-hosted Customer Relationship Management system designed to streamline customer service, sales, collections, and knowledge base operations. It provides a highly customizable and scalable platform leveraging modern web technologies, aiming to assist businesses in migrating from legacy systems and enhancing customer interactions through a full suite of tools. Key capabilities include integrated helpdesk, B2C/B2B sales management, referral tracking, knowledge base, quality assurance, and collections.
+Wescctech CRM is a comprehensive, self-hosted Customer Relationship Management system designed to streamline customer service, sales, collections, and knowledge base operations. It aims to assist businesses in migrating from legacy systems and enhancing customer interactions through a full suite of tools. Key capabilities include integrated helpdesk, B2C/B2B sales management, referral tracking, knowledge base, quality assurance, and collections. The project focuses on providing a highly customizable and scalable platform leveraging modern web technologies.
 
 ## User Preferences
 - I want iterative development.
@@ -26,19 +26,19 @@ Wescctech CRM is a comprehensive, self-hosted Customer Relationship Management s
 - **File Uploads**: Multer
 
 ### Core Features
-- **Helpdesk**: Ticket management with SLA, Kanban, configurable types, templates, macros, and CSAT.
-- **Sales (B2C & B2B)**: Lead pipeline (Kanban), geolocation, activity scheduling, proposals, e-signatures, and target management.
-- **Referrals**: Referral management, commission tracking, conversion pipeline, and a Lead Generator with WhatsApp bulk messaging, audit logging, async queue processing, rate limiting, and RBAC. Includes an agent-specific dashboard for referral sales (`IndicacoesMeuPainel.jsx`).
+- **Helpdesk**: Ticket management with SLA, Kanban, and configurable tools.
+- **Sales (B2C & B2B)**: Lead pipeline, geolocation, activity scheduling, proposals, e-signatures, and target management.
+- **Referrals**: Referral management, commission tracking, conversion pipeline, and a Lead Generator with WhatsApp bulk messaging, audit logging, async queue processing, rate limiting, and RBAC.
 - **Knowledge Base**: Categorized articles with versioning.
 - **Quality Assurance**: Monitoring, evaluation checklists, and call auditing.
 - **Collections**: Collection tickets, delinquency dashboard, and contact scheduling.
-- **Bom Auto**: Vehicle service consultation module with ERP integration, client eligibility, service registration, a comprehensive Operational Dashboard, and Utilization Report.
+- **Bom Auto**: Vehicle service consultation module with ERP integration, client eligibility, service registration, and operational dashboards.
 
 ### UI/UX Design
-- **Kanban Boards**: Advanced drag-and-drop implementation using `@dnd-kit` with sticky headers, auto-scroll, and mobile responsiveness.
+- **Kanban Boards**: Advanced drag-and-drop implementation with sticky headers, auto-scroll, and mobile responsiveness.
 - **Component Library**: Radix UI for accessibility, styled with Tailwind CSS.
 - **Data Visualization**: Recharts for dynamic dashboards.
-- **Visual Design System**: Features sticky navigation, gradient-themed profile cards with glassmorphism, distinct color gradients for different business types (PF=blue, PJ=indigo, Indicações=amber), temperature badges, and standardized rounded corners/shadows.
+- **Visual Design System**: Features sticky navigation, gradient-themed profile cards, distinct color gradients for different business types, temperature badges, and standardized rounded corners/shadows.
 - **Detail Pages**: Consistent layout for lead/referral details including header, pending tasks, pipeline history, and a two-column grid for tabs and sidebar.
 - **Timeline Components**: Redesigned with gradient connecting lines and themed activity cards.
 - **Mobile Responsiveness**: Full support with hamburger menu, collapsible sidebar, touch-friendly Kanban, and responsive grids.
@@ -46,48 +46,49 @@ Wescctech CRM is a comprehensive, self-hosted Customer Relationship Management s
 ### Technical Implementations
 - **Monorepo Structure**: Frontend and Backend coexist within a single repository.
 - **API Design**: RESTful API with standardized CRUD operations.
-- **Authentication & Authorization**: JWT-based authentication with a comprehensive Role-Based Access Control (RBAC) system supporting 7 agent types and 4 team structures, with dynamic database management and hardcoded fallbacks.
+- **Authentication & Authorization**: JWT-based authentication with a comprehensive Role-Based Access Control (RBAC) system supporting 7 agent types and 4 team structures.
 - **Dynamic Ticket Distribution**: Algorithms for Round Robin and Least Active agent assignment.
 - **SLA Management**: Configurable Service Level Agreements with priority-based deadlines.
-- **Lead Automation (PF & PJ)**: Automated triggers and actions based on lead stage and inactivity. Both PF and PJ support multi-team assignment via junction tables (`lead_automation_teams` for PF, `lead_pj_automation_teams` for PJ) with many-to-many relationships. Automations filter leads by assigned teams; automations without teams apply to all leads (retrocompatibility). Shared helpers `syncAutomationTeams()` and `enrichAutomationsWithTeams()` accept a `junctionTable` parameter. `executeLeadCreatedAutomation()` resolves the correct junction table by `leadType`.
-- **WhatsApp Automation**: Integration with WHU API for automated messaging and template support. Lead Generator dispatch uses `POST /chats/create-new` (with `quickAnswerId`/`quickAnswerComponents`) as primary endpoint, with automatic fallback to `POST /chats/send-template` when the chat is already open. New log columns `whu_chat_id`, `whu_contact_id`, and `endpoint_used` are persisted in both `gerador_leads_whatsapp_logs` and `gerador_leads_log_estruturado`.
+- **Lead Automation**: Automated triggers and actions based on lead stage and inactivity, supporting multi-team assignment and both B2C (PF) and B2B (PJ) leads.
+- **WhatsApp Automation**: Integration with WHU API for automated messaging and template support, including intelligent fallback mechanisms for dispatch.
 - **Digital Contract Signing**: Public-facing module for digital contract signatures with token-based access.
 - **Optimistic UI**: Implemented for Kanban drag-and-drop interactions.
-- **Dashboard Filters**: Reusable `DashboardFilters` component (`src/components/dashboard/DashboardFilters.jsx`) with period presets, team, agent, and stage filters, ensuring consistent data display across dashboards.
-- **ERP Agent ID Mapping**: Agents table includes `erp_agent_id` for integration with external ERP systems, facilitating agent resolution and mapping.
-- **Token Auto-Refresh**: Global fetch interceptor for transparently refreshing expired access tokens using refresh tokens, with fallback to login on failure.
-- **API List Limits**: Default API list limits increased to 10000 for leads, referrals, and generic CRUD endpoints to ensure consistent data visibility in dashboards and reports.
-- **WhatsApp Dispatch Platform**: Professional system with async queue processing, rate limiting, recurrence blocking, daily duplicate prevention, intelligent retry logic, real-time polling, and an operational dashboard for metrics and analytics, including RBAC for dispatch permissions.
-- **Lead Generator Metrics Audit**: Automated daily audit system for Lead Generator metrics, checking for sales without dispatches, dispatches without sales, potential duplicates, and recalculating ROI. Results are persisted and accessible on-demand.
-- **Commission ERP Validation & Deduplication**: Commission eligibility validated against ERP data (`API_DADOS_VENDAS_INDICACOES`) with 6-layer protection: (1) sale must exist in ERP, (2) sale must be paid (`valores_pagos=SIM`), (3) sale must match the referred client's CPF (`cpf_indicado` ↔ `referred_cpf`), (4) only the first/oldest referral for a given `referred_cpf` is eligible (`created_at ASC`), (5) each `contrato_servicos` can only generate one commission (tracked in `processed_referral_contracts` table), (6) referral must have been created before the sale date (`created_at < data_contrato`), preventing retroactive referrals. Sales deduplication uses `contrato_servicos` and fallback composite keys via `processed_referral_sales`.
-- **Commission Tier System**: Commission is a **unit value multiplied by conversions**. Tiers: 1-3 paid conversions = R$100/each, 4-12 = R$150/each, 13+ = R$200/each. `getCommissionByTier(n)` returns `unitValue × n`. Applied via `getCommissionByTier()` in both `runWeeklyCommissionBatch` and `getCommissionReportData`. Frontend rules in `src/utils/commissionRules.js` (`getCommissionFromConversions()` also multiplies; `calculateCommissionValue(level)` returns unit value only for display).
-- **Commission Weekly Snapshot**: Frozen weekly commission data stored in `commission_weekly_snapshot` table, generated during `runWeeklyCommissionBatch()` (Wed 05:00). Contains per-indicator: conversions, tier level, commission value. Used by reports, batch listing, and payment control as single source of truth. Falls back to dynamic calculation if no snapshot exists. Deduplication by `cycle_start`/`cycle_end`.
-- **Commission Reconciliation**: Automated daily audit (04:00) comparing ERP paid sales with system commissions. Detects: sales without commissions, commissions without sales, cancelled payments, and duplicate contracts. Results stored in `commission_reconciliation_logs` with admin panel at `/CommissionReconciliation`. Manual trigger available.
-- **Commission Payment Control**: Financial control module for commission payments with weekly cycles (Wednesday 00:00 → Tuesday 23:59). Automated batch generation on Wednesdays (cron 05:00) fetches ERP paid sales, registers eligible commissions in `commission_payment_control`, and creates payment batches in `commission_payment_batches`. Features: manual batch trigger, individual/batch payment confirmation, deduplication by `contrato_servicos`, grouped indicator view. Admin panel at `/CommissionPaymentControl` (supervisor-only). RBAC enforced on all endpoints.
-- **Commission Email Reports**: Weekly automated email report sent Wednesdays at 08:00 with commission summary and audit tables. SMTP configuration stored in `email_commission_settings` table, administrable via Indicações → Automações. Features: configurable SMTP, test email, manual send, duplicate prevention for automatic sends, email tracking on batches (`email_enviado`, `data_envio_email`, `usuario_envio`, `tipo_envio`). Uses `nodemailer` with SSL.
-- **Phone Normalization**: Utility function `normalizePhone()` ensures consistent phone number formats for conversion tracking and comparison across various data sources.
-- **Structured Dispatch Logging**: Every WhatsApp dispatch (success, failure, blocked) is logged to `gerador_leads_log_estruturado` table with 27 fields: batch, lead metadata (UF, cidade, produto, situação), agent info, template/automation names, HTTP status, duration (ms), and conversion tracking. Exposed via RBAC-protected endpoints (`/lead-generator-log-estruturado`, `/lead-generator-log-estruturado/stats`) restricted to supervisor/admin/indicator/referral_manager. Sensitive fields (`channel_token`, `api_response`) excluded from API responses. Frontend: `LeadGeneratorLogEstruturado.jsx` as a "Log Estruturado" tab in LeadGenerator with stats cards, filterable/paginated table, and 30s auto-refresh.
-- **Channel Automations (Automações por Canal)**: Separate automation system within Indicações module allowing per-channel WhatsApp token configuration. Tables: `referral_channel_automations` (automation rules with `channel_token`), `referral_channel_config` (saved token configurations). Backend: `getWhatsAppTemplatesByToken()`, `sendWhatsAppMessageWithToken()`, `checkAndExecuteReferralChannelAutomations()`. Scheduler processes channel automations after standard referral automations. Supports `inactivity` and `stage_duration` triggers only. Token passed via `x-channel-token` header (never query string). Frontend: `ReferralChannelAutomations.jsx`, `WhatsAppTemplateSelectorByToken.jsx`, `channelApi.js`. Sidebar: Indicações → "Automações por Canal" (supervisor-only).
-- **Indicador PIX Key**: PIX payment keys stored per-CPF in `indicadores_pix` table, auto-loaded on CPF search and saved on referral creation. Available in both CRM (`ReferralCreate.jsx`) and Portal (`PortalReferralCreate.jsx`). CRM routes use JWT auth; portal routes verify `x-portal-contact-id` header against contacts table with CPF ownership check. PIX keys are integrated into Commission Reports (PDF + Email) replacing the Telefone column, and into the Payment Control grouped view (`CommissionPaymentControl.jsx`). PIX is always fetched live from `indicadores_pix` (never stored in snapshots) so corrections are immediately reflected.
-- **Agent WhatsApp Channel Token**: Each `indicacoes_atendente` agent can have a personal `whatsapp_channel_token` (VARCHAR(128), nullable) for WHU/Rudo integration. Token is exposed via `GET /agents/:id` only to admin/supervisor or self; stripped from list endpoint and for other agents. Stored in `agents` table. API accepts `whatsappChannelToken` on PUT/POST. Route `GET /whatsapp/my-channel-token` returns the logged-in agent's own token.
-- **Lead WhatsApp Contact Log**: Table `lead_whatsapp_contacts` logs every WhatsApp contact initiated by an agent with a lead. Fields: `id` (UUID), `lead_id`, `agent_id`, `message`, `channel_token_masked` (first4...last4), `created_at`. Service `leadWhatsAppContactService.js` provides `createLeadWhatsAppContact()` and `getLeadWhatsAppContacts()`. REST routes: `POST /whatsapp/lead-contacts`, `GET /whatsapp/lead-contacts/:leadId`.
+- **Dashboard Filters**: Reusable `DashboardFilters` component for consistent data display across dashboards.
+- **ERP Agent ID Mapping**: `erp_agent_id` for integration with external ERP systems.
+- **Token Auto-Refresh**: Global fetch interceptor for transparently refreshing expired access tokens.
+- **API List Limits**: Default API list limits increased to 10000 for various endpoints.
+- **WhatsApp Dispatch Platform**: Professional system with async queue processing, rate limiting, recurrence blocking, daily duplicate prevention, intelligent retry logic, real-time polling, and an operational dashboard with RBAC.
+- **Lead Generator Metrics Audit**: Automated daily audit system for Lead Generator metrics, including ROI recalculation.
+- **Commission ERP Validation & Deduplication**: Commission eligibility validated against ERP data with a 6-layer protection system.
+- **Commission Tier System**: Commission calculated based on a unit value multiplied by conversions across different tiers.
+- **Commission Weekly Snapshot**: Frozen weekly commission data stored for reports and payment control.
+- **Commission Reconciliation**: Automated daily audit comparing ERP paid sales with system commissions.
+- **Commission Payment Control**: Financial control module for commission payments with weekly cycles, automated batch generation, and manual confirmations.
+- **Commission Email Reports**: Weekly automated email reports with commission summaries and audit tables, configurable via admin panel.
+- **Phone Normalization**: Utility function `normalizePhone()` for consistent phone number formats.
+- **Structured Dispatch Logging**: Detailed logging of every WhatsApp dispatch with lead metadata, agent info, status, and conversion tracking.
+- **Channel Automations**: Separate automation system within Indicações module allowing per-channel WhatsApp token configuration for inactivity and stage duration triggers.
+- **Indicador PIX Key**: PIX payment keys stored per-CPF, integrated into referral creation, commission reports, and payment control.
+- **Agent WhatsApp Channel Token**: Individual `whatsapp_channel_token` for agents for WHU/Rudo integration.
+- **WHU ChatId Verification API**: Public endpoint for WHU webhook callbacks to update dispatch logs.
+- **Lead WhatsApp Contact Log**: Logs agent-initiated WhatsApp contacts with leads.
 
 ## External Dependencies
 
-- **PostgreSQL**: Primary database for the system.
-- **React 18**: Frontend library for building user interfaces.
-- **Vite**: Fast development build tool for the frontend.
-- **React Query**: For server state management and data fetching.
-- **React Router**: For client-side routing in the single-page application.
-- **Tailwind CSS**: Utility-first CSS framework for styling.
-- **Radix UI**: Headless component library for accessible UI primitives.
-- **Recharts**: JavaScript charting library for data visualization.
-- **Node.js**: JavaScript runtime for the backend server.
-- **Express**: Web framework for Node.js backend.
-- **`pg`**: Node.js native PostgreSQL client.
-- **`jsonwebtoken`**: For implementing JWT-based authentication.
-- **`multer`**: Middleware for handling `multipart/form-data`, used for file uploads.
-- **`@dnd-kit/core` and `@dnd-kit/sortable`**: Libraries for drag-and-drop functionality, particularly for Kanban boards.
-- **ERP Bom Pastor API**: External API (`API_CPF_INDICADOR`) used for CPF lookup and associated data in the Referral system.
-- **ERP Bom Auto API**: External API (`API_TESTE_BOM_AUTO`) integrated for vehicle and client consultation within the Bom Auto module.
-- **ERP API_DADOS_VENDAS_INDICACOES**: External API providing sales data for Lead Generator ROI metrics and Commission Management validation.
+- **PostgreSQL**: Primary database.
+- **React 18**: Frontend library.
+- **Vite**: Frontend build tool.
+- **React Query**: Server state management.
+- **React Router**: Client-side routing.
+- **Tailwind CSS**: Styling framework.
+- **Radix UI**: Headless component library.
+- **Recharts**: Charting library.
+- **Node.js**: Backend runtime.
+- **Express**: Backend framework.
+- **`pg`**: PostgreSQL client.
+- **`jsonwebtoken`**: JWT authentication.
+- **`multer`**: File uploads.
+- **`@dnd-kit`**: Drag-and-drop functionality.
+- **ERP Bom Pastor API**: External API for CPF and associated data lookup.
+- **ERP Bom Auto API**: External API for vehicle and client consultation.
+- **ERP API_DADOS_VENDAS_INDICACOES**: External API for sales data and commission validation.

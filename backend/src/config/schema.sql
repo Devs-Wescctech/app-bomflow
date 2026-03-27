@@ -924,8 +924,10 @@ ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS batch_id UUID;
 ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS whu_chat_id VARCHAR(64);
 ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS whu_contact_id VARCHAR(64);
 ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS endpoint_used VARCHAR(32);
+ALTER TABLE gerador_leads_whatsapp_logs ADD COLUMN IF NOT EXISTS retorno_whu BOOLEAN DEFAULT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_glwl_block_check ON gerador_leads_whatsapp_logs (lead_number, success, sent_at);
+CREATE INDEX IF NOT EXISTS idx_glwl_whu_chat_id ON gerador_leads_whatsapp_logs (whu_chat_id);
 CREATE INDEX IF NOT EXISTS idx_glwl_sent_at ON gerador_leads_whatsapp_logs (sent_at);
 CREATE INDEX IF NOT EXISTS idx_glwl_batch ON gerador_leads_whatsapp_logs (batch_id);
 
