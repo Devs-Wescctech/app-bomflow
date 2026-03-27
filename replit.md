@@ -55,17 +55,19 @@ SalesTwo is a focused B2B sales management platform built on a streamlined versi
 - `SalesAgenda` combines activities from both `activities` (PF) and `activities_pj` (PJ) tables
 - PJ activities link to `LeadPJDetail`, PF activities link to `LeadDetail`
 - Activity types include: visit, call, whatsapp, email, task, meeting
-- Redesigned layout with: StatsCard KPIs, day/week/month views, mini calendar sidebar, overdue/upcoming panels
+- Google Calendar-inspired layout: full-height time grid (day/week), month grid with event pills, mini calendar sidebar, activity filters, summary stats, current-time red line indicator
+- Internal activities render above Google events (z-index layering); all-day Google events supported in all views
 - **Google Calendar Integration**: Full bidirectional OAuth2 sync via `googleCalendarService.js` + `googleapis`
   - **Admin config (one-time)**: Client ID + Secret stored in `system_settings` (keys: `google_calendar_client_id`, `google_calendar_client_secret`)
   - **Per-agent tokens**: `google_calendar_tokens` table stores OAuth tokens per agent (access_token, refresh_token, token_expiry, calendar_email, sync_token)
-  - **SalesTwo → Google**: Activities created/updated/deleted in `activities_pj` are automatically pushed to Google Calendar via hooks in `entities.js`
+  - **SalesTwo → Google**: Activities created/updated/deleted in BOTH `activities` and `activities_pj` tables are automatically pushed to Google Calendar via hooks in `entities.js`
   - **Google → SalesTwo**: Periodic sync every 5 minutes (`syncAllAgents` in `server.js`) pulls new events from Google Calendar and creates `activities_pj` entries
-  - `activities_pj.google_event_id` column tracks synced events (prevents duplicates)
+  - Both `activities.google_event_id` and `activities_pj.google_event_id` columns track synced events (prevents duplicates)
+  - `createGoogleEvent(agentId, activity, tableName)` — pass `'activities'` or `'activities_pj'` to update correct table
   - Events from SalesTwo are prefixed with `[SalesTwo]` and skipped during Google→SalesTwo sync
   - OAuth callback redirect URL: `{origin}/api/functions/google-calendar/callback`
-  - Routes: status, auth-url, callback, events, sync, disconnect (all per-agent via `loadAgentMiddleware`)
-  - Settings page > "Google Agenda" tab: admin sees credential config, all users see Connect/Disconnect button
+  - Routes: status, auth-url, callback, events, sync, disconnect (per-agent via `req.user.id`)
+  - Settings page > "Google Agenda" tab: all users see Connect/Disconnect button, admin also sees credential config
 
 ### UI/UX Design
 - **Kanban Boards**: Advanced drag-and-drop implementation using `@dnd-kit` with sticky headers, auto-scroll, and mobile responsiveness.

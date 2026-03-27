@@ -1117,6 +1117,12 @@ router.get('/activities/:id', authMiddleware, async (req, res) => {
 
 router.delete('/activities/:id', authMiddleware, async (req, res) => {
   try {
+    const existing = await query('SELECT created_by, google_event_id FROM activities WHERE id = $1', [req.params.id]);
+    if (existing.rows.length > 0 && existing.rows[0].google_event_id && existing.rows[0].created_by) {
+      console.log('[GCal Hook] Deleting Google event (PF)', existing.rows[0].google_event_id);
+      deleteGoogleEvent(existing.rows[0].created_by, existing.rows[0].google_event_id)
+        .catch(err => console.error('[GCal Hook] delete error (PF):', err.message));
+    }
     const result = await query('DELETE FROM activities WHERE id = $1 RETURNING *', [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ message: 'Not found' });
     res.json({ success: true });
@@ -1158,7 +1164,19 @@ router.put('/activities/:id', authMiddleware, async (req, res) => {
     const sql = `UPDATE activities SET ${setClause} WHERE id = $${values.length} RETURNING *`;
     const result = await query(sql, values);
     if (result.rows.length === 0) return res.status(404).json({ message: 'Not found' });
-    res.json(convertKeysToCamel(result.rows[0]));
+    const activity = result.rows[0];
+
+    if (activity.google_event_id && activity.created_by) {
+      console.log('[GCal Hook] Updating Google event (PF)', activity.google_event_id);
+      updateGoogleEvent(activity.created_by, activity.google_event_id, {
+        type: activity.type,
+        description: activity.title || activity.description,
+        scheduled_at: activity.scheduled_at,
+        completed: activity.completed,
+      }).catch(err => console.error('[GCal Hook] update error (PF):', err.message));
+    }
+
+    res.json(convertKeysToCamel(activity));
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -1167,10 +1185,12 @@ router.put('/activities/:id', authMiddleware, async (req, res) => {
 router.post('/activities', authMiddleware, async (req, res) => {
   try {
     const data = convertKeysToSnake(req.body);
+    if (!data.created_by && req.user?.id) {
+      data.created_by = req.user.id;
+    }
     const keys = Object.keys(data).filter(k => data[k] !== null && data[k] !== undefined);
     const values = keys.map(k => {
       const val = data[k];
-      // Serialize both objects and arrays as JSON for JSONB fields
       if (typeof val === 'object' && val !== null) return JSON.stringify(val);
       return val;
     });
@@ -1187,6 +1207,16 @@ router.post('/activities', authMiddleware, async (req, res) => {
       if (lead) {
         await notifyLeadComment(lead, activity.agent_id, activity.description || activity.notes || '');
       }
+    }
+
+    if (activity.created_by && activity.scheduled_at) {
+      console.log('[GCal Hook] Creating Google event for activity (PF)', activity.id);
+      createGoogleEvent(activity.created_by, {
+        id: activity.id,
+        type: activity.type,
+        description: activity.title || activity.description,
+        scheduled_at: activity.scheduled_at,
+      }, 'activities').catch(err => console.error('[GCal Hook] create error (PF):', err.message));
     }
     
     res.status(201).json(convertKeysToCamel(activity));

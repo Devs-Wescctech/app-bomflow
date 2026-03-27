@@ -1,11 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import StatsCard from "@/components/dashboard/StatsCard";
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -28,6 +26,7 @@ import {
   Circle,
   Unlink,
   Link2,
+  X,
 } from "lucide-react";
 import {
   format,
@@ -45,7 +44,11 @@ import {
   subMonths,
   isValid,
   isSameMonth,
+  getHours,
+  getMinutes,
   differenceInMinutes,
+  addWeeks,
+  subWeeks,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Link } from "react-router-dom";
@@ -55,44 +58,29 @@ import { toast } from "sonner";
 const BRAND = { burgundy: "#5A2A3C", coral: "#F98F6F" };
 
 const ACTIVITY_TYPES = {
-  visit: { label: "Visita", icon: MapPin, dot: "#3b82f6" },
-  call: { label: "Ligação", icon: Phone, dot: "#22c55e" },
-  whatsapp: { label: "WhatsApp", icon: MessageSquare, dot: "#10b981" },
-  email: { label: "E-mail", icon: Mail, dot: "#a855f7" },
-  task: { label: "Tarefa", icon: CheckCircle2, dot: "#f97316" },
-  meeting: { label: "Reunião", icon: CalendarIcon, dot: "#6366f1" },
+  visit: { label: "Visita", icon: MapPin, color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe" },
+  call: { label: "Ligação", icon: Phone, color: "#22c55e", bg: "#f0fdf4", border: "#bbf7d0" },
+  whatsapp: { label: "WhatsApp", icon: MessageSquare, color: "#10b981", bg: "#ecfdf5", border: "#a7f3d0" },
+  email: { label: "E-mail", icon: Mail, color: "#a855f7", bg: "#faf5ff", border: "#e9d5ff" },
+  task: { label: "Tarefa", icon: CheckCircle2, color: "#f97316", bg: "#fff7ed", border: "#fed7aa" },
+  meeting: { label: "Reunião", icon: CalendarIcon, color: "#6366f1", bg: "#eef2ff", border: "#c7d2fe" },
 };
 
-const HOURS = Array.from({ length: 14 }, (_, i) => i + 7);
+const HOURS = Array.from({ length: 16 }, (_, i) => i + 6);
 
 function getVal(obj, ...keys) {
   for (const k of keys) { if (obj[k] !== undefined && obj[k] !== null) return obj[k]; }
   return null;
 }
 
-function buildGCalLink(activity) {
-  const scheduledAt = new Date(activity.scheduledAt || activity.scheduled_at);
-  if (isNaN(scheduledAt.getTime())) return "#";
-  const endTime = new Date(scheduledAt.getTime() + 60 * 60 * 1000);
-  const fmtD = (d) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
-  const typeLabels = { visit: "Visita", call: "Ligação", whatsapp: "WhatsApp", email: "E-mail", task: "Tarefa", meeting: "Reunião" };
-  const title = `[SalesTwo] ${typeLabels[activity.type] || activity.type}: ${activity.title || activity.description || "Atividade"}`;
-  const params = new URLSearchParams({
-    action: "TEMPLATE",
-    text: title,
-    dates: `${fmtD(scheduledAt)}/${fmtD(endTime)}`,
-    details: activity.description || "",
-  });
-  return `https://calendar.google.com/calendar/render?${params.toString()}`;
-}
-
 export default function SalesAgenda() {
   const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState("day");
+  const [viewMode, setViewMode] = useState("week");
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [filterType, setFilterType] = useState("all");
   const [showGoogleEvents, setShowGoogleEvents] = useState(true);
+  const [selectedActivity, setSelectedActivity] = useState(null);
 
   const { data: user } = useQuery({
     queryKey: ["currentUser"],
@@ -149,14 +137,18 @@ export default function SalesAgenda() {
     staleTime: 1000 * 60 * 5,
   });
 
+  const gcalFetchRange = useMemo(() => {
+    const rangeStart = startOfMonth(addMonths(selectedDate, -1));
+    const rangeEnd = endOfMonth(addMonths(selectedDate, 1));
+    return { start: rangeStart, end: rangeEnd };
+  }, [selectedDate.getFullYear(), selectedDate.getMonth()]);
+
   const { data: googleEvents = [] } = useQuery({
-    queryKey: ["googleCalendarEvents", currentMonth.toISOString()],
+    queryKey: ["googleCalendarEvents", gcalFetchRange.start.toISOString()],
     queryFn: async () => {
       const token = localStorage.getItem("token");
-      const monthS = startOfMonth(currentMonth);
-      const monthE = endOfMonth(currentMonth);
       const res = await fetch(
-        `/api/functions/google-calendar/events?timeMin=${monthS.toISOString()}&timeMax=${monthE.toISOString()}`,
+        `/api/functions/google-calendar/events?timeMin=${gcalFetchRange.start.toISOString()}&timeMax=${gcalFetchRange.end.toISOString()}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (!res.ok) return [];
@@ -236,19 +228,21 @@ export default function SalesAgenda() {
     };
   }, [filtered, today]);
 
-  const getActivitiesForDay = (day) =>
+  const getActivitiesForDay = useCallback((day) =>
     filtered.filter((a) => {
       if (!a.scheduledAt) return false;
       try { return isSameDay(parseISO(a.scheduledAt), day); } catch { return false; }
-    });
+    }).sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt)),
+  [filtered]);
 
-  const selectedDayActivities = useMemo(
-    () =>
-      getActivitiesForDay(selectedDate).sort(
-        (a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt)
-      ),
-    [filtered, selectedDate]
-  );
+  const googleEventsForDay = useCallback((day) => {
+    if (!showGoogleEvents || !googleEvents.length) return [];
+    return googleEvents.filter((ev) => {
+      const start = ev.start?.dateTime || ev.start?.date;
+      if (!start) return false;
+      try { return isSameDay(parseISO(start), day); } catch { return false; }
+    });
+  }, [showGoogleEvents, googleEvents]);
 
   const getLeadById = (leadId, leadType) => {
     if (!leadId) return null;
@@ -268,7 +262,26 @@ export default function SalesAgenda() {
     toast.success(current ? "Atividade reaberta" : "Atividade concluída!");
   };
 
-  const fmtTime = (d) => { try { const p = parseISO(d); return isValid(p) ? format(p, "HH:mm") : ""; } catch { return ""; } };
+  const navigateDate = (dir) => {
+    if (viewMode === "day") setSelectedDate(addDays(selectedDate, dir));
+    else if (viewMode === "week") setSelectedDate(dir > 0 ? addWeeks(selectedDate, 1) : subWeeks(selectedDate, 1));
+    else setCurrentMonth(dir > 0 ? addMonths(currentMonth, 1) : subMonths(currentMonth, 1));
+  };
+
+  const goToday = () => {
+    setSelectedDate(new Date());
+    setCurrentMonth(new Date());
+  };
+
+  const headerLabel = () => {
+    if (viewMode === "day") return format(selectedDate, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+    if (viewMode === "week") {
+      const ws = startOfWeek(selectedDate, { locale: ptBR });
+      const we = endOfWeek(selectedDate, { locale: ptBR });
+      return `${format(ws, "dd MMM", { locale: ptBR })} – ${format(we, "dd MMM yyyy", { locale: ptBR })}`;
+    }
+    return format(currentMonth, "MMMM 'de' yyyy", { locale: ptBR });
+  };
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
@@ -278,423 +291,334 @@ export default function SalesAgenda() {
   let d = calStart;
   while (d <= calEnd) { calDays.push(d); d = addDays(d, 1); }
 
-  const weekStart = startOfWeek(selectedDate, { locale: ptBR });
-
-  const googleEventsForDay = (day) => {
-    if (!showGoogleEvents || !googleEvents.length) return [];
-    return googleEvents.filter((ev) => {
-      const start = ev.start?.dateTime || ev.start?.date;
-      if (!start) return false;
-      try { return isSameDay(parseISO(start), day); } catch { return false; }
-    });
-  };
-
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="max-w-[1440px] mx-auto px-4 py-5 space-y-5">
-
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold" style={{ color: BRAND.burgundy }}>
-              Agenda
-            </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              {format(today, "EEEE, dd 'de' MMMM", { locale: ptBR })}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {gcalStatus?.connected && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRefreshGcal}
-                className="text-xs"
-              >
-                <RefreshCw className="w-3.5 h-3.5 mr-1" />
-                Atualizar Google
-              </Button>
-            )}
-            {gcalStatus?.connected ? (
-              <Badge className="text-xs gap-1 bg-green-50 text-green-700 border-green-200">
-                <Link2 className="w-3 h-3" /> Google conectado
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="text-xs gap-1 text-gray-500">
-                <Unlink className="w-3 h-3" /> Google não conectado
-              </Badge>
-            )}
-            <Link to={createPageUrl("NewLeadPJ")}>
-              <Button size="sm" style={{ background: `linear-gradient(135deg, ${BRAND.burgundy}, ${BRAND.coral})` }} className="text-white text-xs">
-                <Plus className="w-3.5 h-3.5 mr-1" /> Novo Lead
-              </Button>
-            </Link>
-          </div>
+    <div className="h-screen flex flex-col bg-white dark:bg-gray-900 overflow-hidden">
+      {/* Top bar */}
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 dark:border-gray-700 flex-shrink-0" style={{ borderBottomColor: '#e5e7eb' }}>
+        <div className="flex items-center gap-2 mr-2">
+          <CalendarIcon className="w-5 h-5" style={{ color: BRAND.burgundy }} />
+          <h1 className="text-lg font-semibold hidden sm:block" style={{ color: BRAND.burgundy }}>Agenda</h1>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <StatsCard
-            title="Atividades Hoje"
-            value={stats.today}
-            icon={CalendarIcon}
-            color="blue"
-            subtitle={`${stats.todayDone} feitas · ${stats.todayPending} pendentes`}
-            delay={0}
-          />
-          <StatsCard
-            title="Atrasadas"
-            value={stats.overdue}
-            icon={AlertCircle}
-            color="red"
-            subtitle="Requer atenção"
-            delay={0.05}
-          />
-          <StatsCard
-            title="Esta Semana"
-            value={stats.week}
-            icon={CalendarDays}
-            color="green"
-            subtitle={`${stats.weekDone} concluídas`}
-            delay={0.1}
-          />
-          <StatsCard
-            title="Google Calendar"
-            value={googleEvents.length}
-            icon={CalendarRange}
-            color="orange"
-            subtitle={gcalStatus?.connected ? "Eventos sincronizados" : "Não conectado"}
-            delay={0.15}
-          />
+        <Button variant="outline" size="sm" className="text-xs h-8 px-3" onClick={goToday}>Hoje</Button>
+        <div className="flex items-center gap-0.5">
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigateDate(-1)}>
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigateDate(1)}>
+            <ChevronRight className="w-4 h-4" />
+          </Button>
         </div>
+        <h2 className="text-sm sm:text-base font-medium text-gray-800 dark:text-gray-100 capitalize min-w-0">
+          {headerLabel()}
+        </h2>
 
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <div className="flex bg-white dark:bg-gray-800 rounded-lg border p-0.5 mr-2">
+        <div className="ml-auto flex items-center gap-2">
+          {gcalStatus?.connected && (
+            <Button variant="ghost" size="sm" onClick={handleRefreshGcal} className="text-xs h-8 gap-1 text-gray-600">
+              <RefreshCw className="w-3.5 h-3.5" /> Sincronizar
+            </Button>
+          )}
+          <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
             {[
-              { key: "day", icon: LayoutList, label: "Dia" },
-              { key: "week", icon: CalendarRange, label: "Semana" },
-              { key: "month", icon: CalendarDays, label: "Mês" },
+              { key: "day", label: "Dia" },
+              { key: "week", label: "Semana" },
+              { key: "month", label: "Mês" },
             ].map((v) => (
               <button
                 key={v.key}
                 onClick={() => setViewMode(v.key)}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  viewMode === v.key ? "text-white" : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                  viewMode === v.key ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 hover:text-gray-700"
                 }`}
-                style={viewMode === v.key ? { background: BRAND.burgundy } : {}}
               >
-                <v.icon className="w-3.5 h-3.5" /> {v.label}
+                {v.label}
               </button>
             ))}
           </div>
+        </div>
+      </div>
 
-          <div className="flex gap-1 flex-wrap">
-            <button
-              onClick={() => setFilterType("all")}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
-                filterType === "all" ? "text-white" : "text-gray-600 bg-gray-100 dark:bg-gray-800 dark:text-gray-300"
-              }`}
-              style={filterType === "all" ? { background: BRAND.burgundy } : {}}
-            >
-              Todas
-            </button>
-            {Object.entries(ACTIVITY_TYPES).map(([key, cfg]) => (
+      {/* Main content */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left sidebar */}
+        <div className="w-60 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 overflow-y-auto hidden lg:block p-3 space-y-4">
+          <SidebarMiniCalendar
+            currentMonth={currentMonth}
+            setCurrentMonth={setCurrentMonth}
+            selectedDate={selectedDate}
+            setSelectedDate={(d) => { setSelectedDate(d); if (viewMode === "month") setViewMode("day"); }}
+            getActivitiesForDay={getActivitiesForDay}
+          />
+
+          {/* Filters */}
+          <div>
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Filtros</p>
+            <div className="space-y-1">
               <button
-                key={key}
-                onClick={() => setFilterType(key)}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
-                  filterType === key ? "text-white" : "text-gray-600 bg-gray-100 dark:bg-gray-800 dark:text-gray-300"
+                onClick={() => setFilterType("all")}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium transition-colors ${
+                  filterType === "all" ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100" : "text-gray-600 hover:bg-gray-50"
                 }`}
-                style={filterType === key ? { background: cfg.dot } : {}}
               >
-                <Circle className="w-2 h-2" style={{ fill: filterType === key ? "#fff" : cfg.dot, color: filterType === key ? "#fff" : cfg.dot }} />
-                {cfg.label}
+                <div className="w-3 h-3 rounded-sm" style={{ background: `linear-gradient(135deg, ${BRAND.burgundy}, ${BRAND.coral})` }} />
+                Todas
               </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid lg:grid-cols-[1fr_320px] gap-5">
-
-          <Card className="border-0 shadow-sm overflow-hidden">
-            <CardContent className="p-0">
-              {loading ? (
-                <div className="flex items-center justify-center py-20">
-                  <Loader2 className="w-6 h-6 animate-spin" style={{ color: BRAND.burgundy }} />
-                </div>
-              ) : (
-                <>
-                  {viewMode === "day" && (
-                    <DayView
-                      selectedDate={selectedDate}
-                      setSelectedDate={setSelectedDate}
-                      activities={selectedDayActivities}
-                      googleEvents={googleEventsForDay(selectedDate)}
-                      showGoogleEvents={showGoogleEvents}
-                      getLeadById={getLeadById}
-                      handleToggle={handleToggle}
-                      fmtTime={fmtTime}
-                    />
-                  )}
-                  {viewMode === "week" && (
-                    <WeekView
-                      weekStart={weekStart}
-                      selectedDate={selectedDate}
-                      setSelectedDate={setSelectedDate}
-                      setViewMode={setViewMode}
-                      getActivitiesForDay={getActivitiesForDay}
-                      googleEventsForDay={googleEventsForDay}
-                      showGoogleEvents={showGoogleEvents}
-                    />
-                  )}
-                  {viewMode === "month" && (
-                    <MonthView
-                      currentMonth={currentMonth}
-                      setCurrentMonth={setCurrentMonth}
-                      calDays={calDays}
-                      selectedDate={selectedDate}
-                      setSelectedDate={setSelectedDate}
-                      setViewMode={setViewMode}
-                      getActivitiesForDay={getActivitiesForDay}
-                      googleEventsForDay={googleEventsForDay}
-                      showGoogleEvents={showGoogleEvents}
-                    />
-                  )}
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="space-y-4">
-            {stats.overdue > 0 && (
-              <Card className="border-0 shadow-sm" style={{ borderLeft: `4px solid #dc2626` }}>
-                <CardContent className="p-4">
-                  <h3 className="text-sm font-semibold text-red-600 flex items-center gap-1.5 mb-3">
-                    <AlertCircle className="w-4 h-4" /> Atrasadas ({stats.overdue})
-                  </h3>
-                  <div className="space-y-2 max-h-[280px] overflow-y-auto">
-                    {stats.overdueList.slice(0, 8).map((act) => (
-                      <OverdueItem key={act.id} activity={act} getLeadById={getLeadById} handleToggle={handleToggle} />
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            <Card className="border-0 shadow-sm">
-              <CardContent className="p-4">
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-1.5 mb-3">
-                  <Clock className="w-4 h-4" style={{ color: BRAND.burgundy }} /> Próximas
-                </h3>
-                <UpcomingList filtered={filtered} today={today} getLeadById={getLeadById} />
-              </CardContent>
-            </Card>
-
-            <MiniCalendar
-              currentMonth={currentMonth}
-              setCurrentMonth={setCurrentMonth}
-              selectedDate={selectedDate}
-              setSelectedDate={(d) => { setSelectedDate(d); setViewMode("day"); }}
-              getActivitiesForDay={getActivitiesForDay}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DayView({ selectedDate, setSelectedDate, activities, googleEvents, showGoogleEvents, getLeadById, handleToggle, fmtTime }) {
-  return (
-    <div>
-      <div className="flex items-center justify-between px-5 py-3 border-b bg-white dark:bg-gray-800">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
-          <ChevronLeft className="w-4 h-4" />
-        </Button>
-        <div className="text-center">
-          <p className="text-sm font-semibold">
-            {isToday(selectedDate) ? "Hoje" : format(selectedDate, "EEEE", { locale: ptBR })}
-          </p>
-          <p className="text-xs text-gray-500">{format(selectedDate, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}</p>
-        </div>
-        <div className="flex items-center gap-1">
-          {!isToday(selectedDate) && (
-            <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => setSelectedDate(new Date())}>Hoje</Button>
-          )}
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-        </div>
-      </div>
-
-      <div className="divide-y">
-        {activities.length === 0 && (!showGoogleEvents || googleEvents.length === 0) ? (
-          <div className="text-center py-16">
-            <CalendarIcon className="w-10 h-10 mx-auto mb-3 text-gray-300" />
-            <p className="text-sm text-gray-500">Nenhuma atividade neste dia</p>
-          </div>
-        ) : (
-          <>
-            <AnimatePresence>
-              {activities.map((act, i) => (
-                <ActivityRow key={act.id} activity={act} index={i} getLeadById={getLeadById} handleToggle={handleToggle} fmtTime={fmtTime} />
+              {Object.entries(ACTIVITY_TYPES).map(([key, cfg]) => (
+                <button
+                  key={key}
+                  onClick={() => setFilterType(key)}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium transition-colors ${
+                    filterType === key ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100" : "text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: cfg.color }} />
+                  {cfg.label}
+                </button>
               ))}
-            </AnimatePresence>
-            {showGoogleEvents && googleEvents.length > 0 && (
-              <div className="px-5 py-3 bg-blue-50/50 dark:bg-blue-950/20">
-                <p className="text-[11px] font-medium text-blue-600 mb-2 flex items-center gap-1">
-                  <CalendarIcon className="w-3 h-3" /> Google Calendar
-                </p>
-                {googleEvents.map((ev, i) => (
-                  <div key={ev.id || i} className="flex items-center gap-3 py-1.5 text-sm">
-                    <span className="text-xs text-blue-500 font-mono w-12">
-                      {ev.start?.dateTime ? format(parseISO(ev.start.dateTime), "HH:mm") : "dia"}
-                    </span>
-                    <span className="text-gray-700 dark:text-gray-300 truncate">{ev.summary}</span>
-                  </div>
-                ))}
+            </div>
+          </div>
+
+          {/* Status */}
+          <div>
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Resumo</p>
+            <div className="space-y-1.5 text-xs">
+              <div className="flex justify-between text-gray-600">
+                <span>Hoje</span>
+                <span className="font-semibold text-gray-900 dark:text-gray-100">{stats.today}</span>
               </div>
-            )}
-          </>
-        )}
+              {stats.overdue > 0 && (
+                <div className="flex justify-between text-red-600">
+                  <span>Atrasadas</span>
+                  <span className="font-semibold">{stats.overdue}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-gray-600">
+                <span>Esta semana</span>
+                <span className="font-semibold text-gray-900 dark:text-gray-100">{stats.week}</span>
+              </div>
+              {gcalStatus?.connected && (
+                <div className="flex items-center gap-1.5 text-green-600 pt-1">
+                  <Link2 className="w-3 h-3" />
+                  <span className="text-[11px]">Google conectado</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Calendar area */}
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {loading ? (
+            <div className="flex items-center justify-center flex-1">
+              <Loader2 className="w-6 h-6 animate-spin" style={{ color: BRAND.burgundy }} />
+            </div>
+          ) : (
+            <>
+              {viewMode === "day" && (
+                <TimeGrid
+                  days={[selectedDate]}
+                  getActivitiesForDay={getActivitiesForDay}
+                  googleEventsForDay={googleEventsForDay}
+                  showGoogleEvents={showGoogleEvents}
+                  onActivityClick={setSelectedActivity}
+                  singleDay
+                />
+              )}
+              {viewMode === "week" && (
+                <TimeGrid
+                  days={Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(selectedDate, { locale: ptBR }), i))}
+                  getActivitiesForDay={getActivitiesForDay}
+                  googleEventsForDay={googleEventsForDay}
+                  showGoogleEvents={showGoogleEvents}
+                  onActivityClick={setSelectedActivity}
+                />
+              )}
+              {viewMode === "month" && (
+                <MonthGrid
+                  calDays={calDays}
+                  currentMonth={currentMonth}
+                  selectedDate={selectedDate}
+                  setSelectedDate={(d) => { setSelectedDate(d); setViewMode("day"); }}
+                  getActivitiesForDay={getActivitiesForDay}
+                  googleEventsForDay={googleEventsForDay}
+                  showGoogleEvents={showGoogleEvents}
+                />
+              )}
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Activity detail popover */}
+      <AnimatePresence>
+        {selectedActivity && (
+          <ActivityPopover
+            activity={selectedActivity}
+            getLeadById={getLeadById}
+            handleToggle={handleToggle}
+            onClose={() => setSelectedActivity(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-function ActivityRow({ activity, index, getLeadById, handleToggle, fmtTime }) {
-  const cfg = ACTIVITY_TYPES[activity.type] || ACTIVITY_TYPES.task;
-  const Icon = cfg.icon;
-  const leadId = getVal(activity, "leadId", "lead_id");
-  const lead = getLeadById(leadId, activity._leadType);
+function TimeGrid({ days, getActivitiesForDay, googleEventsForDay, showGoogleEvents, onActivityClick, singleDay = false }) {
+  const colCount = days.length;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, x: -10 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0 }}
-      transition={{ delay: index * 0.03 }}
-      className={`flex items-start gap-3 px-5 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
-        activity.completed ? "opacity-60" : ""
-      }`}
-    >
-      <button
-        onClick={() => handleToggle(activity.id, activity.completed, activity._leadType)}
-        className="mt-0.5 flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all"
-        style={{
-          borderColor: activity.completed ? "#22c55e" : "#d1d5db",
-          backgroundColor: activity.completed ? "#22c55e" : "transparent",
-        }}
-      >
-        {activity.completed && <CheckCircle2 className="w-3 h-3 text-white" />}
-      </button>
-
-      <div className="flex-shrink-0 w-12 text-right">
-        <span className="text-xs font-mono text-gray-500">{fmtTime(activity.scheduledAt)}</span>
-      </div>
-
-      <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: cfg.dot }} />
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className={`text-sm font-medium ${activity.completed ? "line-through text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>
-              {activity.title || activity.description || "Atividade"}
-            </p>
-            {activity.description && activity.title && (
-              <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{activity.description}</p>
-            )}
-            {lead && (
-              <Link
-                to={createPageUrl(lead._leadType === "pj" ? "LeadPJDetail" : "LeadDetail", { id: lead.id })}
-                className="inline-flex items-center gap-1 mt-1 text-xs hover:underline"
-                style={{ color: BRAND.burgundy }}
+    <div className="flex-1 overflow-y-auto overflow-x-hidden">
+      {/* Day headers */}
+      <div className="sticky top-0 z-10 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex" style={{ marginLeft: '56px' }}>
+          {days.map((day) => {
+            const isT = isToday(day);
+            return (
+              <div
+                key={day.toISOString()}
+                className={`flex-1 text-center py-2 border-l border-gray-100 dark:border-gray-800 ${isT ? "bg-blue-50/50 dark:bg-blue-950/20" : ""}`}
               >
-                <User className="w-3 h-3" />
-                {lead.name || lead.company_name || lead.companyName}
-                {lead._leadType === "pj" && <Badge className="text-[9px] px-1 py-0 bg-blue-100 text-blue-700">PJ</Badge>}
-                <ExternalLink className="w-2.5 h-2.5" />
-              </Link>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <a
-              href={buildGCalLink(activity)}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Enviar ao Google Calendar"
-              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-500 transition-colors"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <CalendarIcon className="w-3.5 h-3.5" />
-            </a>
-            <Icon className="w-3.5 h-3.5" style={{ color: cfg.dot }} />
-            <span className="text-[11px] font-medium" style={{ color: cfg.dot }}>{cfg.label}</span>
-          </div>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-function WeekView({ weekStart, selectedDate, setSelectedDate, setViewMode, getActivitiesForDay, googleEventsForDay, showGoogleEvents }) {
-  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-
-  return (
-    <div>
-      <div className="flex items-center justify-between px-5 py-3 border-b bg-white dark:bg-gray-800">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedDate(addDays(selectedDate, -7))}>
-          <ChevronLeft className="w-4 h-4" />
-        </Button>
-        <p className="text-sm font-semibold">
-          {format(weekStart, "dd MMM", { locale: ptBR })} - {format(addDays(weekStart, 6), "dd MMM yyyy", { locale: ptBR })}
-        </p>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedDate(addDays(selectedDate, 7))}>
-          <ChevronRight className="w-4 h-4" />
-        </Button>
-      </div>
-      <div className="grid grid-cols-7 divide-x">
-        {days.map((day) => {
-          const acts = getActivitiesForDay(day);
-          const gEvents = googleEventsForDay(day);
-          const todayHighlight = isToday(day);
-          return (
-            <button
-              key={day.toISOString()}
-              onClick={() => { setSelectedDate(day); setViewMode("day"); }}
-              className={`min-h-[160px] p-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
-                todayHighlight ? "bg-orange-50/50 dark:bg-orange-950/10" : ""
-              }`}
-            >
-              <div className="mb-2">
-                <p className="text-[10px] uppercase text-gray-500 font-medium">
+                <p className={`text-[11px] uppercase font-medium ${isT ? "text-blue-600" : "text-gray-500"}`}>
                   {format(day, "EEE", { locale: ptBR })}
                 </p>
-                <p className={`text-lg font-bold ${todayHighlight ? "" : "text-gray-700 dark:text-gray-200"}`} style={todayHighlight ? { color: BRAND.burgundy } : {}}>
-                  {format(day, "dd")}
+                <p className={`text-xl font-light mt-0.5 ${isT ? "bg-blue-600 text-white w-10 h-10 rounded-full flex items-center justify-center mx-auto" : "text-gray-800 dark:text-gray-200"}`}
+                  style={isT ? {} : {}}
+                >
+                  {format(day, "d")}
                 </p>
               </div>
-              <div className="space-y-1">
-                {acts.slice(0, 4).map((act) => {
-                  const cfg = ACTIVITY_TYPES[act.type] || ACTIVITY_TYPES.task;
-                  return (
-                    <div key={act.id} className="flex items-center gap-1 text-[10px] leading-tight">
-                      <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: cfg.dot }} />
-                      <span className={`truncate ${act.completed ? "line-through text-gray-400" : "text-gray-700 dark:text-gray-300"}`}>
-                        {act.title || act.description || "Atividade"}
-                      </span>
-                    </div>
-                  );
-                })}
-                {acts.length > 4 && (
-                  <p className="text-[10px] text-gray-400 pl-2.5">+{acts.length - 4} mais</p>
-                )}
-                {showGoogleEvents && gEvents.slice(0, 2).map((ev, i) => (
-                  <div key={`g-${i}`} className="flex items-center gap-1 text-[10px] leading-tight text-blue-600">
-                    <CalendarIcon className="w-2 h-2 flex-shrink-0" />
-                    <span className="truncate">{ev.summary}</span>
-                  </div>
-                ))}
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Time rows */}
+      <div className="relative">
+        {HOURS.map((hour) => (
+          <div key={hour} className="flex" style={{ height: '60px' }}>
+            <div className="w-14 flex-shrink-0 text-right pr-2 -mt-2.5">
+              <span className="text-[11px] text-gray-400 font-light">
+                {String(hour).padStart(2, "0")}:00
+              </span>
+            </div>
+            <div className="flex flex-1">
+              {days.map((day) => (
+                <div
+                  key={day.toISOString()}
+                  className={`flex-1 border-l border-t border-gray-100 dark:border-gray-800 relative ${isToday(day) ? "bg-blue-50/20" : ""}`}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {/* Current time indicator */}
+        {days.some(isToday) && (() => {
+          const now = new Date();
+          const minutesSince6am = (getHours(now) - 6) * 60 + getMinutes(now);
+          if (minutesSince6am < 0 || minutesSince6am > HOURS.length * 60) return null;
+          const top = minutesSince6am;
+          const todayIdx = days.findIndex(isToday);
+          const leftPct = (todayIdx / days.length) * 100;
+          const widthPct = 100 / days.length;
+          return (
+            <div
+              className="absolute pointer-events-none z-20"
+              style={{ top: `${top}px`, left: `56px`, right: 0 }}
+            >
+              <div style={{ marginLeft: `${leftPct}%`, width: `${widthPct}%` }} className="relative">
+                <div className="absolute left-0 -top-[4px] w-2 h-2 rounded-full bg-red-500" />
+                <div className="h-[2px] bg-red-500 w-full" />
               </div>
-            </button>
+            </div>
+          );
+        })()}
+
+        {/* Event blocks */}
+        {days.map((day, dayIdx) => {
+          const acts = getActivitiesForDay(day);
+          const gEvents = googleEventsForDay(day);
+          const leftPct = (dayIdx / days.length) * 100;
+          const widthPct = 100 / days.length;
+
+          return (
+            <div key={day.toISOString()}>
+              {acts.map((act) => {
+                const scheduled = act.scheduledAt ? parseISO(act.scheduledAt) : null;
+                if (!scheduled || !isValid(scheduled)) return null;
+                const h = getHours(scheduled);
+                const m = getMinutes(scheduled);
+                const minutesSince6am = (h - 6) * 60 + m;
+                if (minutesSince6am < 0) return null;
+                const cfg = ACTIVITY_TYPES[act.type] || ACTIVITY_TYPES.task;
+
+                return (
+                  <button
+                    key={act.id}
+                    onClick={() => onActivityClick(act)}
+                    className="absolute z-[15] rounded px-1.5 py-0.5 text-left overflow-hidden cursor-pointer hover:opacity-90 transition-opacity group"
+                    style={{
+                      top: `${minutesSince6am}px`,
+                      left: `calc(56px + ${leftPct}% + 2px)`,
+                      width: `calc(${widthPct}% - 6px)`,
+                      height: '54px',
+                      backgroundColor: act.completed ? '#f3f4f6' : cfg.bg,
+                      borderLeft: `3px solid ${act.completed ? '#9ca3af' : cfg.color}`,
+                      borderTop: `1px solid ${act.completed ? '#d1d5db' : cfg.border}`,
+                      borderRight: `1px solid ${act.completed ? '#d1d5db' : cfg.border}`,
+                      borderBottom: `1px solid ${act.completed ? '#d1d5db' : cfg.border}`,
+                    }}
+                  >
+                    <p className={`text-[11px] font-medium truncate ${act.completed ? "line-through text-gray-400" : ""}`}
+                      style={act.completed ? {} : { color: cfg.color }}
+                    >
+                      {act.title || act.description || cfg.label}
+                    </p>
+                    <p className="text-[10px] text-gray-500 truncate">
+                      {format(scheduled, "HH:mm")} · {cfg.label}
+                    </p>
+                  </button>
+                );
+              })}
+
+              {showGoogleEvents && gEvents.map((ev, evIdx) => {
+                const startStr = ev.start?.dateTime || ev.start?.date;
+                if (!startStr) return null;
+                const start = parseISO(startStr);
+                if (!isValid(start)) return null;
+                const isAllDay = !ev.start?.dateTime;
+                const minutesSince6am = isAllDay ? 0 : (getHours(start) - 6) * 60 + getMinutes(start);
+                if (minutesSince6am < 0 && !isAllDay) return null;
+                const isSalesTwo = ev.summary?.startsWith("[SalesTwo]");
+
+                return (
+                  <div
+                    key={`gcal-${ev.id || evIdx}`}
+                    className="absolute z-[5] rounded px-1.5 py-0.5 overflow-hidden"
+                    style={{
+                      top: `${minutesSince6am}px`,
+                      left: `calc(56px + ${leftPct}% + 2px)`,
+                      width: `calc(${widthPct}% - 6px)`,
+                      height: '54px',
+                      backgroundColor: isSalesTwo ? '#fef3c7' : '#e0f2fe',
+                      borderLeft: `3px solid ${isSalesTwo ? '#f59e0b' : '#0ea5e9'}`,
+                      borderTop: `1px solid ${isSalesTwo ? '#fcd34d' : '#bae6fd'}`,
+                      borderRight: `1px solid ${isSalesTwo ? '#fcd34d' : '#bae6fd'}`,
+                      borderBottom: `1px solid ${isSalesTwo ? '#fcd34d' : '#bae6fd'}`,
+                    }}
+                  >
+                    <p className="text-[11px] font-medium truncate" style={{ color: isSalesTwo ? '#92400e' : '#0369a1' }}>
+                      {ev.summary}
+                    </p>
+                    <p className="text-[10px] text-gray-500 truncate">
+                      {format(start, "HH:mm")} · Google Calendar
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
           );
         })}
       </div>
@@ -702,49 +626,67 @@ function WeekView({ weekStart, selectedDate, setSelectedDate, setViewMode, getAc
   );
 }
 
-function MonthView({ currentMonth, setCurrentMonth, calDays, selectedDate, setSelectedDate, setViewMode, getActivitiesForDay, googleEventsForDay, showGoogleEvents }) {
+function MonthGrid({ calDays, currentMonth, selectedDate, setSelectedDate, getActivitiesForDay, googleEventsForDay, showGoogleEvents }) {
   return (
-    <div>
-      <div className="flex items-center justify-between px-5 py-3 border-b bg-white dark:bg-gray-800">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
-          <ChevronLeft className="w-4 h-4" />
-        </Button>
-        <p className="text-sm font-semibold capitalize">
-          {format(currentMonth, "MMMM yyyy", { locale: ptBR })}
-        </p>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
-          <ChevronRight className="w-4 h-4" />
-        </Button>
-      </div>
-      <div className="grid grid-cols-7">
-        {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((n) => (
-          <div key={n} className="text-center text-[10px] uppercase font-semibold text-gray-500 py-2 border-b">{n}</div>
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-700">
+        {["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"].map((n) => (
+          <div key={n} className="text-center text-[11px] font-medium text-gray-500 py-2">{n}</div>
         ))}
+      </div>
+      <div className="flex-1 grid grid-cols-7 auto-rows-fr overflow-hidden">
         {calDays.map((day, idx) => {
           const acts = getActivitiesForDay(day);
-          const isMonth = isSameMonth(day, currentMonth);
+          const gEvents = googleEventsForDay(day);
+          const inMonth = isSameMonth(day, currentMonth);
           const isT = isToday(day);
           const isSel = isSameDay(day, selectedDate);
+
           return (
             <button
               key={idx}
-              onClick={() => { setSelectedDate(day); setViewMode("day"); }}
-              className={`min-h-[70px] p-1 border-b border-r text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/50 ${
-                !isMonth ? "opacity-30" : ""
-              } ${isT ? "bg-orange-50/50" : ""}`}
+              onClick={() => setSelectedDate(day)}
+              className={`border-b border-r border-gray-100 dark:border-gray-800 p-1 text-left overflow-hidden hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
+                !inMonth ? "opacity-40" : ""
+              } ${isT ? "bg-blue-50/40" : ""}`}
             >
-              <p className={`text-xs font-medium mb-0.5 ${isT ? "font-bold" : ""}`} style={isT ? { color: BRAND.burgundy } : {}}>
-                {format(day, "d")}
-              </p>
-              {acts.length > 0 && (
-                <div className="flex flex-wrap gap-0.5">
-                  {acts.slice(0, 3).map((a) => {
-                    const c = ACTIVITY_TYPES[a.type] || ACTIVITY_TYPES.task;
-                    return <div key={a.id} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: c.dot }} />;
-                  })}
-                  {acts.length > 3 && <span className="text-[9px] text-gray-400">+{acts.length - 3}</span>}
-                </div>
-              )}
+              <div className="flex items-center gap-1 mb-0.5">
+                <span className={`text-xs inline-flex items-center justify-center ${
+                  isT ? "bg-blue-600 text-white w-6 h-6 rounded-full font-semibold" : "text-gray-700 dark:text-gray-300"
+                }`}>
+                  {format(day, "d")}
+                </span>
+              </div>
+              <div className="space-y-0.5">
+                {acts.slice(0, 3).map((act) => {
+                  const cfg = ACTIVITY_TYPES[act.type] || ACTIVITY_TYPES.task;
+                  return (
+                    <div
+                      key={act.id}
+                      className="text-[10px] font-medium truncate rounded px-1 py-0.5"
+                      style={{
+                        backgroundColor: act.completed ? '#f3f4f6' : cfg.bg,
+                        color: act.completed ? '#9ca3af' : cfg.color,
+                        borderLeft: `2px solid ${act.completed ? '#d1d5db' : cfg.color}`,
+                      }}
+                    >
+                      {act.title || act.description || cfg.label}
+                    </div>
+                  );
+                })}
+                {acts.length > 3 && (
+                  <p className="text-[10px] text-gray-400 font-medium pl-1">+{acts.length - 3} mais</p>
+                )}
+                {showGoogleEvents && gEvents.slice(0, 2).map((ev, i) => (
+                  <div
+                    key={`g-${i}`}
+                    className="text-[10px] font-medium truncate rounded px-1 py-0.5"
+                    style={{ backgroundColor: '#e0f2fe', color: '#0369a1', borderLeft: '2px solid #0ea5e9' }}
+                  >
+                    {ev.summary}
+                  </div>
+                ))}
+              </div>
             </button>
           );
         })}
@@ -753,7 +695,7 @@ function MonthView({ currentMonth, setCurrentMonth, calDays, selectedDate, setSe
   );
 }
 
-function MiniCalendar({ currentMonth, setCurrentMonth, selectedDate, setSelectedDate, getActivitiesForDay }) {
+function SidebarMiniCalendar({ currentMonth, setCurrentMonth, selectedDate, setSelectedDate, getActivitiesForDay }) {
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const calStart = startOfWeek(monthStart, { locale: ptBR });
@@ -763,122 +705,128 @@ function MiniCalendar({ currentMonth, setCurrentMonth, selectedDate, setSelected
   while (day <= calEnd) { days.push(day); day = addDays(day, 1); }
 
   return (
-    <Card className="border-0 shadow-sm">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-1 hover:bg-gray-100 rounded">
-            <ChevronLeft className="w-3.5 h-3.5 text-gray-500" />
-          </button>
-          <p className="text-xs font-semibold capitalize text-gray-700 dark:text-gray-200">
-            {format(currentMonth, "MMMM yyyy", { locale: ptBR })}
-          </p>
-          <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-1 hover:bg-gray-100 rounded">
-            <ChevronRight className="w-3.5 h-3.5 text-gray-500" />
-          </button>
-        </div>
-        <div className="grid grid-cols-7 gap-0.5">
-          {["D", "S", "T", "Q", "Q", "S", "S"].map((n, i) => (
-            <div key={i} className="text-center text-[10px] text-gray-400 font-medium py-0.5">{n}</div>
-          ))}
-          {days.map((d, i) => {
-            const isMonth = isSameMonth(d, currentMonth);
-            const isT = isToday(d);
-            const isSel = isSameDay(d, selectedDate);
-            const hasActs = getActivitiesForDay(d).length > 0;
-            return (
-              <button
-                key={i}
-                onClick={() => setSelectedDate(d)}
-                className={`relative text-[11px] py-1 rounded transition-colors ${
-                  !isMonth ? "text-gray-300 dark:text-gray-600" : "text-gray-700 dark:text-gray-200"
-                } ${isSel ? "text-white font-bold" : ""} ${isT && !isSel ? "font-bold" : ""} hover:bg-gray-100 dark:hover:bg-gray-700`}
-                style={isSel ? { background: BRAND.burgundy } : isT ? { color: BRAND.coral } : {}}
-              >
-                {format(d, "d")}
-                {hasActs && !isSel && (
-                  <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full" style={{ background: BRAND.coral }} />
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+          <ChevronLeft className="w-3.5 h-3.5 text-gray-500" />
+        </button>
+        <p className="text-xs font-semibold capitalize text-gray-700 dark:text-gray-200">
+          {format(currentMonth, "MMMM yyyy", { locale: ptBR })}
+        </p>
+        <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+          <ChevronRight className="w-3.5 h-3.5 text-gray-500" />
+        </button>
+      </div>
+      <div className="grid grid-cols-7 gap-0.5">
+        {["D", "S", "T", "Q", "Q", "S", "S"].map((n, i) => (
+          <div key={i} className="text-center text-[10px] text-gray-400 font-medium py-0.5">{n}</div>
+        ))}
+        {days.map((d, i) => {
+          const isMonth = isSameMonth(d, currentMonth);
+          const isT = isToday(d);
+          const isSel = isSameDay(d, selectedDate);
+          const hasActs = getActivitiesForDay(d).length > 0;
+          return (
+            <button
+              key={i}
+              onClick={() => setSelectedDate(d)}
+              className={`relative text-[11px] py-1 rounded-full transition-colors ${
+                !isMonth ? "text-gray-300 dark:text-gray-600" : "text-gray-700 dark:text-gray-200"
+              } ${isSel ? "text-white font-bold" : ""} ${isT && !isSel ? "font-bold" : ""} hover:bg-gray-100 dark:hover:bg-gray-700`}
+              style={isSel ? { background: BRAND.burgundy } : isT ? { color: BRAND.coral } : {}}
+            >
+              {format(d, "d")}
+              {hasActs && !isSel && (
+                <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full" style={{ background: BRAND.coral }} />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
-function OverdueItem({ activity, getLeadById, handleToggle }) {
+function ActivityPopover({ activity, getLeadById, handleToggle, onClose }) {
   const cfg = ACTIVITY_TYPES[activity.type] || ACTIVITY_TYPES.task;
   const Icon = cfg.icon;
   const leadId = getVal(activity, "leadId", "lead_id");
   const lead = getLeadById(leadId, activity._leadType);
+  const scheduledAt = activity.scheduledAt ? parseISO(activity.scheduledAt) : null;
 
   return (
-    <div className="flex items-start gap-2 p-2 rounded-lg bg-red-50 dark:bg-red-950/20">
-      <Icon className="w-3.5 h-3.5 mt-0.5 text-red-400 flex-shrink-0" />
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-medium truncate text-gray-800 dark:text-gray-200">{activity.title || "Atividade"}</p>
-        {lead && <p className="text-[10px] text-gray-500 truncate">{lead.name || lead.company_name || lead.companyName}</p>}
-        <p className="text-[10px] text-red-500 mt-0.5">
-          {activity.scheduledAt && format(parseISO(activity.scheduledAt), "dd/MM HH:mm", { locale: ptBR })}
-        </p>
-      </div>
-      <button
-        onClick={() => handleToggle(activity.id, false, activity._leadType)}
-        className="p-1 text-green-600 hover:bg-green-100 rounded flex-shrink-0"
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-[380px] max-w-[90vw] overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
       >
-        <CheckCircle2 className="w-3.5 h-3.5" />
-      </button>
-    </div>
-  );
-}
-
-function UpcomingList({ filtered, today, getLeadById }) {
-  const upcoming = filtered
-    .filter((a) => {
-      if (!a.scheduledAt || a.completed) return false;
-      try { const d = parseISO(a.scheduledAt); return isFuture(d) && !isSameDay(d, today); } catch { return false; }
-    })
-    .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
-    .slice(0, 8);
-
-  if (!upcoming.length) {
-    return (
-      <div className="text-center py-6">
-        <CalendarIcon className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-        <p className="text-xs text-gray-400">Nenhuma atividade futura</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      {upcoming.map((act) => {
-        const cfg = ACTIVITY_TYPES[act.type] || ACTIVITY_TYPES.task;
-        const Icon = cfg.icon;
-        const leadId = getVal(act, "leadId", "lead_id");
-        const lead = getLeadById(leadId, act._leadType);
-        return (
-          <div key={act.id} className="flex items-start gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-800/50">
-            <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ background: cfg.dot }} />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium truncate">{act.title || "Atividade"}</p>
-              {lead && (
-                <Link
-                  to={createPageUrl(lead._leadType === "pj" ? "LeadPJDetail" : "LeadDetail", { id: lead.id })}
-                  className="text-[10px] hover:underline"
-                  style={{ color: BRAND.burgundy }}
-                >
-                  {lead.name || lead.company_name || lead.companyName}
-                </Link>
-              )}
-              <p className="text-[10px] text-gray-500 mt-0.5">
-                {act.scheduledAt && format(parseISO(act.scheduledAt), "dd/MM HH:mm", { locale: ptBR })}
-              </p>
+        <div className="h-2" style={{ backgroundColor: cfg.color }} />
+        <div className="p-5">
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: cfg.bg }}>
+                <Icon className="w-4 h-4" style={{ color: cfg.color }} />
+              </div>
+              <div>
+                <Badge className="text-[10px] px-1.5 py-0" style={{ backgroundColor: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>
+                  {cfg.label}
+                </Badge>
+              </div>
             </div>
+            <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+              <X className="w-4 h-4 text-gray-400" />
+            </button>
           </div>
-        );
-      })}
-    </div>
+
+          <h3 className={`text-base font-semibold mb-2 ${activity.completed ? "line-through text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>
+            {activity.title || activity.description || "Atividade"}
+          </h3>
+
+          {activity.description && activity.title && (
+            <p className="text-sm text-gray-500 mb-3">{activity.description}</p>
+          )}
+
+          <div className="space-y-2 text-sm">
+            {scheduledAt && isValid(scheduledAt) && (
+              <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                <Clock className="w-4 h-4 flex-shrink-0" />
+                <span>{format(scheduledAt, "EEEE, dd 'de' MMMM · HH:mm", { locale: ptBR })}</span>
+              </div>
+            )}
+            {lead && (
+              <Link
+                to={createPageUrl(lead._leadType === "pj" ? "LeadPJDetail" : "LeadDetail", { id: lead.id })}
+                className="flex items-center gap-2 hover:underline"
+                style={{ color: BRAND.burgundy }}
+              >
+                <User className="w-4 h-4 flex-shrink-0" />
+                <span>{lead.name || lead.company_name || lead.companyName}</span>
+                {lead._leadType === "pj" && <Badge className="text-[9px] px-1 py-0 bg-blue-100 text-blue-700">PJ</Badge>}
+                <ExternalLink className="w-3 h-3" />
+              </Link>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 mt-4 pt-3 border-t border-gray-100 dark:border-gray-700">
+            <Button
+              size="sm"
+              variant={activity.completed ? "outline" : "default"}
+              className="flex-1 text-xs h-8"
+              style={activity.completed ? {} : { background: `linear-gradient(135deg, ${BRAND.burgundy}, ${BRAND.coral})` }}
+              onClick={() => { handleToggle(activity.id, activity.completed, activity._leadType); onClose(); }}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+              {activity.completed ? "Reabrir" : "Concluir"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </motion.div>
   );
 }

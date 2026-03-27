@@ -337,7 +337,8 @@ CREATE TABLE IF NOT EXISTS activities (
     assigned_to VARCHAR(255),
     metadata JSONB,
     created_by UUID REFERENCES agents(id),
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    google_event_id VARCHAR(255)
 );
 
 CREATE TABLE IF NOT EXISTS visits (

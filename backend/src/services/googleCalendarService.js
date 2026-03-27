@@ -201,7 +201,7 @@ function activityToGCalEvent(activity) {
   };
 }
 
-export async function createGoogleEvent(agentId, activity) {
+export async function createGoogleEvent(agentId, activity, tableName = 'activities_pj') {
   const oauth2 = await getAuthenticatedClient(agentId);
   if (!oauth2) return null;
 
@@ -216,14 +216,15 @@ export async function createGoogleEvent(agentId, activity) {
     });
 
     if (result.data.id && activity.id) {
+      const safeTable = tableName === 'activities' ? 'activities' : 'activities_pj';
       await query(
-        'UPDATE activities_pj SET google_event_id = $1 WHERE id = $2',
+        `UPDATE ${safeTable} SET google_event_id = $1 WHERE id = $2`,
         [result.data.id, activity.id]
       );
     }
 
     console.log(`[GCal] Event created: ${result.data.id} for activity ${activity.id}`);
-    return result.data.id;
+    return { id: result.data.id };
   } catch (error) {
     console.error('[GCal] Error creating event:', error.message);
     if (error.code === 401) {
