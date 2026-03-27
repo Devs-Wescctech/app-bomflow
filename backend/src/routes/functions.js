@@ -3484,10 +3484,12 @@ async function getCommissionReportData() {
 }
 
 function getCommissionByTier(totalConversions) {
-  if (totalConversions >= 13) return 200;
-  if (totalConversions >= 4) return 150;
-  if (totalConversions >= 1) return 100;
-  return 0;
+  let unitValue;
+  if (totalConversions >= 13) unitValue = 200;
+  else if (totalConversions >= 4) unitValue = 150;
+  else if (totalConversions >= 1) unitValue = 100;
+  else return 0;
+  return unitValue * totalConversions;
 }
 
 function formatPhoneNumber(phone) {

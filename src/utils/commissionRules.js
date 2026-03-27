@@ -14,7 +14,8 @@ export function calculateCommissionValue(level) {
 
 export function getCommissionFromConversions(totalConversions) {
   const level = calculateCommissionLevel(totalConversions);
-  const value = calculateCommissionValue(level);
+  const unitValue = calculateCommissionValue(level);
+  const value = unitValue * (totalConversions || 0);
   return { level, value };
 }
 
