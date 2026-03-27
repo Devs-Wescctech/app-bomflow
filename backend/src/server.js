@@ -116,7 +116,7 @@ initDatabase()
           WHERE a.completed = false
             AND a.scheduled_at > $1
             AND a.scheduled_at <= $2
-            AND CAST(a.id AS TEXT) NOT IN (
+            AND a.id NOT IN (
               SELECT entity_id FROM notifications
               WHERE entity_type = 'activity_pj_reminder'
               AND entity_id IS NOT NULL
@@ -138,7 +138,7 @@ initDatabase()
             message: `"${act.description || 'Atividade'}" está agendada para ${scheduledAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`,
             link: '/Agenda',
             entityType: 'activity_pj_reminder',
-            entityId: String(act.id),
+            entityId: act.id,
             priority: 'high',
           });
         }
