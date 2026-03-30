@@ -125,7 +125,7 @@ export async function sendWhatsAppMessageWithToken(lead, agent, templateId, chan
   const brazilNumber = formattedNumber.startsWith('55') ? formattedNumber : `55${formattedNumber}`;
   const leadName = lead.name || lead.referred_name || lead.contact_name || 'Cliente';
 
-  const components = templateComponents || [
+  const components = Array.isArray(templateComponents) ? templateComponents : [
     {
       type: 'BODY',
       parameters: [
