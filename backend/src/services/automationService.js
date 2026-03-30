@@ -180,7 +180,11 @@ async function checkContatoSequencialTrigger(automation, contatoNumero, channelT
           const actionConfig = typeof automation.action_config === 'string'
             ? JSON.parse(automation.action_config || '{}')
             : automation.action_config || {};
-          const templateComponents = actionConfig.template_has_variables === false ? [] : undefined;
+          let hasVars = actionConfig.template_has_variables;
+          if (hasVars === undefined && actionConfig.templateMessage) {
+            hasVars = /\{\{\d+\}\}/.test(actionConfig.templateMessage);
+          }
+          const templateComponents = hasVars === false ? [] : undefined;
           const result = await sendWhatsAppMessageWithToken(lead, null, automation.whatsapp_template_id, channelToken, templateComponents);
 
           const colName = contatoNumero === 2 ? 'data_segundo_contato' : contatoNumero === 3 ? 'data_terceiro_contato' : 'data_quarto_contato';
@@ -302,7 +306,11 @@ async function executeChannelAutomationAction(automation, lead, automationType, 
       if (automation.whatsapp_template_id) {
         try {
           const agent = lead.agent_id ? { id: lead.agent_id, name: lead.agent_name, phone: lead.agent_phone } : null;
-          const templateComponents = actionConfig.template_has_variables === false ? [] : undefined;
+          let hasVarsAction = actionConfig.template_has_variables;
+          if (hasVarsAction === undefined && actionConfig.templateMessage) {
+            hasVarsAction = /\{\{\d+\}\}/.test(actionConfig.templateMessage);
+          }
+          const templateComponents = hasVarsAction === false ? [] : undefined;
           const result = await sendWhatsAppMessageWithToken(lead, agent, automation.whatsapp_template_id, channelToken, templateComponents);
           
           await logAutomationExecution({
