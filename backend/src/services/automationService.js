@@ -112,10 +112,113 @@ export async function checkAndExecuteReferralChannelAutomations() {
 
       if (automation.trigger_type === 'inactivity' || automation.trigger_type === 'stage_duration') {
         await checkInactivityTriggerWithToken(automation, triggerConfig, 'referral_channel', 'referrals', automation.channel_token);
+      } else if (automation.trigger_type === 'segundo_contato') {
+        await checkContatoSequencialTrigger(automation, 2, automation.channel_token);
+      } else if (automation.trigger_type === 'terceiro_contato') {
+        await checkContatoSequencialTrigger(automation, 3, automation.channel_token);
+      } else if (automation.trigger_type === 'quarto_contato') {
+        await checkContatoSequencialTrigger(automation, 4, automation.channel_token);
       }
     }
   } catch (error) {
     console.error('Error checking referral channel automations:', error);
+  }
+}
+
+async function checkContatoSequencialTrigger(automation, contatoNumero, channelToken) {
+  try {
+    let sqlQuery;
+    const contatoLabel = contatoNumero === 2 ? '2° Contato' : contatoNumero === 3 ? '3° Contato' : '4° Contato';
+
+    if (contatoNumero === 2) {
+      sqlQuery = `
+        SELECT id, lead_number, lead_name, team_id, whu_chat_id
+        FROM gerador_leads_whatsapp_logs
+        WHERE retorno_whu IS DISTINCT FROM true
+        AND data_segundo_contato IS NULL
+        AND sent_at <= NOW() - INTERVAL '7 days'
+        AND success = true
+        ORDER BY sent_at ASC
+        LIMIT 50
+      `;
+    } else if (contatoNumero === 3) {
+      sqlQuery = `
+        SELECT id, lead_number, lead_name, team_id, whu_chat_id
+        FROM gerador_leads_whatsapp_logs
+        WHERE retorno_whu IS DISTINCT FROM true
+        AND data_terceiro_contato IS NULL
+        AND data_segundo_contato IS NOT NULL
+        AND data_segundo_contato <= NOW() - INTERVAL '7 days'
+        ORDER BY data_segundo_contato ASC
+        LIMIT 50
+      `;
+    } else {
+      sqlQuery = `
+        SELECT id, lead_number, lead_name, team_id, whu_chat_id
+        FROM gerador_leads_whatsapp_logs
+        WHERE retorno_whu IS DISTINCT FROM true
+        AND data_quarto_contato IS NULL
+        AND data_terceiro_contato IS NOT NULL
+        AND data_terceiro_contato <= NOW() - INTERVAL '7 days'
+        ORDER BY data_terceiro_contato ASC
+        LIMIT 50
+      `;
+    }
+
+    const leadsResult = await query(sqlQuery);
+    console.log(`[ChannelAutomation] ${automation.name} (${contatoLabel}): Found ${leadsResult.rows.length} leads matching criteria`);
+
+    for (const logEntry of leadsResult.rows) {
+      const lead = {
+        id: logEntry.id,
+        phone: logEntry.lead_number,
+        name: logEntry.lead_name || 'Lead',
+      };
+
+      try {
+        if (automation.action_type === 'send_whatsapp' && automation.whatsapp_template_id) {
+          const result = await sendWhatsAppMessageWithToken(lead, null, automation.whatsapp_template_id, channelToken);
+
+          const colName = contatoNumero === 2 ? 'data_segundo_contato' : contatoNumero === 3 ? 'data_terceiro_contato' : 'data_quarto_contato';
+          await query(`UPDATE gerador_leads_whatsapp_logs SET ${colName} = NOW() WHERE id = $1`, [logEntry.id]);
+
+          await logAutomationExecution({
+            automationType: 'referral_channel',
+            automationId: automation.id,
+            automationName: automation.name,
+            leadId: logEntry.id,
+            leadName: lead.name,
+            leadPhone: lead.phone,
+            agentId: null,
+            agentName: null,
+            actionType: automation.action_type,
+            status: 'sent',
+            message: `${contatoLabel} enviado - Template: ${automation.whatsapp_template_name || automation.whatsapp_template_id}`,
+            apiResponse: result
+          });
+
+          console.log(`[ChannelAutomation] ${automation.name}: ${contatoLabel} sent to ${lead.name} (${lead.phone})`);
+        }
+      } catch (sendError) {
+        console.error(`[ChannelAutomation] ${automation.name}: Failed ${contatoLabel} to ${lead.name}:`, sendError.message);
+        await logAutomationExecution({
+          automationType: 'referral_channel',
+          automationId: automation.id,
+          automationName: automation.name,
+          leadId: logEntry.id,
+          leadName: lead.name,
+          leadPhone: lead.phone,
+          agentId: null,
+          agentName: null,
+          actionType: automation.action_type,
+          status: 'error',
+          message: `${contatoLabel} falhou`,
+          errorMessage: sendError.message
+        });
+      }
+    }
+  } catch (error) {
+    console.error(`Error checking contato sequencial trigger (${contatoNumero}):`, error);
   }
 }
 

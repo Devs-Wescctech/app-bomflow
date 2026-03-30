@@ -70,6 +70,7 @@ Wescctech CRM is a comprehensive, self-hosted Customer Relationship Management s
 - **Channel Automations**: Separate automation system within Indicações module allowing per-channel WhatsApp token configuration for inactivity and stage duration triggers.
 - **Indicador PIX Key**: PIX payment keys stored per-CPF, integrated into referral creation, commission reports, and payment control.
 - **Agent WhatsApp Channel Token**: Individual `whatsapp_channel_token` for agents for WHU/Rudo integration.
+- **Sequential Contact Triggers (2°/3°/4° Contato)**: Three new trigger types (`segundo_contato`, `terceiro_contato`, `quarto_contato`) in "Automações por Canal" module. Based on `gerador_leads_whatsapp_logs` table: if `retorno_whu != true` after 7 days of the previous contact, sends configured WhatsApp template. Columns: `data_segundo_contato`, `data_terceiro_contato`, `data_quarto_contato` (TIMESTAMP). Chain: 1° disparo original → 7d → 2° contato → 7d → 3° contato → 7d → 4° contato. If `retorno_whu = true` at any point, subsequent contacts are cancelled. Backend handler: `checkContatoSequencialTrigger()` in `automationService.js`. Runs via same `setInterval` scheduler (every 60 min).
 - **WHU ChatId Verification API**: Public endpoint for WHU webhook callbacks to update dispatch logs.
 - **Lead WhatsApp Contact Log**: Logs agent-initiated WhatsApp contacts with leads.
 

@@ -60,6 +60,9 @@ const TRIGGER_TYPES = [
   { value: "inactivity", label: "Inatividade" },
   { value: "no_activity", label: "Sem Atividade" },
   { value: "no_contact", label: "Sem Contato" },
+  { value: "segundo_contato", label: "2° Contato (Sem Resposta em 7 dias)" },
+  { value: "terceiro_contato", label: "3° Contato (Sem Resposta em 7 dias)" },
+  { value: "quarto_contato", label: "4° Contato (Sem Resposta em 7 dias)" },
 ];
 
 const ACTION_TYPES = [
