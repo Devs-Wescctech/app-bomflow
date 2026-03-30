@@ -473,7 +473,12 @@ export default function ReferralChannelAutomations() {
           templateId: formData.whatsapp_template_id,
           templateName: formData.whatsapp_template_name,
           channelToken: channelToken.trim(),
-          templateHasVariables: formData.action_config?.template_has_variables !== false,
+          templateHasVariables: (() => {
+            const flag = formData.action_config?.template_has_variables;
+            if (flag !== undefined) return flag;
+            const msg = formData.action_config?.templateMessage || '';
+            return /\{\{\d+\}\}/.test(msg);
+          })(),
         }),
       });
       const data = await resp.json();
