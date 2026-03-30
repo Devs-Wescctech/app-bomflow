@@ -1829,7 +1829,10 @@ router.post('/send-proposal-whatsapp', authMiddleware, async (req, res) => {
     
     console.log('[WhatsApp] PDF URL:', fullPdfUrl);
     
-    const PROPOSAL_TEMPLATE_ID = '697a2b0d532f3df41d2288dc';
+    const templateSettingResult = await query(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'proposal_template_id' LIMIT 1"
+    );
+    const PROPOSAL_TEMPLATE_ID = templateSettingResult.rows[0]?.setting_value || '697a2b0d532f3df41d2288dc';
     
     const templateComponents = [
       {
@@ -1852,9 +1855,12 @@ router.post('/send-proposal-whatsapp', authMiddleware, async (req, res) => {
       }
     ];
     
-    const token = process.env.RUDO_WHATSAPP_TOKEN;
+    const tokenResult = await query(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'automation_token' LIMIT 1"
+    );
+    const token = tokenResult.rows[0]?.setting_value || process.env.RUDO_WHATSAPP_TOKEN;
     if (!token) {
-      throw new Error('RUDO_WHATSAPP_TOKEN não configurado');
+      throw new Error('Token de WhatsApp não configurado. Configure no menu de Automações.');
     }
     
     const body = {
@@ -2350,10 +2356,13 @@ router.post('/autentiqueCreateDocument', authMiddleware, async (req, res) => {
       return res.status(400).json({ success: false, error: 'lead_id e contract_url sao obrigatorios' });
     }
 
-    const AUTENTIQUE_TOKEN = process.env.AUTENTIQUE_TOKEN;
+    const autentiqueTokenResult = await query(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'autentique_token' LIMIT 1"
+    );
+    const AUTENTIQUE_TOKEN = autentiqueTokenResult.rows[0]?.setting_value || process.env.AUTENTIQUE_TOKEN;
     if (!AUTENTIQUE_TOKEN) {
       console.log('[Autentique] Token not configured');
-      return res.status(500).json({ success: false, error: 'Token Autentique nao configurado' });
+      return res.status(500).json({ success: false, error: 'Token Autentique não configurado. Configure em Configurações > Integrações.' });
     }
     console.log('[Autentique] Token found, length:', AUTENTIQUE_TOKEN.length);
 
@@ -2523,9 +2532,12 @@ router.post('/autentiqueCheckStatus', authMiddleware, async (req, res) => {
       return res.status(400).json({ success: false, error: 'lead_id e obrigatorio' });
     }
 
-    const AUTENTIQUE_TOKEN = process.env.AUTENTIQUE_TOKEN;
+    const autentiqueTokenResult2 = await query(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'autentique_token' LIMIT 1"
+    );
+    const AUTENTIQUE_TOKEN = autentiqueTokenResult2.rows[0]?.setting_value || process.env.AUTENTIQUE_TOKEN;
     if (!AUTENTIQUE_TOKEN) {
-      return res.status(500).json({ success: false, error: 'Token Autentique nao configurado' });
+      return res.status(500).json({ success: false, error: 'Token Autentique não configurado. Configure em Configurações > Integrações.' });
     }
 
     let tableName = 'leads';
@@ -2695,9 +2707,12 @@ router.post('/autentiqueCheckStatus', authMiddleware, async (req, res) => {
 
 router.get('/autentiqueTest', authMiddleware, async (req, res) => {
   try {
-    const AUTENTIQUE_TOKEN = process.env.AUTENTIQUE_TOKEN;
+    const autentiqueTokenResult3 = await query(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'autentique_token' LIMIT 1"
+    );
+    const AUTENTIQUE_TOKEN = autentiqueTokenResult3.rows[0]?.setting_value || process.env.AUTENTIQUE_TOKEN;
     if (!AUTENTIQUE_TOKEN) {
-      return res.status(500).json({ success: false, error: 'Token Autentique nao configurado' });
+      return res.status(500).json({ success: false, error: 'Token Autentique não configurado. Configure em Configurações > Integrações.' });
     }
 
     const graphqlQuery = `

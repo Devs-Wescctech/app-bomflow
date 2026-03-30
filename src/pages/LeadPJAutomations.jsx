@@ -62,6 +62,8 @@ export default function LeadPJAutomations() {
   const [testingAutomation, setTestingAutomation] = useState(null);
   const [isTokenDialogOpen, setIsTokenDialogOpen] = useState(false);
   const [automationToken, setAutomationToken] = useState("");
+  const [proposalTemplateId, setProposalTemplateId] = useState("");
+  const [contractTemplateId, setContractTemplateId] = useState("");
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -115,13 +117,16 @@ export default function LeadPJAutomations() {
 
   useEffect(() => {
     if (settings && settings.length > 0) {
-      const tokenSetting = settings.find(s => 
-        (s.settingKey || s.setting_key) === 'automation_token'
-      );
-      if (tokenSetting) {
-        const val = tokenSetting.settingValue || tokenSetting.setting_value;
-        if (val) setAutomationToken(val);
-      }
+      const getVal = (key) => {
+        const s = settings.find(s => (s.settingKey || s.setting_key) === key);
+        return s ? (s.settingValue || s.setting_value) : '';
+      };
+      const tokenVal = getVal('automation_token');
+      if (tokenVal) setAutomationToken(tokenVal);
+      const proposalVal = getVal('proposal_template_id');
+      if (proposalVal) setProposalTemplateId(proposalVal);
+      const contractVal = getVal('contract_template_id');
+      if (contractVal) setContractTemplateId(contractVal);
     }
   }, [settings]);
 
@@ -153,6 +158,31 @@ export default function LeadPJAutomations() {
     onError: (error) => {
       console.error('Error saving token:', error);
       toast.error('Erro ao salvar token de automação');
+    }
+  });
+
+  const saveSettingMutation = useMutation({
+    mutationFn: async ({ key, value }) => {
+      const existingSetting = settings?.find(s => 
+        (s.settingKey || s.setting_key) === key
+      );
+      const data = {
+        setting_key: key,
+        setting_value: value,
+        setting_type: 'text',
+      };
+      if (existingSetting) {
+        return base44.entities.SystemSettings.update(existingSetting.id, data);
+      } else {
+        return base44.entities.SystemSettings.create(data);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['automationSettings'] });
+      toast.success('Configuração salva com sucesso!');
+    },
+    onError: () => {
+      toast.error('Erro ao salvar configuração');
     }
   });
 
@@ -405,6 +435,78 @@ export default function LeadPJAutomations() {
                   Configurado
                 </Badge>
               )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Template Configuration Card */}
+        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 border-blue-200 dark:border-blue-800">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
+                <MessageSquare className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <CardTitle className="text-blue-900 dark:text-blue-100">Templates de Envio</CardTitle>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">Configure os templates usados para envio de proposta e contrato via WhatsApp</p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 bg-white dark:bg-gray-900 rounded-lg border border-blue-200 dark:border-blue-800 space-y-3">
+                <Label className="text-sm font-medium text-gray-900 dark:text-gray-100">Template de Proposta</Label>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Template usado ao enviar propostas comerciais via WhatsApp</p>
+                <div className="flex gap-2">
+                  <Input
+                    value={proposalTemplateId}
+                    onChange={(e) => setProposalTemplateId(e.target.value)}
+                    placeholder="ID do template de proposta"
+                    className="flex-1 text-sm bg-white dark:bg-gray-800"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => saveSettingMutation.mutate({ key: 'proposal_template_id', value: proposalTemplateId })}
+                    disabled={saveSettingMutation.isPending}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <Save className="w-4 h-4" />
+                  </Button>
+                </div>
+                {proposalTemplateId && (
+                  <Badge className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 text-xs">
+                    <CheckCircle2 className="w-3 h-3 mr-1" />
+                    Configurado
+                  </Badge>
+                )}
+              </div>
+
+              <div className="p-4 bg-white dark:bg-gray-900 rounded-lg border border-blue-200 dark:border-blue-800 space-y-3">
+                <Label className="text-sm font-medium text-gray-900 dark:text-gray-100">Template de Contrato</Label>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Template usado ao enviar contratos para assinatura via WhatsApp</p>
+                <div className="flex gap-2">
+                  <Input
+                    value={contractTemplateId}
+                    onChange={(e) => setContractTemplateId(e.target.value)}
+                    placeholder="ID do template de contrato"
+                    className="flex-1 text-sm bg-white dark:bg-gray-800"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => saveSettingMutation.mutate({ key: 'contract_template_id', value: contractTemplateId })}
+                    disabled={saveSettingMutation.isPending}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <Save className="w-4 h-4" />
+                  </Button>
+                </div>
+                {contractTemplateId && (
+                  <Badge className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 text-xs">
+                    <CheckCircle2 className="w-3 h-3 mr-1" />
+                    Configurado
+                  </Badge>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
