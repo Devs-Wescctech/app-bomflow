@@ -185,6 +185,7 @@ async function checkContatoSequencialTrigger(automation, contatoNumero, channelT
             hasVars = /\{\{\d+\}\}/.test(actionConfig.templateMessage);
           }
           const templateComponents = hasVars === false ? [] : undefined;
+          console.log(`[ChannelAutomation] ${automation.name}: hasVars=${hasVars}, sending components=${JSON.stringify(templateComponents)}`);
           const result = await sendWhatsAppMessageWithToken(lead, null, automation.whatsapp_template_id, channelToken, templateComponents);
 
           const colName = contatoNumero === 2 ? 'data_segundo_contato' : contatoNumero === 3 ? 'data_terceiro_contato' : 'data_quarto_contato';
