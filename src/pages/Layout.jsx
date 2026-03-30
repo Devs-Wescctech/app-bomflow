@@ -234,6 +234,7 @@ const menuModules = [
       { title: "Comissões", url: createPageUrl("ReferralCommissions"), icon: DollarSign, supervisorOnly: true },
       { title: "Ctrl. Pagamento", url: createPageUrl("CommissionPaymentControl"), icon: FileCheck, supervisorOnly: true },
       { title: "Reconciliação", url: createPageUrl("CommissionReconciliation"), icon: Shield, supervisorOnly: true },
+      { title: "Automações por Canal", url: createPageUrl("ReferralChannelAutomations"), icon: Activity, supervisorOnly: true },
     ]
   },
   {
