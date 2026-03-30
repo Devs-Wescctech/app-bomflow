@@ -432,6 +432,7 @@ export default function ReferralChannelAutomations() {
     };
 
     const templateBody = getTemplateBody(template);
+    const hasVariables = /\{\{\d+\}\}/.test(templateBody);
     
     setFormData({
       ...formData,
@@ -440,6 +441,7 @@ export default function ReferralChannelAutomations() {
       action_config: {
         ...formData.action_config,
         templateMessage: templateBody,
+        template_has_variables: hasVariables,
       },
     });
     setShowTemplateSelector(false);
@@ -471,6 +473,7 @@ export default function ReferralChannelAutomations() {
           templateId: formData.whatsapp_template_id,
           templateName: formData.whatsapp_template_name,
           channelToken: channelToken.trim(),
+          templateHasVariables: formData.action_config?.template_has_variables !== false,
         }),
       });
       const data = await resp.json();
@@ -973,9 +976,18 @@ export default function ReferralChannelAutomations() {
                       </Button>
                     </div>
                     {formData.whatsapp_template_id && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        ID: {formData.whatsapp_template_id}
-                      </p>
+                      <div className="mt-1 space-y-1">
+                        <p className="text-xs text-gray-500">
+                          ID: {formData.whatsapp_template_id}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={formData.action_config?.template_has_variables ? "default" : "secondary"} className="text-xs">
+                            {formData.action_config?.template_has_variables 
+                              ? "Template com variável {{1}} (nome do lead)" 
+                              : "Template sem variáveis"}
+                          </Badge>
+                        </div>
+                      </div>
                     )}
 
                     {formData.whatsapp_template_id && (

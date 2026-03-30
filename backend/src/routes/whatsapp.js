@@ -52,7 +52,7 @@ router.get('/templates-by-token', authMiddleware, async (req, res) => {
 
 router.post('/test-send', authMiddleware, async (req, res) => {
   try {
-    const { phone, templateId, templateName, channelToken } = req.body;
+    const { phone, templateId, templateName, channelToken, templateHasVariables } = req.body;
 
     if (!phone) {
       return res.status(400).json({ success: false, error: 'Número de telefone é obrigatório' });
@@ -79,7 +79,8 @@ router.post('/test-send', authMiddleware, async (req, res) => {
       id: req.user?.id,
     };
 
-    const result = await sendWhatsAppMessageWithToken(mockLead, mockAgent, templateId, channelToken, null);
+    const templateComponents = templateHasVariables === false ? [] : undefined;
+    const result = await sendWhatsAppMessageWithToken(mockLead, mockAgent, templateId, channelToken, templateComponents);
     res.json({ success: true, message: `Mensagem de teste enviada para ${formattedPhone}` });
   } catch (error) {
     console.error('Error in test-send:', error);

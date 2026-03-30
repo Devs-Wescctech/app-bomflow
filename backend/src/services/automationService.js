@@ -177,7 +177,11 @@ async function checkContatoSequencialTrigger(automation, contatoNumero, channelT
 
       try {
         if (automation.action_type === 'send_whatsapp' && automation.whatsapp_template_id) {
-          const result = await sendWhatsAppMessageWithToken(lead, null, automation.whatsapp_template_id, channelToken);
+          const actionConfig = typeof automation.action_config === 'string'
+            ? JSON.parse(automation.action_config || '{}')
+            : automation.action_config || {};
+          const templateComponents = actionConfig.template_has_variables === false ? [] : undefined;
+          const result = await sendWhatsAppMessageWithToken(lead, null, automation.whatsapp_template_id, channelToken, templateComponents);
 
           const colName = contatoNumero === 2 ? 'data_segundo_contato' : contatoNumero === 3 ? 'data_terceiro_contato' : 'data_quarto_contato';
           await query(`UPDATE gerador_leads_whatsapp_logs SET ${colName} = NOW() WHERE id = $1`, [logEntry.id]);
@@ -298,7 +302,8 @@ async function executeChannelAutomationAction(automation, lead, automationType, 
       if (automation.whatsapp_template_id) {
         try {
           const agent = lead.agent_id ? { id: lead.agent_id, name: lead.agent_name, phone: lead.agent_phone } : null;
-          const result = await sendWhatsAppMessageWithToken(lead, agent, automation.whatsapp_template_id, channelToken);
+          const templateComponents = actionConfig.template_has_variables === false ? [] : undefined;
+          const result = await sendWhatsAppMessageWithToken(lead, agent, automation.whatsapp_template_id, channelToken, templateComponents);
           
           await logAutomationExecution({
             automationType,
