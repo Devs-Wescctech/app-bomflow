@@ -2261,7 +2261,7 @@ router.post('/signContract', async (req, res) => {
 
 router.post('/send-contract-whatsapp', authMiddleware, async (req, res) => {
   try {
-    const { leadId, lead_type = 'pf' } = req.body;
+    const { leadId, lead_type = 'pj' } = req.body;
     
     let tableName = 'leads';
     if (lead_type === 'pj') {
@@ -2272,7 +2272,7 @@ router.post('/send-contract-whatsapp', authMiddleware, async (req, res) => {
     const leadResult = await query(`SELECT * FROM ${tableName} WHERE id = $1`, [leadId]);
     
     if (leadResult.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Lead nao encontrado' });
+      return res.status(404).json({ success: false, error: 'Lead não encontrado' });
     }
 
     const lead = leadResult.rows[0];
@@ -2292,46 +2292,101 @@ router.post('/send-contract-whatsapp', authMiddleware, async (req, res) => {
     const appDomain = process.env.APP_DOMAIN || (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : `http://localhost:${process.env.PORT || 3001}`);
     const contractUrl = `${appDomain}/PublicContractSign?token=${contractToken}`;
 
-    let phone = lead.phone || lead.whatsapp;
+    let phone = lead.phone || lead.whatsapp || lead.cell_phone;
     if (!phone) {
-      return res.status(400).json({ success: false, error: 'Lead nao possui telefone' });
+      return res.status(400).json({ success: false, error: 'Lead não possui telefone' });
     }
     phone = phone.replace(/\D/g, '');
-    if (phone.length === 11 && !phone.startsWith('55')) {
+    if (!phone.startsWith('55')) {
       phone = '55' + phone;
     }
 
-    const message = `Ola ${lead.name || lead.company_name || lead.contact_name}! 📋
+    const tokenResult = await query(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'automation_token' LIMIT 1"
+    );
+    const token = tokenResult.rows[0]?.setting_value || process.env.RUDO_WHATSAPP_TOKEN;
+    if (!token) {
+      return res.status(500).json({ success: false, error: 'Token de WhatsApp não configurado. Configure no menu de Automações.' });
+    }
 
-Segue o link para assinatura digital do seu contrato:
+    const contractTemplateResult = await query(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'contract_template_id' LIMIT 1"
+    );
+    const contractTemplateId = contractTemplateResult.rows[0]?.setting_value;
 
-${contractUrl}
+    const leadName = lead.name || lead.company_name || lead.contact_name || lead.fantasy_name || 'Cliente';
+    let responseData;
 
-Por favor, acesse o link acima para visualizar e assinar seu contrato digitalmente.
+    if (contractTemplateId) {
+      const templateComponents = [
+        {
+          type: 'BODY',
+          parameters: [
+            { type: 'text', text: leadName },
+            { type: 'text', text: contractUrl }
+          ]
+        }
+      ];
 
-Qualquer duvida, estamos a disposicao!`;
+      const body = {
+        forceSend: true,
+        templateId: contractTemplateId,
+        verifyContact: false,
+        number: phone,
+        templateComponents: templateComponents
+      };
 
-    const body = {
-      phone,
-      message,
-    };
+      console.log('[WhatsApp] Sending contract template:', JSON.stringify(body, null, 2));
 
-    const whuResponse = await fetch(`${WHU_API_URL}/api/v1/1/messages/send-text`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.RUDO_WHATSAPP_TOKEN}`,
-      },
-      body: JSON.stringify(body),
-    });
+      const response = await fetch('https://api.wescctech.com.br/core/v2/api/chats/send-template', {
+        method: 'POST',
+        headers: {
+          'access-token': token,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
 
-    const responseData = await whuResponse.json();
+      responseData = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        console.error('[WhatsApp] Contract template send failed:', responseData);
+        throw new Error(`Falha ao enviar template de contrato: ${responseData.msg || response.statusText}`);
+      }
+    } else {
+      const message = `Olá ${leadName}! 📋\n\nSegue o link para assinatura digital do seu contrato:\n\n${contractUrl}\n\nPor favor, acesse o link acima para visualizar e assinar seu contrato digitalmente.\n\nQualquer dúvida, estamos à disposição!`;
+
+      const body = {
+        number: phone,
+        forceSend: true,
+        text: message,
+      };
+
+      const response = await fetch('https://api.wescctech.com.br/core/v2/api/chats/send-text', {
+        method: 'POST',
+        headers: {
+          'access-token': token,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      responseData = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        console.error('[WhatsApp] Contract text send failed:', responseData);
+        throw new Error(`Falha ao enviar mensagem de contrato: ${responseData.msg || response.statusText}`);
+      }
+    }
+
     console.log('[WhatsApp] Contract link sent:', responseData);
 
     const activityTable = tableName === 'leads' ? 'activities' : 'activities_pj';
     await query(
-      `INSERT INTO ${activityTable} (lead_id, type, title, description, created_at) VALUES ($1, $2, $3, $4, $5)`,
-      [leadId, 'whatsapp', 'Link de contrato enviado via WhatsApp', `Link de assinatura digital enviado para ${phone}`, new Date().toISOString()]
+      `INSERT INTO ${activityTable} (lead_id, type, description, created_at) VALUES ($1, $2, $3, $4)`,
+      [leadId, 'whatsapp', `Link de assinatura digital enviado para ${phone}`, new Date().toISOString()]
     );
 
     res.json({
