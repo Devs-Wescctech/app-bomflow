@@ -219,6 +219,14 @@ export default function LeadPJAutomations() {
     return null;
   };
 
+  const resolveTemplateName = (id, storedName) => {
+    if (storedName) return storedName;
+    if (!id || !Array.isArray(templates)) return id || '';
+    const t = templates.find(tpl => tpl.id === id);
+    if (!t) return id;
+    return t.name || t.templateName || t.description || id;
+  };
+
   const handlePickTemplate = (templateId, purpose) => {
     if (purpose === 'proposal') {
       setProposalTemplateId(templateId);
@@ -252,7 +260,7 @@ export default function LeadPJAutomations() {
     setFormData({
       ...formData,
       whatsapp_template_id: template.id,
-      whatsapp_template_name: template.description || template.id,
+      whatsapp_template_name: template.name || template.templateName || template.description || template.id,
       action_config: {
         ...formData.action_config,
         templateMessage: templateBody,
@@ -374,7 +382,10 @@ export default function LeadPJAutomations() {
         ...actionConfig,
       },
       whatsapp_template_id: automation.whatsappTemplateId || actionConfig.whatsapp_template_id || actionConfig.whatsappTemplateId || "",
-      whatsapp_template_name: automation.whatsappTemplateName || actionConfig.whatsapp_template_name || actionConfig.whatsappTemplateName || "",
+      whatsapp_template_name: resolveTemplateName(
+        automation.whatsappTemplateId || actionConfig.whatsapp_template_id || actionConfig.whatsappTemplateId || "",
+        automation.whatsappTemplateName || actionConfig.whatsapp_template_name || actionConfig.whatsappTemplateName || ""
+      ),
     });
     setIsDialogOpen(true);
   };
@@ -740,9 +751,9 @@ export default function LeadPJAutomations() {
                               Para: {STAGES_PJ.find(s => s.value === (actionConfig.new_stage || actionConfig.newStage))?.label}
                             </p>
                           )}
-                          {automation.actionType === 'send_whatsapp' && automation.whatsappTemplateName && (
+                          {automation.actionType === 'send_whatsapp' && (automation.whatsappTemplateName || automation.whatsappTemplateId) && (
                             <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 truncate">
-                              Template: {automation.whatsappTemplateName}
+                              Template: {resolveTemplateName(automation.whatsappTemplateId, automation.whatsappTemplateName)}
                             </p>
                           )}
                           {automation.actionType === 'send_whatsapp' && actionConfig?.templateMessage && (
@@ -1024,7 +1035,7 @@ export default function LeadPJAutomations() {
                       <Label>Template de WhatsApp *</Label>
                       <div className="mt-1 flex gap-2">
                         <Input
-                          value={formData.whatsapp_template_name || formData.whatsapp_template_id}
+                          value={resolveTemplateName(formData.whatsapp_template_id, formData.whatsapp_template_name)}
                           placeholder="Selecione um template..."
                           readOnly
                           className="flex-1"
@@ -1038,9 +1049,10 @@ export default function LeadPJAutomations() {
                           Selecionar
                         </Button>
                       </div>
-                      {formData.whatsapp_template_id && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          ID: {formData.whatsapp_template_id}
+                      {formData.whatsapp_template_id && formData.whatsapp_template_name && (
+                        <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          {formData.whatsapp_template_name}
                         </p>
                       )}
                     </div>
