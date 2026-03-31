@@ -40,6 +40,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
+const BURGUNDY = '#5A2A3C';
+const CORAL = '#F98F6F';
+
 const MENU_MODULES = [
   {
     id: "sales_pj",
@@ -69,6 +72,18 @@ const MENU_MODULES = [
   }
 ];
 
+const AGENT_TYPE_OPTIONS = [
+  { key: "admin", label: "Administrador" },
+  { key: "sales", label: "Vendedor" },
+  { key: "sales_supervisor", label: "Supervisor de Vendas" },
+];
+
+const AGENT_TYPE_CONFIG = {
+  admin: { label: "Administrador", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
+  sales_supervisor: { label: "Supervisor de Vendas", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" },
+  sales: { label: "Vendedor", color: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300" },
+};
+
 export default function Agents() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("agents");
@@ -94,14 +109,10 @@ export default function Agents() {
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
   const [teamFormData, setTeamFormData] = useState({ name: "", description: "", supervisorEmail: "", active: true });
-  
-  const [queueDialogOpen, setQueueDialogOpen] = useState(false);
-  const [editingQueue, setEditingQueue] = useState(null);
-  const [queueFormData, setQueueFormData] = useState({ name: "", teamId: "", defaultPriority: "P3", active: true });
 
   const [typeDialogOpen, setTypeDialogOpen] = useState(false);
   const [editingType, setEditingType] = useState(null);
-  const [typeFormData, setTypeFormData] = useState({ key: "", label: "", description: "", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300", modules: [], allowedSubmenus: [], active: true });
+  const [typeFormData, setTypeFormData] = useState({ key: "", label: "", description: "", color: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300", modules: [], allowedSubmenus: [], active: true });
   const [expandedModulesInForm, setExpandedModulesInForm] = useState([]);
 
   const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
@@ -115,21 +126,14 @@ export default function Agents() {
     photoUrl: "",
     email: "",
     password: "",
-    agentType: "support",
+    agentType: "sales",
     teamId: "",
-    workUnit: "",
-    erpAgentId: "",
-    queueIds: [],
-    level: "pleno",
     online: false,
     active: true,
-    capacity: { P1: 2, P2: 5, P3: 10, P4: 20 },
     workingHours: { start: "08:00", end: "18:00", days: [1, 2, 3, 4, 5] },
     permissions: {
       can_view_all_leads: false,
       can_view_team_leads: false,
-      can_view_all_tickets: false,
-      can_view_team_tickets: false,
       can_access_reports: false,
       can_manage_agents: false,
       can_manage_settings: false,
@@ -147,14 +151,6 @@ export default function Agents() {
   const { data: teams = [] } = useQuery({
     queryKey: ['teams'],
     queryFn: () => base44.entities.Team.list(),
-    staleTime: 0,
-    refetchOnMount: true,
-    enabled: hasPermission,
-  });
-
-  const { data: queues = [] } = useQuery({
-    queryKey: ['queues'],
-    queryFn: () => base44.entities.Queue.list(),
     staleTime: 0,
     refetchOnMount: true,
     enabled: hasPermission,
@@ -242,43 +238,6 @@ export default function Agents() {
     },
   });
 
-  const createQueueMutation = useMutation({
-    mutationFn: (data) => base44.entities.Queue.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['queues'] });
-      setQueueDialogOpen(false);
-      resetQueueForm();
-      toast.success('Fila criada com sucesso!');
-    },
-    onError: (error) => {
-      toast.error('Erro ao criar fila: ' + error.message);
-    },
-  });
-
-  const updateQueueMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Queue.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['queues'] });
-      setQueueDialogOpen(false);
-      resetQueueForm();
-      toast.success('Fila atualizada com sucesso!');
-    },
-    onError: (error) => {
-      toast.error('Erro ao atualizar fila: ' + error.message);
-    },
-  });
-
-  const deleteQueueMutation = useMutation({
-    mutationFn: (id) => base44.entities.Queue.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['queues'] });
-      toast.success('Fila excluída com sucesso!');
-    },
-    onError: (error) => {
-      toast.error('Erro ao excluir fila: ' + error.message);
-    },
-  });
-
   const createTypeMutation = useMutation({
     mutationFn: (data) => base44.entities.AgentType.create(data),
     onSuccess: () => {
@@ -325,12 +284,6 @@ export default function Agents() {
   const handleDeleteTeam = (team) => {
     if (window.confirm(`Tem certeza que deseja excluir o time "${team.name}"? Esta ação não pode ser desfeita.`)) {
       deleteTeamMutation.mutate(team.id);
-    }
-  };
-
-  const handleDeleteQueue = (queue) => {
-    if (window.confirm(`Tem certeza que deseja excluir a fila "${queue.name}"? Esta ação não pode ser desfeita.`)) {
-      deleteQueueMutation.mutate(queue.id);
     }
   };
 
@@ -422,21 +375,14 @@ export default function Agents() {
       photoUrl: "",
       email: "",
       password: "",
-      agentType: "support",
+      agentType: "sales",
       teamId: "",
-      workUnit: "",
-      erpAgentId: "",
-      queueIds: [],
-      level: "pleno",
       online: false,
       active: true,
-      capacity: { P1: 2, P2: 5, P3: 10, P4: 20 },
       workingHours: { start: "08:00", end: "18:00", days: [1, 2, 3, 4, 5] },
       permissions: {
         can_view_all_leads: false,
         can_view_team_leads: false,
-        can_view_all_tickets: false,
-        can_view_team_tickets: false,
         can_access_reports: false,
         can_manage_agents: false,
         can_manage_settings: false,
@@ -450,13 +396,8 @@ export default function Agents() {
     setEditingTeam(null);
   };
 
-  const resetQueueForm = () => {
-    setQueueFormData({ name: "", teamId: "", defaultPriority: "P3", active: true });
-    setEditingQueue(null);
-  };
-
   const resetTypeForm = () => {
-    setTypeFormData({ key: "", label: "", description: "", color: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300", modules: [], allowedSubmenus: [], active: true });
+    setTypeFormData({ key: "", label: "", description: "", color: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300", modules: [], allowedSubmenus: [], active: true });
     setEditingType(null);
     setExpandedModulesInForm([]);
   };
@@ -467,7 +408,7 @@ export default function Agents() {
       key: type.key || "",
       label: type.label || "",
       description: type.description || "",
-      color: type.color || "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+      color: type.color || "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
       modules: type.modules || [],
       allowedSubmenus: type.allowedSubmenus || [],
       active: type.active !== false,
@@ -502,8 +443,6 @@ export default function Agents() {
     const defaults = {
       can_view_all_leads: false,
       can_view_team_leads: false,
-      can_view_all_tickets: false,
-      can_view_team_tickets: false,
       can_access_reports: false,
       can_manage_agents: false,
       can_manage_settings: false,
@@ -531,15 +470,10 @@ export default function Agents() {
       photoUrl: agent.photoUrl || "",
       email: agent.email || "",
       password: "",
-      agentType: agent.agentType || "support",
+      agentType: agent.agentType || "sales",
       teamId: agent.teamId || "",
-      workUnit: agent.workUnit || "",
-      erpAgentId: agent.erpAgentId != null ? String(agent.erpAgentId) : "",
-      queueIds: agent.queueIds || [],
-      level: agent.level || "pleno",
       online: agent.online || false,
       active: agent.active !== undefined ? agent.active : true,
-      capacity: agent.capacity || { P1: 2, P2: 5, P3: 10, P4: 20 },
       workingHours: agent.workingHours || { start: "08:00", end: "18:00", days: [1, 2, 3, 4, 5] },
       permissions: normalizePermissions(agent.permissions)
     });
@@ -555,17 +489,6 @@ export default function Agents() {
       active: team.active !== undefined ? team.active : true,
     });
     setTeamDialogOpen(true);
-  };
-
-  const handleEditQueue = (queue) => {
-    setEditingQueue(queue);
-    setQueueFormData({
-      name: queue.name || "",
-      teamId: queue.teamId || "",
-      defaultPriority: queue.defaultPriority || "P3",
-      active: queue.active !== undefined ? queue.active : true,
-    });
-    setQueueDialogOpen(true);
   };
 
   const formatCPF = (value) => {
@@ -604,26 +527,35 @@ export default function Agents() {
       });
       
       const result = await response.json();
-      if (result.url) {
-        setFormData({...formData, photoUrl: result.url});
-        toast.success('Foto enviada com sucesso!');
+      
+      if (response.ok && result.url) {
+        setFormData(prev => ({...prev, photoUrl: result.url}));
+        toast.success('Foto carregada com sucesso!');
+      } else {
+        toast.error(result.message || 'Erro ao fazer upload');
       }
     } catch (error) {
-      toast.error('Erro ao enviar foto: ' + error.message);
+      console.error('Erro no upload:', error);
+      toast.error('Erro ao fazer upload da foto');
     }
     setUploadingPhoto(false);
   };
 
   const handleSubmit = () => {
-    if (formData.erpAgentId && isNaN(Number(formData.erpAgentId))) {
-      toast.error("ID do Agente no ERP deve ser numérico.");
+    if (!formData.name || !formData.email || !formData.agentType) {
+      toast.error('Preencha os campos obrigatórios');
       return;
     }
 
+    if (!editingAgent && (!formData.password || formData.password.length < 6)) {
+      toast.error('A senha deve ter pelo menos 6 caracteres');
+      return;
+    }
+
+    const originalPerms = editingAgent?.permissions ? (typeof editingAgent.permissions === 'string' ? (() => { try { return JSON.parse(editingAgent.permissions); } catch { return {}; } })() : editingAgent.permissions) : {};
     const dataToSend = { 
       ...formData,
-      erpAgentId: formData.erpAgentId ? Number(formData.erpAgentId) : null,
-      permissions: normalizePermissions(formData.permissions)
+      permissions: { ...originalPerms, ...formData.permissions }
     };
     
     if (editingAgent) {
@@ -650,54 +582,13 @@ export default function Agents() {
     }
   };
 
-  const handleQueueSubmit = () => {
-    if (editingQueue) {
-      updateQueueMutation.mutate({
-        id: editingQueue.id,
-        data: queueFormData
-      });
-    } else {
-      createQueueMutation.mutate(queueFormData);
-    }
-  };
-
   const getTeamName = (teamId) => {
     const team = teams.find(t => t.id === teamId);
     return team?.name || '-';
   };
 
-  const getQueueNames = (queueIds) => {
-    if (!queueIds || queueIds.length === 0) return '-';
-    return queueIds.map(qid => {
-      const queue = queues.find(q => q.id === qid);
-      return queue?.name || qid;
-    }).join(', ');
-  };
-
   const getAgentCountByTeam = (teamId) => {
     return agents.filter(a => a.teamId === teamId).length;
-  };
-
-  const getQueueCountByTeam = (teamId) => {
-    return queues.filter(q => q.teamId === teamId).length;
-  };
-
-  const AGENT_TYPE_CONFIG = {
-    admin: { label: "Admin", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300", description: "Acesso irrestrito a todas as configurações e dados" },
-    supervisor: { label: "Supervisor", color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300", description: "Gestão de equipes, vê tickets/leads do time" },
-    sales_supervisor: { label: "Supervisor de Vendas", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300", description: "Gestão de equipe de vendas PF/PJ e indicações" },
-    support: { label: "Suporte", color: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300", description: "Agente (legado)" },
-    sales: { label: "Vendas", color: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300", description: "Fechamento de vendas e carteira de clientes" },
-    pre_sales: { label: "Pré-Vendas", color: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300", description: "SDR/BDR - Qualificação de leads (Pre-Sales)" },
-    post_sales: { label: "Pós-Vendas", color: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300", description: "Customer Success e retenção" },
-    collection: { label: "Cobrança", color: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300", description: "Agente (legado)" },
-  };
-
-  const PRIORITY_CONFIG = {
-    P1: { label: "P1 - Crítica", color: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" },
-    P2: { label: "P2 - Alta", color: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300" },
-    P3: { label: "P3 - Média", color: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300" },
-    P4: { label: "P4 - Baixa", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
   };
 
   const getAgentTypeBadge = (type) => {
@@ -705,7 +596,7 @@ export default function Agents() {
     if (dbType) {
       return { label: dbType.label, color: dbType.color, description: dbType.description };
     }
-    return AGENT_TYPE_CONFIG[type] || AGENT_TYPE_CONFIG.support;
+    return AGENT_TYPE_CONFIG[type] || { label: type || "Vendedor", color: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300" };
   };
 
   if (!hasPermission) {
@@ -728,45 +619,43 @@ export default function Agents() {
     <div className="p-6 space-y-6 bg-gray-50 dark:bg-gray-950 min-h-screen">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Gestão de Equipe</h1>
+          <h1 className="text-3xl font-bold" style={{ color: BURGUNDY }}>Equipe de Vendas</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">
-            Gerencie agentes, times e filas de atendimento
+            Gerencie vendedores, times e perfis de acesso
           </p>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-1">
-          <TabsTrigger value="agents" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+          <TabsTrigger value="agents" className="data-[state=active]:text-white" style={activeTab === 'agents' ? { backgroundColor: BURGUNDY } : {}}>
             <Users className="w-4 h-4 mr-2" />
-            Agentes
+            Vendedores
           </TabsTrigger>
-          <TabsTrigger value="teams" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+          <TabsTrigger value="teams" className="data-[state=active]:text-white" style={activeTab === 'teams' ? { backgroundColor: BURGUNDY } : {}}>
             <Building2 className="w-4 h-4 mr-2" />
             Times
           </TabsTrigger>
-          <TabsTrigger value="queues" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+          <TabsTrigger value="types" className="data-[state=active]:text-white" style={activeTab === 'types' ? { backgroundColor: BURGUNDY } : {}}>
             <Layers className="w-4 h-4 mr-2" />
-            Filas
-          </TabsTrigger>
-          <TabsTrigger value="types" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
-            <Settings className="w-4 h-4 mr-2" />
-            Tipos de Agente
+            Perfis de Acesso
           </TabsTrigger>
         </TabsList>
 
+        {/* ===== ABA VENDEDORES ===== */}
         <TabsContent value="agents" className="mt-6">
           <div className="flex justify-between items-center mb-6">
-            <p className="text-sm text-gray-500">{agents.length} agente(s) cadastrado(s)</p>
+            <p className="text-sm text-gray-500">{agents.length} vendedor(es) cadastrado(s)</p>
             <Button 
               onClick={() => {
                 resetForm();
                 setIsDialogOpen(true);
               }}
-              className="bg-blue-600 hover:bg-blue-700"
+              style={{ backgroundColor: BURGUNDY }}
+              className="text-white hover:opacity-90"
             >
               <Plus className="w-4 h-4 mr-2" />
-              Novo Agente
+              Novo Vendedor
             </Button>
           </div>
 
@@ -786,17 +675,15 @@ export default function Agents() {
                             <img 
                               src={agent.photoUrl} 
                               alt={agent.name}
-                              className="w-12 h-12 rounded-full object-cover ring-2 ring-blue-100 dark:ring-blue-900"
+                              className="w-12 h-12 rounded-full object-cover"
+                              style={{ boxShadow: `0 0 0 2px ${CORAL}30` }}
                             />
                           ) : (
-                            <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center ring-2 ring-blue-100 dark:ring-blue-900">
+                            <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: BURGUNDY }}>
                               <span className="text-white font-semibold text-lg">
                                 {agent.name?.charAt(0)?.toUpperCase() || 'A'}
                               </span>
                             </div>
-                          )}
-                          {agent.online && (
-                            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 rounded-full ring-2 ring-white dark:ring-gray-900"></div>
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -843,9 +730,11 @@ export default function Agents() {
                   
                   <CardContent className="pt-0">
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
                         <Badge className={typeBadge.color}>{typeBadge.label}</Badge>
-                        <Badge variant="outline" className="bg-gray-50 dark:bg-gray-800">{agent.level || 'Pleno'}</Badge>
+                        {!agent.active && (
+                          <Badge variant="outline" className="bg-gray-100 dark:bg-gray-800">Inativo</Badge>
+                        )}
                       </div>
                       
                       <div className="space-y-2 text-sm">
@@ -853,12 +742,6 @@ export default function Agents() {
                           <Users className="w-4 h-4 text-gray-400" />
                           <span className="text-gray-600 dark:text-gray-400">{getTeamName(agent.teamId)}</span>
                         </div>
-                        {agent.workUnit && (
-                          <div className="flex items-center gap-2">
-                            <Building2 className="w-4 h-4 text-gray-400" />
-                            <span className="text-gray-600 dark:text-gray-400">{agent.workUnit}</span>
-                          </div>
-                        )}
                         {agent.workingHours && (
                           <div className="flex items-center gap-2">
                             <Clock className="w-4 h-4 text-gray-400" />
@@ -869,13 +752,6 @@ export default function Agents() {
                         )}
                       </div>
                       
-                      {(agent.queueIds && agent.queueIds.length > 0) && (
-                        <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Filas:</p>
-                          <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">{getQueueNames(agent.queueIds)}</p>
-                        </div>
-                      )}
-                      
                       {hasWhatsAppToken && (
                         <div className="flex items-center gap-2 pt-2">
                           <MessageSquare className="w-3 h-3 text-green-600 dark:text-green-400" />
@@ -884,25 +760,6 @@ export default function Agents() {
                           </span>
                         </div>
                       )}
-                      
-                      <div className="flex items-center gap-2 pt-2">
-                        {agent.online ? (
-                          <Badge className="bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300">
-                            <UserCheck className="w-3 h-3 mr-1" />
-                            Online
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800">
-                            <UserX className="w-3 h-3 mr-1" />
-                            Offline
-                          </Badge>
-                        )}
-                        {!agent.active && (
-                          <Badge variant="outline" className="bg-gray-100 dark:bg-gray-800">
-                            Inativo
-                          </Badge>
-                        )}
-                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -911,302 +768,109 @@ export default function Agents() {
           </div>
         </TabsContent>
 
+        {/* ===== ABA TIMES ===== */}
         <TabsContent value="teams" className="mt-6">
-          <div className="bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 rounded-xl p-4 mb-6 border border-blue-100 dark:border-blue-900">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                  <Users className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Times</h3>
-                  <p className="text-sm text-gray-500">{teams.length} time(s) • {teams.filter(t => t.active).length} ativo(s)</p>
-                </div>
-              </div>
-              <Button 
-                onClick={() => {
-                  resetTeamForm();
-                  setTeamDialogOpen(true);
-                }}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Novo Time
-              </Button>
-            </div>
+          <div className="flex justify-between items-center mb-6">
+            <p className="text-sm text-gray-500">{teams.length} time(s) cadastrado(s)</p>
+            <Button 
+              onClick={() => {
+                resetTeamForm();
+                setTeamDialogOpen(true);
+              }}
+              style={{ backgroundColor: BURGUNDY }}
+              className="text-white hover:opacity-90"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Novo Time
+            </Button>
           </div>
-
+          
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {teams.map(team => {
-              const agentCount = getAgentCountByTeam(team.id);
-              const queueCount = getQueueCountByTeam(team.id);
-              
-              return (
-                <Card key={team.id} className={`border-2 border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-lg transition-all ${!team.active ? 'opacity-60' : ''}`}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg">
-                          <Building2 className="w-6 h-6 text-white" />
-                        </div>
-                        <div>
-                          <CardTitle className="text-base font-semibold text-gray-900 dark:text-gray-100">{team.name}</CardTitle>
-                          {team.supervisorEmail && (
-                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[150px]">{team.supervisorEmail}</p>
-                          )}
-                        </div>
+            {teams.map(team => (
+              <Card key={team.id} className={`bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 hover:shadow-md transition-shadow ${!team.active ? 'opacity-60' : ''}`}>
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${BURGUNDY}15` }}>
+                        <Building2 className="w-5 h-5" style={{ color: BURGUNDY }} />
                       </div>
-                      
-                      <div className="flex items-center gap-1">
-                        {team.active ? (
-                          <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
-                        ) : (
-                          <div className="w-2.5 h-2.5 rounded-full bg-gray-400" />
+                      <div>
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100">{team.name}</h3>
+                        {team.description && (
+                          <p className="text-xs text-gray-500 line-clamp-1">{team.description}</p>
                         )}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-gray-100 dark:hover:bg-gray-800">
-                              <MoreVertical className="w-4 h-4 text-gray-500" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-40">
-                            <DropdownMenuItem onClick={() => handleEditTeam(team)} className="cursor-pointer">
-                              <Edit className="w-4 h-4 mr-2" />
-                              Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => handleDeleteTeam(team)} className="cursor-pointer text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950">
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Excluir
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
                       </div>
                     </div>
-                  </CardHeader>
-                  
-                  <CardContent className="pt-0 space-y-3">
-                    {team.description && (
-                      <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">{team.description}</p>
-                    )}
-                    
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
-                        <Users className="w-4 h-4 text-blue-500" />
-                        <div>
-                          <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{agentCount}</p>
-                          <p className="text-xs text-gray-500">Agentes</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 p-2 bg-purple-50 dark:bg-purple-950/30 rounded-lg">
-                        <Layers className="w-4 h-4 text-purple-500" />
-                        <div>
-                          <p className="text-lg font-bold text-purple-600 dark:text-purple-400">{queueCount}</p>
-                          <p className="text-xs text-gray-500">Filas</p>
-                        </div>
-                      </div>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditTeam(team)}>
+                        <Edit className="w-4 h-4 text-gray-500" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteTeam(team)}>
+                        <Trash2 className="w-4 h-4 text-red-500" />
+                      </Button>
                     </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                  </div>
+                  <div className="flex items-center gap-4 text-sm text-gray-500">
+                    <div className="flex items-center gap-1">
+                      <Users className="w-4 h-4" />
+                      <span>{getAgentCountByTeam(team.id)} vendedores</span>
+                    </div>
+                    {!team.active && <Badge variant="outline">Inativo</Badge>}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </TabsContent>
 
-        <TabsContent value="queues" className="mt-6">
-          <div className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 rounded-xl p-4 mb-6 border border-emerald-100 dark:border-emerald-900">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center">
-                  <Layers className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Filas</h3>
-                  <p className="text-sm text-gray-500">{queues.length} fila(s) • {queues.filter(q => q.active).length} ativa(s)</p>
-                </div>
-              </div>
-              <Button 
-                onClick={() => {
-                  resetQueueForm();
-                  setQueueDialogOpen(true);
-                }}
-                className="bg-emerald-600 hover:bg-emerald-700"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Nova Fila
-              </Button>
-            </div>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {queues.map(queue => {
-              const priorityConfig = PRIORITY_CONFIG[queue.defaultPriority] || PRIORITY_CONFIG.P3;
-              const agentCount = agents?.filter(a => a.queue_ids?.includes(queue.id)).length || 0;
-              
-              return (
-                <Card key={queue.id} className={`border-2 border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-emerald-300 dark:hover:border-emerald-700 hover:shadow-lg transition-all ${!queue.active ? 'opacity-60' : ''}`}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl flex items-center justify-center shadow-lg">
-                          <Layers className="w-6 h-6 text-white" />
-                        </div>
-                        <div>
-                          <CardTitle className="text-base font-semibold text-gray-900 dark:text-gray-100">{queue.name}</CardTitle>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{getTeamName(queue.teamId)}</p>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-1">
-                        {queue.active ? (
-                          <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
-                        ) : (
-                          <div className="w-2.5 h-2.5 rounded-full bg-gray-400" />
-                        )}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-gray-100 dark:hover:bg-gray-800">
-                              <MoreVertical className="w-4 h-4 text-gray-500" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-40">
-                            <DropdownMenuItem onClick={() => handleEditQueue(queue)} className="cursor-pointer">
-                              <Edit className="w-4 h-4 mr-2" />
-                              Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => handleDeleteQueue(queue)} className="cursor-pointer text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950">
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Excluir
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent className="pt-0 space-y-3">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="flex items-center gap-2 p-2 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg">
-                        <Users className="w-4 h-4 text-emerald-500" />
-                        <div>
-                          <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{agentCount}</p>
-                          <p className="text-xs text-gray-500">Agentes</p>
-                        </div>
-                      </div>
-                      <div className={`flex items-center gap-2 p-2 rounded-lg ${
-                        queue.defaultPriority === 'P1' ? 'bg-red-50 dark:bg-red-950/30' :
-                        queue.defaultPriority === 'P2' ? 'bg-orange-50 dark:bg-orange-950/30' :
-                        queue.defaultPriority === 'P3' ? 'bg-yellow-50 dark:bg-yellow-950/30' :
-                        'bg-green-50 dark:bg-green-950/30'
-                      }`}>
-                        <Clock className={`w-4 h-4 ${
-                          queue.defaultPriority === 'P1' ? 'text-red-500' :
-                          queue.defaultPriority === 'P2' ? 'text-orange-500' :
-                          queue.defaultPriority === 'P3' ? 'text-yellow-500' :
-                          'text-green-500'
-                        }`} />
-                        <div>
-                          <p className={`text-lg font-bold ${
-                            queue.defaultPriority === 'P1' ? 'text-red-600 dark:text-red-400' :
-                            queue.defaultPriority === 'P2' ? 'text-orange-600 dark:text-orange-400' :
-                            queue.defaultPriority === 'P3' ? 'text-yellow-600 dark:text-yellow-400' :
-                            'text-green-600 dark:text-green-400'
-                          }`}>{queue.defaultPriority}</p>
-                          <p className="text-xs text-gray-500">Prioridade</p>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </TabsContent>
-
+        {/* ===== ABA PERFIS DE ACESSO ===== */}
         <TabsContent value="types" className="mt-6">
-          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/20 dark:to-purple-950/20 rounded-xl p-4 mb-6 border border-indigo-100 dark:border-indigo-900">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center">
-                  <Settings className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Tipos de Agente</h3>
-                  <p className="text-sm text-gray-500">{agentTypes.length} tipo(s) • Controle de permissões e acessos</p>
-                </div>
-              </div>
-              <Button 
-                onClick={() => {
-                  resetTypeForm();
-                  setTypeDialogOpen(true);
-                }}
-                className="bg-indigo-600 hover:bg-indigo-700"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Novo Tipo
-              </Button>
-            </div>
+          <div className="flex justify-between items-center mb-6">
+            <p className="text-sm text-gray-500">{agentTypes.length} perfil(s) cadastrado(s)</p>
+            <Button 
+              onClick={() => {
+                resetTypeForm();
+                setTypeDialogOpen(true);
+              }}
+              style={{ backgroundColor: BURGUNDY }}
+              className="text-white hover:opacity-90"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Novo Perfil
+            </Button>
           </div>
-
+          
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {agentTypes.map((type) => {
+            {agentTypes.map(type => {
               const agentCount = agents.filter(a => a.agentType === type.key).length;
-              
               return (
-                <Card key={type.id} className={`border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-md transition-shadow ${!type.active ? 'opacity-60' : ''}`}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <Badge className={`${type.color || 'bg-gray-100 text-gray-700'} px-3 py-1`}>{type.label}</Badge>
+                <Card key={type.id} className={`bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 hover:shadow-md transition-shadow ${!type.active ? 'opacity-60' : ''}`}>
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <Badge className={type.color || "bg-gray-100 text-gray-700"}>{type.label}</Badge>
+                        <p className="text-xs text-gray-500 mt-1">{type.key}</p>
                       </div>
-                      
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-gray-100 dark:hover:bg-gray-800">
-                            <MoreVertical className="w-4 h-4 text-gray-500" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-40">
-                          <DropdownMenuItem onClick={() => handleEditType(type)} className="cursor-pointer">
-                            <Edit className="w-4 h-4 mr-2" />
-                            Editar
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handleDeleteType(type)} className="cursor-pointer text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950">
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Excluir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent className="pt-0 space-y-3">
-                    <p className="text-sm text-gray-600 dark:text-gray-400">{type.description}</p>
-                    
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-sm">
-                        <Users className="w-4 h-4 text-gray-400" />
-                        <span className="text-gray-600 dark:text-gray-400">{agentCount} agente(s)</span>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditType(type)}>
+                          <Edit className="w-4 h-4 text-gray-500" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteType(type)}>
+                          <Trash2 className="w-4 h-4 text-red-500" />
+                        </Button>
                       </div>
-                      {type.active ? (
-                        <Badge className="bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300">Ativo</Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-gray-500 dark:text-gray-400">Inativo</Badge>
-                      )}
                     </div>
-                    
-                    <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Módulos de acesso:</p>
-                      <div className="flex flex-wrap gap-1">
-                        {type.modules && type.modules.length > 0 ? (
-                          type.modules.map((mod, idx) => (
-                            <Badge key={idx} variant="outline" className="text-xs">{mod}</Badge>
-                          ))
-                        ) : (
-                          <span className="text-xs text-gray-400">Nenhum módulo</span>
-                        )}
+                    {type.description && (
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{type.description}</p>
+                    )}
+                    <div className="flex items-center gap-4 text-sm text-gray-500">
+                      <div className="flex items-center gap-1">
+                        <Users className="w-4 h-4" />
+                        <span>{agentCount} vendedor(es)</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Layers className="w-4 h-4" />
+                        <span>{type.allowedSubmenus?.length || 0} telas</span>
                       </div>
                     </div>
                   </CardContent>
@@ -1230,7 +894,7 @@ export default function Agents() {
           <div className="space-y-4 py-4">
             {generatingToken ? (
               <div className="text-center py-8">
-                <Loader2 className="w-12 h-12 animate-spin text-green-600 dark:text-green-400 mx-auto mb-4" />
+                <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4" style={{ color: CORAL }} />
                 <p className="text-gray-600 dark:text-gray-400">Gerando token de acesso...</p>
               </div>
             ) : generatedTokenData ? (
@@ -1269,7 +933,7 @@ export default function Agents() {
                     <li>Copie o link acima</li>
                     <li>Acesse as configurações do seu plugin de WhatsApp</li>
                     <li>Cole o link no campo de Quick Action</li>
-                    <li>O agente poderá criar Leads, Tickets e Cobranças direto do WhatsApp</li>
+                    <li>O vendedor poderá criar Leads direto do WhatsApp</li>
                     <li>O token expira automaticamente em 90 dias</li>
                   </ol>
                 </div>
@@ -1298,20 +962,17 @@ export default function Agents() {
         <DialogContent className="max-w-md bg-white dark:bg-gray-900">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-gray-900 dark:text-gray-100">
-              <KeyRound className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+              <KeyRound className="w-5 h-5" style={{ color: CORAL }} />
               Redefinir Senha
             </DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
-            <Alert className="bg-orange-50 dark:bg-orange-950 border-orange-200 dark:border-orange-800">
-              <KeyRound className="w-4 h-4 text-orange-600 dark:text-orange-400" />
-              <AlertDescription className="text-orange-800 dark:text-orange-300">
+            <Alert style={{ backgroundColor: `${CORAL}15`, borderColor: `${CORAL}40` }}>
+              <KeyRound className="w-4 h-4" style={{ color: CORAL }} />
+              <AlertDescription style={{ color: BURGUNDY }}>
                 <p className="text-sm">
                   Você está redefinindo a senha de <strong>{selectedAgentForReset?.name}</strong>.
-                </p>
-                <p className="text-sm mt-1">
-                  O agente será solicitado a alterar a senha no próximo login.
                 </p>
               </AlertDescription>
             </Alert>
@@ -1343,7 +1004,8 @@ export default function Agents() {
             <Button 
               onClick={handleResetPassword}
               disabled={resettingPassword || !newPassword || newPassword.length < 6}
-              className="bg-orange-600 hover:bg-orange-700"
+              style={{ backgroundColor: CORAL }}
+              className="text-white hover:opacity-90"
             >
               {resettingPassword ? (
                 <>
@@ -1358,44 +1020,45 @@ export default function Agents() {
         </DialogContent>
       </Dialog>
 
-      {/* Sheet para Criar/Editar Agente */}
+      {/* Sheet Criar/Editar Vendedor */}
       <Sheet open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <SheetContent side="right" className="w-full sm:max-w-xl md:max-w-2xl bg-white dark:bg-gray-900 p-0 flex flex-col">
-          <SheetHeader className="px-6 py-5 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30">
+          <SheetHeader className="px-6 py-5 border-b border-gray-200 dark:border-gray-800" style={{ background: `linear-gradient(135deg, ${BURGUNDY}10, ${CORAL}10)` }}>
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                <Users className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${BURGUNDY}15` }}>
+                <Users className="w-6 h-6" style={{ color: BURGUNDY }} />
               </div>
               <div>
                 <SheetTitle className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-                  {editingAgent ? 'Editar Agente' : 'Novo Agente'}
+                  {editingAgent ? 'Editar Vendedor' : 'Novo Vendedor'}
                 </SheetTitle>
                 <SheetDescription className="text-gray-500 dark:text-gray-400">
-                  Gerencie informações, acessos e permissões do agente
+                  Informações, acesso e permissões do vendedor
                 </SheetDescription>
               </div>
             </div>
           </SheetHeader>
           
           <div className="flex-1 overflow-y-auto px-6">
-            <div className="space-y-4 py-4">
+            <div className="space-y-5 py-5">
               {/* Upload de Foto */}
               <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 {formData.photoUrl ? (
                   <img 
                     src={formData.photoUrl} 
-                    alt="Foto do agente"
-                    className="w-16 h-16 rounded-full object-cover border-2 border-blue-200 dark:border-blue-800"
+                    alt="Foto do vendedor"
+                    className="w-16 h-16 rounded-full object-cover"
+                    style={{ border: `2px solid ${CORAL}` }}
                   />
                 ) : (
-                  <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center border-2 border-blue-200 dark:border-blue-800">
+                  <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: BURGUNDY, border: `2px solid ${CORAL}` }}>
                     <span className="text-2xl font-bold text-white">
                       {formData.name?.charAt(0)?.toUpperCase() || '?'}
                     </span>
                   </div>
                 )}
                 <div className="flex-1">
-                  <Label className="text-gray-900 dark:text-gray-100">Foto do Agente</Label>
+                  <Label className="text-gray-900 dark:text-gray-100">Foto</Label>
                   <div className="flex items-center gap-2 mt-2">
                     <input
                       type="file"
@@ -1438,246 +1101,172 @@ export default function Agents() {
                 </div>
               </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <Label className="text-gray-900 dark:text-gray-100">Nome Completo *</Label>
-                <Input
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  placeholder="Nome completo do agente"
-                  className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <Label className="text-gray-900 dark:text-gray-100">Nome Completo *</Label>
+                  <Input
+                    value={formData.name}
+                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    placeholder="Nome completo do vendedor"
+                    className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-gray-900 dark:text-gray-100">CPF</Label>
+                  <Input
+                    value={formData.cpf}
+                    onChange={handleCpfChange}
+                    placeholder="000.000.000-00"
+                    maxLength={14}
+                    className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-gray-900 dark:text-gray-100">Email (Login) *</Label>
+                  <Input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    placeholder="email@exemplo.com"
+                    className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-gray-900 dark:text-gray-100">
+                    {editingAgent ? 'Nova Senha (deixe vazio para manter)' : 'Senha *'}
+                  </Label>
+                  <Input
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) => setFormData({...formData, password: e.target.value})}
+                    placeholder={editingAgent ? "••••••••" : "Defina uma senha"}
+                    className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                  />
+                  {!editingAgent && (
+                    <p className="text-xs text-gray-500 mt-1">Mínimo 6 caracteres</p>
+                  )}
+                </div>
+
+                <div>
+                  <Label className="text-gray-900 dark:text-gray-100">Perfil *</Label>
+                  <Select value={formData.agentType} onValueChange={(val) => setFormData({...formData, agentType: val})}>
+                    <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                      <SelectValue placeholder="Selecione o perfil" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {agentTypes.filter(t => t.active).length > 0 ? (
+                        agentTypes.filter(t => t.active).map((type) => (
+                          <SelectItem key={type.key} value={type.key}>{type.label}</SelectItem>
+                        ))
+                      ) : (
+                        AGENT_TYPE_OPTIONS.map((type) => (
+                          <SelectItem key={type.key} value={type.key}>{type.label}</SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label className="text-gray-900 dark:text-gray-100">Time</Label>
+                  <Select value={formData.teamId} onValueChange={(val) => setFormData({...formData, teamId: val})}>
+                    <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                      <SelectValue placeholder="Selecione o time (opcional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {teams.map(team => (
+                        <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              <div>
-                <Label className="text-gray-900 dark:text-gray-100">CPF *</Label>
-                <Input
-                  value={formData.cpf}
-                  onChange={handleCpfChange}
-                  placeholder="000.000.000-00"
-                  maxLength={14}
-                  className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-                />
-              </div>
-
-              <div>
-                <Label className="text-gray-900 dark:text-gray-100">Email (Login) *</Label>
-                <Input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  placeholder="email@exemplo.com"
-                  className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-                />
-              </div>
-
-              <div>
-                <Label className="text-gray-900 dark:text-gray-100">
-                  {editingAgent ? 'Nova Senha (deixe vazio para manter)' : 'Senha *'}
-                </Label>
-                <Input
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  placeholder={editingAgent ? "••••••••" : "Defina uma senha"}
-                  className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-                />
-                {!editingAgent && (
-                  <p className="text-xs text-gray-500 mt-1">Mínimo 6 caracteres</p>
-                )}
-              </div>
-
-              <div>
-                <Label className="text-gray-900 dark:text-gray-100">Tipo de Agente *</Label>
-                <Select value={formData.agentType} onValueChange={(val) => setFormData({...formData, agentType: val})}>
-                  <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                    <SelectValue placeholder="Selecione o tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {agentTypes.filter(t => t.active).map((type) => (
-                      <SelectItem key={type.key} value={type.key}>{type.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label className="text-gray-900 dark:text-gray-100">Nível</Label>
-                <Select value={formData.level} onValueChange={(val) => setFormData({...formData, level: val})}>
-                  <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                    <SelectValue placeholder="Selecione o nível" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="junior">Junior</SelectItem>
-                    <SelectItem value="pleno">Pleno</SelectItem>
-                    <SelectItem value="senior">Senior</SelectItem>
-                    <SelectItem value="specialist">Especialista</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label className="text-gray-900 dark:text-gray-100">Time *</Label>
-                <Select value={formData.teamId} onValueChange={(val) => setFormData({...formData, teamId: val})}>
-                  <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                    <SelectValue placeholder="Selecione o time" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {teams.map(team => (
-                      <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label className="text-gray-900 dark:text-gray-100">Unidade de Trabalho</Label>
-                <Input
-                  value={formData.workUnit}
-                  onChange={(e) => setFormData({...formData, workUnit: e.target.value})}
-                  placeholder="Ex: Matriz, Filial SP"
-                  className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-                />
-              </div>
-
-              <div>
-                <Label className="text-gray-900 dark:text-gray-100">ID do Agente no ERP</Label>
-                <Input
-                  type="number"
-                  value={formData.erpAgentId}
-                  onChange={(e) => setFormData({...formData, erpAgentId: e.target.value})}
-                  placeholder="Ex: 12345"
-                  className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-                />
-                <p className="text-xs text-gray-400 mt-1">Identificador do agente no sistema ERP (opcional)</p>
-              </div>
-            </div>
-
-            <div>
-              <Label className="text-gray-900 dark:text-gray-100 mb-2 block">Filas de Atendimento *</Label>
-              <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 max-h-40 overflow-y-auto bg-white dark:bg-gray-800">
-                {queues.map(queue => (
-                  <div key={queue.id} className="flex items-center gap-2 py-1">
-                    <Checkbox
-                      id={`queue-${queue.id}`}
-                      checked={(formData.queueIds || []).includes(queue.id)}
-                      onCheckedChange={(checked) => {
-                        const current = formData.queueIds || [];
-                        if (checked) {
-                          setFormData({...formData, queueIds: [...current, queue.id]});
-                        } else {
-                          setFormData({...formData, queueIds: current.filter(id => id !== queue.id)});
-                        }
-                      }}
-                    />
-                    <Label htmlFor={`queue-${queue.id}`} className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                      {queue.name}
-                    </Label>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label className="text-gray-900 dark:text-gray-100">Horário Início</Label>
-                <Input
-                  type="time"
-                  value={formData.workingHours?.start || "08:00"}
-                  onChange={(e) => setFormData({
-                    ...formData, 
-                    workingHours: {...formData.workingHours, start: e.target.value}
-                  })}
-                  className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-                />
-              </div>
-              <div>
-                <Label className="text-gray-900 dark:text-gray-100">Horário Fim</Label>
-                <Input
-                  type="time"
-                  value={formData.workingHours?.end || "18:00"}
-                  onChange={(e) => setFormData({
-                    ...formData, 
-                    workingHours: {...formData.workingHours, end: e.target.value}
-                  })}
-                  className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label className="text-gray-900 dark:text-gray-100 mb-2 block">Dias de Trabalho</Label>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { value: 0, label: 'Dom' },
-                  { value: 1, label: 'Seg' },
-                  { value: 2, label: 'Ter' },
-                  { value: 3, label: 'Qua' },
-                  { value: 4, label: 'Qui' },
-                  { value: 5, label: 'Sex' },
-                  { value: 6, label: 'Sáb' },
-                ].map(day => (
-                  <Button
-                    key={day.value}
-                    type="button"
-                    variant={(formData.workingHours?.days || []).includes(day.value) ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      const days = formData.workingHours?.days || [];
-                      if (days.includes(day.value)) {
-                        setFormData({
-                          ...formData,
-                          workingHours: {...formData.workingHours, days: days.filter(d => d !== day.value)}
-                        });
-                      } else {
-                        setFormData({
-                          ...formData,
-                          workingHours: {...formData.workingHours, days: [...days, day.value].sort()}
-                        });
-                      }
-                    }}
-                    className={(formData.workingHours?.days || []).includes(day.value) ? "bg-blue-600" : ""}
-                  >
-                    {day.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <Label className="text-gray-900 dark:text-gray-100 mb-2 block">Capacidade por Prioridade</Label>
-              <div className="grid grid-cols-4 gap-2">
-                {['P1', 'P2', 'P3', 'P4'].map(priority => (
-                  <div key={priority}>
-                    <Label className="text-xs text-gray-500">{priority}</Label>
+              {/* Horário de Trabalho */}
+              <div className="space-y-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <Label className="text-gray-900 dark:text-gray-100 font-medium">Horário de Trabalho</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs text-gray-500">Início</Label>
                     <Input
-                      type="number"
-                      min="0"
-                      value={formData.capacity?.[priority] || 0}
+                      type="time"
+                      value={formData.workingHours?.start || "08:00"}
                       onChange={(e) => setFormData({
-                        ...formData,
-                        capacity: {...formData.capacity, [priority]: parseInt(e.target.value) || 0}
+                        ...formData, 
+                        workingHours: {...formData.workingHours, start: e.target.value}
                       })}
-                      className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                      className="bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600"
                     />
                   </div>
-                ))}
+                  <div>
+                    <Label className="text-xs text-gray-500">Fim</Label>
+                    <Input
+                      type="time"
+                      value={formData.workingHours?.end || "18:00"}
+                      onChange={(e) => setFormData({
+                        ...formData, 
+                        workingHours: {...formData.workingHours, end: e.target.value}
+                      })}
+                      className="bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-500 mb-2 block">Dias de Trabalho</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { value: 0, label: 'Dom' },
+                      { value: 1, label: 'Seg' },
+                      { value: 2, label: 'Ter' },
+                      { value: 3, label: 'Qua' },
+                      { value: 4, label: 'Qui' },
+                      { value: 5, label: 'Sex' },
+                      { value: 6, label: 'Sáb' },
+                    ].map(day => (
+                      <Button
+                        key={day.value}
+                        type="button"
+                        variant={(formData.workingHours?.days || []).includes(day.value) ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          const days = formData.workingHours?.days || [];
+                          if (days.includes(day.value)) {
+                            setFormData({
+                              ...formData,
+                              workingHours: {...formData.workingHours, days: days.filter(d => d !== day.value)}
+                            });
+                          } else {
+                            setFormData({
+                              ...formData,
+                              workingHours: {...formData.workingHours, days: [...days, day.value].sort()}
+                            });
+                          }
+                        }}
+                        style={(formData.workingHours?.days || []).includes(day.value) ? { backgroundColor: BURGUNDY } : {}}
+                      >
+                        {day.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
 
-              {/* Permissões de Visualização */}
+              {/* Permissões */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-blue-500" />
-                  <Label className="text-gray-900 dark:text-gray-100 font-medium">Permissões de Visualização</Label>
+                  <Activity className="w-4 h-4" style={{ color: BURGUNDY }} />
+                  <Label className="text-gray-900 dark:text-gray-100 font-medium">Permissões</Label>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30 rounded-xl border border-blue-100 dark:border-blue-900">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-4 rounded-xl border" style={{ borderColor: `${BURGUNDY}20`, backgroundColor: `${BURGUNDY}05` }}>
                   <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
                     formData.permissions?.can_view_all_leads ? 'bg-white dark:bg-gray-800 shadow-sm' : 'hover:bg-white/50 dark:hover:bg-gray-800/50'
                   }`}>
                     <div>
                       <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Todos os leads</span>
-                      <p className="text-xs text-gray-500">Ver leads de todos</p>
+                      <p className="text-xs text-gray-500">Ver leads de todos os vendedores</p>
                     </div>
                     <Switch
                       checked={formData.permissions?.can_view_all_leads || false}
@@ -1685,15 +1274,14 @@ export default function Agents() {
                         ...formData, 
                         permissions: {...formData.permissions, can_view_all_leads: val}
                       })}
-                      aria-label="Ver todos os leads"
                     />
                   </label>
                   <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
                     formData.permissions?.can_view_team_leads ? 'bg-white dark:bg-gray-800 shadow-sm' : 'hover:bg-white/50 dark:hover:bg-gray-800/50'
                   }`}>
                     <div>
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Leads da equipe</span>
-                      <p className="text-xs text-gray-500">Ver leads do time</p>
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Leads do time</span>
+                      <p className="text-xs text-gray-500">Ver leads do seu time</p>
                     </div>
                     <Switch
                       checked={formData.permissions?.can_view_team_leads || false}
@@ -1701,64 +1289,14 @@ export default function Agents() {
                         ...formData, 
                         permissions: {...formData.permissions, can_view_team_leads: val}
                       })}
-                      aria-label="Ver leads da equipe"
                     />
                   </label>
-                  <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
-                    formData.permissions?.can_view_all_tickets ? 'bg-white dark:bg-gray-800 shadow-sm' : 'hover:bg-white/50 dark:hover:bg-gray-800/50'
-                  }`}>
-                    <div>
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Todos os tickets</span>
-                      <p className="text-xs text-gray-500">Ver tickets de todos</p>
-                    </div>
-                    <Switch
-                      checked={formData.permissions?.can_view_all_tickets || false}
-                      onCheckedChange={(val) => setFormData({
-                        ...formData, 
-                        permissions: {...formData.permissions, can_view_all_tickets: val}
-                      })}
-                      aria-label="Ver todos os tickets"
-                    />
-                  </label>
-                  <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
-                    formData.permissions?.can_view_team_tickets ? 'bg-white dark:bg-gray-800 shadow-sm' : 'hover:bg-white/50 dark:hover:bg-gray-800/50'
-                  }`}>
-                    <div>
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Tickets da equipe</span>
-                      <p className="text-xs text-gray-500">Ver tickets do time</p>
-                    </div>
-                    <Switch
-                      checked={formData.permissions?.can_view_team_tickets || false}
-                      onCheckedChange={(val) => setFormData({
-                        ...formData, 
-                        permissions: {...formData.permissions, can_view_team_tickets: val}
-                      })}
-                      aria-label="Ver tickets da equipe"
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {/* Permissões Administrativas */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Settings className="w-4 h-4 text-purple-500" />
-                  <Label className="text-gray-900 dark:text-gray-100 font-medium">Permissões Administrativas</Label>
-                </div>
-                <div className="grid gap-2 p-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30 rounded-xl border border-purple-100 dark:border-purple-900">
                   <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
                     formData.permissions?.can_access_reports ? 'bg-white dark:bg-gray-800 shadow-sm' : 'hover:bg-white/50 dark:hover:bg-gray-800/50'
                   }`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                        formData.permissions?.can_access_reports ? 'bg-purple-100 dark:bg-purple-900' : 'bg-gray-100 dark:bg-gray-700'
-                      }`}>
-                        <Activity className={`w-4 h-4 ${formData.permissions?.can_access_reports ? 'text-purple-600' : 'text-gray-400'}`} />
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Acessar relatórios</span>
-                        <p className="text-xs text-gray-500">Dashboards e relatórios</p>
-                      </div>
+                    <div>
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Relatórios</span>
+                      <p className="text-xs text-gray-500">Dashboards e relatórios</p>
                     </div>
                     <Switch
                       checked={formData.permissions?.can_access_reports || false}
@@ -1766,22 +1304,14 @@ export default function Agents() {
                         ...formData, 
                         permissions: {...formData.permissions, can_access_reports: val}
                       })}
-                      aria-label="Acessar relatórios"
                     />
                   </label>
                   <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
                     formData.permissions?.can_manage_agents ? 'bg-white dark:bg-gray-800 shadow-sm' : 'hover:bg-white/50 dark:hover:bg-gray-800/50'
                   }`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                        formData.permissions?.can_manage_agents ? 'bg-purple-100 dark:bg-purple-900' : 'bg-gray-100 dark:bg-gray-700'
-                      }`}>
-                        <Users className={`w-4 h-4 ${formData.permissions?.can_manage_agents ? 'text-purple-600' : 'text-gray-400'}`} />
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Gerenciar agentes</span>
-                        <p className="text-xs text-gray-500">Criar, editar e excluir</p>
-                      </div>
+                    <div>
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Gerenciar equipe</span>
+                      <p className="text-xs text-gray-500">Criar, editar e excluir vendedores</p>
                     </div>
                     <Switch
                       checked={formData.permissions?.can_manage_agents || false}
@@ -1789,22 +1319,14 @@ export default function Agents() {
                         ...formData, 
                         permissions: {...formData.permissions, can_manage_agents: val}
                       })}
-                      aria-label="Gerenciar agentes"
                     />
                   </label>
-                  <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
+                  <label className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors col-span-1 sm:col-span-2 ${
                     formData.permissions?.can_manage_settings ? 'bg-white dark:bg-gray-800 shadow-sm' : 'hover:bg-white/50 dark:hover:bg-gray-800/50'
                   }`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                        formData.permissions?.can_manage_settings ? 'bg-purple-100 dark:bg-purple-900' : 'bg-gray-100 dark:bg-gray-700'
-                      }`}>
-                        <Settings className={`w-4 h-4 ${formData.permissions?.can_manage_settings ? 'text-purple-600' : 'text-gray-400'}`} />
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Gerenciar configurações</span>
-                        <p className="text-xs text-gray-500">Alterar configurações do sistema</p>
-                      </div>
+                    <div>
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Configurações</span>
+                      <p className="text-xs text-gray-500">Alterar configurações do sistema</p>
                     </div>
                     <Switch
                       checked={formData.permissions?.can_manage_settings || false}
@@ -1812,52 +1334,29 @@ export default function Agents() {
                         ...formData, 
                         permissions: {...formData.permissions, can_manage_settings: val}
                       })}
-                      aria-label="Gerenciar configurações"
                     />
                   </label>
                 </div>
               </div>
 
-              {/* Status Toggles */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all cursor-pointer ${
-                  formData.online 
-                    ? 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800' 
-                    : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
-                }`}>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${formData.online ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} aria-hidden="true" />
-                    <div>
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Online</span>
-                      <span className="text-xs text-gray-500 ml-2">({formData.online ? 'Sim' : 'Nao'})</span>
-                    </div>
+              {/* Toggle Ativo */}
+              <label className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all cursor-pointer ${
+                formData.active 
+                  ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/30' 
+                  : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <div className={`w-3 h-3 rounded-full ${formData.active ? 'bg-green-500' : 'bg-gray-400'}`} />
+                  <div>
+                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Ativo</span>
+                    <span className="text-xs text-gray-500 ml-2">({formData.active ? 'Sim' : 'Não'})</span>
                   </div>
-                  <Switch
-                    checked={formData.online}
-                    onCheckedChange={(val) => setFormData({...formData, online: val})}
-                    aria-label="Status online do agente"
-                  />
-                </label>
-
-                <label className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all cursor-pointer ${
-                  formData.active 
-                    ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800' 
-                    : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
-                }`}>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${formData.active ? 'bg-blue-500' : 'bg-gray-400'}`} aria-hidden="true" />
-                    <div>
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Ativo</span>
-                      <span className="text-xs text-gray-500 ml-2">({formData.active ? 'Sim' : 'Nao'})</span>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={formData.active}
-                    onCheckedChange={(val) => setFormData({...formData, active: val})}
-                    aria-label="Status ativo do agente"
-                  />
-                </label>
-              </div>
+                </div>
+                <Switch
+                  checked={formData.active}
+                  onCheckedChange={(val) => setFormData({...formData, active: val})}
+                />
+              </label>
             </div>
           </div>
 
@@ -1869,29 +1368,30 @@ export default function Agents() {
               <Button 
                 onClick={handleSubmit}
                 disabled={!formData.name || !formData.email || !formData.agentType || (!editingAgent && (!formData.password || formData.password.length < 6))}
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                className="flex-1 text-white hover:opacity-90"
+                style={{ backgroundColor: BURGUNDY }}
               >
-                {editingAgent ? 'Salvar Alterações' : 'Criar Agente'}
+                {editingAgent ? 'Salvar Alterações' : 'Criar Vendedor'}
               </Button>
             </div>
           </SheetFooter>
         </SheetContent>
       </Sheet>
 
-      {/* Sheet para Criar/Editar Time */}
+      {/* Sheet Criar/Editar Time */}
       <Sheet open={teamDialogOpen} onOpenChange={setTeamDialogOpen}>
         <SheetContent side="right" className="w-full sm:max-w-lg bg-white dark:bg-gray-900 p-0 flex flex-col">
-          <SheetHeader className="px-6 py-5 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30">
+          <SheetHeader className="px-6 py-5 border-b border-gray-200 dark:border-gray-800" style={{ background: `linear-gradient(135deg, ${BURGUNDY}10, ${CORAL}10)` }}>
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                <Users className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${BURGUNDY}15` }}>
+                <Building2 className="w-6 h-6" style={{ color: BURGUNDY }} />
               </div>
               <div>
                 <SheetTitle className="text-xl font-semibold text-gray-900 dark:text-gray-100">
                   {editingTeam ? 'Editar Time' : 'Novo Time'}
                 </SheetTitle>
                 <SheetDescription className="text-gray-500 dark:text-gray-400">
-                  Agrupe agentes para gestão e relatórios
+                  Agrupe vendedores para gestão e relatórios
                 </SheetDescription>
               </div>
             </div>
@@ -1932,7 +1432,7 @@ export default function Agents() {
                   {agents?.filter(a => a.agentType === 'supervisor' || a.agentType === 'sales_supervisor' || a.agentType === 'admin').map(agent => (
                     <SelectItem key={agent.id} value={agent.email}>
                       <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-xs font-medium text-blue-600 dark:text-blue-400">
+                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium text-white" style={{ backgroundColor: BURGUNDY }}>
                           {agent.name?.charAt(0).toUpperCase()}
                         </div>
                         {agent.name}
@@ -1945,31 +1445,31 @@ export default function Agents() {
             </div>
 
             {editingTeam && (
-              <div className="bg-blue-50 dark:bg-blue-950/30 rounded-xl p-4 border border-blue-200 dark:border-blue-800">
+              <div className="rounded-xl p-4 border" style={{ backgroundColor: `${BURGUNDY}05`, borderColor: `${BURGUNDY}20` }}>
                 <div className="flex items-center gap-2 mb-2">
-                  <Users className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                  <span className="text-sm font-medium text-blue-800 dark:text-blue-300">Membros do Time</span>
+                  <Users className="w-4 h-4" style={{ color: BURGUNDY }} />
+                  <span className="text-sm font-medium" style={{ color: BURGUNDY }}>Membros do Time</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {agents?.filter(a => a.team_id === editingTeam.id).length > 0 ? (
-                    agents?.filter(a => a.team_id === editingTeam.id).map(agent => (
+                  {agents?.filter(a => a.teamId === editingTeam.id).length > 0 ? (
+                    agents?.filter(a => a.teamId === editingTeam.id).map(agent => (
                       <Badge key={agent.id} variant="outline" className="bg-white dark:bg-gray-800">
                         {agent.name}
                       </Badge>
                     ))
                   ) : (
-                    <span className="text-xs text-blue-600 dark:text-blue-400">Nenhum agente neste time ainda</span>
+                    <span className="text-xs text-gray-500">Nenhum vendedor neste time ainda</span>
                   )}
                 </div>
               </div>
             )}
 
-            <div className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
               <div className="flex items-center gap-3">
                 <div className={`w-3 h-3 rounded-full ${teamFormData.active ? 'bg-green-500' : 'bg-gray-400'}`} />
                 <div>
                   <Label className="text-gray-900 dark:text-gray-100 font-medium">Status do Time</Label>
-                  <p className="text-xs text-gray-500">{teamFormData.active ? 'Time ativo e operacional' : 'Time inativo'}</p>
+                  <p className="text-xs text-gray-500">{teamFormData.active ? 'Ativo e operacional' : 'Inativo'}</p>
                 </div>
               </div>
               <Switch
@@ -1987,7 +1487,8 @@ export default function Agents() {
               <Button 
                 onClick={handleTeamSubmit}
                 disabled={!teamFormData.name}
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                className="flex-1 text-white hover:opacity-90"
+                style={{ backgroundColor: BURGUNDY }}
               >
                 {editingTeam ? 'Salvar Alterações' : 'Criar Time'}
               </Button>
@@ -1996,148 +1497,20 @@ export default function Agents() {
         </SheetContent>
       </Sheet>
 
-      {/* Sheet para Criar/Editar Fila */}
-      <Sheet open={queueDialogOpen} onOpenChange={setQueueDialogOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-lg bg-white dark:bg-gray-900 p-0 flex flex-col">
-          <SheetHeader className="px-6 py-5 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center">
-                <Layers className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-              </div>
-              <div>
-                <SheetTitle className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-                  {editingQueue ? 'Editar Fila' : 'Nova Fila'}
-                </SheetTitle>
-                <SheetDescription className="text-gray-500 dark:text-gray-400">
-                  Configure o canal de distribuição de trabalho
-                </SheetDescription>
-              </div>
-            </div>
-          </SheetHeader>
-          
-          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-            <div className="space-y-2">
-              <Label className="text-gray-900 dark:text-gray-100 font-medium">Nome da Fila *</Label>
-              <Input
-                value={queueFormData.name}
-                onChange={(e) => setQueueFormData({...queueFormData, name: e.target.value})}
-                placeholder="Ex: Suporte N1, Vendas WhatsApp"
-                className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 h-11"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-gray-900 dark:text-gray-100 font-medium">Time Responsável</Label>
-              <Select value={queueFormData.teamId} onValueChange={(val) => setQueueFormData({...queueFormData, teamId: val})}>
-                <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 h-11">
-                  <SelectValue placeholder="Selecione o time que atenderá esta fila" />
-                </SelectTrigger>
-                <SelectContent>
-                  {teams.map(team => (
-                    <SelectItem key={team.id} value={team.id}>
-                      <div className="flex items-center gap-2">
-                        <Users className="w-4 h-4 text-blue-500" />
-                        {team.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-gray-500">O time selecionado será responsável por atender os tickets desta fila</p>
-            </div>
-
-            <div className="space-y-3">
-              <Label className="text-gray-900 dark:text-gray-100 font-medium">Prioridade Padrão</Label>
-              <div className="grid grid-cols-4 gap-2">
-                {[
-                  { value: "P1", label: "P1", desc: "Crítica", color: "bg-red-500" },
-                  { value: "P2", label: "P2", desc: "Alta", color: "bg-orange-500" },
-                  { value: "P3", label: "P3", desc: "Média", color: "bg-yellow-500" },
-                  { value: "P4", label: "P4", desc: "Baixa", color: "bg-green-500" },
-                ].map((priority) => (
-                  <button
-                    key={priority.value}
-                    type="button"
-                    onClick={() => setQueueFormData({...queueFormData, defaultPriority: priority.value})}
-                    className={`flex flex-col items-center p-3 rounded-xl border-2 transition-all ${
-                      queueFormData.defaultPriority === priority.value 
-                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30' 
-                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                    }`}
-                  >
-                    <div className={`w-4 h-4 rounded-full ${priority.color} mb-1`} />
-                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{priority.label}</span>
-                    <span className="text-xs text-gray-500">{priority.desc}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {editingQueue && (
-              <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-xl p-4 border border-emerald-200 dark:border-emerald-800">
-                <div className="flex items-center gap-2 mb-2">
-                  <Activity className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  <span className="text-sm font-medium text-emerald-800 dark:text-emerald-300">Agentes Atribuídos</span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {agents?.filter(a => a.queue_ids?.includes(editingQueue.id)).length > 0 ? (
-                    agents?.filter(a => a.queue_ids?.includes(editingQueue.id)).map(agent => (
-                      <Badge key={agent.id} variant="outline" className="bg-white dark:bg-gray-800">
-                        {agent.name}
-                      </Badge>
-                    ))
-                  ) : (
-                    <span className="text-xs text-emerald-600 dark:text-emerald-400">Nenhum agente atribuído a esta fila</span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
-              <div className="flex items-center gap-3">
-                <div className={`w-3 h-3 rounded-full ${queueFormData.active ? 'bg-green-500' : 'bg-gray-400'}`} />
-                <div>
-                  <Label className="text-gray-900 dark:text-gray-100 font-medium">Status da Fila</Label>
-                  <p className="text-xs text-gray-500">{queueFormData.active ? 'Fila ativa e recebendo tickets' : 'Fila inativa, não recebe novos tickets'}</p>
-                </div>
-              </div>
-              <Switch
-                checked={queueFormData.active}
-                onCheckedChange={(val) => setQueueFormData({...queueFormData, active: val})}
-              />
-            </div>
-          </div>
-
-          <SheetFooter className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-            <div className="flex w-full gap-3">
-              <Button variant="outline" onClick={() => setQueueDialogOpen(false)} className="flex-1">
-                Cancelar
-              </Button>
-              <Button 
-                onClick={handleQueueSubmit}
-                disabled={!queueFormData.name}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-              >
-                {editingQueue ? 'Salvar Alterações' : 'Criar Fila'}
-              </Button>
-            </div>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
-
+      {/* Sheet Criar/Editar Perfil de Acesso */}
       <Sheet open={typeDialogOpen} onOpenChange={setTypeDialogOpen}>
         <SheetContent side="right" className="w-full sm:max-w-2xl bg-white dark:bg-gray-900 p-0 flex flex-col">
-          <SheetHeader className="px-6 py-5 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30">
+          <SheetHeader className="px-6 py-5 border-b border-gray-200 dark:border-gray-800" style={{ background: `linear-gradient(135deg, ${BURGUNDY}10, ${CORAL}10)` }}>
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center">
-                <Layers className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${BURGUNDY}15` }}>
+                <Layers className="w-6 h-6" style={{ color: BURGUNDY }} />
               </div>
               <div>
                 <SheetTitle className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-                  {editingType ? 'Editar Tipo de Agente' : 'Novo Tipo de Agente'}
+                  {editingType ? 'Editar Perfil' : 'Novo Perfil de Acesso'}
                 </SheetTitle>
                 <SheetDescription className="text-gray-500 dark:text-gray-400">
-                  Configure as permissões e acessos do tipo de agente
+                  Configure quais telas este perfil pode acessar
                 </SheetDescription>
               </div>
             </div>
@@ -2160,7 +1533,7 @@ export default function Agents() {
                     <Input
                       value={typeFormData.key}
                       onChange={(e) => setTypeFormData({...typeFormData, key: e.target.value.toLowerCase().replace(/\s/g, '_')})}
-                      placeholder="Ex: technical_support"
+                      placeholder="Ex: vendedor_jr"
                       className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                       disabled={!!editingType}
                     />
@@ -2172,7 +1545,7 @@ export default function Agents() {
                     <Input
                       value={typeFormData.label}
                       onChange={(e) => setTypeFormData({...typeFormData, label: e.target.value})}
-                      placeholder="Ex: Suporte Técnico"
+                      placeholder="Ex: Vendedor Junior"
                       className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                     />
                   </div>
@@ -2183,7 +1556,7 @@ export default function Agents() {
                   <Textarea
                     value={typeFormData.description}
                     onChange={(e) => setTypeFormData({...typeFormData, description: e.target.value})}
-                    placeholder="Descreva as responsabilidades deste tipo de agente..."
+                    placeholder="Descreva as responsabilidades deste perfil..."
                     className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                     rows={3}
                   />
@@ -2209,7 +1582,7 @@ export default function Agents() {
                         onClick={() => setTypeFormData({...typeFormData, color: colorOption.value})}
                         className={`flex items-center gap-2 p-3 rounded-lg border-2 transition-all ${
                           typeFormData.color === colorOption.value 
-                            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30' 
+                            ? 'border-gray-900 dark:border-gray-100 bg-gray-50 dark:bg-gray-800' 
                             : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                         }`}
                       >
@@ -2220,12 +1593,12 @@ export default function Agents() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-3">
                     <div className={`w-3 h-3 rounded-full ${typeFormData.active ? 'bg-green-500' : 'bg-gray-400'}`} />
                     <div>
-                      <Label className="text-gray-900 dark:text-gray-100 font-medium">Status do Tipo</Label>
-                      <p className="text-xs text-gray-500">{typeFormData.active ? 'Agentes deste tipo podem acessar o sistema' : 'Tipo inativo, agentes não podem acessar'}</p>
+                      <Label className="text-gray-900 dark:text-gray-100 font-medium">Status do Perfil</Label>
+                      <p className="text-xs text-gray-500">{typeFormData.active ? 'Ativo' : 'Inativo'}</p>
                     </div>
                   </div>
                   <Switch
@@ -2239,10 +1612,10 @@ export default function Agents() {
                 <div className="flex items-center justify-between mb-2">
                   <div>
                     <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Módulos e Telas</h3>
-                    <p className="text-xs text-gray-500">Selecione os módulos e telas que este tipo pode acessar</p>
+                    <p className="text-xs text-gray-500">Selecione as telas que este perfil pode acessar</p>
                   </div>
                   <Badge variant="outline" className="text-xs">
-                    {typeFormData.allowedSubmenus?.length || 0} telas selecionadas
+                    {typeFormData.allowedSubmenus?.length || 0} telas
                   </Badge>
                 </div>
 
@@ -2266,29 +1639,22 @@ export default function Agents() {
                     }}
                     className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
                       typeFormData.modules?.includes('all')
-                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30'
-                        : 'border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700'
+                        ? 'bg-green-50 dark:bg-green-950/30'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                     }`}
+                    style={typeFormData.modules?.includes('all') ? { borderColor: BURGUNDY } : {}}
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                        typeFormData.modules?.includes('all') 
-                          ? 'bg-indigo-100 dark:bg-indigo-900' 
-                          : 'bg-gray-100 dark:bg-gray-800'
-                      }`}>
-                        <Settings className={`w-5 h-5 ${
-                          typeFormData.modules?.includes('all') 
-                            ? 'text-indigo-600 dark:text-indigo-400' 
-                            : 'text-gray-500'
-                        }`} />
+                      <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${BURGUNDY}15` }}>
+                        <Settings className="w-5 h-5" style={{ color: BURGUNDY }} />
                       </div>
                       <div className="text-left">
                         <span className="font-medium text-gray-900 dark:text-gray-100">Acesso Total</span>
-                        <p className="text-xs text-gray-500">Acesso a todos os módulos e telas do sistema</p>
+                        <p className="text-xs text-gray-500">Acesso a todas as telas do sistema</p>
                       </div>
                     </div>
                     {typeFormData.modules?.includes('all') && (
-                      <Check className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                      <Check className="w-5 h-5" style={{ color: BURGUNDY }} />
                     )}
                   </button>
 
@@ -2304,13 +1670,13 @@ export default function Agents() {
                       return (
                         <div key={menuModule.id} className={`rounded-xl border-2 overflow-hidden transition-all ${
                           isModuleSelected 
-                            ? 'border-indigo-200 dark:border-indigo-800' 
+                            ? 'border-gray-300 dark:border-gray-600' 
                             : 'border-gray-200 dark:border-gray-700'
                         }`}>
                           <div 
                             className={`flex items-center justify-between p-3 cursor-pointer transition-colors ${
                               isModuleSelected 
-                                ? 'bg-indigo-50 dark:bg-indigo-950/20' 
+                                ? 'bg-gray-50 dark:bg-gray-800/50' 
                                 : 'bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800'
                             }`}
                             onClick={() => {
@@ -2345,7 +1711,6 @@ export default function Agents() {
                                     });
                                   }
                                 }}
-                                className="data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
                               />
                               <span className="font-medium text-gray-900 dark:text-gray-100">{menuModule.title}</span>
                               {isModuleSelected && (
@@ -2371,7 +1736,7 @@ export default function Agents() {
                                       key={item.id}
                                       className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
                                         isSelected 
-                                          ? 'bg-indigo-50 dark:bg-indigo-950/30' 
+                                          ? 'bg-gray-50 dark:bg-gray-800' 
                                           : 'hover:bg-gray-50 dark:hover:bg-gray-800'
                                       }`}
                                     >
@@ -2402,7 +1767,6 @@ export default function Agents() {
                                             });
                                           }
                                         }}
-                                        className="data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
                                       />
                                       <span className={`text-sm ${
                                         isSelected 
@@ -2425,10 +1789,10 @@ export default function Agents() {
               </TabsContent>
 
               <TabsContent value="preview" className="p-6 space-y-4 mt-0">
-                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 rounded-xl p-4 border border-indigo-200 dark:border-indigo-800">
+                <div className="rounded-xl p-4 border" style={{ backgroundColor: `${BURGUNDY}05`, borderColor: `${BURGUNDY}20` }}>
                   <div className="flex items-center gap-3 mb-3">
                     <Badge className={typeFormData.color || "bg-gray-100 text-gray-700"}>
-                      {typeFormData.label || "Nome do Tipo"}
+                      {typeFormData.label || "Nome do Perfil"}
                     </Badge>
                     <span className="text-xs text-gray-500">({typeFormData.key || "chave"})</span>
                   </div>
@@ -2439,17 +1803,17 @@ export default function Agents() {
 
                 <div>
                   <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Menu que será exibido:</h4>
-                  <div className="bg-gray-900 rounded-xl p-4 space-y-2 max-h-[400px] overflow-y-auto">
+                  <div className="rounded-xl p-4 space-y-2 max-h-[400px] overflow-y-auto" style={{ backgroundColor: BURGUNDY }}>
                     {MENU_MODULES.filter(mod => typeFormData.modules?.includes(mod.id) || typeFormData.modules?.includes('all')).map((mod) => {
                       const visibleItems = mod.items.filter(item => typeFormData.allowedSubmenus?.includes(item.id));
                       if (visibleItems.length === 0) return null;
                       
                       return (
                         <div key={mod.id} className="space-y-1">
-                          <div className="text-xs text-gray-400 uppercase tracking-wider px-2">{mod.title}</div>
+                          <div className="text-xs uppercase tracking-wider px-2" style={{ color: `${CORAL}` }}>{mod.title}</div>
                           {visibleItems.map((item) => (
-                            <div key={item.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800 text-gray-200 text-sm">
-                              <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                            <div key={item.id} className="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-200 text-sm" style={{ backgroundColor: `${BURGUNDY}ee` }}>
+                              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: CORAL }} />
                               {item.title}
                             </div>
                           ))}
@@ -2457,7 +1821,7 @@ export default function Agents() {
                       );
                     })}
                     {(!typeFormData.modules || typeFormData.modules.length === 0) && (
-                      <div className="text-center py-8 text-gray-500">
+                      <div className="text-center py-8 text-gray-400">
                         <ShieldX className="w-12 h-12 mx-auto mb-2 opacity-50" />
                         <p>Nenhum módulo selecionado</p>
                         <p className="text-xs">Vá para a aba "Acessos" para configurar</p>
@@ -2466,17 +1830,15 @@ export default function Agents() {
                   </div>
                 </div>
 
-                <div className="bg-yellow-50 dark:bg-yellow-950/30 rounded-xl p-4 border border-yellow-200 dark:border-yellow-800">
-                  <div className="flex items-start gap-3">
-                    <Activity className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
-                    <div>
-                      <h4 className="text-sm font-medium text-yellow-800 dark:text-yellow-300">Importante</h4>
-                      <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">
-                        Alterações nas permissões só terão efeito após o agente fazer login novamente no sistema.
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                <Alert style={{ backgroundColor: `${CORAL}15`, borderColor: `${CORAL}40` }}>
+                  <Activity className="w-5 h-5" style={{ color: CORAL }} />
+                  <AlertDescription>
+                    <h4 className="text-sm font-medium" style={{ color: BURGUNDY }}>Importante</h4>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                      Alterações nas permissões só terão efeito após o vendedor fazer login novamente.
+                    </p>
+                  </AlertDescription>
+                </Alert>
               </TabsContent>
             </div>
           </Tabs>
@@ -2489,9 +1851,10 @@ export default function Agents() {
               <Button 
                 onClick={handleTypeSubmit}
                 disabled={!typeFormData.key || !typeFormData.label}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-700"
+                className="flex-1 text-white hover:opacity-90"
+                style={{ backgroundColor: BURGUNDY }}
               >
-                {editingType ? 'Salvar Alterações' : 'Criar Tipo de Agente'}
+                {editingType ? 'Salvar Alterações' : 'Criar Perfil'}
               </Button>
             </div>
           </SheetFooter>
