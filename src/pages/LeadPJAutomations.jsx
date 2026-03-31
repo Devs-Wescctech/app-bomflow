@@ -458,26 +458,40 @@ export default function LeadPJAutomations() {
                 <Label className="text-sm font-medium text-gray-900 dark:text-gray-100">Template de Proposta</Label>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Template usado ao enviar propostas comerciais via WhatsApp</p>
                 <div className="flex gap-2">
-                  <Input
+                  <select
                     value={proposalTemplateId}
-                    onChange={(e) => setProposalTemplateId(e.target.value)}
-                    placeholder="ID do template de proposta"
-                    className="flex-1 text-sm bg-white dark:bg-gray-800"
-                  />
-                  <Button
-                    size="sm"
-                    onClick={() => saveSettingMutation.mutate({ key: 'proposal_template_id', value: proposalTemplateId })}
-                    disabled={saveSettingMutation.isPending}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    onChange={(e) => {
+                      setProposalTemplateId(e.target.value);
+                      if (e.target.value) {
+                        saveSettingMutation.mutate({ key: 'proposal_template_id', value: e.target.value });
+                      }
+                    }}
+                    className="flex-1 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-gray-900 dark:text-gray-100"
                   >
-                    <Save className="w-4 h-4" />
-                  </Button>
+                    <option value="">Selecione um template...</option>
+                    {Array.isArray(templates) && templates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name || t.templateName || t.id}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 {proposalTemplateId && (
-                  <Badge className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 text-xs">
-                    <CheckCircle2 className="w-3 h-3 mr-1" />
-                    Configurado
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 text-xs">
+                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                      {templates?.find(t => t.id === proposalTemplateId)?.name || proposalTemplateId}
+                    </Badge>
+                    <button
+                      onClick={() => {
+                        setProposalTemplateId('');
+                        saveSettingMutation.mutate({ key: 'proposal_template_id', value: '' });
+                      }}
+                      className="text-xs text-red-500 hover:text-red-700"
+                    >
+                      Limpar
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -485,29 +499,55 @@ export default function LeadPJAutomations() {
                 <Label className="text-sm font-medium text-gray-900 dark:text-gray-100">Template de Contrato</Label>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Template usado ao enviar contratos para assinatura via WhatsApp</p>
                 <div className="flex gap-2">
-                  <Input
+                  <select
                     value={contractTemplateId}
-                    onChange={(e) => setContractTemplateId(e.target.value)}
-                    placeholder="ID do template de contrato"
-                    className="flex-1 text-sm bg-white dark:bg-gray-800"
-                  />
-                  <Button
-                    size="sm"
-                    onClick={() => saveSettingMutation.mutate({ key: 'contract_template_id', value: contractTemplateId })}
-                    disabled={saveSettingMutation.isPending}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    onChange={(e) => {
+                      setContractTemplateId(e.target.value);
+                      if (e.target.value) {
+                        saveSettingMutation.mutate({ key: 'contract_template_id', value: e.target.value });
+                      }
+                    }}
+                    className="flex-1 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-gray-900 dark:text-gray-100"
                   >
-                    <Save className="w-4 h-4" />
-                  </Button>
+                    <option value="">Selecione um template...</option>
+                    {Array.isArray(templates) && templates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name || t.templateName || t.id}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 {contractTemplateId && (
-                  <Badge className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 text-xs">
-                    <CheckCircle2 className="w-3 h-3 mr-1" />
-                    Configurado
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 text-xs">
+                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                      {templates?.find(t => t.id === contractTemplateId)?.name || contractTemplateId}
+                    </Badge>
+                    <button
+                      onClick={() => {
+                        setContractTemplateId('');
+                        saveSettingMutation.mutate({ key: 'contract_template_id', value: '' });
+                      }}
+                      className="text-xs text-red-500 hover:text-red-700"
+                    >
+                      Limpar
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
+            {(!Array.isArray(templates) || templates.length === 0) && !templatesLoading && (
+              <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
+                <AlertCircle className="w-3 h-3 inline mr-1" />
+                Nenhum template disponível. Configure o Token de Automações acima para carregar os templates.
+              </p>
+            )}
+            {templatesLoading && (
+              <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                <Loader2 className="w-3 h-3 inline mr-1 animate-spin" />
+                Carregando templates...
+              </p>
+            )}
           </CardContent>
         </Card>
 

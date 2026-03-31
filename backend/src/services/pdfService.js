@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PROPOSALS_DIR = path.join(__dirname, '../../public/proposals');
-const LOGO_PATH = path.join(__dirname, '../../public/logo-bomflow.png');
+const LOGO_PATH = path.join(__dirname, '../../public/logo-saleswo.png');
 
 if (!fs.existsSync(PROPOSALS_DIR)) {
   fs.mkdirSync(PROPOSALS_DIR, { recursive: true });
