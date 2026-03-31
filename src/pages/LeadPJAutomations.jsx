@@ -17,7 +17,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Zap, Edit, Trash2, Play, Pause, Building2, MessageSquare, Loader2, CheckCircle2, AlertCircle, TestTube2, Key, Save, Copy } from "lucide-react";
+import { Plus, Zap, Edit, Trash2, Play, Pause, Building2, MessageSquare, Loader2, CheckCircle2, AlertCircle, TestTube2, Key, Save, Copy, Eye, X, FileText, Send } from "lucide-react";
 import { toast } from "sonner";
 import WhatsAppTemplateSelector from "@/components/whatsapp/WhatsAppTemplateSelector";
 import AutomationTestDialog from "@/components/whatsapp/AutomationTestDialog";
@@ -64,6 +64,8 @@ export default function LeadPJAutomations() {
   const [automationToken, setAutomationToken] = useState("");
   const [proposalTemplateId, setProposalTemplateId] = useState("");
   const [contractTemplateId, setContractTemplateId] = useState("");
+  const [templatePickerFor, setTemplatePickerFor] = useState(null);
+  const [templatePreview, setTemplatePreview] = useState(null);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -185,6 +187,48 @@ export default function LeadPJAutomations() {
       toast.error('Erro ao salvar configuração');
     }
   });
+
+  const getTemplateBody = (t) => {
+    if (t.dynamicComponents) {
+      const bodyComponent = t.dynamicComponents.find(c => c.type === 'BODY');
+      if (bodyComponent?.text) return bodyComponent.text;
+    }
+    if (t.staticComponents) {
+      const bodyComponent = t.staticComponents.find(c => c.type === 'BODY');
+      if (bodyComponent?.text) return bodyComponent.text;
+    }
+    if (t.components) {
+      const bodyComponent = t.components.find(c => c.type === 'BODY' || c.type === 'body');
+      if (bodyComponent?.text) return bodyComponent.text;
+    }
+    return t.body || t.text || t.message || t.content || '';
+  };
+
+  const getTemplateHeader = (t) => {
+    const sources = [t.dynamicComponents, t.staticComponents, t.components];
+    for (const source of sources) {
+      if (!source) continue;
+      const header = source.find(c => c.type === 'HEADER');
+      if (header) {
+        if (header.format === 'DOCUMENT' || header.format === 'document') return 'PDF / Documento';
+        if (header.format === 'IMAGE' || header.format === 'image') return 'Imagem';
+        if (header.format === 'VIDEO' || header.format === 'video') return 'Vídeo';
+        if (header.text) return header.text;
+      }
+    }
+    return null;
+  };
+
+  const handlePickTemplate = (templateId, purpose) => {
+    if (purpose === 'proposal') {
+      setProposalTemplateId(templateId);
+      saveSettingMutation.mutate({ key: 'proposal_template_id', value: templateId });
+    } else {
+      setContractTemplateId(templateId);
+      saveSettingMutation.mutate({ key: 'contract_template_id', value: templateId });
+    }
+    setTemplatePickerFor(null);
+  };
 
   const selectTemplate = (template) => {
     const getTemplateBody = (t) => {
@@ -454,87 +498,106 @@ export default function LeadPJAutomations() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 bg-white dark:bg-gray-900 rounded-lg border border-blue-200 dark:border-blue-800 space-y-3">
-                <Label className="text-sm font-medium text-gray-900 dark:text-gray-100">Template de Proposta</Label>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Template usado ao enviar propostas comerciais via WhatsApp</p>
-                <div className="flex gap-2">
-                  <select
-                    value={proposalTemplateId}
-                    onChange={(e) => {
-                      setProposalTemplateId(e.target.value);
-                      if (e.target.value) {
-                        saveSettingMutation.mutate({ key: 'proposal_template_id', value: e.target.value });
-                      }
-                    }}
-                    className="flex-1 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-gray-900 dark:text-gray-100"
-                  >
-                    <option value="">Selecione um template...</option>
-                    {Array.isArray(templates) && templates.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name || t.templateName || t.id}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {proposalTemplateId && (
-                  <div className="flex items-center gap-2">
-                    <Badge className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 text-xs">
-                      <CheckCircle2 className="w-3 h-3 mr-1" />
-                      {templates?.find(t => t.id === proposalTemplateId)?.name || proposalTemplateId}
-                    </Badge>
-                    <button
-                      onClick={() => {
-                        setProposalTemplateId('');
-                        saveSettingMutation.mutate({ key: 'proposal_template_id', value: '' });
-                      }}
-                      className="text-xs text-red-500 hover:text-red-700"
-                    >
-                      Limpar
-                    </button>
-                  </div>
-                )}
-              </div>
+              {[
+                { key: 'proposal', label: 'Template de Proposta', desc: 'Template usado ao enviar propostas comerciais via WhatsApp', value: proposalTemplateId, icon: Send },
+                { key: 'contract', label: 'Template de Contrato', desc: 'Template usado ao enviar contratos para assinatura via WhatsApp', value: contractTemplateId, icon: FileText },
+              ].map(({ key, label, desc, value, icon: Icon }) => {
+                const selectedTemplate = value ? templates?.find(t => t.id === value) : null;
+                const body = selectedTemplate ? getTemplateBody(selectedTemplate) : null;
+                const header = selectedTemplate ? getTemplateHeader(selectedTemplate) : null;
+                return (
+                  <div key={key} className="p-4 bg-white dark:bg-gray-900 rounded-lg border border-blue-200 dark:border-blue-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                          <Icon className="w-4 h-4 text-blue-600" />
+                          {label}
+                        </Label>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{desc}</p>
+                      </div>
+                    </div>
 
-              <div className="p-4 bg-white dark:bg-gray-900 rounded-lg border border-blue-200 dark:border-blue-800 space-y-3">
-                <Label className="text-sm font-medium text-gray-900 dark:text-gray-100">Template de Contrato</Label>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Template usado ao enviar contratos para assinatura via WhatsApp</p>
-                <div className="flex gap-2">
-                  <select
-                    value={contractTemplateId}
-                    onChange={(e) => {
-                      setContractTemplateId(e.target.value);
-                      if (e.target.value) {
-                        saveSettingMutation.mutate({ key: 'contract_template_id', value: e.target.value });
-                      }
-                    }}
-                    className="flex-1 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-gray-900 dark:text-gray-100"
-                  >
-                    <option value="">Selecione um template...</option>
-                    {Array.isArray(templates) && templates.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name || t.templateName || t.id}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {contractTemplateId && (
-                  <div className="flex items-center gap-2">
-                    <Badge className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 text-xs">
-                      <CheckCircle2 className="w-3 h-3 mr-1" />
-                      {templates?.find(t => t.id === contractTemplateId)?.name || contractTemplateId}
-                    </Badge>
-                    <button
-                      onClick={() => {
-                        setContractTemplateId('');
-                        saveSettingMutation.mutate({ key: 'contract_template_id', value: '' });
-                      }}
-                      className="text-xs text-red-500 hover:text-red-700"
-                    >
-                      Limpar
-                    </button>
+                    {selectedTemplate ? (
+                      <div className="rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/30 overflow-hidden">
+                        <div className="flex items-center justify-between px-3 py-2 bg-green-100 dark:bg-green-900/50">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-green-600" />
+                            <span className="text-sm font-medium text-green-800 dark:text-green-200">
+                              {selectedTemplate.name || selectedTemplate.templateName || selectedTemplate.id}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {selectedTemplate.status && (
+                              <Badge className={`text-[10px] ${selectedTemplate.status === 'APPROVED' ? 'bg-green-200 text-green-700' : 'bg-yellow-200 text-yellow-700'}`}>
+                                {selectedTemplate.status === 'APPROVED' ? 'Aprovado' : selectedTemplate.status}
+                              </Badge>
+                            )}
+                            {selectedTemplate.language && (
+                              <Badge className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-[10px]">
+                                {selectedTemplate.language}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <div className="px-3 py-2 space-y-1">
+                          {header && (
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 italic">
+                              📎 {header}
+                            </p>
+                          )}
+                          {body && (
+                            <div className="bg-white dark:bg-gray-800 rounded p-2 border border-gray-200 dark:border-gray-700">
+                              <p className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap line-clamp-4">
+                                {body}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 px-3 py-2 border-t border-green-200 dark:border-green-800">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setTemplatePickerFor(key)}
+                            className="text-xs h-7 border-blue-300 text-blue-700 hover:bg-blue-50"
+                          >
+                            <Edit className="w-3 h-3 mr-1" />
+                            Trocar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              if (key === 'proposal') {
+                                setProposalTemplateId('');
+                                saveSettingMutation.mutate({ key: 'proposal_template_id', value: '' });
+                              } else {
+                                setContractTemplateId('');
+                                saveSettingMutation.mutate({ key: 'contract_template_id', value: '' });
+                              }
+                            }}
+                            className="text-xs h-7 border-red-300 text-red-600 hover:bg-red-50"
+                          >
+                            <X className="w-3 h-3 mr-1" />
+                            Remover
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        className="w-full h-20 border-dashed border-2 border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950"
+                        onClick={() => setTemplatePickerFor(key)}
+                        disabled={!Array.isArray(templates) || templates.length === 0}
+                      >
+                        <div className="flex flex-col items-center gap-1">
+                          <Plus className="w-5 h-5" />
+                          <span className="text-xs">Selecionar Template</span>
+                        </div>
+                      </Button>
+                    )}
                   </div>
-                )}
-              </div>
+                );
+              })}
             </div>
             {(!Array.isArray(templates) || templates.length === 0) && !templatesLoading && (
               <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
@@ -1028,6 +1091,124 @@ export default function LeadPJAutomations() {
       />
 
       {/* Token Configuration Dialog */}
+      <Dialog open={!!templatePickerFor} onOpenChange={(open) => { if (!open) { setTemplatePickerFor(null); setTemplatePreview(null); } }}>
+        <DialogContent className="max-w-3xl bg-white dark:bg-gray-900 max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900 dark:text-gray-100 flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-blue-600" />
+              Selecionar Template de {templatePickerFor === 'proposal' ? 'Proposta' : 'Contrato'}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto pr-1 space-y-2">
+            {templatesLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                <span className="ml-2 text-gray-500">Carregando templates...</span>
+              </div>
+            ) : !Array.isArray(templates) || templates.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <AlertCircle className="w-8 h-8 mx-auto mb-2 text-yellow-500" />
+                <p>Nenhum template disponível.</p>
+                <p className="text-xs mt-1">Configure o Token de Automações para carregar os templates.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2">
+                {templates.map((t) => {
+                  const body = getTemplateBody(t);
+                  const header = getTemplateHeader(t);
+                  const isSelected = (templatePickerFor === 'proposal' && proposalTemplateId === t.id) || (templatePickerFor === 'contract' && contractTemplateId === t.id);
+                  const isPreviewing = templatePreview === t.id;
+                  return (
+                    <div
+                      key={t.id}
+                      className={`rounded-lg border-2 transition-all cursor-pointer ${
+                        isSelected
+                          ? 'border-green-500 bg-green-50 dark:bg-green-950/30'
+                          : isPreviewing
+                          ? 'border-blue-400 bg-blue-50 dark:bg-blue-950/30'
+                          : 'border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 bg-white dark:bg-gray-800'
+                      }`}
+                    >
+                      <div
+                        className="flex items-center justify-between px-4 py-3"
+                        onClick={() => setTemplatePreview(isPreviewing ? null : t.id)}
+                      >
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900 flex items-center justify-center flex-shrink-0">
+                            <MessageSquare className="w-4 h-4 text-green-600" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                              {t.name || t.templateName || t.id}
+                            </p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {t.status && (
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                  t.status === 'APPROVED' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                                }`}>
+                                  {t.status === 'APPROVED' ? 'Aprovado' : t.status}
+                                </span>
+                              )}
+                              {t.language && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                                  {t.language}
+                                </span>
+                              )}
+                              {t.category && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300">
+                                  {t.category}
+                                </span>
+                              )}
+                              {header && (
+                                <span className="text-[10px] text-gray-400">📎 {header}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <button className="text-gray-400 hover:text-blue-600 p-1">
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          {isSelected ? (
+                            <Badge className="bg-green-200 text-green-700 text-[10px]">
+                              <CheckCircle2 className="w-3 h-3 mr-1" />
+                              Selecionado
+                            </Badge>
+                          ) : (
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePickTemplate(t.id, templatePickerFor);
+                              }}
+                            >
+                              Usar este
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {isPreviewing && body && (
+                        <div className="px-4 pb-3 border-t border-gray-100 dark:border-gray-700">
+                          <p className="text-[11px] text-gray-400 mt-2 mb-1 font-medium uppercase">Prévia da mensagem:</p>
+                          <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+                            <div className="bg-green-100 dark:bg-green-900/50 rounded-lg p-3 max-w-sm ml-auto">
+                              <p className="text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{body}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isTokenDialogOpen} onOpenChange={setIsTokenDialogOpen}>
         <DialogContent className="max-w-lg bg-white dark:bg-gray-900">
           <DialogHeader>
