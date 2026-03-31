@@ -433,6 +433,7 @@ export default function LeadPJAutomations() {
       action_config: {
         ...defaultActionConfig,
         ...actionConfig,
+        template_variables: actionConfig.template_variables || actionConfig.templateVariables || [],
       },
       whatsapp_template_id: automation.whatsappTemplateId || actionConfig.whatsapp_template_id || actionConfig.whatsappTemplateId || "",
       whatsapp_template_name: resolveTemplateName(
