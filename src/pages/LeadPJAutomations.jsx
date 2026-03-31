@@ -53,6 +53,42 @@ const ACTION_TYPES = [
   { value: 'send_email', label: 'Enviar E-mail' },
 ];
 
+const VARIABLE_SOURCES = [
+  { value: 'lead_name', label: 'Nome do Lead / Contato' },
+  { value: 'company_name', label: 'Nome da Empresa (Razão Social / Fantasia)' },
+  { value: 'agent_name', label: 'Nome do Vendedor' },
+  { value: 'lead_email', label: 'Email do Lead' },
+  { value: 'lead_phone', label: 'Telefone do Lead' },
+  { value: 'proposal_url', label: 'URL da Proposta' },
+  { value: 'contract_url', label: 'URL do Contrato / Assinatura' },
+  { value: 'custom', label: 'Texto personalizado' },
+];
+
+function getTemplateVarCount(template) {
+  if (!template) return 0;
+  const sources = [template.dynamicComponents, template.staticComponents, template.components];
+  for (const source of sources) {
+    if (!source) continue;
+    const body = source.find(c => c.type === 'BODY');
+    if (body?.text) {
+      const matches = body.text.match(/\{\{\d+\}\}/g);
+      if (matches) return matches.length;
+    }
+  }
+  return 0;
+}
+
+function getTemplateHeaderFormat(template) {
+  if (!template) return null;
+  const sources = [template.dynamicComponents, template.staticComponents, template.components];
+  for (const source of sources) {
+    if (!source) continue;
+    const header = source.find(c => c.type === 'HEADER');
+    if (header?.format) return header.format.toLowerCase();
+  }
+  return null;
+}
+
 export default function LeadPJAutomations() {
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -66,6 +102,8 @@ export default function LeadPJAutomations() {
   const [contractTemplateId, setContractTemplateId] = useState("");
   const [templatePickerFor, setTemplatePickerFor] = useState(null);
   const [templatePreview, setTemplatePreview] = useState(null);
+  const [proposalTemplateVars, setProposalTemplateVars] = useState([]);
+  const [contractTemplateVars, setContractTemplateVars] = useState([]);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -129,6 +167,14 @@ export default function LeadPJAutomations() {
       if (proposalVal) setProposalTemplateId(proposalVal);
       const contractVal = getVal('contract_template_id');
       if (contractVal) setContractTemplateId(contractVal);
+      const proposalVarsVal = getVal('proposal_template_variables');
+      if (proposalVarsVal) {
+        try { setProposalTemplateVars(JSON.parse(proposalVarsVal)); } catch(e) {}
+      }
+      const contractVarsVal = getVal('contract_template_variables');
+      if (contractVarsVal) {
+        try { setContractTemplateVars(JSON.parse(contractVarsVal)); } catch(e) {}
+      }
     }
   }, [settings]);
 
@@ -256,6 +302,12 @@ export default function LeadPJAutomations() {
     };
 
     const templateBody = getTemplateBody(template);
+    const varCount = getTemplateVarCount(template);
+    const initialVars = Array.from({ length: varCount }, (_, i) => ({
+      index: i + 1,
+      source: '',
+      customValue: '',
+    }));
     
     setFormData({
       ...formData,
@@ -264,6 +316,7 @@ export default function LeadPJAutomations() {
       action_config: {
         ...formData.action_config,
         templateMessage: templateBody,
+        template_variables: initialVars,
       },
     });
     setShowTemplateSelector(false);
@@ -564,6 +617,56 @@ export default function LeadPJAutomations() {
                             </div>
                           )}
                         </div>
+                        {(() => {
+                          const varCount = getTemplateVarCount(selectedTemplate);
+                          const currentVars = key === 'proposal' ? proposalTemplateVars : contractTemplateVars;
+                          const setVars = key === 'proposal' ? setProposalTemplateVars : setContractTemplateVars;
+                          const settingKey = key === 'proposal' ? 'proposal_template_variables' : 'contract_template_variables';
+                          const displayVars = currentVars.length === varCount ? currentVars : Array.from({ length: varCount }, (_, i) => currentVars[i] || { index: i + 1, source: '', customValue: '' });
+                          if (varCount === 0) return null;
+                          return (
+                            <div className="px-3 py-2 border-t border-green-200 dark:border-green-800 space-y-2">
+                              <p className="text-[11px] font-semibold text-blue-700 dark:text-blue-300 uppercase">Variáveis do Template</p>
+                              {displayVars.map((v, idx) => (
+                                <div key={idx} className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-mono bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded whitespace-nowrap">
+                                    {`{{${v.index || idx + 1}}}`}
+                                  </span>
+                                  <select
+                                    value={v.source || ''}
+                                    onChange={(e) => {
+                                      const updated = [...displayVars];
+                                      updated[idx] = { ...updated[idx], source: e.target.value, customValue: e.target.value === 'custom' ? updated[idx].customValue : '' };
+                                      setVars(updated);
+                                      saveSettingMutation.mutate({ key: settingKey, value: JSON.stringify(updated) });
+                                    }}
+                                    className="flex-1 text-[11px] bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1"
+                                  >
+                                    <option value="">Selecione...</option>
+                                    {VARIABLE_SOURCES.map(vs => (
+                                      <option key={vs.value} value={vs.value}>{vs.label}</option>
+                                    ))}
+                                  </select>
+                                  {v.source === 'custom' && (
+                                    <input
+                                      value={v.customValue || ''}
+                                      onChange={(e) => {
+                                        const updated = [...displayVars];
+                                        updated[idx] = { ...updated[idx], customValue: e.target.value };
+                                        setVars(updated);
+                                      }}
+                                      onBlur={() => {
+                                        saveSettingMutation.mutate({ key: settingKey, value: JSON.stringify(displayVars) });
+                                      }}
+                                      placeholder="Texto fixo..."
+                                      className="flex-1 text-[11px] bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1"
+                                    />
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
                         <div className="flex items-center gap-2 px-3 py-2 border-t border-green-200 dark:border-green-800">
                           <Button
                             size="sm"
@@ -580,10 +683,14 @@ export default function LeadPJAutomations() {
                             onClick={() => {
                               if (key === 'proposal') {
                                 setProposalTemplateId('');
+                                setProposalTemplateVars([]);
                                 saveSettingMutation.mutate({ key: 'proposal_template_id', value: '' });
+                                saveSettingMutation.mutate({ key: 'proposal_template_variables', value: '[]' });
                               } else {
                                 setContractTemplateId('');
+                                setContractTemplateVars([]);
                                 saveSettingMutation.mutate({ key: 'contract_template_id', value: '' });
+                                saveSettingMutation.mutate({ key: 'contract_template_variables', value: '[]' });
                               }
                             }}
                             className="text-xs h-7 border-red-300 text-red-600 hover:bg-red-50"
@@ -1057,12 +1164,64 @@ export default function LeadPJAutomations() {
                       )}
                     </div>
 
-                    <Alert className="bg-blue-50 border-blue-200">
-                      <MessageSquare className="w-4 h-4 text-blue-600" />
-                      <AlertDescription className="text-blue-800 text-sm">
-                        <strong>Variáveis do template:</strong> O nome do lead PJ, contato e vendedor serão inseridos automaticamente nos campos do template.
-                      </AlertDescription>
-                    </Alert>
+                    {formData.whatsapp_template_id && formData.action_config.template_variables?.length > 0 && (
+                      <div className="border border-blue-200 dark:border-blue-800 rounded-lg p-3 bg-blue-50 dark:bg-blue-950/30 space-y-3">
+                        <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 uppercase">
+                          Mapeamento de Variáveis do Template
+                        </p>
+                        <p className="text-[11px] text-blue-600 dark:text-blue-400">
+                          Configure qual dado será enviado em cada variável do template.
+                        </p>
+                        {formData.action_config.template_variables.map((v, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <span className="text-xs font-mono bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-1 rounded whitespace-nowrap">
+                              {`{{${v.index}}}`}
+                            </span>
+                            <Select
+                              value={v.source}
+                              onValueChange={(val) => {
+                                const updated = [...formData.action_config.template_variables];
+                                updated[idx] = { ...updated[idx], source: val, customValue: val === 'custom' ? updated[idx].customValue : '' };
+                                setFormData({
+                                  ...formData,
+                                  action_config: { ...formData.action_config, template_variables: updated },
+                                });
+                              }}
+                            >
+                              <SelectTrigger className="flex-1 h-8 text-xs bg-white dark:bg-gray-800">
+                                <SelectValue placeholder="Selecione o dado..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {VARIABLE_SOURCES.map(vs => (
+                                  <SelectItem key={vs.value} value={vs.value}>{vs.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {v.source === 'custom' && (
+                              <Input
+                                value={v.customValue || ''}
+                                onChange={(e) => {
+                                  const updated = [...formData.action_config.template_variables];
+                                  updated[idx] = { ...updated[idx], customValue: e.target.value };
+                                  setFormData({
+                                    ...formData,
+                                    action_config: { ...formData.action_config, template_variables: updated },
+                                  });
+                                }}
+                                placeholder="Texto fixo..."
+                                className="flex-1 h-8 text-xs"
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {formData.whatsapp_template_id && (!formData.action_config.template_variables || formData.action_config.template_variables.length === 0) && (
+                      <p className="text-xs text-gray-500 italic">
+                        Este template não possui variáveis configuráveis.
+                      </p>
+                    )}
                   </>
                 )}
               </div>

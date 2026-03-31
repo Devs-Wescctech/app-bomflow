@@ -1833,27 +1833,65 @@ router.post('/send-proposal-whatsapp', authMiddleware, async (req, res) => {
       "SELECT setting_value FROM system_settings WHERE setting_key = 'proposal_template_id' LIMIT 1"
     );
     const PROPOSAL_TEMPLATE_ID = templateSettingResult.rows[0]?.setting_value || '697a2b0d532f3df41d2288dc';
-    
-    const templateComponents = [
-      {
-        type: 'BODY',
-        parameters: [
-          { type: 'text', text: leadName }
-        ]
-      },
-      {
-        type: 'HEADER',
-        parameters: [
-          {
-            type: 'document',
-            document: {
-              link: fullPdfUrl,
-              fileName: `Proposta - ${leadName}`
-            }
-          }
-        ]
+
+    const proposalVarsResult = await query(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'proposal_template_variables' LIMIT 1"
+    );
+    let proposalTemplateVars = null;
+    try {
+      if (proposalVarsResult.rows[0]?.setting_value) {
+        proposalTemplateVars = JSON.parse(proposalVarsResult.rows[0].setting_value);
       }
-    ];
+    } catch(e) {}
+
+    let templateComponents;
+    if (proposalTemplateVars && proposalTemplateVars.length > 0 && proposalTemplateVars.some(v => v.source)) {
+      const resolveVar = (v) => {
+        switch (v.source) {
+          case 'lead_name': return lead.name || lead.full_name || lead.contact_name || 'Cliente';
+          case 'company_name': return lead.company_name || lead.razao_social || lead.nome_fantasia || '';
+          case 'agent_name': return agent?.name || 'Consultor';
+          case 'lead_email': return lead.email || '';
+          case 'lead_phone': return lead.phone || lead.whatsapp || '';
+          case 'proposal_url': return fullPdfUrl;
+          case 'contract_url': return '';
+          case 'custom': return v.customValue || v.custom_value || '';
+          default: return '';
+        }
+      };
+      const fallbackValues = [leadName, agent?.name || 'Consultor', lead.email || '', lead.company_name || '', lead.phone || ''];
+      const bodyParams = proposalTemplateVars.map((v, idx) => {
+        const resolved = v.source ? resolveVar(v) : '';
+        return { type: 'text', text: resolved || fallbackValues[idx] || '' };
+      });
+      templateComponents = [{ type: 'BODY', parameters: bodyParams }];
+
+      templateComponents.push({
+        type: 'HEADER',
+        parameters: [{ type: 'document', document: { link: fullPdfUrl, fileName: `Proposta - ${leadName}` } }]
+      });
+    } else {
+      templateComponents = [
+        {
+          type: 'BODY',
+          parameters: [
+            { type: 'text', text: leadName }
+          ]
+        },
+        {
+          type: 'HEADER',
+          parameters: [
+            {
+              type: 'document',
+              document: {
+                link: fullPdfUrl,
+                fileName: `Proposta - ${leadName}`
+              }
+            }
+          ]
+        }
+      ];
+    }
     
     const tokenResult = await query(
       "SELECT setting_value FROM system_settings WHERE setting_key = 'automation_token' LIMIT 1"
@@ -2314,19 +2352,59 @@ router.post('/send-contract-whatsapp', authMiddleware, async (req, res) => {
     );
     const contractTemplateId = contractTemplateResult.rows[0]?.setting_value;
 
+    const contractVarsResult = await query(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'contract_template_variables' LIMIT 1"
+    );
+    let contractTemplateVars = null;
+    try {
+      if (contractVarsResult.rows[0]?.setting_value) {
+        contractTemplateVars = JSON.parse(contractVarsResult.rows[0].setting_value);
+      }
+    } catch(e) {}
+
+    let agentForContract = null;
+    const agentIdForContract = lead.agent_id;
+    if (agentIdForContract) {
+      const agentResult = await query('SELECT * FROM agents WHERE id = $1', [agentIdForContract]);
+      if (agentResult.rows.length > 0) agentForContract = agentResult.rows[0];
+    }
+
     const leadName = lead.name || lead.company_name || lead.contact_name || lead.fantasy_name || 'Cliente';
     let responseData;
 
     if (contractTemplateId) {
-      const templateComponents = [
-        {
-          type: 'BODY',
-          parameters: [
-            { type: 'text', text: leadName },
-            { type: 'text', text: contractUrl }
-          ]
-        }
-      ];
+      let templateComponents;
+      if (contractTemplateVars && contractTemplateVars.length > 0 && contractTemplateVars.some(v => v.source)) {
+        const resolveVar = (v) => {
+          switch (v.source) {
+            case 'lead_name': return lead.name || lead.company_name || lead.contact_name || 'Cliente';
+            case 'company_name': return lead.company_name || lead.razao_social || lead.nome_fantasia || '';
+            case 'agent_name': return agentForContract?.name || 'Consultor';
+            case 'lead_email': return lead.email || '';
+            case 'lead_phone': return lead.phone || lead.whatsapp || '';
+            case 'proposal_url': return lead.proposal_url || '';
+            case 'contract_url': return contractUrl;
+            case 'custom': return v.customValue || v.custom_value || '';
+            default: return '';
+          }
+        };
+        const fallbackValues = [leadName, contractUrl, lead.email || '', lead.company_name || '', lead.phone || ''];
+        const bodyParams = contractTemplateVars.map((v, idx) => {
+          const resolved = v.source ? resolveVar(v) : '';
+          return { type: 'text', text: resolved || fallbackValues[idx] || '' };
+        });
+        templateComponents = [{ type: 'BODY', parameters: bodyParams }];
+      } else {
+        templateComponents = [
+          {
+            type: 'BODY',
+            parameters: [
+              { type: 'text', text: leadName },
+              { type: 'text', text: contractUrl }
+            ]
+          }
+        ];
+      }
 
       const body = {
         forceSend: true,

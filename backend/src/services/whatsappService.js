@@ -20,6 +20,47 @@ function getTemplateParamCount(templateDef) {
   return 0;
 }
 
+function resolveVariableValue(source, customValue, lead, agent, extraData = {}) {
+  switch (source) {
+    case 'lead_name':
+      return lead.name || lead.referred_name || lead.contact_name || lead.full_name || 'Cliente';
+    case 'company_name':
+      return lead.company_name || lead.companyName || lead.razao_social || lead.nome_fantasia || lead.fantasy_name || '';
+    case 'agent_name':
+      return agent?.name || agent?.full_name || 'Consultor';
+    case 'lead_email':
+      return lead.email || '';
+    case 'lead_phone':
+      return lead.phone || lead.whatsapp || lead.cell_phone || '';
+    case 'proposal_url':
+      return extraData.proposalUrl || lead.proposal_url || '';
+    case 'contract_url':
+      return extraData.contractUrl || '';
+    case 'custom':
+      return customValue || '';
+    default:
+      return '';
+  }
+}
+
+function buildTemplateComponentsFromMapping(templateVars, lead, agent, extraData = {}) {
+  if (!templateVars || templateVars.length === 0) return [];
+
+  const leadName = lead.name || lead.referred_name || lead.contact_name || lead.full_name || 'Cliente';
+  const agentName = agent?.name || agent?.full_name || 'Consultor';
+  const fallbackValues = [leadName, agentName, lead.email || '', lead.company_name || '', lead.phone || ''];
+
+  const parameters = templateVars.map((v, idx) => {
+    const resolved = v.source ? resolveVariableValue(v.source, v.customValue || v.custom_value, lead, agent, extraData) : '';
+    return {
+      type: 'text',
+      text: resolved || fallbackValues[idx] || '',
+    };
+  });
+
+  return [{ type: 'BODY', parameters }];
+}
+
 function buildTemplateComponents(paramCount, leadName, agentName, lead) {
   if (paramCount === 0) return [];
 
@@ -431,7 +472,7 @@ export async function setContactAttributes(contactId, attributes) {
   return response.json();
 }
 
-export async function sendWhatsAppMessage(lead, agent, templateId, templateComponents) {
+export async function sendWhatsAppMessage(lead, agent, templateId, templateComponents, templateVariables, extraData) {
   const phone = lead.phone || lead.referred_phone || lead.contact_phone || lead.whatsapp || lead.cell_phone;
   
   if (!phone) {
@@ -445,6 +486,10 @@ export async function sendWhatsAppMessage(lead, agent, templateId, templateCompo
   const agentName = agent?.name || agent?.full_name || 'Consultor';
 
   let components = templateComponents;
+
+  if (!components && templateVariables && templateVariables.length > 0 && templateVariables.some(v => v?.source)) {
+    components = buildTemplateComponentsFromMapping(templateVariables, lead, agent, extraData || {});
+  }
 
   if (!components) {
     let paramCount = 1;

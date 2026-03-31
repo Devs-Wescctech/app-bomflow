@@ -400,7 +400,8 @@ async function executeAutomationAction(automation, lead, automationType) {
       if (automation.whatsapp_template_id) {
         try {
           const agent = lead.agent_id ? { id: lead.agent_id, name: lead.agent_name, phone: lead.agent_phone } : null;
-          const result = await sendWhatsAppMessage(lead, agent, automation.whatsapp_template_id);
+          const templateVars = actionConfig.template_variables || actionConfig.templateVariables || null;
+          const result = await sendWhatsAppMessage(lead, agent, automation.whatsapp_template_id, null, templateVars);
           
           await logAutomationExecution({
             automationType,
