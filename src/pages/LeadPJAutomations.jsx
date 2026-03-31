@@ -224,7 +224,7 @@ export default function LeadPJAutomations() {
     if (!id || !Array.isArray(templates)) return id || '';
     const t = templates.find(tpl => tpl.id === id);
     if (!t) return id;
-    return t.name || t.templateName || t.description || id;
+    return t.description || t.name || t.templateName || id;
   };
 
   const handlePickTemplate = (templateId, purpose) => {
@@ -260,7 +260,7 @@ export default function LeadPJAutomations() {
     setFormData({
       ...formData,
       whatsapp_template_id: template.id,
-      whatsapp_template_name: template.name || template.templateName || template.description || template.id,
+      whatsapp_template_name: template.description || template.name || template.templateName || template.id,
       action_config: {
         ...formData.action_config,
         templateMessage: templateBody,
@@ -534,7 +534,7 @@ export default function LeadPJAutomations() {
                           <div className="flex items-center gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600" />
                             <span className="text-sm font-medium text-green-800 dark:text-green-200">
-                              {selectedTemplate.name || selectedTemplate.templateName || selectedTemplate.id}
+                              {selectedTemplate.description || selectedTemplate.name || selectedTemplate.templateName || selectedTemplate.id}
                             </span>
                           </div>
                           <div className="flex items-center gap-1">
@@ -1152,7 +1152,7 @@ export default function LeadPJAutomations() {
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                              {t.name || t.templateName || t.id}
+                              {t.description || t.name || t.templateName || t.id}
                             </p>
                             <div className="flex items-center gap-2 mt-0.5">
                               {t.status && (
