@@ -104,6 +104,12 @@ SalesTwo is a focused B2B sales management platform built on a streamlined versi
 - **Token Auto-Refresh**: Global fetch interceptor for transparently refreshing expired access tokens.
 - **Configurable Automation Token**: WhatsApp automation token configurable via UI, stored in system_settings DB table.
 
+## GitHub Repository
+- **Repo**: `Wescctech/app-crm-vh` (private)
+- **URL**: https://github.com/Wescctech/app-crm-vh
+- **All source files pushed**: 160 files including backend, frontend, deploy configs, logos
+- **Deploy files**: `deploy/server-setup.sh` and `deploy/docker-compose.yml` use environment variables (no hardcoded credentials)
+
 ## External Dependencies
 - **PostgreSQL**: Primary database for the system.
 - **React 18**: Frontend library for building user interfaces.

@@ -2,14 +2,14 @@
 set -e
 
 echo "============================================"
-echo "  Bom Flow CRM - Server Setup Script"
+echo "  SalesTwo CRM - Server Setup Script"
 echo "============================================"
 
-APP_DIR="/opt/bomflow"
-DB_NAME="bomflow"
-DB_USER="auth_bd"
-DB_PASS="4uth@1307BD"
-DB_PASS_ENCODED="4uth%401307BD"
+APP_DIR="/opt/salestwo"
+DB_NAME="salestwo"
+DB_USER="${DB_USER:-salestwo_user}"
+DB_PASS="${DB_PASS:?DB_PASS environment variable is required}"
+DB_PASS_ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$DB_PASS'))")
 
 echo ""
 echo "[1/6] Criando diretórios..."
@@ -64,8 +64,8 @@ echo ""
 echo "[4/6] Criando arquivo .env..."
 cat > ${APP_DIR}/.env <<EOF
 DATABASE_URL=postgresql://${DB_USER}:${DB_PASS_ENCODED}@172.17.0.1:5432/${DB_NAME}
-JWT_SECRET=2Iz5EHu2ZKRnebbtxV+R/e1JcPxjX/zcF68Xt5q/mXo=
-SESSION_SECRET=2Iz5EHu2ZKRnebbtxV+R/e1JcPxjX/zcF68Xt5q/mXo=
+JWT_SECRET=${JWT_SECRET:?JWT_SECRET environment variable is required}
+SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET environment variable is required}
 EOF
 chmod 600 ${APP_DIR}/.env
 echo "  -> .env criado em ${APP_DIR}/.env"
@@ -73,7 +73,7 @@ echo "  -> .env criado em ${APP_DIR}/.env"
 echo ""
 echo "[5/6] Login no GitHub Container Registry..."
 echo "  -> Insira seu GitHub PAT quando solicitado:"
-docker login ghcr.io -u devs-wescctech
+docker login ghcr.io -u wescctech
 echo "  -> Login realizado."
 
 echo ""
@@ -86,12 +86,12 @@ echo "  -> Container app-bomflow iniciado."
 echo ""
 echo "Verificando status..."
 sleep 10
-if docker ps --filter "name=app-bomflow" --filter "status=running" | grep -q app-bomflow; then
+if docker ps --filter "name=app-salestwo" --filter "status=running" | grep -q app-salestwo; then
   echo "  -> Container rodando com sucesso!"
   echo "  -> Acesse: http://$(hostname -I | awk '{print $1}'):5200"
 else
   echo "  -> AVISO: Container pode não ter iniciado corretamente."
-  echo "  -> Verifique com: docker logs app-bomflow"
+  echo "  -> Verifique com: docker logs app-salestwo"
 fi
 
 echo ""

@@ -1,7 +1,7 @@
 services:
-  app-bomflow:
-    image: ghcr.io/devs-wescctech/app-bomflow:latest
-    container_name: app-bomflow
+  app-salestwo:
+    image: ghcr.io/wescctech/app-crm-vh:latest
+    container_name: app-salestwo
     restart: unless-stopped
     ports:
       - "5200:5000"
