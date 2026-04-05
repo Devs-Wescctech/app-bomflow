@@ -86,10 +86,15 @@ export default function ReferralCreate() {
   const currentAgentType = user?.agent?.agentType || user?.agent?.agent_type;
   const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor';
 
-  const salesAgentsList = agents.filter(a => 
-    a.active !== false && 
-    (a.agentType === 'sales' || a.agent_type === 'sales')
-  ).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
+  const isGestor = currentAgentType === 'gestor';
+
+  const salesAgentsList = agents.filter(a => {
+    if (a.active === false) return false;
+    if (isGestor) {
+      return a.agentType === 'indicacoes_atendente' || a.agent_type === 'indicacoes_atendente';
+    }
+    return a.agentType === 'sales' || a.agent_type === 'sales';
+  }).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
 
   const createReferralMutation = useMutation({
     mutationFn: (data) => base44.entities.Referral.create(data),
@@ -552,7 +557,7 @@ export default function ReferralCreate() {
                             </Select>
                           ) : (
                             <div className="mt-1 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                              <p className="text-sm text-amber-700">Nenhum agente de vendas disponível</p>
+                              <p className="text-sm text-amber-700">{isGestor ? 'Nenhum atendente de indicações disponível' : 'Nenhum agente de vendas disponível'}</p>
                             </div>
                           )}
                           <p className="text-xs text-gray-500 mt-1">
