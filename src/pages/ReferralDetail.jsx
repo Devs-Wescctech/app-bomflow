@@ -1517,6 +1517,7 @@ export default function ReferralDetail() {
             </Card>
 
             {/* Valores e Comissão */}
+            {!isIndicacoesAtendente && (
             <Card className="border-green-200 dark:border-green-800 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950">
               <CardHeader className="border-b border-green-200 dark:border-green-700">
                 <CardTitle className="flex items-center gap-2 text-green-800 dark:text-green-200">
@@ -1585,6 +1586,7 @@ export default function ReferralDetail() {
                 )}
               </CardContent>
             </Card>
+            )}
           </div>
         </div>
       </div>
