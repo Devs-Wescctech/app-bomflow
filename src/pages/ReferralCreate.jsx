@@ -563,6 +563,7 @@ export default function ReferralCreate() {
                     </div>
 
                     {/* Valores */}
+                    {currentAgentType !== 'indicacoes_atendente' && (
                     <div className="grid grid-cols-3 gap-4 p-4 bg-green-50 rounded-lg border border-green-200 mt-4">
                       <div>
                         <Label className="text-green-800">Valor Mensal</Label>
@@ -599,6 +600,7 @@ export default function ReferralCreate() {
                         />
                       </div>
                     </div>
+                    )}
 
                     <div>
                       <Label>Observações</Label>
@@ -661,6 +663,7 @@ export default function ReferralCreate() {
               </CardContent>
             </Card>
 
+            {currentAgentType !== 'indicacoes_atendente' && (
             <Card className="border-blue-200 bg-blue-50">
               <CardHeader>
                 <CardTitle className="text-blue-800 text-lg">💰 Comissão</CardTitle>
@@ -688,6 +691,7 @@ export default function ReferralCreate() {
                 )}
               </CardContent>
             </Card>
+            )}
 
             <Card className="border-purple-200 bg-purple-50">
               <CardHeader>
