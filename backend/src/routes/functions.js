@@ -3244,7 +3244,7 @@ router.get('/commission-payment/control', authMiddleware, loadAgentMiddleware, r
       sql += ` AND lote_pagamento_id = $${params.length}`;
     }
 
-    sql += ` ORDER BY created_at DESC LIMIT ${parseInt(lim) || 500}`;
+    sql += ` ORDER BY created_at DESC LIMIT ${parseInt(lim) || 1000}`;
 
     const result = await query(sql, params);
     res.json({ success: true, records: result.rows });
