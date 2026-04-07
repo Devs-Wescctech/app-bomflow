@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "28l1sKgCZ_pKLFtZ0RSAm"
+uri = "file://exports/acessos-salestwo.xlsx"
+type = "table"
+title = "Acessos SalesTwo - Usuários e Senhas"
