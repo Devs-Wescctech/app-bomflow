@@ -45,7 +45,11 @@ export default function CommissionReconciliation() {
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.agent?.agentType === 'admin';
   const allowedSubmenus = currentUser?.agent?.allowedSubmenus || [];
-  const hasAccess = isAdmin || allowedSubmenus.includes('CommissionReconciliation');
+  const agentType = currentUser?.agent?.agentType || '';
+  const isSupervisorType = agentType === 'supervisor' || agentType === 'sales_supervisor' || agentType.endsWith('_supervisor');
+  const hasAccess = isAdmin
+    || allowedSubmenus.includes('CommissionReconciliation')
+    || (allowedSubmenus.length === 0 && isSupervisorType);
 
   if (currentUser && !hasAccess) {
     return (
