@@ -32,7 +32,10 @@ import {
   Search,
   RefreshCw,
   Key,
-  Send
+  Send,
+  Mail,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import {
   Dialog,
@@ -131,6 +134,18 @@ export default function ReferralChannelAutomations() {
   const [testPhoneError, setTestPhoneError] = useState("");
   const [sendingTest, setSendingTest] = useState(false);
 
+  const [emailSectionOpen, setEmailSectionOpen] = useState(false);
+  const [showSmtpPassword, setShowSmtpPassword] = useState(false);
+  const [emailConfig, setEmailConfig] = useState({
+    smtp_server: 'email-ssl.com.br',
+    smtp_port: '465',
+    smtp_user: 'noreplybompastor@wescctech.com.br',
+    smtp_password: '',
+    email_from: 'noreplybompastor@wescctech.com.br',
+    email_to: 'tais.dequi@wescctech.com.br'
+  });
+  const [emailConfigLoaded, setEmailConfigLoaded] = useState(false);
+
   const [channelToken, setChannelToken] = useState("");
   const [channelLabel, setChannelLabel] = useState("");
   const [showToken, setShowToken] = useState(false);
@@ -227,6 +242,57 @@ export default function ReferralChannelAutomations() {
     onError: (error) => {
       toast.error(error?.message || 'Erro ao excluir automação. Tente novamente.');
     },
+  });
+
+  const { data: emailSettingsData } = useQuery({
+    queryKey: ['email-commission-settings'],
+    queryFn: () => fetchWithAuth('/api/functions/email-commission-settings'),
+    staleTime: 60000,
+  });
+
+  useEffect(() => {
+    if (emailSettingsData?.settings && !emailConfigLoaded) {
+      const s = emailSettingsData.settings;
+      setEmailConfig({
+        smtp_server: s.smtp_server || 'email-ssl.com.br',
+        smtp_port: String(s.smtp_port || '465'),
+        smtp_user: s.smtp_user || '',
+        smtp_password: s.smtp_password || '',
+        email_from: s.email_from || '',
+        email_to: s.email_to || ''
+      });
+      setEmailConfigLoaded(true);
+    }
+  }, [emailSettingsData, emailConfigLoaded]);
+
+  const saveEmailConfigMutation = useMutation({
+    mutationFn: (data) => fetchWithAuth('/api/functions/email-commission-settings', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['email-commission-settings'] });
+      toast.success('Configurações de email salvas!');
+    },
+    onError: (err) => toast.error(`Erro ao salvar: ${err.message}`),
+  });
+
+  const testEmailMutation = useMutation({
+    mutationFn: () => fetchWithAuth('/api/functions/commission-report/test', { method: 'POST' }),
+    onSuccess: (data) => toast.success(data.message || 'Email de teste enviado!'),
+    onError: (err) => toast.error(`Erro no teste: ${err.message}`),
+  });
+
+  const sendReportMutation = useMutation({
+    mutationFn: () => fetchWithAuth('/api/functions/commission-report/send', { method: 'POST' }),
+    onSuccess: (data) => {
+      if (data.skipped) {
+        toast.info(data.message);
+      } else {
+        toast.success(`Relatório enviado! ${data.totalIndicadores} indicadores, R$ ${data.valorTotal?.toFixed(2)}`);
+      }
+    },
+    onError: (err) => toast.error(`Erro no envio: ${err.message}`),
   });
 
   const handleVerifyToken = async () => {
@@ -671,6 +737,132 @@ export default function ReferralChannelAutomations() {
             </CardContent>
           </Card>
         </div>
+
+        <Card className="bg-white dark:bg-gray-900">
+          <CardHeader className="cursor-pointer" onClick={() => setEmailSectionOpen(!emailSectionOpen)}>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Mail className="w-5 h-5 text-amber-600" />
+                Configuração de Email de Comissões
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                {emailSettingsData?.settings?.smtp_password && emailSettingsData.settings.smtp_password !== '' && (
+                  <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">Configurado</Badge>
+                )}
+                {emailSectionOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+              </div>
+            </div>
+          </CardHeader>
+          {emailSectionOpen && (
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Servidor SMTP</Label>
+                  <Input
+                    value={emailConfig.smtp_server}
+                    onChange={(e) => setEmailConfig({ ...emailConfig, smtp_server: e.target.value })}
+                    placeholder="email-ssl.com.br"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Porta SMTP</Label>
+                  <Input
+                    value={emailConfig.smtp_port}
+                    onChange={(e) => setEmailConfig({ ...emailConfig, smtp_port: e.target.value })}
+                    placeholder="465"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Usuário SMTP</Label>
+                  <Input
+                    value={emailConfig.smtp_user}
+                    onChange={(e) => setEmailConfig({ ...emailConfig, smtp_user: e.target.value })}
+                    placeholder="noreplybompastor@wescctech.com.br"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Senha SMTP</Label>
+                  <div className="relative">
+                    <Input
+                      type={showSmtpPassword ? 'text' : 'password'}
+                      value={emailConfig.smtp_password}
+                      onChange={(e) => setEmailConfig({ ...emailConfig, smtp_password: e.target.value })}
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      onClick={() => setShowSmtpPassword(!showSmtpPassword)}
+                    >
+                      {showSmtpPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Email Remetente</Label>
+                  <Input
+                    value={emailConfig.email_from}
+                    onChange={(e) => setEmailConfig({ ...emailConfig, email_from: e.target.value })}
+                    placeholder="noreplybompastor@wescctech.com.br"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email Destinatário</Label>
+                  <Input
+                    value={emailConfig.email_to}
+                    onChange={(e) => setEmailConfig({ ...emailConfig, email_to: e.target.value })}
+                    placeholder="tais.dequi@wescctech.com.br"
+                  />
+                  <p className="text-xs text-gray-500">Separe múltiplos emails com vírgula</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-4 border-t">
+                <Button
+                  onClick={() => saveEmailConfigMutation.mutate(emailConfig)}
+                  disabled={saveEmailConfigMutation.isPending}
+                  className="bg-amber-600 hover:bg-amber-700"
+                >
+                  {saveEmailConfigMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                  Salvar Configurações
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => testEmailMutation.mutate()}
+                  disabled={testEmailMutation.isPending}
+                >
+                  {testEmailMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <TestTube2 className="w-4 h-4 mr-2" />}
+                  Testar Envio de Email
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => sendReportMutation.mutate()}
+                  disabled={sendReportMutation.isPending}
+                  className="border-green-300 text-green-700 hover:bg-green-50"
+                >
+                  {sendReportMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                  Enviar Relatório de Comissões
+                </Button>
+              </div>
+
+              {(!emailSettingsData?.settings?.smtp_password || emailSettingsData.settings.smtp_password === '') && (
+                <Alert className="bg-amber-50 dark:bg-amber-950 border-amber-300">
+                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                  <AlertDescription className="text-sm text-amber-800 dark:text-amber-200">
+                    <strong>Atenção:</strong> A senha SMTP ainda não foi salva. Preencha o campo "Senha SMTP" e clique em "Salvar Configurações" antes de testar ou enviar relatórios.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200">
+                <AlertDescription className="text-sm">
+                  O relatório semanal é enviado automaticamente toda quarta-feira às 08:00, cobrindo o período de quarta a terça.
+                  Use os botões acima para testar ou reenviar manualmente.
+                </AlertDescription>
+              </Alert>
+            </CardContent>
+          )}
+        </Card>
 
         <div className="grid gap-4">
           {rulesLoading ? (
