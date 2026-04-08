@@ -22,9 +22,22 @@ export async function loadAgentMiddleware(req, res, next) {
         level: agent.level || 'pleno',
         online: agent.online,
         capacity: agent.capacity,
-        queueIds: agent.queue_ids
+        queueIds: agent.queue_ids,
+        allowedSubmenus: []
       };
       req.permissions = getPermissions(agent.agent_type);
+
+      try {
+        const typeResult = await query(
+          'SELECT allowed_submenus FROM agent_types WHERE key = $1',
+          [agent.agent_type]
+        );
+        if (typeResult.rows.length > 0) {
+          req.agent.allowedSubmenus = typeResult.rows[0].allowed_submenus || [];
+        }
+      } catch (e) {
+        console.error('Error loading agent type submenus:', e);
+      }
     } else if (req.user.role === 'admin') {
       req.agent = {
         id: null,
@@ -34,7 +47,8 @@ export async function loadAgentMiddleware(req, res, next) {
         level: 'specialist',
         online: true,
         capacity: null,
-        queueIds: []
+        queueIds: [],
+        allowedSubmenus: []
       };
       req.permissions = getPermissions('admin');
     }
@@ -71,6 +85,36 @@ export function requireModule(module) {
     }
 
     next();
+  };
+}
+
+export function requireSubmenuAccess(submenuId) {
+  return (req, res, next) => {
+    if (!req.agent) {
+      return res.status(403).json({ message: 'Agent profile required' });
+    }
+
+    if (req.agent.agentType === 'admin' || req.user?.role === 'admin') {
+      return next();
+    }
+
+    const allowedSubmenus = req.agent.allowedSubmenus || [];
+
+    if (allowedSubmenus.length > 0) {
+      if (allowedSubmenus.includes(submenuId)) {
+        return next();
+      }
+      return res.status(403).json({ message: `Access denied: ${submenuId}` });
+    }
+
+    const isSupervisorType = req.agent.agentType === 'supervisor' ||
+      req.agent.agentType === 'sales_supervisor' ||
+      req.agent.agentType?.endsWith('_supervisor');
+    if (isSupervisorType) {
+      return next();
+    }
+
+    return res.status(403).json({ message: `Access denied: ${submenuId}` });
   };
 }
 

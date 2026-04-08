@@ -232,8 +232,8 @@ const menuModules = [
       { title: "Relatórios", url: createPageUrl("ReferralReports"), icon: FileBarChart, supervisorOnly: true },
       { title: "Rel. de Convertidos", url: createPageUrl("ReferralWonReport"), icon: Trophy },
       { title: "Comissões", url: createPageUrl("ReferralCommissions"), icon: DollarSign, supervisorOnly: true },
-      { title: "Ctrl. Pagamento", url: createPageUrl("CommissionPaymentControl"), icon: FileCheck, supervisorOnly: true },
-      { title: "Reconciliação", url: createPageUrl("CommissionReconciliation"), icon: Shield, supervisorOnly: true },
+      { title: "Ctrl. Pagamento", url: createPageUrl("CommissionPaymentControl"), icon: FileCheck, requiredSubmenu: "CommissionPaymentControl" },
+      { title: "Reconciliação", url: createPageUrl("CommissionReconciliation"), icon: Shield, requiredSubmenu: "CommissionReconciliation" },
       { title: "Automações por Canal", url: createPageUrl("ReferralChannelAutomations"), icon: Activity, supervisorOnly: true },
     ]
   },

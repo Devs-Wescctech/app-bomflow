@@ -5,7 +5,7 @@ import nodemailer from 'nodemailer';
 import PDFDocument from 'pdfkit';
 import { query } from '../config/database.js';
 import { authMiddleware, optionalAuth } from '../middleware/auth.js';
-import { loadAgentMiddleware, requirePermission, requireRole } from '../middleware/permissions.js';
+import { loadAgentMiddleware, requirePermission, requireRole, requireSubmenuAccess } from '../middleware/permissions.js';
 import { assignTicket, distributeUnassignedTickets, DISTRIBUTION_ALGORITHMS } from '../services/ticketDistribution.js';
 import { checkAllSLAWarnings, checkSLABreach, recordFirstResponse, recordStatusChange } from '../services/slaService.js';
 import { runAllAutomations, runAutomationsForLead } from '../services/leadAutomation.js';
@@ -1323,7 +1323,7 @@ async function runCommissionReconciliation() {
 
 export { runCommissionReconciliation };
 
-router.post('/commission-reconciliation/run', authMiddleware, async (req, res) => {
+router.post('/commission-reconciliation/run', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionReconciliation'), async (req, res) => {
   try {
     const result = await runCommissionReconciliation();
     res.json(result);
@@ -1333,7 +1333,7 @@ router.post('/commission-reconciliation/run', authMiddleware, async (req, res) =
   }
 });
 
-router.get('/commission-reconciliation/logs', authMiddleware, async (req, res) => {
+router.get('/commission-reconciliation/logs', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionReconciliation'), async (req, res) => {
   try {
     const { date, tipo, resolved } = req.query;
     let sql = 'SELECT * FROM commission_reconciliation_logs WHERE 1=1';
@@ -1362,7 +1362,7 @@ router.get('/commission-reconciliation/logs', authMiddleware, async (req, res) =
   }
 });
 
-router.get('/commission-reconciliation/summary', authMiddleware, async (req, res) => {
+router.get('/commission-reconciliation/summary', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionReconciliation'), async (req, res) => {
   try {
     const summaryResult = await query(`
       SELECT 
@@ -1392,7 +1392,7 @@ router.get('/commission-reconciliation/summary', authMiddleware, async (req, res
   }
 });
 
-router.put('/commission-reconciliation/resolve/:id', authMiddleware, async (req, res) => {
+router.put('/commission-reconciliation/resolve/:id', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionReconciliation'), async (req, res) => {
   try {
     const { id } = req.params;
     const userEmail = req.user?.email || req.user?.userEmail || 'admin';
@@ -3177,7 +3177,7 @@ async function runWeeklyCommissionBatch() {
   }
 }
 
-router.post('/commission-payment/run-batch', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+router.post('/commission-payment/run-batch', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
   try {
     const result = await runWeeklyCommissionBatch();
     res.json(result);
@@ -3186,7 +3186,7 @@ router.post('/commission-payment/run-batch', authMiddleware, loadAgentMiddleware
   }
 });
 
-router.get('/commission-payment/batches', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+router.get('/commission-payment/batches', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
   try {
     const result = await query('SELECT * FROM commission_payment_batches ORDER BY created_at DESC LIMIT 50');
     const batches = result.rows;
@@ -3229,7 +3229,7 @@ router.get('/commission-payment/batches', authMiddleware, loadAgentMiddleware, r
   }
 });
 
-router.get('/commission-payment/control', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+router.get('/commission-payment/control', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
   try {
     const { status, lote_id, limit: lim } = req.query;
     let sql = 'SELECT * FROM commission_payment_control WHERE 1=1';
@@ -3253,7 +3253,7 @@ router.get('/commission-payment/control', authMiddleware, loadAgentMiddleware, r
   }
 });
 
-router.get('/commission-payment/summary', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+router.get('/commission-payment/summary', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
   try {
     const statusResult = await query(`
       SELECT status_pagamento, COUNT(*) as total
@@ -3277,7 +3277,7 @@ router.get('/commission-payment/summary', authMiddleware, loadAgentMiddleware, r
   }
 });
 
-router.put('/commission-payment/confirm/:id', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+router.put('/commission-payment/confirm/:id', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
   try {
     const { id } = req.params;
     const userEmail = req.user?.email || req.user?.userEmail || 'admin';
@@ -3299,7 +3299,7 @@ router.put('/commission-payment/confirm/:id', authMiddleware, loadAgentMiddlewar
   }
 });
 
-router.put('/commission-payment/confirm-batch/:batchId', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+router.put('/commission-payment/confirm-batch/:batchId', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
   try {
     const { batchId } = req.params;
     const userEmail = req.user?.email || req.user?.userEmail || 'admin';
