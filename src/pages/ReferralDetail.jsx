@@ -46,6 +46,7 @@ import {
   ExternalLink,
   Presentation,
   AlertCircle,
+  Building2,
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
 import { format } from "date-fns";
@@ -1341,37 +1342,36 @@ export default function ReferralDetail() {
                   {(() => {
                     const agent = agents.find(a => String(a.id) === String(referralAgentId));
                     return agent ? (
-                      <div className="flex items-center gap-4">
-                        {agent.photo_url ? (
-                          <img 
-                            src={agent.photo_url} 
-                            alt={agent.name}
-                            className="w-16 h-16 rounded-full object-cover border-4 border-white dark:border-amber-800 shadow-lg"
-                          />
-                        ) : (
-                          <div className="w-16 h-16 rounded-full bg-amber-600 dark:bg-amber-700 flex items-center justify-center border-4 border-white dark:border-amber-800 shadow-lg">
-                            <span className="text-2xl font-bold text-white">
-                              {agent.name.charAt(0).toUpperCase()}
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex-1">
-                          <p className="font-bold text-lg text-amber-900 dark:text-amber-100">{agent.name}</p>
+                      <div className="flex items-center gap-4 min-w-0">
+                        <div className="shrink-0">
+                          {(agent.photoUrl || agent.photo_url) ? (
+                            <img 
+                              src={agent.photoUrl || agent.photo_url} 
+                              alt={agent.name}
+                              className="w-16 h-16 rounded-full object-cover border-4 border-white dark:border-amber-800 shadow-lg"
+                            />
+                          ) : (
+                            <div className="w-16 h-16 rounded-full bg-amber-600 dark:bg-amber-700 flex items-center justify-center border-4 border-white dark:border-amber-800 shadow-lg">
+                              <span className="text-2xl font-bold text-white">
+                                {agent.name?.charAt(0)?.toUpperCase() || 'A'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-lg text-amber-900 dark:text-amber-100 truncate">{agent.name}</p>
                           <div className="space-y-1 mt-2">
-                            <p className="text-sm text-amber-800 dark:text-amber-200 flex items-center gap-1">
-                              <Phone className="w-3 h-3" />
-                              {agent.phone}
-                            </p>
                             {agent.email && (
-                              <p className="text-sm text-amber-800 dark:text-amber-200 flex items-center gap-1 truncate">
-                                <Mail className="w-3 h-3 flex-shrink-0" />
+                              <p className="text-sm text-amber-800 dark:text-amber-200 flex items-center gap-1 min-w-0">
+                                <Mail className="w-3 h-3 shrink-0" />
                                 <span className="truncate">{agent.email}</span>
                               </p>
                             )}
-                            {agent.team && (
-                              <Badge className="mt-2 bg-white dark:bg-amber-800 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-600">
-                                {agent.team}
-                              </Badge>
+                            {(agent.workUnit || agent.work_unit) && (
+                              <p className="text-sm text-amber-800 dark:text-amber-200 flex items-center gap-1">
+                                <Building2 className="w-3 h-3 shrink-0" />
+                                <span className="truncate">{agent.workUnit || agent.work_unit}</span>
+                              </p>
                             )}
                           </div>
                         </div>
