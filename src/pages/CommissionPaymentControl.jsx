@@ -5,12 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   DollarSign, RefreshCw, CheckCircle, Clock,
-  Package, ArrowLeft, Users, Calendar, FileText
+  Package, ArrowLeft, Users, Calendar, FileText, ShieldX
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { getCommissionFromConversions } from '@/utils/commissionRules';
+import { base44 } from "@/api/base44Client";
 
 const STATUS_LABELS = {
   elegivel: 'Elegível',
@@ -34,6 +35,28 @@ export default function CommissionPaymentControl() {
   const [activeTab, setActiveTab] = useState('control');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterBatchId, setFilterBatchId] = useState('all');
+
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.agent?.agentType === 'admin';
+  const allowedSubmenus = currentUser?.agent?.allowedSubmenus || [];
+  const hasAccess = isAdmin || allowedSubmenus.includes('CommissionPaymentControl');
+
+  if (currentUser && !hasAccess) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+        <ShieldX className="w-16 h-16 text-gray-400 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">Acesso Negado</h2>
+        <p className="text-gray-500 dark:text-gray-400 mb-4">Você não tem permissão para acessar o Controle de Pagamento de Comissões.</p>
+        <Link to="/ReferralPipeline">
+          <Button variant="outline"><ArrowLeft className="w-4 h-4 mr-2" />Voltar ao Pipeline</Button>
+        </Link>
+      </div>
+    );
+  }
 
   const fetchWithAuth = async (url, options = {}) => {
     const token = localStorage.getItem('accessToken');
