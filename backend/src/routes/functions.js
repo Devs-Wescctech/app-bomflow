@@ -434,10 +434,25 @@ const LOG_SAFE_COLUMNS = `id, batch_id, disparado_em, processado_em, duracao_ms,
 
 const LOG_ALLOWED_TYPES = ['supervisor', 'admin', 'indicator', 'referral_manager'];
 
+async function checkLogEstruturadoAccess(agent) {
+  if (!agent) return false;
+  if (LOG_ALLOWED_TYPES.includes(agent.agent_type)) return true;
+  try {
+    const typeResult = await query('SELECT allowed_submenus FROM agent_types WHERE key = $1', [agent.agent_type]);
+    if (typeResult.rows.length > 0) {
+      const allowedSubmenus = typeResult.rows[0].allowed_submenus || [];
+      if (allowedSubmenus.includes('LeadGeneratorLogEstruturado')) return true;
+    }
+  } catch (e) {
+    console.error('Error checking agent type submenus for log:', e);
+  }
+  return false;
+}
+
 router.get('/lead-generator-log-estruturado', authMiddleware, async (req, res) => {
   try {
     const agent = await getAgentForDispatchCheck(req);
-    if (!agent || !LOG_ALLOWED_TYPES.includes(agent.agent_type)) {
+    if (!(await checkLogEstruturadoAccess(agent))) {
       return res.status(403).json({ success: false, error: 'Sem permissão para visualizar logs estruturados.' });
     }
 
@@ -493,7 +508,7 @@ router.get('/lead-generator-log-estruturado', authMiddleware, async (req, res) =
 router.get('/lead-generator-log-estruturado/stats', authMiddleware, async (req, res) => {
   try {
     const agent = await getAgentForDispatchCheck(req);
-    if (!agent || !LOG_ALLOWED_TYPES.includes(agent.agent_type)) {
+    if (!(await checkLogEstruturadoAccess(agent))) {
       return res.status(403).json({ success: false, error: 'Sem permissão para visualizar stats de logs.' });
     }
 
@@ -541,7 +556,7 @@ router.get('/lead-generator-log-estruturado/stats', authMiddleware, async (req, 
 router.get('/lead-generator-log-estruturado/export', authMiddleware, async (req, res) => {
   try {
     const agent = await getAgentForDispatchCheck(req);
-    if (!agent || !LOG_ALLOWED_TYPES.includes(agent.agent_type)) {
+    if (!(await checkLogEstruturadoAccess(agent))) {
       return res.status(403).json({ success: false, error: 'Sem permissão para exportar logs.' });
     }
 
