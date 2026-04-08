@@ -6,3 +6,9 @@ id = "28l1sKgCZ_pKLFtZ0RSAm"
 uri = "file://exports/acessos-salestwo.xlsx"
 type = "table"
 title = "Acessos SalesTwo - Usuários e Senhas"
+
+[[outputs]]
+id = "YV9U8y6Kj3-Zvyu8ZY6YX"
+uri = "file://exports/processo-migracao-salestwo.md"
+type = "text"
+title = "Processo Completo de Migração - SalesTwo"
