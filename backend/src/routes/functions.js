@@ -3675,6 +3675,7 @@ function buildCommissionEmailHtml(data) {
           <th style="${thStyle}">Indicador</th>
           <th style="${thStyle}">CPF Indicado</th>
           <th style="${thStyle}">Nome Indicado</th>
+          <th style="${thStyle}">Nº Contrato</th>
           <th style="${thStyle}">Data Contrato</th>
           <th style="${thStyle} text-align: right;">Valor Contrato</th>
         </tr>
@@ -3689,6 +3690,7 @@ function buildCommissionEmailHtml(data) {
           <td style="${tdStyle}">${r.nome_indicador || '-'}</td>
           <td style="${tdStyle}">${formatCPF(r.cpf_indicado)}</td>
           <td style="${tdStyle}">${r.nome_indicado || '-'}</td>
+          <td style="${tdStyle}">${r.contrato_servicos || '-'}</td>
           <td style="${tdStyle}">${r.data_contrato || '-'}</td>
           <td style="${tdRight}">${formatCurrency(val)}</td>
         </tr>`;
@@ -3879,11 +3881,12 @@ function generateCommissionPDF(data) {
       y += 8;
 
       const cols2 = [
-        { label: 'Indicador', w: 145, align: 'left' },
-        { label: 'CPF Indicado', w: 90, align: 'left' },
-        { label: 'Nome Indicado', w: 130, align: 'left' },
-        { label: 'Data Contrato', w: 65, align: 'left' },
-        { label: 'Valor Contrato', w: 65, align: 'right' },
+        { label: 'Indicador', w: 120, align: 'left' },
+        { label: 'CPF Indicado', w: 85, align: 'left' },
+        { label: 'Nome Indicado', w: 110, align: 'left' },
+        { label: 'Nº Contrato', w: 60, align: 'left' },
+        { label: 'Data Contrato', w: 60, align: 'left' },
+        { label: 'Valor Contrato', w: 60, align: 'right' },
       ];
 
       y = drawTableHeader(cols2, y);
@@ -3892,7 +3895,7 @@ function generateCommissionPDF(data) {
         if (y > doc.page.height - 60) { doc.addPage(); y = 40; y = drawTableHeader(cols2, y); }
         const bg = idx % 2 === 1 ? [248, 250, 252] : null;
         const val = parseBRCurrency(r.valor_contrato);
-        y = drawTableRow(cols2, [r.nome_indicador || '-', formatCPF(r.cpf_indicado), r.nome_indicado || '-', r.data_contrato || '-', formatCurrency(val)], y, bg);
+        y = drawTableRow(cols2, [r.nome_indicador || '-', formatCPF(r.cpf_indicado), r.nome_indicado || '-', r.contrato_servicos || '-', r.data_contrato || '-', formatCurrency(val)], y, bg);
       });
       y += 15;
     }
