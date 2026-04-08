@@ -434,10 +434,25 @@ const LOG_SAFE_COLUMNS = `id, batch_id, disparado_em, processado_em, duracao_ms,
 
 const LOG_ALLOWED_TYPES = ['supervisor', 'admin', 'indicator', 'referral_manager'];
 
+async function checkLogEstruturadoAccess(agent) {
+  if (!agent) return false;
+  if (LOG_ALLOWED_TYPES.includes(agent.agent_type)) return true;
+  try {
+    const typeResult = await query('SELECT allowed_submenus FROM agent_types WHERE key = $1', [agent.agent_type]);
+    if (typeResult.rows.length > 0) {
+      const allowedSubmenus = typeResult.rows[0].allowed_submenus || [];
+      if (allowedSubmenus.includes('LeadGeneratorLogEstruturado')) return true;
+    }
+  } catch (e) {
+    console.error('Error checking agent type submenus for log:', e);
+  }
+  return false;
+}
+
 router.get('/lead-generator-log-estruturado', authMiddleware, async (req, res) => {
   try {
     const agent = await getAgentForDispatchCheck(req);
-    if (!agent || !LOG_ALLOWED_TYPES.includes(agent.agent_type)) {
+    if (!(await checkLogEstruturadoAccess(agent))) {
       return res.status(403).json({ success: false, error: 'Sem permissão para visualizar logs estruturados.' });
     }
 
@@ -493,7 +508,7 @@ router.get('/lead-generator-log-estruturado', authMiddleware, async (req, res) =
 router.get('/lead-generator-log-estruturado/stats', authMiddleware, async (req, res) => {
   try {
     const agent = await getAgentForDispatchCheck(req);
-    if (!agent || !LOG_ALLOWED_TYPES.includes(agent.agent_type)) {
+    if (!(await checkLogEstruturadoAccess(agent))) {
       return res.status(403).json({ success: false, error: 'Sem permissão para visualizar stats de logs.' });
     }
 
@@ -541,7 +556,7 @@ router.get('/lead-generator-log-estruturado/stats', authMiddleware, async (req, 
 router.get('/lead-generator-log-estruturado/export', authMiddleware, async (req, res) => {
   try {
     const agent = await getAgentForDispatchCheck(req);
-    if (!agent || !LOG_ALLOWED_TYPES.includes(agent.agent_type)) {
+    if (!(await checkLogEstruturadoAccess(agent))) {
       return res.status(403).json({ success: false, error: 'Sem permissão para exportar logs.' });
     }
 
@@ -3609,77 +3624,49 @@ function buildCommissionEmailHtml(data) {
     </table>
   </div>
 
-  <!-- Indicator Summary Table -->
+  <!-- Detalhamento de Comissões -->
   <div style="padding: 0 40px 24px;">
-    <h2 style="font-size: 15px; color: #1e293b; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 2px solid #f59e0b;">Resumo de Pagamentos por Indicador</h2>
+    <h2 style="font-size: 15px; color: #1e293b; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 2px solid #f59e0b;">Detalhamento de Comissões</h2>
     <table style="width: 100%; border-collapse: collapse;">
       <thead>
         <tr style="background: #f1f5f9;">
           <th style="${thStyle}">Indicador</th>
           <th style="${thStyle}">CPF</th>
           <th style="${thStyle}">PIX</th>
-          <th style="${thStyle} text-align: center;">Conversões</th>
+          <th style="${thStyle}">CPF Indicado</th>
+          <th style="${thStyle}">Nome Indicado</th>
+          <th style="${thStyle}">Nº Contrato</th>
           <th style="${thStyle} text-align: center;">Nível</th>
           <th style="${thStyle} text-align: right;">Comissão</th>
         </tr>
       </thead>
       <tbody>`;
 
-    let rowIdx = 0;
-    for (const [key, ind] of Object.entries(indicators)) {
-      const bg = rowIdx % 2 === 0 ? '#ffffff' : '#f8fafc';
-      const nivel = ind.count >= 13 ? '3 (13+)' : ind.count >= 4 ? '2 (4-12)' : ind.count >= 1 ? '1 (1-3)' : '-';
+    records.forEach((r, idx) => {
+      const bg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+      const indKey = r.cpf_indicador || r.nome_indicador || 'unknown';
+      const ind = indicators[indKey] || {};
+      const nivel = (ind.count || 0) >= 13 ? 'Nível 3' : (ind.count || 0) >= 4 ? 'Nível 2' : (ind.count || 0) >= 1 ? 'Nível 1' : '-';
+      const unitValue = (ind.count || 0) >= 13 ? 200 : (ind.count || 0) >= 4 ? 150 : (ind.count || 0) >= 1 ? 100 : 0;
       const pixDisplay = ind.pix ? escapeHtml(ind.pix) : 'PIX não informado';
       html += `
         <tr style="background: ${bg};">
-          <td style="${tdStyle} font-weight: 600;">${escapeHtml(ind.nome)}</td>
-          <td style="${tdStyle}">${formatCPF(ind.cpf)}</td>
+          <td style="${tdStyle} font-weight: 600;">${escapeHtml(r.nome_indicador) || '-'}</td>
+          <td style="${tdStyle}">${formatCPF(r.cpf_indicador)}</td>
           <td style="${tdStyle}${!ind.pix ? ' color: #94a3b8; font-style: italic;' : ''}">${pixDisplay}</td>
-          <td style="${tdStyle} text-align: center;">${ind.count}</td>
-          <td style="${tdStyle} text-align: center;">${nivel}</td>
-          <td style="${tdRight}">${formatCurrency(ind.total)}</td>
-        </tr>`;
-      rowIdx++;
-    }
-
-    html += `
-        <tr style="background: #1e293b;">
-          <td colspan="5" style="padding: 12px; border: 1px solid #334155; color: #ffffff; font-weight: 700; font-size: 14px;">TOTAL A PAGAR</td>
-          <td style="padding: 12px; border: 1px solid #334155; color: #f59e0b; font-weight: 800; font-size: 16px; text-align: right;">${formatCurrency(valorTotal)}</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- Audit Detail Table -->
-  <div style="padding: 0 40px 24px;">
-    <h2 style="font-size: 15px; color: #1e293b; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 2px solid #3b82f6;">Detalhamento das Indicações (Auditoria)</h2>
-    <table style="width: 100%; border-collapse: collapse;">
-      <thead>
-        <tr style="background: #f1f5f9;">
-          <th style="${thStyle}">Indicador</th>
-          <th style="${thStyle}">CPF Indicado</th>
-          <th style="${thStyle}">Nome Indicado</th>
-          <th style="${thStyle}">Data Contrato</th>
-          <th style="${thStyle} text-align: right;">Valor Contrato</th>
-        </tr>
-      </thead>
-      <tbody>`;
-
-    records.forEach((r, idx) => {
-      const bg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
-      const val = parseBRCurrency(r.valor_contrato);
-      html += `
-        <tr style="background: ${bg};">
-          <td style="${tdStyle}">${r.nome_indicador || '-'}</td>
           <td style="${tdStyle}">${formatCPF(r.cpf_indicado)}</td>
-          <td style="${tdStyle}">${r.nome_indicado || '-'}</td>
-          <td style="${tdStyle}">${r.data_contrato || '-'}</td>
-          <td style="${tdRight}">${formatCurrency(val)}</td>
+          <td style="${tdStyle}">${escapeHtml(r.nome_indicado) || '-'}</td>
+          <td style="${tdStyle}">${r.contrato_servicos || '-'}</td>
+          <td style="${tdStyle} text-align: center;">${nivel}</td>
+          <td style="${tdRight}">${formatCurrency(unitValue)}</td>
         </tr>`;
     });
 
     html += `
+        <tr style="background: #1e293b;">
+          <td colspan="7" style="padding: 12px; border: 1px solid #334155; color: #ffffff; font-weight: 700; font-size: 14px;">TOTAL A PAGAR</td>
+          <td style="padding: 12px; border: 1px solid #334155; color: #f59e0b; font-weight: 800; font-size: 16px; text-align: right;">${formatCurrency(valorTotal)}</td>
+        </tr>
       </tbody>
     </table>
   </div>`;
@@ -3781,12 +3768,14 @@ function generateCommissionPDF(data) {
     y += 20;
 
     const cols1 = [
-      { label: 'Indicador', w: 150, align: 'left' },
-      { label: 'CPF', w: 90, align: 'left' },
-      { label: 'PIX', w: 85, align: 'left' },
-      { label: 'Conversões', w: 45, align: 'center' },
-      { label: 'Nível', w: 50, align: 'center' },
-      { label: 'Comissão', w: 75, align: 'right' },
+      { label: 'Indicador', w: 78, align: 'left' },
+      { label: 'CPF', w: 68, align: 'left' },
+      { label: 'PIX', w: 62, align: 'left' },
+      { label: 'CPF Indicado', w: 68, align: 'left' },
+      { label: 'Nome Indicado', w: 78, align: 'left' },
+      { label: 'Nº Contrato', w: 52, align: 'left' },
+      { label: 'Nível', w: 38, align: 'center' },
+      { label: 'Comissão', w: 52, align: 'right' },
     ];
 
     const ROW_HEIGHT = 22;
@@ -3834,52 +3823,28 @@ function generateCommissionPDF(data) {
       });
       y += 65;
 
-      doc.fontSize(12).fill(textDark).text('Resumo de Pagamentos por Indicador', 40, y);
+      doc.fontSize(12).fill(textDark).text('Detalhamento de Comissões', 40, y);
       y += 16;
       doc.rect(40, y, doc.page.width - 80, 2).fill(amberAccent);
       y += 8;
 
       y = drawTableHeader(cols1, y);
 
-      let rIdx = 0;
-      for (const [key, ind] of Object.entries(indicators)) {
-        if (y > doc.page.height - 80) { doc.addPage(); y = 40; y = drawTableHeader(cols1, y); }
-        const bg = rIdx % 2 === 1 ? [248, 250, 252] : null;
-        const nivel = ind.count >= 13 ? '3 (13+)' : ind.count >= 4 ? '2 (4-12)' : ind.count >= 1 ? '1 (1-3)' : '-';
+      records.forEach((r, idx) => {
+        if (y > doc.page.height - 60) { doc.addPage(); y = 40; y = drawTableHeader(cols1, y); }
+        const bg = idx % 2 === 1 ? [248, 250, 252] : null;
+        const indKey = r.cpf_indicador || r.nome_indicador || 'unknown';
+        const ind = indicators[indKey] || {};
+        const nivel = (ind.count || 0) >= 13 ? 'Nível 3' : (ind.count || 0) >= 4 ? 'Nível 2' : (ind.count || 0) >= 1 ? 'Nível 1' : '-';
+        const unitValue = (ind.count || 0) >= 13 ? 200 : (ind.count || 0) >= 4 ? 150 : (ind.count || 0) >= 1 ? 100 : 0;
         const pixDisplay = ind.pix || 'PIX não informado';
-        y = drawTableRow(cols1, [ind.nome, formatCPF(ind.cpf), pixDisplay, String(ind.count), nivel, formatCurrency(ind.total)], y, bg);
-        rIdx++;
-      }
+        y = drawTableRow(cols1, [r.nome_indicador || '-', formatCPF(r.cpf_indicador), pixDisplay, formatCPF(r.cpf_indicado), r.nome_indicado || '-', r.contrato_servicos || '-', nivel, formatCurrency(unitValue)], y, bg);
+      });
 
       doc.rect(40, y, doc.page.width - 80, 20).fill(darkBg);
       doc.fontSize(9).fill([255, 255, 255]).text('TOTAL A PAGAR', 44, y + 6, { width: 400 });
       doc.fontSize(11).fill(amberAccent).text(formatCurrency(valorTotal), 44, y + 4, { width: doc.page.width - 88, align: 'right' });
       y += 30;
-
-      if (y > doc.page.height - 80) { doc.addPage(); y = 40; }
-
-      doc.fontSize(12).fill(textDark).text('Detalhamento das Indicações (Auditoria)', 40, y);
-      y += 16;
-      doc.rect(40, y, doc.page.width - 80, 2).fill([59, 130, 246]);
-      y += 8;
-
-      const cols2 = [
-        { label: 'Indicador', w: 145, align: 'left' },
-        { label: 'CPF Indicado', w: 90, align: 'left' },
-        { label: 'Nome Indicado', w: 130, align: 'left' },
-        { label: 'Data Contrato', w: 65, align: 'left' },
-        { label: 'Valor Contrato', w: 65, align: 'right' },
-      ];
-
-      y = drawTableHeader(cols2, y);
-
-      records.forEach((r, idx) => {
-        if (y > doc.page.height - 60) { doc.addPage(); y = 40; y = drawTableHeader(cols2, y); }
-        const bg = idx % 2 === 1 ? [248, 250, 252] : null;
-        const val = parseBRCurrency(r.valor_contrato);
-        y = drawTableRow(cols2, [r.nome_indicador || '-', formatCPF(r.cpf_indicado), r.nome_indicado || '-', r.data_contrato || '-', formatCurrency(val)], y, bg);
-      });
-      y += 15;
     }
 
     if (hasPending) {
