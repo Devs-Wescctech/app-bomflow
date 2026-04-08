@@ -113,6 +113,10 @@ const MENU_MODULES = [
       { id: "ReferralPipeline", title: "Pipeline" },
       { id: "ReferralReports", title: "Relatórios" },
       { id: "ReferralCommissions", title: "Comissões" },
+      { id: "ReferralWonReport", title: "Rel. de Convertidos" },
+      { id: "CommissionPaymentControl", title: "Ctrl. Pagamento" },
+      { id: "CommissionReconciliation", title: "Reconciliação" },
+      { id: "ReferralChannelAutomations", title: "Automações por Canal" },
       { id: "ReferralAutomations", title: "Automações" },
       { id: "LeadGenerator", title: "Gerador de Leads" },
     ]
