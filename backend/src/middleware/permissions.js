@@ -99,7 +99,18 @@ export function requireSubmenuAccess(submenuId) {
     }
 
     const allowedSubmenus = req.agent.allowedSubmenus || [];
-    if (allowedSubmenus.includes(submenuId)) {
+
+    if (allowedSubmenus.length > 0) {
+      if (allowedSubmenus.includes(submenuId)) {
+        return next();
+      }
+      return res.status(403).json({ message: `Access denied: ${submenuId}` });
+    }
+
+    const isSupervisorType = req.agent.agentType === 'supervisor' ||
+      req.agent.agentType === 'sales_supervisor' ||
+      req.agent.agentType?.endsWith('_supervisor');
+    if (isSupervisorType) {
       return next();
     }
 
