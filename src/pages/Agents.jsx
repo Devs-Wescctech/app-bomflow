@@ -855,8 +855,8 @@ export default function Agents() {
                 <Card key={agent.id} className={`border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-md transition-shadow ${!agent.active ? 'opacity-60' : ''}`}>
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="relative">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="relative shrink-0">
                           {agent.photoUrl ? (
                             <img 
                               src={agent.photoUrl} 
