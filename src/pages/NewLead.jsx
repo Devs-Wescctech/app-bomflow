@@ -483,13 +483,13 @@ export default function NewLead() {
                       )}
                     </div>
                     {whatsappValidation?.checking && (
-                      <p className="text-xs text-blue-600 mt-1">🔍 Verificando WhatsApp...</p>
+                      <p className="text-xs text-blue-600 mt-1">Verificando formato...</p>
                     )}
                     {!whatsappValidation?.checking && whatsappValidation?.valid === true && (
-                      <p className="text-xs text-green-600 mt-1">✅ WhatsApp válido - Envios disponíveis</p>
+                      <p className="text-xs text-green-600 mt-1">{whatsappValidation.message || 'Formato válido para WhatsApp'}</p>
                     )}
                     {!whatsappValidation?.checking && whatsappValidation?.valid === false && (
-                      <p className="text-xs text-red-600 mt-1">❌ Este número não possui WhatsApp ativo</p>
+                      <p className="text-xs text-red-600 mt-1">{whatsappValidation.message || 'Formato de número inválido'}</p>
                     )}
                     {duplicateError && (
                       <div className="mt-2 p-3 bg-red-50 border border-red-300 rounded-lg">

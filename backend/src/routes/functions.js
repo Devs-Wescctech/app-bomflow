@@ -156,28 +156,37 @@ router.post('/run-lead-automations', authMiddleware, loadAgentMiddleware, requir
 router.post('/validate-whatsapp', authMiddleware, async (req, res) => {
   try {
     const { phone } = req.body;
-    if (!phone) {
-      return res.status(400).json({ message: 'Phone number is required' });
+    if (!phone || typeof phone !== 'string') {
+      return res.status(400).json({ valid: false, message: 'Número de telefone é obrigatório' });
     }
 
-    const cleaned = phone.replace(/\D/g, '');
-    if (cleaned.length < 10 || cleaned.length > 13) {
-      return res.json({ valid: false, message: 'Número inválido' });
+    let cleaned = phone.trim().replace(/\D/g, '');
+
+    if (cleaned.startsWith('55') && cleaned.length >= 12) {
+      cleaned = cleaned.substring(2);
     }
 
-    const isMobile = cleaned.length === 11 && cleaned[2] === '9';
-    if (isMobile) {
-      return res.json({ valid: true, message: 'Número de celular válido para WhatsApp' });
+    if (cleaned.length < 10 || cleaned.length > 11) {
+      return res.json({ valid: false, message: 'Formato de número inválido' });
+    }
+
+    const ddd = parseInt(cleaned.substring(0, 2), 10);
+    if (ddd < 11 || ddd > 99) {
+      return res.json({ valid: false, message: 'DDD inválido' });
+    }
+
+    if (cleaned.length === 11 && cleaned[2] === '9') {
+      return res.json({ valid: true, message: 'Formato válido para WhatsApp' });
     }
 
     if (cleaned.length === 10) {
-      return res.json({ valid: true, message: 'Número fixo - WhatsApp pode não estar disponível' });
+      return res.json({ valid: true, message: 'Número fixo - pode não ter WhatsApp' });
     }
 
-    return res.json({ valid: true, message: 'Número válido' });
+    return res.json({ valid: false, message: 'Formato de celular inválido' });
   } catch (error) {
     console.error('Error validating WhatsApp:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ valid: false, message: 'Erro ao validar número' });
   }
 });
 
