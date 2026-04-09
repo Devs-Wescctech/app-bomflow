@@ -130,8 +130,7 @@ export default function NewLead() {
   // Agente selecionado
   const selectedAgent = activeAgents.find(a => a.id === formData.agent_id);
 
-  // 🆕 Validação de WhatsApp
-  const validateWhatsApp = async (phone) => {
+  const validatePhoneDuplicate = async (phone) => {
     if (!phone || phone.replace(/\D/g, '').length < 10) {
       setWhatsappValidation(null);
       return;
@@ -144,15 +143,16 @@ export default function NewLead() {
       setWhatsappValidation({ 
         checking: false, 
         valid: response.data.valid,
-        message: response.data.message 
+        message: response.data.message,
+        existingLead: response.data.existingLead
       });
     } catch (error) {
-      console.error('Erro ao validar WhatsApp:', error);
+      console.error('Erro ao verificar telefone:', error);
       setWhatsappValidation({ checking: false, valid: null, error: true });
     }
   };
 
-  const debouncedValidateWhatsApp = debounce(validateWhatsApp, 1000);
+  const debouncedValidatePhone = debounce(validatePhoneDuplicate, 1000);
 
   const getLocation = () => {
     setGettingLocation(true);
@@ -240,7 +240,7 @@ export default function NewLead() {
     setFormData({ ...formData, phone: formatted });
     setDuplicateError(null);
     
-    debouncedValidateWhatsApp(formatted);
+    debouncedValidatePhone(formatted);
   };
 
   const handleCPFChange = (e) => {
@@ -483,13 +483,13 @@ export default function NewLead() {
                       )}
                     </div>
                     {whatsappValidation?.checking && (
-                      <p className="text-xs text-blue-600 mt-1">Verificando formato...</p>
+                      <p className="text-xs text-blue-600 mt-1">Verificando duplicidade...</p>
                     )}
-                    {!whatsappValidation?.checking && whatsappValidation?.valid === true && (
-                      <p className="text-xs text-green-600 mt-1">{whatsappValidation.message || 'Formato válido para WhatsApp'}</p>
+                    {!whatsappValidation?.checking && whatsappValidation?.valid === true && whatsappValidation?.message && (
+                      <p className="text-xs text-green-600 mt-1">{whatsappValidation.message}</p>
                     )}
                     {!whatsappValidation?.checking && whatsappValidation?.valid === false && (
-                      <p className="text-xs text-red-600 mt-1">{whatsappValidation.message || 'Formato de número inválido'}</p>
+                      <p className="text-xs text-red-600 mt-1">{whatsappValidation.message || 'Telefone já cadastrado'}</p>
                     )}
                     {duplicateError && (
                       <div className="mt-2 p-3 bg-red-50 border border-red-300 rounded-lg">

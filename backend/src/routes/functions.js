@@ -160,33 +160,32 @@ router.post('/validate-whatsapp', authMiddleware, async (req, res) => {
       return res.status(400).json({ valid: false, message: 'Número de telefone é obrigatório' });
     }
 
-    let cleaned = phone.trim().replace(/\D/g, '');
-
-    if (cleaned.startsWith('55') && cleaned.length >= 12) {
-      cleaned = cleaned.substring(2);
+    const cleaned = phone.trim().replace(/\D/g, '');
+    if (cleaned.length < 10) {
+      return res.json({ valid: true, message: '' });
     }
 
-    if (cleaned.length < 10 || cleaned.length > 11) {
-      return res.json({ valid: false, message: 'Formato de número inválido' });
+    const result = await query(
+      `SELECT id, name, phone, agent_id FROM leads 
+       WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '(', ''), ')', ''), '-', ''), ' ', ''), '+', '') 
+       LIKE '%' || $1 || '%'
+       LIMIT 5`,
+      [cleaned.slice(-8)]
+    );
+
+    if (result.rows.length > 0) {
+      const existing = result.rows[0];
+      return res.json({ 
+        valid: false, 
+        message: `Telefone já cadastrado para o lead: ${existing.name}`,
+        existingLead: { id: existing.id, name: existing.name, phone: existing.phone }
+      });
     }
 
-    const ddd = parseInt(cleaned.substring(0, 2), 10);
-    if (ddd < 11 || ddd > 99) {
-      return res.json({ valid: false, message: 'DDD inválido' });
-    }
-
-    if (cleaned.length === 11 && cleaned[2] === '9') {
-      return res.json({ valid: true, message: 'Formato válido para WhatsApp' });
-    }
-
-    if (cleaned.length === 10) {
-      return res.json({ valid: true, message: 'Número fixo - pode não ter WhatsApp' });
-    }
-
-    return res.json({ valid: false, message: 'Formato de celular inválido' });
+    return res.json({ valid: true, message: 'Telefone disponível' });
   } catch (error) {
-    console.error('Error validating WhatsApp:', error);
-    res.status(500).json({ valid: false, message: 'Erro ao validar número' });
+    console.error('Error validating phone:', error);
+    res.status(500).json({ valid: false, message: 'Erro ao verificar telefone' });
   }
 });
 
