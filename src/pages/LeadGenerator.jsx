@@ -75,6 +75,11 @@ export default function LeadGenerator() {
   const canDispatch = !DISPATCH_FORBIDDEN_TYPES.includes(currentAgentType);
   const canViewDashboard = canDispatch;
 
+  const allowedSubmenus = user?.agent?.allowedSubmenus || [];
+  const hasSubmenuRestrictions = allowedSubmenus.length > 0;
+  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
+  const canViewLogEstruturado = isAdmin || (hasSubmenuRestrictions ? allowedSubmenus.includes('LeadGeneratorLogEstruturado') : canViewDashboard);
+
   useEffect(() => {
     loadFilterOptions();
   }, []);
@@ -454,36 +459,41 @@ export default function LeadGenerator() {
 
   const hasFailures = queueStatus && (queueStatus.falha > 0 || queueStatus.reenvio_agendado > 0);
 
+  const showTabs = canViewDashboard || canViewLogEstruturado;
+
+  const availableTabs = [];
+  availableTabs.push({ value: "gerador", label: "Gerador", icon: Users });
+  if (canViewDashboard) availableTabs.push({ value: "painel", label: "Painel de Disparos", icon: BarChart3 });
+  if (canViewLogEstruturado) availableTabs.push({ value: "log", label: "Log Estruturado", icon: FileText });
+
   return (
     <div className="p-4 md:p-6 space-y-6 bg-gray-50 dark:bg-gray-950 min-h-screen">
-      {canViewDashboard ? (
+      {showTabs ? (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-lg grid-cols-3">
-            <TabsTrigger value="gerador" className="gap-2">
-              <Users className="w-4 h-4" />
-              Gerador
-            </TabsTrigger>
-            <TabsTrigger value="painel" className="gap-2">
-              <BarChart3 className="w-4 h-4" />
-              Painel de Disparos
-            </TabsTrigger>
-            <TabsTrigger value="log" className="gap-2">
-              <FileText className="w-4 h-4" />
-              Log Estruturado
-            </TabsTrigger>
+          <TabsList className={`grid w-full max-w-lg ${availableTabs.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+            {availableTabs.map(tab => (
+              <TabsTrigger key={tab.value} value={tab.value} className="gap-2">
+                <tab.icon className="w-4 h-4" />
+                {tab.label}
+              </TabsTrigger>
+            ))}
           </TabsList>
 
           <TabsContent value="gerador">
             {renderGeneratorContent()}
           </TabsContent>
 
-          <TabsContent value="painel">
-            <LeadGeneratorDashboard />
-          </TabsContent>
+          {canViewDashboard && (
+            <TabsContent value="painel">
+              <LeadGeneratorDashboard />
+            </TabsContent>
+          )}
 
-          <TabsContent value="log">
-            <LeadGeneratorLogEstruturado />
-          </TabsContent>
+          {canViewLogEstruturado && (
+            <TabsContent value="log">
+              <LeadGeneratorLogEstruturado />
+            </TabsContent>
+          )}
         </Tabs>
       ) : (
         renderGeneratorContent()

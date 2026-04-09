@@ -364,7 +364,7 @@ router.get('/agents', authMiddleware, async (req, res) => {
              whatsapp_access_token, whatsapp_token_expires_at, created_at, updated_at
       FROM agents 
       ORDER BY created_at DESC 
-      LIMIT 100
+      LIMIT 10000
     `);
     res.json(result.rows.map(row => {
       delete row.whatsapp_channel_token;
