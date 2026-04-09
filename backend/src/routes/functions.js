@@ -153,6 +153,34 @@ router.post('/run-lead-automations', authMiddleware, loadAgentMiddleware, requir
   }
 });
 
+router.post('/validate-whatsapp', authMiddleware, async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ message: 'Phone number is required' });
+    }
+
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.length < 10 || cleaned.length > 13) {
+      return res.json({ valid: false, message: 'Número inválido' });
+    }
+
+    const isMobile = cleaned.length === 11 && cleaned[2] === '9';
+    if (isMobile) {
+      return res.json({ valid: true, message: 'Número de celular válido para WhatsApp' });
+    }
+
+    if (cleaned.length === 10) {
+      return res.json({ valid: true, message: 'Número fixo - WhatsApp pode não estar disponível' });
+    }
+
+    return res.json({ valid: true, message: 'Número válido' });
+  } catch (error) {
+    console.error('Error validating WhatsApp:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.post('/record-status-change', authMiddleware, loadAgentMiddleware, async (req, res) => {
   try {
     const { ticket_id, old_status, new_status } = req.body;
