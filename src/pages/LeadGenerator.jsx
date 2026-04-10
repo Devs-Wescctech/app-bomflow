@@ -215,6 +215,13 @@ export default function LeadGenerator() {
     }
   }, [leads, selectedLeads.size]);
 
+  const selectFirstN = useCallback((n) => {
+    const count = Math.min(n, leads.length);
+    const indices = new Set();
+    for (let i = 0; i < count; i++) indices.add(i);
+    setSelectedLeads(indices);
+  }, [leads]);
+
   const toggleSelectLead = useCallback((index) => {
     setSelectedLeads(prev => {
       const next = new Set(prev);
@@ -704,13 +711,34 @@ export default function LeadGenerator() {
               )}
 
               <div className="mb-4 flex flex-wrap items-center gap-3">
-                <Button variant="outline" size="sm" onClick={toggleSelectAll} className="gap-2 text-xs">
-                  {selectedLeads.size === leads.length ? (
-                    <><X className="w-3.5 h-3.5" /> Desmarcar Todos</>
-                  ) : (
-                    <><CheckCircle2 className="w-3.5 h-3.5" /> Selecionar Todos</>
-                  )}
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <Button variant="outline" size="sm" onClick={toggleSelectAll} className="gap-2 text-xs">
+                    {selectedLeads.size === leads.length && leads.length > 0 ? (
+                      <><X className="w-3.5 h-3.5" /> Desmarcar Todos</>
+                    ) : (
+                      <><CheckCircle2 className="w-3.5 h-3.5" /> Selecionar Todos</>
+                    )}
+                  </Button>
+                  <Select
+                    value=""
+                    onValueChange={(val) => {
+                      if (val === 'none') setSelectedLeads(new Set());
+                      else if (val === 'all') setSelectedLeads(new Set(leads.map((_, i) => i)));
+                      else selectFirstN(parseInt(val, 10));
+                    }}
+                  >
+                    <SelectTrigger className="h-8 w-[130px] text-xs">
+                      <SelectValue placeholder="Selecionar..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="100">Primeiros 100</SelectItem>
+                      <SelectItem value="200">Primeiros 200</SelectItem>
+                      <SelectItem value="500">Primeiros 500</SelectItem>
+                      <SelectItem value="all">Todos ({leads.length})</SelectItem>
+                      <SelectItem value="none">Limpar seleção</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
                 {canDispatch && (
                   <Button
