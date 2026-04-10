@@ -164,8 +164,27 @@ export default function LeadGenerator() {
       const data = await res.json();
       const allData = Array.isArray(data) ? data : [];
 
-      setTotalFound(allData.length);
-      setLeads(allData.slice(0, MAX_LEADS));
+      const normalizePhone = (phone) => {
+        if (!phone) return '';
+        let cleaned = String(phone).replace(/\D/g, '');
+        if (cleaned.length === 0) return '';
+        if (!cleaned.startsWith('55') && (cleaned.length === 10 || cleaned.length === 11)) {
+          cleaned = '55' + cleaned;
+        }
+        return cleaned;
+      };
+
+      const seen = new Set();
+      const dedupedData = [];
+      for (const lead of allData) {
+        const clean = normalizePhone(lead.number);
+        if (!clean || seen.has(clean)) continue;
+        seen.add(clean);
+        dedupedData.push(lead);
+      }
+
+      setTotalFound(dedupedData.length);
+      setLeads(dedupedData.slice(0, MAX_LEADS));
     } catch (err) {
       console.error('Erro ao buscar leads:', err);
       toast.error('Erro ao buscar leads: ' + err.message);
