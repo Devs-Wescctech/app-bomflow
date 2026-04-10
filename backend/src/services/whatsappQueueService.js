@@ -45,6 +45,21 @@ export async function enqueueLeads({ leads, userId, userEmail, teamId, templateI
   const bloqueioRecorrenciaDias = rateConfig.bloqueioRecorrenciaDias;
   const limitePorUsuarioDia = rateConfig.limitePorUsuarioDia;
 
+  const seenNumbers = new Set();
+  const uniqueLeads = [];
+  for (const lead of leads) {
+    if (!lead.number) continue;
+    const normalized = normalizePhone(lead.number);
+    if (!normalized || seenNumbers.has(normalized)) continue;
+    seenNumbers.add(normalized);
+    uniqueLeads.push(lead);
+  }
+
+  const duplicatesRemoved = leads.length - uniqueLeads.length - leads.filter(l => !l.number).length;
+  if (duplicatesRemoved > 0) {
+    console.log(`[WhatsAppQueue] Dedup: ${leads.length} leads recebidos, ${uniqueLeads.length} únicos, ${duplicatesRemoved} duplicados removidos, ${leads.filter(l => !l.number).length} sem número`);
+  }
+
   let enqueued = 0;
   let blocked30Days = 0;
   let blockedDuplicate = 0;
@@ -58,13 +73,8 @@ export async function enqueueLeads({ leads, userId, userEmail, teamId, templateI
   );
   let userDailyCount = dailyCountResult.rows[0]?.count || 0;
 
-  for (const lead of leads) {
+  for (const lead of uniqueLeads) {
     const { number, name, lead_id, uf, cidade, produto, situacao_contrato } = lead;
-
-    if (!number) {
-      skipped++;
-      continue;
-    }
 
     const cleanNumber = normalizePhone(number);
 
@@ -228,7 +238,8 @@ export async function enqueueLeads({ leads, userId, userEmail, teamId, templateI
     }
   }
 
-  return { total: leads.length, enqueued, blocked30Days, blockedDuplicate, blockedDailyLimit, skipped };
+  const noNumber = leads.filter(l => !l.number).length;
+  return { total: leads.length, enqueued, blocked30Days, blockedDuplicate, blockedDailyLimit, skipped: skipped + noNumber + duplicatesRemoved };
 }
 
 function sleep(ms) {
