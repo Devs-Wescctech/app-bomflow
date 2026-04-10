@@ -105,6 +105,18 @@ export default function LeadGeneratorDashboard() {
     refetchInterval: 60000,
   });
 
+  const { data: failureReasonsData } = useQuery({
+    queryKey: ['lead-generator-failure-reasons', dashboardQueryParams],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/functions/lead-generator-log-estruturado/failure-reasons?${dashboardQueryParams}`, {
+        headers: { ...getAuthHeaders() },
+      });
+      if (!res.ok) return { success: false, reasons: [] };
+      return res.json();
+    },
+    refetchInterval: 60000,
+  });
+
   const logsQueryParams = useMemo(() => {
     const params = new URLSearchParams();
     params.set('page', logsPage);
@@ -423,6 +435,30 @@ export default function LeadGeneratorDashboard() {
               </Card>
             ))}
           </div>
+
+          {failureReasonsData?.reasons?.length > 0 && (
+            <CollapsibleSection title="Principais Motivos de Falha" icon={AlertTriangle} iconColor="text-red-500" defaultOpen={false}>
+              <div className="space-y-2">
+                {failureReasonsData.reasons.map((r, i) => {
+                  const maxTotal = failureReasonsData.reasons[0]?.total || 1;
+                  const pct = ((r.total / maxTotal) * 100).toFixed(0);
+                  return (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-gray-700 dark:text-gray-300 truncate max-w-[300px]" title={r.motivo}>{r.motivo}</span>
+                          <span className="text-xs font-semibold text-red-600 ml-2">{r.total}</span>
+                        </div>
+                        <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-1.5">
+                          <div className="bg-red-400 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CollapsibleSection>
+          )}
 
           <CollapsibleSection title="Funil Comercial" icon={ArrowRightLeft} iconColor="text-indigo-500">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

@@ -396,11 +396,15 @@ export async function processQueue(batchId) {
     const currentAttempt = item.tentativa_numero;
     const statusEnvio = success ? 'enviado' : (currentAttempt < item.max_tentativas ? 'reenvio_agendado' : 'falha');
 
+    const motivoFalha = !success
+      ? (apiResponse?.msg || apiResponse?.message || apiResponse?.error || (httpStatus ? `HTTP ${httpStatus}` : 'Falha desconhecida'))
+      : null;
+
     try {
       await query(
         `INSERT INTO gerador_leads_whatsapp_logs
-          (lead_number, lead_name, user_id, user_email, sent_at, http_status, api_response, success, message_sent_id, filters_used, template_id, status_envio, tentativa_numero, batch_id, team_id, whu_chat_id, whu_contact_id, endpoint_used)
-         VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+          (lead_number, lead_name, user_id, user_email, sent_at, http_status, api_response, success, message_sent_id, filters_used, template_id, status_envio, tentativa_numero, batch_id, team_id, whu_chat_id, whu_contact_id, endpoint_used, motivo_bloqueio)
+         VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
         [
           item.lead_number,
           item.lead_name,
@@ -418,7 +422,8 @@ export async function processQueue(batchId) {
           item.team_id,
           whuChatId ? String(whuChatId) : null,
           whuContactId ? String(whuContactId) : null,
-          endpointUsed
+          endpointUsed,
+          motivoFalha
         ]
       );
     } catch (dbErr) {
@@ -445,7 +450,7 @@ export async function processQueue(batchId) {
       httpStatus,
       messageSentId: messageSentId ? String(messageSentId) : null,
       apiResponse,
-      motivoBloqueio: null,
+      motivoBloqueio: motivoFalha,
       disparadoEm,
       processadoEm,
       duracaoMs,

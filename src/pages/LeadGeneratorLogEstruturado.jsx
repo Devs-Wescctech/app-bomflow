@@ -286,7 +286,7 @@ export default function LeadGeneratorLogEstruturado() {
                     <th className="pb-2 pr-3 font-medium">Status</th>
                     <th className="pb-2 pr-3 font-medium">Duração</th>
                     <th className="pb-2 pr-3 font-medium">HTTP</th>
-                    <th className="pb-2 pr-3 font-medium">Motivo Bloqueio</th>
+                    <th className="pb-2 pr-3 font-medium">Motivo</th>
                   </tr>
                 </thead>
                 <tbody>

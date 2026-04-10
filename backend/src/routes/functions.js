@@ -602,6 +602,49 @@ router.get('/lead-generator-log-estruturado/stats', authMiddleware, async (req, 
   }
 });
 
+router.get('/lead-generator-log-estruturado/failure-reasons', authMiddleware, async (req, res) => {
+  try {
+    const agent = await getAgentForDispatchCheck(req);
+    if (!(await checkLogEstruturadoAccess(agent))) {
+      return res.status(403).json({ success: false, error: 'Sem permissão.' });
+    }
+
+    const { startDate, endDate, agentId } = req.query;
+    let whereClause = `WHERE status_envio = 'falha' AND motivo_bloqueio IS NOT NULL`;
+    const params = [];
+    let paramIndex = 1;
+
+    if (startDate) {
+      whereClause += ` AND disparado_em >= $${paramIndex}`;
+      params.push(startDate);
+      paramIndex++;
+    }
+    if (endDate) {
+      whereClause += ` AND disparado_em <= $${paramIndex}`;
+      params.push(endDate);
+      paramIndex++;
+    }
+    if (agentId) {
+      whereClause += ` AND agent_id = $${paramIndex}`;
+      params.push(agentId);
+      paramIndex++;
+    }
+
+    const result = await query(`
+      SELECT motivo_bloqueio as motivo, COUNT(*)::int as total
+      FROM gerador_leads_log_estruturado ${whereClause}
+      GROUP BY motivo_bloqueio
+      ORDER BY total DESC
+      LIMIT 20
+    `, params);
+
+    res.json({ success: true, reasons: result.rows });
+  } catch (error) {
+    console.error('[LogEstruturado] Failure reasons error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.get('/lead-generator-log-estruturado/export', authMiddleware, async (req, res) => {
   try {
     const agent = await getAgentForDispatchCheck(req);
