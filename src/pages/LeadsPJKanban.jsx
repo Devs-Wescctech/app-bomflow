@@ -203,7 +203,7 @@ function DroppableColumnPJ({ id, stage, children, overId, activeId }) {
   );
 }
 
-function SortableLeadPJCard({ lead, stage, pendingTasksCount, agentData, navigate, formatCurrency, formatDate, updateLeadMutation, TasksPopover }) {
+function SortableLeadPJCard({ lead, stage, pendingTasksCount, agentData, navigate, formatCurrency, formatDate, updateLeadMutation, TasksPopover, onMarkLost }) {
   const {
     attributes,
     listeners,
@@ -321,7 +321,7 @@ function SortableLeadPJCard({ lead, stage, pendingTasksCount, agentData, navigat
                   if (stage.id === 'fechado_ganho') {
                     updateLeadMutation.mutate({ id: lead.id, data: { concluded: true } });
                   } else {
-                    updateLeadMutation.mutate({ id: lead.id, data: { lost: true } });
+                    onMarkLost?.(lead.id);
                   }
                 }}
               >
@@ -419,6 +419,8 @@ export default function LeadsPJKanban() {
   const hasActiveFilters = filters.search || filters.agent !== 'all' || filters.team !== 'all' || filters.porte !== 'all' || filters.dateFrom || filters.dateTo;
   const [listPage, setListPage] = useState(1);
   const [isDraggingCard, setIsDraggingCard] = useState(false);
+  const [lostReasonDialog, setLostReasonDialog] = useState(null);
+  const [lostReasonText, setLostReasonText] = useState('');
 
   // Refs para arrastar o kanban horizontalmente
   const kanbanContainerRef = useRef(null);
@@ -662,6 +664,12 @@ export default function LeadsPJKanban() {
 
     const currentStage = fromStage || lead.stage;
     if (currentStage === newStage) return;
+
+    if (newStage === 'fechado_perdido') {
+      setLostReasonDialog({ leadId, fromStage: currentStage });
+      setLostReasonText('');
+      return;
+    }
 
     const stageHistory = [...(lead.stageHistory || lead.stage_history || [])];
     stageHistory.push({
@@ -1366,7 +1374,10 @@ export default function LeadsPJKanban() {
                                 formatDate={formatDate}
                                 updateLeadMutation={updateLeadMutation}
                                 TasksPopover={TasksPopover}
-
+                                onMarkLost={(leadId) => {
+                                  setLostReasonDialog({ leadId, fromStage: lead.stage, isDarBaixa: true });
+                                  setLostReasonText('');
+                                }}
                               />
                             );
                           })}
@@ -1550,6 +1561,66 @@ export default function LeadsPJKanban() {
               }}
               onCancel={() => setIsFormOpen(false)}
             />
+          </DialogContent>
+        </Dialog>
+        <Dialog open={!!lostReasonDialog} onOpenChange={(open) => { if (!open) setLostReasonDialog(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-red-600">
+                <AlertCircle className="w-5 h-5" />
+                Motivo da Perda
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Informe o motivo pelo qual este lead foi perdido:
+              </p>
+              <textarea
+                className="w-full min-h-[100px] p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-500"
+                placeholder="Ex: Preço acima do orçamento, escolheu concorrente, sem resposta..."
+                value={lostReasonText}
+                onChange={(e) => setLostReasonText(e.target.value)}
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" size="sm" onClick={() => setLostReasonDialog(null)}>
+                  Cancelar
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                  disabled={!lostReasonText.trim()}
+                  onClick={() => {
+                    if (!lostReasonDialog) return;
+                    const { leadId, fromStage, isDarBaixa } = lostReasonDialog;
+                    const lead = leadsPJ.find(l => String(l.id) === String(leadId));
+
+                    const stageHistory = [...(lead?.stageHistory || lead?.stage_history || [])];
+                    if (fromStage) {
+                      stageHistory.push({
+                        from: fromStage,
+                        to: 'fechado_perdido',
+                        changedAt: new Date().toISOString(),
+                        changedBy: user?.email,
+                      });
+                    }
+
+                    const updateData = {
+                      stage: 'fechado_perdido',
+                      stageHistory,
+                      lostReason: lostReasonText.trim(),
+                      lost: true,
+                    };
+
+                    updateLeadMutation.mutate({ id: leadId, data: updateData });
+                    toast.success('Lead marcado como perdido');
+                    setLostReasonDialog(null);
+                    setLostReasonText('');
+                  }}
+                >
+                  Confirmar Perda
+                </Button>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
       </div>

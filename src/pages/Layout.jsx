@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 function useResponsive() {
   const getScreenSize = (width) => ({
@@ -660,11 +660,47 @@ function LayoutContent({ children, currentPageName }) {
     }
   }, [location.pathname, isPublicPage, lastSalesModule]);
 
-  const filteredMenuModules = user?.role === 'admin'
-    ? menuModules
-    : currentAgent
-      ? filterMenuItems(currentAgent, menuModules)
-      : [];
+  const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
+  const isAdminUser = user?.role === 'admin' || currentAgentType === 'admin';
+  const isSupervisorUser = currentAgentType?.includes('supervisor');
+  const isCommercialUser = !isAdminUser && !isSupervisorUser && !!currentAgent;
+
+  const filteredMenuModules = useMemo(() => {
+    let modules = user?.role === 'admin'
+      ? menuModules
+      : currentAgent
+        ? filterMenuItems(currentAgent, menuModules)
+        : [];
+
+    if (isCommercialUser) {
+      modules = modules.map(mod => {
+        if (mod.id !== 'sales_pj') return mod;
+        return {
+          ...mod,
+          items: mod.items
+            .filter(item => {
+              if (item.url === createPageUrl("SalesPJDashboard")) return false;
+              if (item.url === createPageUrl("SalesPJAgentsDashboard")) return false;
+              return true;
+            })
+            .map(item => item)
+            .concat([])
+        };
+      });
+      modules = modules.map(mod => {
+        if (mod.id !== 'sales_pj') return mod;
+        return {
+          ...mod,
+          items: [
+            { title: "Meu Dashboard", url: createPageUrl("MyDashboardPJ"), icon: LayoutDashboard },
+            ...mod.items
+          ]
+        };
+      });
+    }
+
+    return modules;
+  }, [user, currentAgent, isCommercialUser]);
 
   if (isPublicPage) {
     return (

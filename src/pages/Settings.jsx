@@ -265,7 +265,7 @@ function GoogleCalendarSettings({ settings, onSave, isAdmin }) {
   const { data: gcalStatus, refetch: refetchStatus } = useQuery({
     queryKey: ["gcalStatus"],
     queryFn: async () => {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("accessToken");
       const res = await fetch("/api/functions/google-calendar/status", {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -314,7 +314,7 @@ function GoogleCalendarSettings({ settings, onSave, isAdmin }) {
   const handleConnect = async () => {
     setConnecting(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("accessToken");
       const res = await fetch("/api/functions/google-calendar/auth-url", {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -333,7 +333,7 @@ function GoogleCalendarSettings({ settings, onSave, isAdmin }) {
   const handleDisconnect = async () => {
     setConnecting(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("accessToken");
       await fetch("/api/functions/google-calendar/disconnect", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -349,7 +349,7 @@ function GoogleCalendarSettings({ settings, onSave, isAdmin }) {
 
   const handleManualSync = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("accessToken");
       const res = await fetch("/api/functions/google-calendar/sync", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },

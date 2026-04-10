@@ -141,7 +141,7 @@ export default function SalesAgenda() {
   const { data: gcalStatus } = useQuery({
     queryKey: ["gcalStatus"],
     queryFn: async () => {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("accessToken");
       const res = await fetch("/api/functions/google-calendar/status", {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -160,7 +160,7 @@ export default function SalesAgenda() {
   const { data: googleEvents = [] } = useQuery({
     queryKey: ["googleCalendarEvents", gcalFetchRange.start.toISOString(), showTeamGoogleEvents],
     queryFn: async () => {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("accessToken");
       const endpoint = showTeamGoogleEvents ? '/api/functions/google-calendar/team-events' : '/api/functions/google-calendar/events';
       const res = await fetch(
         `${endpoint}?timeMin=${gcalFetchRange.start.toISOString()}&timeMax=${gcalFetchRange.end.toISOString()}`,
@@ -175,7 +175,7 @@ export default function SalesAgenda() {
 
   const handleRefreshGcal = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("accessToken");
       const res = await fetch("/api/functions/google-calendar/sync", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },

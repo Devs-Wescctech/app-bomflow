@@ -35,6 +35,7 @@ import {
   ChevronLeft,
   ChevronRight,
   RotateCcw,
+  BarChart3,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -395,15 +396,62 @@ export default function SalesPJLostReport() {
       {lostReasons.length > 0 && (
         <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
           <CardHeader className="border-b border-gray-200 dark:border-gray-800 pb-3">
-            <CardTitle className="text-sm font-medium text-gray-700 dark:text-gray-300">Motivos de Perda</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-gray-900 dark:text-gray-100">
+              <BarChart3 className="w-5 h-5 text-red-600" />
+              Análise de Motivos de Perda
+            </CardTitle>
           </CardHeader>
-          <CardContent className="p-4">
-            <div className="flex flex-wrap gap-2">
-              {lostReasons.map(([reason, count]) => (
-                <Badge key={reason} variant="outline" className="text-sm py-1 px-3">
-                  {reason}: <span className="font-bold ml-1">{count}</span>
-                </Badge>
-              ))}
+          <CardContent className="p-6">
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-4">Distribuição por motivo</p>
+                {lostReasons.map(([reason, count]) => {
+                  const pct = totalRegistros > 0 ? ((count / totalRegistros) * 100).toFixed(1) : 0;
+                  return (
+                    <div key={reason} className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-700 dark:text-gray-300 truncate mr-2">{reason}</span>
+                        <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">{count} ({pct}%)</span>
+                      </div>
+                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+                        <div
+                          className="h-2.5 rounded-full"
+                          style={{ width: `${pct}%`, background: 'linear-gradient(to right, #ef4444, #f97316)' }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-4">Perdidos por agente</p>
+                {(() => {
+                  const byAgent = {};
+                  filteredLeads.forEach(l => {
+                    const aid = l.agentId || l.agent_id;
+                    const name = agentMap[aid]?.name || 'Sem agente';
+                    byAgent[name] = (byAgent[name] || 0) + 1;
+                  });
+                  const sorted = Object.entries(byAgent).sort((a, b) => b[1] - a[1]);
+                  return sorted.map(([name, count]) => {
+                    const pct = totalRegistros > 0 ? ((count / totalRegistros) * 100).toFixed(1) : 0;
+                    return (
+                      <div key={name} className="space-y-1">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-700 dark:text-gray-300 truncate mr-2">{name}</span>
+                          <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">{count} ({pct}%)</span>
+                        </div>
+                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+                          <div
+                            className="h-2.5 rounded-full"
+                            style={{ width: `${pct}%`, background: 'linear-gradient(to right, #8b5cf6, #6366f1)' }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
             </div>
           </CardContent>
         </Card>
