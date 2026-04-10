@@ -28,7 +28,7 @@ import LeadGeneratorDashboard from "./LeadGeneratorDashboard";
 import LeadGeneratorLogEstruturado from "./LeadGeneratorLogEstruturado";
 
 const API_BASE = '/api';
-const MAX_LEADS = 1000;
+const MAX_LEADS = 1200;
 
 function getAuthHeaders() {
   const token = localStorage.getItem('accessToken');

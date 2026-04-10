@@ -437,8 +437,8 @@ router.post('/lead-generator-whatsapp-send', authMiddleware, async (req, res) =>
       return res.status(400).json({ success: false, error: 'Nenhum lead selecionado para envio.' });
     }
 
-    if (leads.length > 1000) {
-      return res.status(400).json({ success: false, error: 'Limite máximo de 1000 leads por disparo.' });
+    if (leads.length > 1200) {
+      return res.status(400).json({ success: false, error: 'Limite máximo de 1200 leads por disparo.' });
     }
 
     const batchId = uuidv4();
