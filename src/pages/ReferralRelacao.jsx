@@ -90,8 +90,8 @@ export default function ReferralRelacao() {
 
   const agents = useMemo(() => {
     if (!agentsData) return [];
-    return agentsData.filter(a => referralAgentTypeKeys.has(a.agentType));
-  }, [agentsData, referralAgentTypeKeys]);
+    return agentsData.filter(a => a.agentType === 'indicacoes_atendente');
+  }, [agentsData]);
   const referrals = data?.data || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / limit);
