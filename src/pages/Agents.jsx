@@ -116,6 +116,7 @@ const MENU_MODULES = [
       { id: "ReferralWonReport", title: "Rel. de Convertidos" },
       { id: "CommissionPaymentControl", title: "Ctrl. Pagamento" },
       { id: "CommissionReconciliation", title: "Reconciliação" },
+      { id: "ReferralRelacao", title: "Relação Indicações" },
       { id: "ReferralChannelAutomations", title: "Automações por Canal" },
       { id: "ReferralAutomations", title: "Automações" },
       { id: "LeadGenerator", title: "Gerador de Leads" },

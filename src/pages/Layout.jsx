@@ -80,6 +80,7 @@ import {
   FileCheck,
   Plug,
   Trophy,
+  List,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -234,6 +235,7 @@ const menuModules = [
       { title: "Comissões", url: createPageUrl("ReferralCommissions"), icon: DollarSign, supervisorOnly: true },
       { title: "Ctrl. Pagamento", url: createPageUrl("CommissionPaymentControl"), icon: FileCheck, requiredSubmenu: "CommissionPaymentControl" },
       { title: "Reconciliação", url: createPageUrl("CommissionReconciliation"), icon: Shield, requiredSubmenu: "CommissionReconciliation" },
+      { title: "Relação Indicações", url: createPageUrl("ReferralRelacao"), icon: List, requiredSubmenu: "ReferralRelacao" },
       { title: "Automações por Canal", url: createPageUrl("ReferralChannelAutomations"), icon: Activity, supervisorOnly: true },
     ]
   },

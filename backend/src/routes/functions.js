@@ -345,6 +345,76 @@ router.get('/lead-generator-options', authMiddleware, async (req, res) => {
   }
 });
 
+router.get('/referrals-relacao', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('ReferralRelacao'), async (req, res) => {
+  try {
+    const { cpfIndicador, nomeIndicado, vendedorId, page = 1, limit = 50 } = req.query;
+    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
+
+    let whereClause = 'WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+
+    if (cpfIndicador) {
+      whereClause += ` AND REPLACE(REPLACE(REPLACE(r.referrer_cpf, '.', ''), '-', ''), '/', '') LIKE $${paramIndex}`;
+      params.push(`%${cpfIndicador.replace(/\D/g, '')}%`);
+      paramIndex++;
+    }
+    if (nomeIndicado) {
+      whereClause += ` AND LOWER(r.referred_name) LIKE LOWER($${paramIndex})`;
+      params.push(`%${nomeIndicado}%`);
+      paramIndex++;
+    }
+    if (vendedorId) {
+      whereClause += ` AND r.agent_id = $${paramIndex}`;
+      params.push(vendedorId);
+      paramIndex++;
+    }
+
+    const countResult = await query(
+      `SELECT COUNT(*)::int as total FROM referrals r ${whereClause}`,
+      params
+    );
+
+    const result = await query(
+      `SELECT r.id, r.referrer_cpf, r.referrer_name, r.referred_name, r.referred_cpf,
+              r.agent_id, a.name as agent_name, p.chave_pix,
+              r.referrer_phone, r.referred_phone, r.stage, r.status, r.created_at
+       FROM referrals r
+       LEFT JOIN agents a ON r.agent_id = a.id
+       LEFT JOIN indicadores_pix p ON REPLACE(REPLACE(REPLACE(r.referrer_cpf, '.', ''), '-', ''), '/', '') = p.cpf_indicador
+       ${whereClause}
+       ORDER BY r.created_at DESC
+       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...params, parseInt(limit), offset]
+    );
+
+    res.json({
+      success: true,
+      data: result.rows.map(row => ({
+        id: row.id,
+        referrerCpf: row.referrer_cpf,
+        referrerName: row.referrer_name,
+        chavePix: row.chave_pix || null,
+        referredName: row.referred_name,
+        referredCpf: row.referred_cpf,
+        agentId: row.agent_id,
+        agentName: row.agent_name,
+        referrerPhone: row.referrer_phone,
+        referredPhone: row.referred_phone,
+        stage: row.stage,
+        status: row.status,
+        createdAt: row.created_at,
+      })),
+      total: countResult.rows[0]?.total || 0,
+      page: parseInt(page),
+      limit: parseInt(limit),
+    });
+  } catch (error) {
+    console.error('Error fetching referrals relacao:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.get('/lead-generator-base', authMiddleware, async (req, res) => {
   try {
     let data = await fetchLeadGeneratorFromERP(req.query);

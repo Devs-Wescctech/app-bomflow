@@ -122,6 +122,7 @@ import ReferralPipeline from "./ReferralPipeline";
 import ReferralDetail from "./ReferralDetail";
 
 import ReferralCommissions from "./ReferralCommissions";
+import ReferralRelacao from "./ReferralRelacao";
 
 import CommissionReconciliation from "./CommissionReconciliation";
 import CommissionPaymentControl from "./CommissionPaymentControl";
@@ -322,6 +323,7 @@ const PAGES = {
     ReferralDetail: ReferralDetail,
     
     ReferralCommissions: ReferralCommissions,
+    ReferralRelacao: ReferralRelacao,
     
     ReferralAutomations: ReferralAutomations,
     
@@ -545,6 +547,7 @@ function PagesContent() {
                 <Route path="/ReferralDetail" element={<ReferralDetail />} />
                 
                 <Route path="/ReferralCommissions" element={<ReferralCommissions />} />
+                <Route path="/ReferralRelacao" element={<ReferralRelacao />} />
                 <Route path="/CommissionReconciliation" element={<CommissionReconciliation />} />
                 <Route path="/CommissionPaymentControl" element={<CommissionPaymentControl />} />
                 
