@@ -59,6 +59,16 @@ export default function ReferralRelacao() {
     },
   });
 
+  const { data: agentTypesData } = useQuery({
+    queryKey: ['agent-types-relacao'],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/agent-types`, { headers: { ...getAuthHeaders() } });
+      if (!res.ok) return [];
+      const result = await res.json();
+      return Array.isArray(result) ? result : [];
+    },
+  });
+
   const { data: agentsData } = useQuery({
     queryKey: ['agents-list-relacao'],
     queryFn: async () => {
@@ -69,7 +79,19 @@ export default function ReferralRelacao() {
     },
   });
 
-  const agents = agentsData || [];
+  const referralAgentTypeKeys = useMemo(() => {
+    if (!agentTypesData) return new Set();
+    return new Set(
+      agentTypesData
+        .filter(t => t.modules && (t.modules.includes('referral') || t.modules.includes('all')))
+        .map(t => t.key)
+    );
+  }, [agentTypesData]);
+
+  const agents = useMemo(() => {
+    if (!agentsData) return [];
+    return agentsData.filter(a => referralAgentTypeKeys.has(a.agentType));
+  }, [agentsData, referralAgentTypeKeys]);
   const referrals = data?.data || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / limit);
