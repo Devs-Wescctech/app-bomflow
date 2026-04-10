@@ -367,6 +367,19 @@ router.get('/lead-generator-base', authMiddleware, async (req, res) => {
       console.log(`[LeadGenerator] tempo_ativo_contrato filter: ${before} -> ${data.length} (min=${tempoAtivoMin}, max=${tempoAtivoMax})`);
     }
 
+    const blockedResult = await query(
+      `SELECT DISTINCT lead_number FROM gerador_leads_whatsapp_logs
+       WHERE success = true AND sent_at >= NOW() - INTERVAL '30 days'`
+    );
+    const blockedNumbers = new Set(blockedResult.rows.map(r => r.lead_number));
+
+    const beforeBlock = data.length;
+    data = data.filter(lead => {
+      const clean = normalizePhone(lead.number);
+      return clean && !blockedNumbers.has(clean);
+    });
+    console.log(`[LeadGenerator] 30-day block filter: ${beforeBlock} -> ${data.length} (${beforeBlock - data.length} blocked)`);
+
     res.json(data);
   } catch (error) {
     console.error('Error fetching lead generator base:', error);
