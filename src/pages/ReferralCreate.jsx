@@ -84,7 +84,7 @@ export default function ReferralCreate() {
   });
 
   const currentAgentType = user?.agent?.agentType || user?.agent?.agent_type;
-  const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor';
+  const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor' || currentAgentType === 'indicacoes_supervisor';
 
   const salesAgentsList = agents.filter(a => 
     a.active !== false && 
