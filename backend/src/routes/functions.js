@@ -3476,6 +3476,28 @@ router.put('/commission-payment/confirm/:id', authMiddleware, loadAgentMiddlewar
   }
 });
 
+router.put('/commission-payment/reativacao/:id', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userEmail = req.user?.email || req.user?.userEmail || 'admin';
+
+    const result = await query(
+      `UPDATE commission_payment_control 
+       SET status_pagamento = 'reativacao', usuario_confirmacao = $1
+       WHERE id = $2 AND status_pagamento != 'pago' RETURNING *`,
+      [userEmail, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Record not found or already paid' });
+    }
+
+    res.json({ success: true, record: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.put('/commission-payment/confirm-batch/:batchId', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
   try {
     const { batchId } = req.params;
@@ -3521,7 +3543,7 @@ async function getCommissionReportData() {
   let controlResult;
   if (currentBatchId) {
     controlResult = await query(
-      "SELECT * FROM commission_payment_control WHERE lote_pagamento_id = $1 ORDER BY nome_indicador, created_at",
+      "SELECT * FROM commission_payment_control WHERE lote_pagamento_id = $1 AND status_pagamento != 'reativacao' ORDER BY nome_indicador, created_at",
       [currentBatchId]
     );
   } else {
@@ -3592,7 +3614,7 @@ async function getCommissionReportData() {
   const currentRecordIds = new Set(records.map(r => r.id));
 
   const pendingResult = await query(
-    "SELECT cpc.*, cpb.periodo_inicio, cpb.periodo_fim FROM commission_payment_control cpc LEFT JOIN commission_payment_batches cpb ON cpc.lote_pagamento_id = cpb.id WHERE cpc.status_pagamento != 'pago' ORDER BY cpb.periodo_inicio, cpc.nome_indicador, cpc.created_at"
+    "SELECT cpc.*, cpb.periodo_inicio, cpb.periodo_fim FROM commission_payment_control cpc LEFT JOIN commission_payment_batches cpb ON cpc.lote_pagamento_id = cpb.id WHERE cpc.status_pagamento NOT IN ('pago', 'reativacao') ORDER BY cpb.periodo_inicio, cpc.nome_indicador, cpc.created_at"
   );
 
   const batchGroups = {};

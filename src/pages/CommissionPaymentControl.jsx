@@ -16,13 +16,15 @@ import { base44 } from "@/api/base44Client";
 const STATUS_LABELS = {
   elegivel: 'Elegível',
   pago: 'Pago',
-  pendente: 'Pendente'
+  pendente: 'Pendente',
+  reativacao: 'Reativação'
 };
 
 const STATUS_COLORS = {
   elegivel: 'bg-yellow-100 text-yellow-800',
   pago: 'bg-green-100 text-green-800',
-  pendente: 'bg-gray-100 text-gray-800'
+  pendente: 'bg-gray-100 text-gray-800',
+  reativacao: 'bg-purple-100 text-purple-800'
 };
 
 const BATCH_STATUS_COLORS = {
@@ -114,6 +116,16 @@ export default function CommissionPaymentControl() {
       toast.success('Pagamento confirmado');
     },
     onError: () => toast.error('Erro ao confirmar pagamento'),
+  });
+
+  const reativacaoMutation = useMutation({
+    mutationFn: (id) => fetchWithAuth(`/api/functions/commission-payment/reativacao/${id}`, { method: 'PUT' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['commission-payment-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['commission-payment-control'] });
+      toast.success('Status alterado para Reativação');
+    },
+    onError: () => toast.error('Erro ao alterar status'),
   });
 
   const confirmBatchMutation = useMutation({
@@ -283,6 +295,7 @@ export default function CommissionPaymentControl() {
                   <option value="all">Todos</option>
                   <option value="elegivel">Elegíveis</option>
                   <option value="pago">Pagos</option>
+                  <option value="reativacao">Reativação</option>
                 </select>
                 <select
                   value={filterBatchId}
@@ -345,15 +358,26 @@ export default function CommissionPaymentControl() {
                         </td>
                         <td className="py-2 px-3">
                           {r.status_pagamento === 'elegivel' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => confirmMutation.mutate(r.id)}
-                              disabled={confirmMutation.isPending}
-                            >
-                              <CheckCircle className="w-3 h-3 mr-1" />
-                              Confirmar
-                            </Button>
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => confirmMutation.mutate(r.id)}
+                                disabled={confirmMutation.isPending}
+                              >
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                Confirmar
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-purple-600 border-purple-200 hover:bg-purple-50"
+                                onClick={() => reativacaoMutation.mutate(r.id)}
+                                disabled={reativacaoMutation.isPending}
+                              >
+                                Reativação
+                              </Button>
+                            </div>
                           )}
                           {r.status_pagamento === 'pago' && (
                             <span className="text-xs text-gray-500">
