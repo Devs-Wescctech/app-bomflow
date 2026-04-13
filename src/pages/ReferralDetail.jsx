@@ -225,6 +225,7 @@ export default function ReferralDetail() {
       const currentUser = await base44.auth.me();
       return base44.entities.Referral.update(referralId, {
         status: 'perdido',
+        lost: true,
         lostAt: new Date().toISOString(),
         lostBy: currentUser.email,
         lostReason: reason,
