@@ -345,6 +345,76 @@ router.get('/lead-generator-options', authMiddleware, async (req, res) => {
   }
 });
 
+router.get('/referrals-relacao', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('ReferralRelacao'), async (req, res) => {
+  try {
+    const { cpfIndicador, nomeIndicado, vendedorId, page = 1, limit = 50 } = req.query;
+    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
+
+    let whereClause = 'WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+
+    if (cpfIndicador) {
+      whereClause += ` AND REPLACE(REPLACE(REPLACE(r.referrer_cpf, '.', ''), '-', ''), '/', '') LIKE $${paramIndex}`;
+      params.push(`%${cpfIndicador.replace(/\D/g, '')}%`);
+      paramIndex++;
+    }
+    if (nomeIndicado) {
+      whereClause += ` AND LOWER(r.referred_name) LIKE LOWER($${paramIndex})`;
+      params.push(`%${nomeIndicado}%`);
+      paramIndex++;
+    }
+    if (vendedorId) {
+      whereClause += ` AND r.agent_id = $${paramIndex}`;
+      params.push(vendedorId);
+      paramIndex++;
+    }
+
+    const countResult = await query(
+      `SELECT COUNT(*)::int as total FROM referrals r ${whereClause}`,
+      params
+    );
+
+    const result = await query(
+      `SELECT r.id, r.referrer_cpf, r.referrer_name, r.referred_name, r.referred_cpf,
+              r.agent_id, a.name as agent_name, p.chave_pix,
+              r.referrer_phone, r.referred_phone, r.stage, r.status, r.created_at
+       FROM referrals r
+       LEFT JOIN agents a ON r.agent_id = a.id
+       LEFT JOIN indicadores_pix p ON REPLACE(REPLACE(REPLACE(r.referrer_cpf, '.', ''), '-', ''), '/', '') = p.cpf_indicador
+       ${whereClause}
+       ORDER BY r.created_at DESC
+       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...params, parseInt(limit), offset]
+    );
+
+    res.json({
+      success: true,
+      data: result.rows.map(row => ({
+        id: row.id,
+        referrerCpf: row.referrer_cpf,
+        referrerName: row.referrer_name,
+        chavePix: row.chave_pix || null,
+        referredName: row.referred_name,
+        referredCpf: row.referred_cpf,
+        agentId: row.agent_id,
+        agentName: row.agent_name,
+        referrerPhone: row.referrer_phone,
+        referredPhone: row.referred_phone,
+        stage: row.stage,
+        status: row.status,
+        createdAt: row.created_at,
+      })),
+      total: countResult.rows[0]?.total || 0,
+      page: parseInt(page),
+      limit: parseInt(limit),
+    });
+  } catch (error) {
+    console.error('Error fetching referrals relacao:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.get('/lead-generator-base', authMiddleware, async (req, res) => {
   try {
     let data = await fetchLeadGeneratorFromERP(req.query);
@@ -366,6 +436,19 @@ router.get('/lead-generator-base', authMiddleware, async (req, res) => {
       });
       console.log(`[LeadGenerator] tempo_ativo_contrato filter: ${before} -> ${data.length} (min=${tempoAtivoMin}, max=${tempoAtivoMax})`);
     }
+
+    const blockedResult = await query(
+      `SELECT DISTINCT lead_number FROM gerador_leads_whatsapp_logs
+       WHERE success = true AND sent_at >= NOW() - INTERVAL '30 days'`
+    );
+    const blockedNumbers = new Set(blockedResult.rows.map(r => r.lead_number));
+
+    const beforeBlock = data.length;
+    data = data.filter(lead => {
+      const clean = normalizePhone(lead.number);
+      return clean && !blockedNumbers.has(clean);
+    });
+    console.log(`[LeadGenerator] 30-day block filter: ${beforeBlock} -> ${data.length} (${beforeBlock - data.length} blocked)`);
 
     res.json(data);
   } catch (error) {
@@ -424,8 +507,8 @@ router.post('/lead-generator-whatsapp-send', authMiddleware, async (req, res) =>
       return res.status(400).json({ success: false, error: 'Nenhum lead selecionado para envio.' });
     }
 
-    if (leads.length > 1000) {
-      return res.status(400).json({ success: false, error: 'Limite máximo de 1000 leads por disparo.' });
+    if (leads.length > 1200) {
+      return res.status(400).json({ success: false, error: 'Limite máximo de 1200 leads por disparo.' });
     }
 
     const batchId = uuidv4();
@@ -585,6 +668,49 @@ router.get('/lead-generator-log-estruturado/stats', authMiddleware, async (req, 
     res.json({ success: true, stats: result.rows[0] });
   } catch (error) {
     console.error('[LogEstruturado] Stats error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/lead-generator-log-estruturado/failure-reasons', authMiddleware, async (req, res) => {
+  try {
+    const agent = await getAgentForDispatchCheck(req);
+    if (!(await checkLogEstruturadoAccess(agent))) {
+      return res.status(403).json({ success: false, error: 'Sem permissão.' });
+    }
+
+    const { startDate, endDate, agentId } = req.query;
+    let whereClause = `WHERE status_envio = 'falha' AND motivo_bloqueio IS NOT NULL`;
+    const params = [];
+    let paramIndex = 1;
+
+    if (startDate) {
+      whereClause += ` AND disparado_em >= $${paramIndex}`;
+      params.push(startDate);
+      paramIndex++;
+    }
+    if (endDate) {
+      whereClause += ` AND disparado_em <= $${paramIndex}`;
+      params.push(endDate);
+      paramIndex++;
+    }
+    if (agentId) {
+      whereClause += ` AND agent_id = $${paramIndex}`;
+      params.push(agentId);
+      paramIndex++;
+    }
+
+    const result = await query(`
+      SELECT motivo_bloqueio as motivo, COUNT(*)::int as total
+      FROM gerador_leads_log_estruturado ${whereClause}
+      GROUP BY motivo_bloqueio
+      ORDER BY total DESC
+      LIMIT 20
+    `, params);
+
+    res.json({ success: true, reasons: result.rows });
+  } catch (error) {
+    console.error('[LogEstruturado] Failure reasons error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -3350,6 +3476,28 @@ router.put('/commission-payment/confirm/:id', authMiddleware, loadAgentMiddlewar
   }
 });
 
+router.put('/commission-payment/reativacao/:id', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userEmail = req.user?.email || req.user?.userEmail || 'admin';
+
+    const result = await query(
+      `UPDATE commission_payment_control 
+       SET status_pagamento = 'reativacao', usuario_confirmacao = $1
+       WHERE id = $2 AND status_pagamento != 'pago' RETURNING *`,
+      [userEmail, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Record not found or already paid' });
+    }
+
+    res.json({ success: true, record: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.put('/commission-payment/confirm-batch/:batchId', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
   try {
     const { batchId } = req.params;
@@ -3395,7 +3543,7 @@ async function getCommissionReportData() {
   let controlResult;
   if (currentBatchId) {
     controlResult = await query(
-      "SELECT * FROM commission_payment_control WHERE lote_pagamento_id = $1 ORDER BY nome_indicador, created_at",
+      "SELECT * FROM commission_payment_control WHERE lote_pagamento_id = $1 AND status_pagamento != 'reativacao' ORDER BY nome_indicador, created_at",
       [currentBatchId]
     );
   } else {
@@ -3466,7 +3614,7 @@ async function getCommissionReportData() {
   const currentRecordIds = new Set(records.map(r => r.id));
 
   const pendingResult = await query(
-    "SELECT cpc.*, cpb.periodo_inicio, cpb.periodo_fim FROM commission_payment_control cpc LEFT JOIN commission_payment_batches cpb ON cpc.lote_pagamento_id = cpb.id WHERE cpc.status_pagamento != 'pago' ORDER BY cpb.periodo_inicio, cpc.nome_indicador, cpc.created_at"
+    "SELECT cpc.*, cpb.periodo_inicio, cpb.periodo_fim FROM commission_payment_control cpc LEFT JOIN commission_payment_batches cpb ON cpc.lote_pagamento_id = cpb.id WHERE cpc.status_pagamento NOT IN ('pago', 'reativacao') ORDER BY cpb.periodo_inicio, cpc.nome_indicador, cpc.created_at"
   );
 
   const batchGroups = {};

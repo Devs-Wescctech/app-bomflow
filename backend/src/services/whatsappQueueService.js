@@ -45,6 +45,21 @@ export async function enqueueLeads({ leads, userId, userEmail, teamId, templateI
   const bloqueioRecorrenciaDias = rateConfig.bloqueioRecorrenciaDias;
   const limitePorUsuarioDia = rateConfig.limitePorUsuarioDia;
 
+  const seenNumbers = new Set();
+  const uniqueLeads = [];
+  for (const lead of leads) {
+    if (!lead.number) continue;
+    const normalized = normalizePhone(lead.number);
+    if (!normalized || seenNumbers.has(normalized)) continue;
+    seenNumbers.add(normalized);
+    uniqueLeads.push(lead);
+  }
+
+  const duplicatesRemoved = leads.length - uniqueLeads.length - leads.filter(l => !l.number).length;
+  if (duplicatesRemoved > 0) {
+    console.log(`[WhatsAppQueue] Dedup: ${leads.length} leads recebidos, ${uniqueLeads.length} únicos, ${duplicatesRemoved} duplicados removidos, ${leads.filter(l => !l.number).length} sem número`);
+  }
+
   let enqueued = 0;
   let blocked30Days = 0;
   let blockedDuplicate = 0;
@@ -58,13 +73,8 @@ export async function enqueueLeads({ leads, userId, userEmail, teamId, templateI
   );
   let userDailyCount = dailyCountResult.rows[0]?.count || 0;
 
-  for (const lead of leads) {
+  for (const lead of uniqueLeads) {
     const { number, name, lead_id, uf, cidade, produto, situacao_contrato } = lead;
-
-    if (!number) {
-      skipped++;
-      continue;
-    }
 
     const cleanNumber = normalizePhone(number);
 
@@ -228,7 +238,8 @@ export async function enqueueLeads({ leads, userId, userEmail, teamId, templateI
     }
   }
 
-  return { total: leads.length, enqueued, blocked30Days, blockedDuplicate, blockedDailyLimit, skipped };
+  const noNumber = leads.filter(l => !l.number).length;
+  return { total: leads.length, enqueued, blocked30Days, blockedDuplicate, blockedDailyLimit, skipped: skipped + noNumber + duplicatesRemoved };
 }
 
 function sleep(ms) {
@@ -385,11 +396,15 @@ export async function processQueue(batchId) {
     const currentAttempt = item.tentativa_numero;
     const statusEnvio = success ? 'enviado' : (currentAttempt < item.max_tentativas ? 'reenvio_agendado' : 'falha');
 
+    const motivoFalha = !success
+      ? (apiResponse?.msg || apiResponse?.message || apiResponse?.error || (httpStatus ? `HTTP ${httpStatus}` : 'Falha desconhecida'))
+      : null;
+
     try {
       await query(
         `INSERT INTO gerador_leads_whatsapp_logs
-          (lead_number, lead_name, user_id, user_email, sent_at, http_status, api_response, success, message_sent_id, filters_used, template_id, status_envio, tentativa_numero, batch_id, team_id, whu_chat_id, whu_contact_id, endpoint_used)
-         VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+          (lead_number, lead_name, user_id, user_email, sent_at, http_status, api_response, success, message_sent_id, filters_used, template_id, status_envio, tentativa_numero, batch_id, team_id, whu_chat_id, whu_contact_id, endpoint_used, motivo_bloqueio)
+         VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
         [
           item.lead_number,
           item.lead_name,
@@ -407,7 +422,8 @@ export async function processQueue(batchId) {
           item.team_id,
           whuChatId ? String(whuChatId) : null,
           whuContactId ? String(whuContactId) : null,
-          endpointUsed
+          endpointUsed,
+          motivoFalha
         ]
       );
     } catch (dbErr) {
@@ -434,7 +450,7 @@ export async function processQueue(batchId) {
       httpStatus,
       messageSentId: messageSentId ? String(messageSentId) : null,
       apiResponse,
-      motivoBloqueio: null,
+      motivoBloqueio: motivoFalha,
       disparadoEm,
       processadoEm,
       duracaoMs,
