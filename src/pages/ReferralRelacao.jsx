@@ -279,7 +279,12 @@ export default function ReferralRelacao() {
                         {(() => {
                           const stageObj = REFERRAL_STAGES.find(s => s.id === item.stage);
                           return stageObj ? (
-                            <Badge className="text-xs text-white" style={{ backgroundColor: stageObj.color }}>{stageObj.label}</Badge>
+                            <span
+                              className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold text-white shadow-sm"
+                              style={{ backgroundColor: stageObj.color }}
+                            >
+                              {stageObj.label}
+                            </span>
                           ) : (
                             <Badge variant="outline" className="text-xs">{item.stage || '-'}</Badge>
                           );
