@@ -96,6 +96,8 @@ export default function ReferralAgentsDashboard() {
   const agentStats = useMemo(() => {
     return agents
       .filter(agent => {
+        const agentType = agent.agentType || agent.agent_type;
+        if (agentType !== 'indicacoes_atendente') return false;
         if (!canSeeAllAgents && agent.id !== currentAgent?.id) return false;
         const agentTeamId = agent.teamId || agent.team_id;
         if (selectedTeam && String(agentTeamId) !== String(selectedTeam)) return false;
