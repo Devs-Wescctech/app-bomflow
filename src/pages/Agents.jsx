@@ -119,6 +119,7 @@ const MENU_MODULES = [
       { id: "ReferralRelacao", title: "Relação Indicações" },
       { id: "ReferralChannelAutomations", title: "Automações por Canal" },
       { id: "ReferralAutomations", title: "Automações" },
+      { id: "AutomationLogs", title: "Logs de Automações" },
       { id: "LeadGenerator", title: "Gerador de Leads" },
       { id: "LeadGeneratorLogEstruturado", title: "Log Estruturado" },
     ]
