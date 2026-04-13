@@ -64,12 +64,12 @@ const STAGES_PJ = [
 ];
 
 const DEFAULT_INTEREST_OPTIONS_PJ = [
-  "Plano Funeral Empresarial",
-  "Plano de Saúde Corporativo",
-  "Seguro Empresarial",
-  "Telemedicina Corporativa",
-  "Assistência 24h",
-  "Múltiplos Planos",
+  "Consultoria",
+  "Software / SaaS",
+  "Serviço Recorrente",
+  "Projeto Sob Demanda",
+  "Treinamento",
+  "Suporte Técnico",
   "Outro",
 ];
 

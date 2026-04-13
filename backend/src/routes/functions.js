@@ -3717,9 +3717,9 @@ function buildCommissionEmailHtml(data) {
 
   <!-- Header -->
   <div style="background: #1e293b; padding: 30px 40px; text-align: center;">
-    <div style="font-size: 14px; color: #94a3b8; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 8px;">Bom Pastor</div>
+    <div style="font-size: 14px; color: #94a3b8; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 8px;">SalesTwo</div>
     <h1 style="margin: 0; font-size: 22px; color: #ffffff; font-weight: 700;">RELATÓRIO SEMANAL DE COMISSÕES DE INDICAÇÃO</h1>
-    <div style="font-size: 13px; color: #64748b; margin-top: 6px;">Bom Flow CRM</div>
+    <div style="font-size: 13px; color: #64748b; margin-top: 6px;">SalesTwo CRM</div>
     <div style="height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); margin-top: 16px; border-radius: 2px;"></div>
   </div>
 
@@ -3731,7 +3731,7 @@ function buildCommissionEmailHtml(data) {
         <td style="padding: 4px 0; text-align: right;"><strong>Gerado em:</strong> ${geradoEm}</td>
       </tr>
       <tr>
-        <td style="padding: 4px 0;" colspan="2"><strong>Sistema:</strong> Bom Flow CRM</td>
+        <td style="padding: 4px 0;" colspan="2"><strong>Sistema:</strong> SalesTwo CRM</td>
       </tr>
     </table>
   </div>`;
@@ -3892,8 +3892,8 @@ function buildCommissionEmailHtml(data) {
   html += `
   <!-- Footer -->
   <div style="background: #1e293b; padding: 24px 40px; text-align: center;">
-    <div style="font-size: 13px; color: #94a3b8; font-weight: 600;">Bom Pastor</div>
-    <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Bom Flow CRM</div>
+    <div style="font-size: 13px; color: #94a3b8; font-weight: 600;">SalesTwo</div>
+    <div style="font-size: 12px; color: #64748b; margin-top: 2px;">SalesTwo CRM</div>
     <div style="height: 1px; background: #334155; margin: 12px 0;"></div>
     <div style="font-size: 11px; color: #64748b;">Relatório gerado automaticamente em ${geradoEm}</div>
     <div style="font-size: 10px; color: #475569; margin-top: 6px; font-style: italic;">Este documento é destinado exclusivamente ao controle financeiro de comissões.</div>
@@ -3926,9 +3926,9 @@ function generateCommissionPDF(data) {
     const orangeAccent = [249, 115, 22];
 
     doc.rect(0, 0, doc.page.width, 80).fill(darkBg);
-    doc.fontSize(10).fill([148, 163, 184]).text('BOM PASTOR', 40, 20, { align: 'center', characterSpacing: 3 });
+    doc.fontSize(10).fill([148, 163, 184]).text('SALESTWO', 40, 20, { align: 'center', characterSpacing: 3 });
     doc.fontSize(16).fill([255, 255, 255]).text('RELATÓRIO SEMANAL DE COMISSÕES DE INDICAÇÃO', 40, 38, { align: 'center' });
-    doc.fontSize(9).fill([100, 116, 139]).text('Bom Flow CRM', 40, 60, { align: 'center' });
+    doc.fontSize(9).fill([100, 116, 139]).text('SalesTwo CRM', 40, 60, { align: 'center' });
     doc.rect(40, 78, doc.page.width - 80, 3).fill(amberAccent);
 
     let y = 95;
@@ -3936,7 +3936,7 @@ function generateCommissionPDF(data) {
     doc.text(`Período: ${periodoInicio} → ${periodoFim}`, 40, y);
     doc.text(`Gerado em: ${geradoEm}`, 40, y, { align: 'right', width: doc.page.width - 80 });
     y += 14;
-    doc.text('Sistema: Bom Flow CRM', 40, y);
+    doc.text('Sistema: SalesTwo CRM', 40, y);
     y += 20;
 
     const cols1 = [
@@ -4078,7 +4078,7 @@ function generateCommissionPDF(data) {
 
     if (y > doc.page.height - 70) { doc.addPage(); y = 40; }
     doc.rect(40, y, doc.page.width - 80, 58).fill(darkBg);
-    doc.fontSize(9).fill([148, 163, 184]).text('Bom Pastor — Bom Flow CRM', 40, y + 6, { align: 'center', width: doc.page.width - 80 });
+    doc.fontSize(9).fill([148, 163, 184]).text('SalesTwo CRM', 40, y + 6, { align: 'center', width: doc.page.width - 80 });
     doc.fontSize(8).fill([100, 116, 139]).text(`Relatório gerado automaticamente em ${geradoEm}`, 40, y + 18, { align: 'center', width: doc.page.width - 80 });
     doc.fontSize(7).fill([71, 85, 105]).text('Este documento é destinado exclusivamente ao controle financeiro de comissões.', 40, y + 30, { align: 'center', width: doc.page.width - 80 });
     doc.fontSize(7).fill(amberAccent).text('O pagamento das comissões deve ser realizado via chave PIX informada pelo indicador.', 40, y + 42, { align: 'center', width: doc.page.width - 80 });
