@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { REFERRAL_STAGES } from "@/constants/stages";
 
 const API_BASE = '/api';
 
@@ -116,6 +117,7 @@ export default function ReferralRelacao() {
       referredName: item.referredName || '',
       referredCpf: item.referredCpf || '',
       agentId: item.agentId || '',
+      stage: item.stage || '',
     });
   }
 
@@ -129,6 +131,7 @@ export default function ReferralRelacao() {
         referredName: editForm.referredName,
         referredCpf: editForm.referredCpf,
         agentId: editForm.agentId || null,
+        stage: editForm.stage || undefined,
       };
 
       const res = await fetch(`${API_BASE}/referrals/${editItem.id}`, {
@@ -273,7 +276,14 @@ export default function ReferralRelacao() {
                       <td className="py-2.5 pr-3 font-mono text-xs">{formatCPF(item.referredCpf)}</td>
                       <td className="py-2.5 pr-3 truncate max-w-[130px]" title={item.agentName}>{item.agentName || '-'}</td>
                       <td className="py-2.5 pr-3">
-                        <Badge variant="outline" className="text-xs">{item.stage || '-'}</Badge>
+                        {(() => {
+                          const stageObj = REFERRAL_STAGES.find(s => s.id === item.stage);
+                          return stageObj ? (
+                            <Badge className="text-xs text-white" style={{ backgroundColor: stageObj.color }}>{stageObj.label}</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs">{item.stage || '-'}</Badge>
+                          );
+                        })()}
                       </td>
                       <td className="py-2.5 pr-3 text-xs text-gray-500">
                         {item.createdAt ? format(new Date(item.createdAt), 'dd/MM/yyyy', { locale: ptBR }) : '-'}
@@ -359,18 +369,38 @@ export default function ReferralRelacao() {
                 />
               </div>
             </div>
-            <div>
-              <Label className="text-xs">Vendedor</Label>
-              <Select value={editForm.agentId ? String(editForm.agentId) : ''} onValueChange={val => setEditForm({ ...editForm, agentId: val })}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Selecionar vendedor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {agents.filter(a => a.active !== false).map(a => (
-                    <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="text-xs">Vendedor</Label>
+                <Select value={editForm.agentId ? String(editForm.agentId) : ''} onValueChange={val => setEditForm({ ...editForm, agentId: val })}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Selecionar vendedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {agents.filter(a => a.active !== false).map(a => (
+                      <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Etapa</Label>
+                <Select value={editForm.stage || ''} onValueChange={val => setEditForm({ ...editForm, stage: val })}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Selecionar etapa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REFERRAL_STAGES.map(s => (
+                      <SelectItem key={s.id} value={s.id}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: s.color }} />
+                          {s.label}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
           <DialogFooter>
