@@ -112,20 +112,30 @@ export default function ReferralDashboard() {
     initialData: [],
   });
 
-  const displayAgents = useMemo(() => {
-    const salesFiltered = agents.filter(a => {
+  const indicacoesAgents = useMemo(() => {
+    return agents.filter(a => {
       const agentType = a.agentType || a.agent_type;
-      return agentType?.includes('sales') || agentType?.includes('vendas') || agentType === 'admin' || agentType?.includes('supervisor');
+      return agentType === 'indicacoes_atendente';
     });
-    if (!selectedTeam) return salesFiltered;
-    return salesFiltered.filter(a => String(a.teamId || a.team_id) === String(selectedTeam));
-  }, [agents, selectedTeam]);
+  }, [agents]);
+
+  const indicacoesAgentIds = useMemo(() => {
+    return new Set(indicacoesAgents.map(a => String(a.id)));
+  }, [indicacoesAgents]);
+
+  const displayAgents = useMemo(() => {
+    if (!selectedTeam) return indicacoesAgents;
+    return indicacoesAgents.filter(a => String(a.teamId || a.team_id) === String(selectedTeam));
+  }, [indicacoesAgents, selectedTeam]);
 
   const referrals = useMemo(() => {
-    let filtered = [...rawReferrals];
+    let filtered = rawReferrals.filter(r => {
+      const agentId = String(r.agentId || r.agent_id || '');
+      return indicacoesAgentIds.has(agentId);
+    });
 
     if (selectedTeam && !selectedAgent) {
-      const teamAgentIds = allAgents
+      const teamAgentIds = indicacoesAgents
         .filter(a => String(a.teamId || a.team_id) === String(selectedTeam))
         .map(a => String(a.id));
       filtered = filtered.filter(r => teamAgentIds.includes(String(r.agentId || r.agent_id)));
@@ -155,7 +165,7 @@ export default function ReferralDashboard() {
     }
 
     return filtered;
-  }, [rawReferrals, selectedAgent, selectedStage, selectedTeam, dateRange, allAgents]);
+  }, [rawReferrals, selectedAgent, selectedStage, selectedTeam, dateRange, indicacoesAgentIds, indicacoesAgents]);
 
   const handleClearFilters = () => {
     setSelectedAgent(null);
@@ -194,7 +204,7 @@ export default function ReferralDashboard() {
   const comissaoMedia = conversoes > 0 ? (comissaoTotal / conversoes).toFixed(2) : 0;
   const atividadesPendentes = activities.filter(a => !a.completed && a.type === 'task').length;
 
-  const topAgents = agents
+  const topAgents = indicacoesAgents
     .map(agent => {
       const agentReferrals = referrals.filter(r => (r.agentId || r.agent_id) === agent.id);
       const agentConversoes = agentReferrals.filter(r => r.stage === 'fechado_ganho').length;
@@ -240,7 +250,7 @@ export default function ReferralDashboard() {
           </MetricsHelpDialog>
           <Badge variant="glass" className="flex items-center gap-2">
             <Sparkles className="w-3 h-3" />
-            {agents.filter(a => a.active).length} agentes ativos
+            {indicacoesAgents.filter(a => a.active).length} agentes ativos
           </Badge>
         </div>
       </motion.div>
