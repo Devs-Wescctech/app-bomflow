@@ -259,7 +259,7 @@ export default function ReferralDashboard() {
         <DashboardFilters
           agents={displayAgents}
           stages={REFERRAL_STAGES}
-          teams={teams}
+          teams={teams.filter(t => (t.name || '').toLowerCase().includes('indicaç'))}
           selectedAgent={selectedAgent}
           selectedStage={selectedStage}
           selectedTeam={selectedTeam}

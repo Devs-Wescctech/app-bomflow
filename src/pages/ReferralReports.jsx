@@ -302,7 +302,7 @@ export default function ReferralReports() {
       <DashboardFilters
         agents={displayAgents}
         stages={STAGES}
-        teams={teams}
+        teams={teams.filter(t => (t.name || '').toLowerCase().includes('indicaç'))}
         selectedAgent={selectedAgent}
         selectedStage={selectedStage}
         selectedTeam={selectedTeam}

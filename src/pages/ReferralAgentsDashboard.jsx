@@ -213,7 +213,7 @@ export default function ReferralAgentsDashboard() {
       </div>
 
       <DashboardFilters
-        teams={canSeeAllAgents ? teamsForFilter : []}
+        teams={canSeeAllAgents ? teamsForFilter.filter(t => (t.name || '').toLowerCase().includes('indicaç')) : []}
         selectedTeam={selectedTeam}
         onTeamChange={setSelectedTeam}
         selectedPeriod={selectedPeriod}
