@@ -24,3 +24,9 @@ id = "ievOYXBhB5UrtX1wjC_rt"
 uri = "file://analise-nova-hierarquia.md"
 type = "text"
 title = "Análise Técnica - Nova Hierarquia de Acesso"
+
+[[outputs]]
+id = "LBZ1HkXacPRcB_R8rgaNo"
+uri = "file://analise-hierarquia-aprofundada.md"
+type = "text"
+title = "Análise Aprofundada - Nova Hierarquia de Acesso (Opção A vs B + Plano)"
