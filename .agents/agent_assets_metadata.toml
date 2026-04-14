@@ -12,3 +12,9 @@ id = "YV9U8y6Kj3-Zvyu8ZY6YX"
 uri = "file://exports/processo-migracao-salestwo.md"
 type = "text"
 title = "Processo Completo de Migração - SalesTwo"
+
+[[outputs]]
+id = "VaML4mjIwoVo3EL8PO6Cc"
+uri = "file://analise-acesso-hierarquia.md"
+type = "text"
+title = "Análise Completa - Sistema de Acessos e Hierarquia"
