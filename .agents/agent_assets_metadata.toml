@@ -18,3 +18,9 @@ id = "VaML4mjIwoVo3EL8PO6Cc"
 uri = "file://analise-acesso-hierarquia.md"
 type = "text"
 title = "Análise Completa - Sistema de Acessos e Hierarquia"
+
+[[outputs]]
+id = "ievOYXBhB5UrtX1wjC_rt"
+uri = "file://analise-nova-hierarquia.md"
+type = "text"
+title = "Análise Técnica - Nova Hierarquia de Acesso"
