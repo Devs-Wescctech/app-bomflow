@@ -393,6 +393,10 @@ router.post('/agents', authMiddleware, async (req, res) => {
         const reqType = requestor.rows[0].agent_type;
         const reqTeamId = requestor.rows[0].team_id;
 
+        if (!['admin', 'coordinator', 'supervisor', 'sales_supervisor'].includes(reqType)) {
+          return res.status(403).json({ message: 'Sem permissão para criar agentes' });
+        }
+
         if (reqType === 'coordinator' && data.agent_type === 'admin') {
           return res.status(403).json({ message: 'Coordenadores não podem criar agentes do tipo admin' });
         }
@@ -478,6 +482,10 @@ router.put('/agents/:id', authMiddleware, async (req, res) => {
       if (requestor.rows.length > 0) {
         const reqType = requestor.rows[0].agent_type;
         const reqTeamId = requestor.rows[0].team_id;
+
+        if (!['admin', 'coordinator', 'supervisor', 'sales_supervisor'].includes(reqType) && id !== req.user.id) {
+          return res.status(403).json({ message: 'Sem permissão para editar agentes' });
+        }
 
         if (reqType === 'coordinator' && data.agent_type === 'admin') {
           return res.status(403).json({ message: 'Coordenadores não podem alterar agentes para o tipo admin' });
@@ -568,6 +576,11 @@ router.delete('/agents/:id', authMiddleware, async (req, res) => {
       if (requestor.rows.length > 0) {
         const reqType = requestor.rows[0].agent_type;
         const reqTeamId = requestor.rows[0].team_id;
+
+        if (!['admin', 'coordinator', 'supervisor', 'sales_supervisor'].includes(reqType)) {
+          return res.status(403).json({ message: 'Sem permissão para excluir agentes' });
+        }
+
         if (reqType === 'supervisor' || reqType === 'sales_supervisor') {
           const supTeam = await query('SELECT id FROM teams WHERE supervisor_id = $1', [req.user.id]);
           const supervisorTeamId = supTeam.rows.length > 0 ? supTeam.rows[0].id : reqTeamId;

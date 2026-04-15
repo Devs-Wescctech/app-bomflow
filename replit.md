@@ -119,6 +119,13 @@ SalesTwo is a focused B2B sales management platform built on a streamlined versi
   - Agent form: team is auto-filled (supervisor's team) and not editable; type restricted to non-admin types
   - Agent type config: emerald badge (`bg-emerald-100 text-emerald-700`)
   - `sales_supervisor` type unified to `supervisor` via DB migration
+- **Sales (vendedor) isolation** (Phase 3):
+  - `sales` has `own`-scoped visibility only — sees only their own leads, reports, and data
+  - Cannot create, edit, or delete agents (server-side RBAC blocks POST/PUT/DELETE /agents for non-manager types)
+  - PUT /agents/:id exception: vendedor can edit their own profile (e.g., photo, working hours)
+  - `canManageAgents()` returns `false`, `canAccessModule('config')` returns `false`
+  - Menu shows only `dashboard` and `sales_pj` modules; no access to agents, teams, config, or reports pages
+  - All report pages use `getVisibleAgentIds()` which returns only `[own id]` for sales type
 
 ### Technical Implementations
 - **Monorepo Structure**: Frontend and Backend coexist within a single repository.
