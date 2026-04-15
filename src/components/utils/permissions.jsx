@@ -47,8 +47,8 @@ export function canAccessModule(agent, moduleId) {
   
   if (agentType === 'admin') return true;
 
-  if (agentType === 'coordinator') {
-    return moduleId !== 'settings';
+  if (agentType === 'coordinator' && moduleId === 'config') {
+    return true;
   }
   
   if (agent.modules !== undefined && agent.modules !== null) {
