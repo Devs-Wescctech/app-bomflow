@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
+import { hasFullVisibility, hasTeamVisibility, getVisibleAgentIds, getDataVisibilityKey } from "@/components/utils/permissions.jsx";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 import { toast } from "sonner";
 
@@ -68,8 +68,7 @@ export default function SalesPJLostReport() {
   });
 
   const currentAgent = user?.agent;
-  const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor';
+  const isAdmin = hasFullVisibility(currentAgent) || hasTeamVisibility(currentAgent);
   const hasPermission = !!user;
 
   const { data: teams = [] } = useQuery({
@@ -84,22 +83,16 @@ export default function SalesPJLostReport() {
   });
 
   const { data: leadsPJ = [], isLoading } = useQuery({
-    queryKey: ['leads-pj-lost-report', isAdmin ? 'admin' : currentAgent?.id, allAgents.length],
+    queryKey: ['leads-pj-lost-report', getDataVisibilityKey(user, currentAgent), allAgents.length],
     queryFn: async () => {
       const allLeads = await base44.entities.LeadPJ.list('-createdDate', 10000);
       const lostLeads = allLeads.filter(l => l.lost || l.stage === 'fechado_perdido');
 
       if (isAdmin) return lostLeads;
       if (!currentAgent) return [];
-      if (canViewAll(currentAgent, 'leads-pj')) return lostLeads;
 
-      if (canViewTeam(currentAgent, 'leads-pj')) {
-        const teamAgents = allAgents.filter(a => (a.teamId || a.team_id) === (currentAgent?.teamId || currentAgent?.team_id));
-        const teamAgentIds = teamAgents.map(a => a.id);
-        return lostLeads.filter(l => teamAgentIds.includes(l.agentId || l.agent_id));
-      }
-
-      return lostLeads.filter(l => (l.agentId || l.agent_id) === currentAgent?.id);
+      const visibleIds = getVisibleAgentIds(currentAgent, allAgents);
+      return lostLeads.filter(l => visibleIds.includes(l.agentId || l.agent_id));
     },
     enabled: !!user && hasPermission && allAgents.length > 0,
   });

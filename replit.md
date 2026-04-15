@@ -92,6 +92,12 @@ SalesTwo is a focused B2B sales management platform built on a streamlined versi
 - Active agent_types: `admin`, `sales`, `sales_supervisor`
 - Permissions driven by `agent_types.modules` array from DB; fallback to `AGENT_PERMISSIONS` in `permissions.jsx`
 - Team: "Vendas" (single active team)
+- **Centralized visibility logic** (Phase 0 refactoring):
+  - Backend: `getDataScope(agent)` in `backend/src/config/permissions.js` — single source of truth for `all`/`team`/`own` scoping
+  - Frontend: `hasFullVisibility()`, `hasTeamVisibility()`, `getVisibleAgentIds()`, `getVisibleTeams()`, `getDataVisibilityKey()` in `src/components/utils/permissions.jsx`
+  - All 8 dashboard/report/kanban/agenda/tasks pages use these centralized functions instead of inline role checks
+  - Old functions (`canViewAll`, `canViewTeam`) still exported for backward compatibility (used in `LeadPJSearch.jsx`)
+  - `isSupervisorType()` matches: `'supervisor'`, `'sales_supervisor'`, and any `*_supervisor` pattern
 
 ### Technical Implementations
 - **Monorepo Structure**: Frontend and Backend coexist within a single repository.

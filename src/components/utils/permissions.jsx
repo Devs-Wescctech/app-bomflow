@@ -119,7 +119,71 @@ export function canManageSettings(agent) {
 }
 
 export function isSupervisorType(agentType) {
-  return agentType === 'sales_supervisor' || agentType?.endsWith('_supervisor');
+  return agentType === 'supervisor' || agentType === 'sales_supervisor' || agentType?.endsWith('_supervisor');
+}
+
+export function hasFullVisibility(agent) {
+  const agentType = agent?.agent_type || agent?.agentType;
+  if (!agentType) return false;
+  if (agentType === 'admin') return true;
+  if (canViewAll(agent, 'leads-pj')) return true;
+  return false;
+}
+
+export function hasTeamVisibility(agent) {
+  const agentType = agent?.agent_type || agent?.agentType;
+  if (!agentType) return false;
+  if (agentType === 'admin') return true;
+  if (isSupervisorType(agentType)) return true;
+  if (canViewTeam(agent, 'leads-pj')) return true;
+  return false;
+}
+
+export function getVisibleAgentIds(currentAgent, allAgents) {
+  if (!currentAgent) return [];
+
+  if (hasFullVisibility(currentAgent)) {
+    return allAgents.map(a => a.id);
+  }
+
+  if (hasTeamVisibility(currentAgent)) {
+    const teamId = currentAgent.teamId || currentAgent.team_id;
+    if (!teamId) return [currentAgent.id];
+    const ids = allAgents
+      .filter(a => (a.teamId || a.team_id) === teamId)
+      .map(a => a.id);
+    if (!ids.includes(currentAgent.id)) {
+      ids.push(currentAgent.id);
+    }
+    return ids;
+  }
+
+  return [currentAgent.id];
+}
+
+export function getVisibleTeams(currentAgent, allTeams) {
+  if (!currentAgent) return [];
+
+  if (hasFullVisibility(currentAgent)) {
+    return allTeams;
+  }
+
+  if (hasTeamVisibility(currentAgent)) {
+    const teamId = currentAgent.teamId || currentAgent.team_id;
+    return allTeams.filter(t => t.id === teamId);
+  }
+
+  return [];
+}
+
+export function getDataVisibilityKey(user, currentAgent) {
+  if (!user) return 'none';
+  if (hasFullVisibility(currentAgent)) return 'admin';
+  if (hasTeamVisibility(currentAgent)) {
+    const teamId = currentAgent?.teamId || currentAgent?.team_id;
+    return `supervisor-${teamId || 'no-team'}`;
+  }
+  return currentAgent?.id || 'none';
 }
 
 export function filterMenuItems(agent, menuItems) {

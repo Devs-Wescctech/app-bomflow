@@ -47,7 +47,7 @@ import QuickLeadPJForm from "../components/sales/QuickLeadPJForm";
 import { createPageUrl } from "@/utils";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
-import { canViewAll, canViewTeam } from "@/components/utils/permissions";
+import { hasFullVisibility, hasTeamVisibility, getVisibleAgentIds, getDataVisibilityKey } from "@/components/utils/permissions";
 import {
   DndContext,
   DragOverlay,
@@ -525,35 +525,22 @@ export default function LeadsPJKanban() {
   });
 
   const currentAgent = user?.agent || allAgents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
-  const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor';
+  const isAdmin = hasFullVisibility(currentAgent) || hasTeamVisibility(currentAgent);
 
   const { data: leadsPJ = [], isLoading } = useQuery({
-    queryKey: ['leadsPJ', isAdmin ? 'admin' : currentAgent?.id],
+    queryKey: ['leadsPJ', getDataVisibilityKey(user, currentAgent)],
     queryFn: async () => {
       const allLeads = await base44.entities.LeadPJ.list('-created_at');
       
-      if (isAdmin) {
-        return allLeads.filter(l => !l.lost && !l.concluded);
+      if (hasFullVisibility(currentAgent) || hasTeamVisibility(currentAgent)) {
+        const visibleIds = getVisibleAgentIds(currentAgent, allAgents);
+        return allLeads.filter(l =>
+          !l.lost && !l.concluded &&
+          (hasFullVisibility(currentAgent) || visibleIds.includes(l.agentId) || visibleIds.includes(l.agent_id))
+        );
       }
 
       if (!currentAgent) return [];
-
-      const canSeeAll = canViewAll(currentAgent, 'leads-pj');
-      if (canSeeAll) {
-        return allLeads.filter(l => !l.lost && !l.concluded);
-      }
-
-      const canSeeTeam = canViewTeam(currentAgent, 'leads-pj');
-      if (canSeeTeam) {
-        const teamAgents = allAgents.filter(a => a.team_id === currentAgent.team_id);
-        const teamAgentIds = teamAgents.map(a => a.id);
-
-        return allLeads.filter(l =>
-          !l.lost && !l.concluded &&
-          (teamAgentIds.includes(l.agentId) || teamAgentIds.includes(l.agent_id))
-        );
-      }
 
       return allLeads.filter(l =>
         !l.lost && !l.concluded &&

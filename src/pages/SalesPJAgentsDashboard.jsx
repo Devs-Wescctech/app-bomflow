@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { hasFullVisibility, hasTeamVisibility } from "@/components/utils/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -37,8 +38,8 @@ export default function SalesPJAgentsDashboard() {
 
   const currentAgent = user?.agent;
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
-  const isSupervisor = user?.role === 'supervisor' || currentAgentType?.includes('supervisor');
+  const isAdmin = hasFullVisibility(currentAgent);
+  const isSupervisor = hasTeamVisibility(currentAgent) && !isAdmin;
   const isSalesAgent = currentAgentType === 'sales' || currentAgentType === 'pre_sales' || currentAgentType === 'post_sales';
   const hasPermission = isAdmin || isSupervisor || isSalesAgent;
   const canFetchData = !!user && !!currentAgent && hasPermission;

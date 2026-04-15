@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { hasFullVisibility, hasTeamVisibility, getVisibleAgentIds } from "@/components/utils/permissions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -237,29 +238,26 @@ export default function SalesAgenda() {
   };
 
   const currentAgent = user?.agent || agents.find((a) => a.userEmail === user?.email || a.email === user?.email);
-  const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = currentAgentType === "admin";
-  const isSupervisor = currentAgentType === "sales_supervisor" || currentAgentType === "supervisor";
+  const isAdmin = hasFullVisibility(currentAgent);
+  const isSupervisor = hasTeamVisibility(currentAgent) && !isAdmin;
   const canSeeTeam = isAdmin || isSupervisor;
 
   const myActivities = useMemo(() => {
+    if (hasFullVisibility(currentAgent)) return activities;
+
+    const visibleIds = getVisibleAgentIds(currentAgent, agents);
+
     return activities.filter((act) => {
-      if (isAdmin) return true;
       if (!currentAgent) return true;
-      if (isSupervisor) {
-        const teamId = currentAgent.teamId || currentAgent.team_id;
-        const teamAgentIds = agents
-          .filter(a => (a.teamId || a.team_id) === teamId)
-          .map(a => a.id);
-        teamAgentIds.push(currentAgent.id);
+      if (hasTeamVisibility(currentAgent)) {
         const assignedTo = getVal(act, "assignedTo", "assigned_to");
-        return !assignedTo || teamAgentIds.includes(assignedTo);
+        return !assignedTo || visibleIds.includes(assignedTo);
       }
       const assignedTo = getVal(act, "assignedTo", "assigned_to");
       const createdBy = getVal(act, "createdBy", "created_by");
       return assignedTo === user?.email || assignedTo === currentAgent?.id || createdBy === currentAgent?.id || !assignedTo;
     });
-  }, [activities, isAdmin, isSupervisor, currentAgent, user, agents]);
+  }, [activities, currentAgent, user, agents]);
 
   const filtered = filterType === "all" ? myActivities : myActivities.filter((a) => a.type === filterType);
 

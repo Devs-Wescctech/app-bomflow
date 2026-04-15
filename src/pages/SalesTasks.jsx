@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { hasFullVisibility, hasTeamVisibility, getVisibleAgentIds } from "@/components/utils/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -144,9 +145,8 @@ export default function SalesTasks() {
   });
 
   const currentAgent = user?.agent;
-  const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = currentAgentType === 'admin';
-  const isSupervisor = currentAgentType === 'sales_supervisor' || currentAgentType === 'supervisor';
+  const isAdmin = hasFullVisibility(currentAgent);
+  const isSupervisor = hasTeamVisibility(currentAgent) && !isAdmin;
 
   const { data: allActivities = [], isLoading: loadingActivities } = useQuery({
     queryKey: ['activitiesPJ'],
@@ -155,24 +155,22 @@ export default function SalesTasks() {
   });
 
   const activities = useMemo(() => {
-    if (isAdmin) return allActivities;
+    if (hasFullVisibility(currentAgent)) return allActivities;
     if (!currentAgent) return [];
-    if (isSupervisor) {
-      const teamId = currentAgent.teamId || currentAgent.team_id;
-      const teamAgentIds = allAgents
-        .filter(a => (a.teamId || a.team_id) === teamId)
-        .map(a => a.id);
-      teamAgentIds.push(currentAgent.id);
+
+    const visibleIds = getVisibleAgentIds(currentAgent, allAgents);
+
+    if (hasTeamVisibility(currentAgent)) {
       return allActivities.filter(a => {
         const assignedTo = a.assignedTo || a.assigned_to;
-        return !assignedTo || teamAgentIds.includes(assignedTo);
+        return !assignedTo || visibleIds.includes(assignedTo);
       });
     }
     return allActivities.filter(a => {
       const assignedTo = a.assignedTo || a.assigned_to;
       return !assignedTo || assignedTo === currentAgent.id;
     });
-  }, [allActivities, currentAgent, isAdmin, isSupervisor, allAgents]);
+  }, [allActivities, currentAgent, allAgents]);
 
   const { data: leadsPJ = [], isLoading: loadingLeads } = useQuery({
     queryKey: ['leadsPJ'],

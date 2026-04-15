@@ -127,6 +127,23 @@ export function canAccessModule(agentType, module) {
   return permissions.modules.includes(module);
 }
 
+export function getDataScope(agent) {
+  if (!agent) return { type: 'own', teamId: null, agentId: null };
+
+  const agentType = agent.agent_type || agent.agentType;
+  const permissions = getPermissions(agentType);
+
+  if (permissions.canViewAllLeads) {
+    return { type: 'all', teamId: null, agentId: null };
+  }
+
+  if ((permissions.canViewTeamLeads || permissions.canViewTeamTickets) && (agent.team_id || agent.teamId)) {
+    return { type: 'team', teamId: agent.team_id || agent.teamId, agentId: agent.id };
+  }
+
+  return { type: 'own', teamId: null, agentId: agent.id };
+}
+
 export function getVisibilityFilter(agentType, userId, teamId, entity) {
   const permissions = getPermissions(agentType);
   

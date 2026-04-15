@@ -24,7 +24,7 @@ import { createPageUrl } from "@/utils";
 import StatsCard from "@/components/dashboard/StatsCard";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 import MetricsHelpDialog from "@/components/dashboard/MetricsHelpDialog";
-import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
+import { hasFullVisibility, hasTeamVisibility, getVisibleAgentIds, getDataVisibilityKey } from "@/components/utils/permissions.jsx";
 import { isWithinInterval, parseISO, startOfDay, endOfDay } from "date-fns";
 import { LEAD_PJ_STAGES, isActiveStage, isWonStage, isLostStage } from "@/constants/stages";
 
@@ -62,32 +62,24 @@ export default function SalesPJDashboard() {
   });
 
   const currentAgent = user?.agent;
-  const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
-  const isSupervisor = user?.role === 'supervisor' || currentAgentType?.includes('supervisor');
+  const isAdmin = hasFullVisibility(currentAgent);
+  const isSupervisor = hasTeamVisibility(currentAgent) && !isAdmin;
 
   const { data: rawLeads = [] } = useQuery({
-    queryKey: ['leads-pj-dashboard', isAdmin ? 'admin' : isSupervisor ? 'supervisor' : currentAgent?.id],
+    queryKey: ['leads-pj-dashboard', getDataVisibilityKey(user, currentAgent)],
     queryFn: async () => {
       const allLeads = await base44.entities.LeadPJ.list('-createdDate');
       
-      if (isAdmin || isSupervisor) {
+      if (hasFullVisibility(currentAgent)) {
         return allLeads;
       }
       
       if (!currentAgent) return [];
       
-      const canSeeAll = canViewAll(currentAgent, 'leads-pj');
-      if (canSeeAll) {
-        return allLeads;
-      }
-      
-      const canSeeTeam = canViewTeam(currentAgent, 'leads-pj');
-      if (canSeeTeam) {
-        const teamAgents = allAgents.filter(a => (a.teamId || a.team_id) === (currentAgent.teamId || currentAgent.team_id));
-        const teamAgentIds = teamAgents.map(a => a.id);
+      const visibleIds = getVisibleAgentIds(currentAgent, allAgents);
+      if (hasTeamVisibility(currentAgent)) {
         return allLeads.filter(l => 
-          teamAgentIds.includes(l.agentId || l.agent_id)
+          visibleIds.includes(l.agentId || l.agent_id)
         );
       }
       
@@ -252,8 +244,8 @@ export default function SalesPJDashboard() {
           onPeriodChange={setSelectedPeriod}
           onDateRangeChange={setDateRange}
           onClearFilters={handleClearFilters}
-          showAgentFilter={isAdmin || isSupervisor}
-          showTeamFilter={isAdmin || isSupervisor}
+          showAgentFilter={hasFullVisibility(currentAgent) || hasTeamVisibility(currentAgent)}
+          showTeamFilter={hasFullVisibility(currentAgent) || hasTeamVisibility(currentAgent)}
         />
       </motion.div>
 
