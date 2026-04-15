@@ -346,7 +346,7 @@ for (const [route, options] of Object.entries(entities)) {
 router.get('/agents', authMiddleware, async (req, res) => {
   try {
     const result = await query(`
-      SELECT id, name, cpf, email, agent_type, team_id, skills, active, 
+      SELECT id, name, cpf, email, agent_type, team_id, supervisor_id, skills, active, 
              photo_url, permissions, level, online, capacity, working_hours, 
              queue_ids, work_unit, role, must_reset_password, erp_agent_id,
              whatsapp_access_token, whatsapp_token_expires_at, created_at, updated_at
@@ -365,7 +365,7 @@ router.get('/agents/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await query(`
-      SELECT id, name, cpf, email, agent_type, team_id, skills, active, 
+      SELECT id, name, cpf, email, agent_type, team_id, supervisor_id, skills, active, 
              photo_url, permissions, level, online, capacity, working_hours, 
              queue_ids, work_unit, role, must_reset_password, erp_agent_id,
              whatsapp_access_token, whatsapp_token_expires_at, created_at, updated_at
@@ -407,10 +407,10 @@ router.post('/agents', authMiddleware, async (req, res) => {
           }
           const supTeam = await query('SELECT id FROM teams WHERE supervisor_id = $1', [req.user.id]);
           const supervisorTeamId = supTeam.rows.length > 0 ? supTeam.rows[0].id : reqTeamId;
-          if (!supervisorTeamId) {
-            return res.status(403).json({ message: 'Supervisor não está vinculado a nenhum time' });
+          if (supervisorTeamId) {
+            data.team_id = supervisorTeamId;
           }
-          data.team_id = supervisorTeamId;
+          data.supervisor_id = req.user.id;
         }
       }
     }
@@ -440,7 +440,7 @@ router.post('/agents', authMiddleware, async (req, res) => {
       delete data.password;
     }
     
-    const nonAgentFields = ['supervisor_id', 'coordinator_id', 'allowed_submenus', 'modules'];
+    const nonAgentFields = ['coordinator_id', 'allowed_submenus', 'modules'];
     for (const f of nonAgentFields) {
       delete data[f];
     }
@@ -495,18 +495,17 @@ router.put('/agents/:id', authMiddleware, async (req, res) => {
           if (data.agent_type && ['admin', 'coordinator', 'supervisor', 'sales_supervisor'].includes(data.agent_type)) {
             return res.status(403).json({ message: 'Supervisores não podem promover agentes para este tipo' });
           }
-          const supTeam = await query('SELECT id FROM teams WHERE supervisor_id = $1', [req.user.id]);
-          const supervisorTeamId = supTeam.rows.length > 0 ? supTeam.rows[0].id : reqTeamId;
-          const targetAgent = await query('SELECT team_id, agent_type FROM agents WHERE id = $1', [id]);
+          const targetAgent = await query('SELECT supervisor_id, agent_type FROM agents WHERE id = $1', [id]);
           if (targetAgent.rows.length > 0) {
-            if (targetAgent.rows[0].team_id !== supervisorTeamId) {
-              return res.status(403).json({ message: 'Supervisores só podem editar agentes do seu time' });
+            if (targetAgent.rows[0].supervisor_id !== req.user.id) {
+              return res.status(403).json({ message: 'Supervisores só podem editar seus próprios vendedores' });
             }
             if (['admin', 'coordinator', 'supervisor', 'sales_supervisor'].includes(targetAgent.rows[0].agent_type)) {
               return res.status(403).json({ message: 'Supervisores não podem editar agentes deste tipo' });
             }
           }
           delete data.team_id;
+          data.supervisor_id = req.user.id;
         }
       }
     }
@@ -535,7 +534,7 @@ router.put('/agents/:id', authMiddleware, async (req, res) => {
       delete data.password;
     }
     
-    const nonAgentFields = ['supervisor_id', 'coordinator_id', 'allowed_submenus', 'modules'];
+    const nonAgentFields = ['coordinator_id', 'allowed_submenus', 'modules'];
     for (const f of nonAgentFields) {
       delete data[f];
     }
@@ -582,12 +581,10 @@ router.delete('/agents/:id', authMiddleware, async (req, res) => {
         }
 
         if (reqType === 'supervisor' || reqType === 'sales_supervisor') {
-          const supTeam = await query('SELECT id FROM teams WHERE supervisor_id = $1', [req.user.id]);
-          const supervisorTeamId = supTeam.rows.length > 0 ? supTeam.rows[0].id : reqTeamId;
-          const targetAgent = await query('SELECT team_id, agent_type FROM agents WHERE id = $1', [id]);
+          const targetAgent = await query('SELECT supervisor_id, agent_type FROM agents WHERE id = $1', [id]);
           if (targetAgent.rows.length > 0) {
-            if (targetAgent.rows[0].team_id !== supervisorTeamId) {
-              return res.status(403).json({ message: 'Supervisores só podem excluir agentes do seu time' });
+            if (targetAgent.rows[0].supervisor_id !== req.user.id) {
+              return res.status(403).json({ message: 'Supervisores só podem excluir seus próprios vendedores' });
             }
             if (['admin', 'coordinator', 'supervisor', 'sales_supervisor'].includes(targetAgent.rows[0].agent_type)) {
               return res.status(403).json({ message: 'Supervisores não podem excluir agentes deste tipo' });
@@ -617,7 +614,7 @@ router.post('/agents/filter', authMiddleware, async (req, res) => {
     const values = Object.values(filters);
     
     let sql = `
-      SELECT id, name, cpf, email, agent_type, team_id, skills, active, 
+      SELECT id, name, cpf, email, agent_type, team_id, supervisor_id, skills, active, 
              photo_url, permissions, level, online, capacity, working_hours, 
              queue_ids, work_unit, role, erp_agent_id, created_at, updated_at
       FROM agents
@@ -651,13 +648,10 @@ router.post('/agents/:id/reset-password', authMiddleware, async (req, res) => {
           return res.status(403).json({ message: 'Sem permissão para redefinir senhas' });
         }
         if (reqType === 'supervisor' || reqType === 'sales_supervisor') {
-          const reqTeamId = requestor.rows[0].team_id;
-          const supTeam = await query('SELECT id FROM teams WHERE supervisor_id = $1', [req.user.id]);
-          const supervisorTeamId = supTeam.rows.length > 0 ? supTeam.rows[0].id : reqTeamId;
-          const targetAgent = await query('SELECT team_id, agent_type FROM agents WHERE id = $1', [id]);
+          const targetAgent = await query('SELECT supervisor_id, agent_type FROM agents WHERE id = $1', [id]);
           if (targetAgent.rows.length > 0) {
-            if (targetAgent.rows[0].team_id !== supervisorTeamId) {
-              return res.status(403).json({ message: 'Supervisores só podem redefinir senhas de agentes do seu time' });
+            if (targetAgent.rows[0].supervisor_id !== req.user.id) {
+              return res.status(403).json({ message: 'Supervisores só podem redefinir senhas de seus próprios vendedores' });
             }
             if (['admin', 'coordinator', 'supervisor', 'sales_supervisor'].includes(targetAgent.rows[0].agent_type)) {
               return res.status(403).json({ message: 'Supervisores não podem redefinir senhas de agentes deste tipo' });

@@ -1282,3 +1282,17 @@ CREATE INDEX IF NOT EXISTS idx_teams_supervisor ON teams(supervisor_id);
 UPDATE agents SET agent_type = 'supervisor' WHERE agent_type = 'sales_supervisor';
 DELETE FROM agent_types WHERE key = 'sales_supervisor' AND EXISTS (SELECT 1 FROM agent_types WHERE key = 'supervisor');
 UPDATE agent_types SET key = 'supervisor', label = 'Supervisor' WHERE key = 'sales_supervisor';
+
+-- =====================
+-- FASE S1: VÍNCULO DIRETO VENDEDOR → SUPERVISOR
+-- =====================
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS supervisor_id UUID REFERENCES agents(id);
+CREATE INDEX IF NOT EXISTS idx_agents_supervisor_id ON agents(supervisor_id);
+
+UPDATE agents a
+SET supervisor_id = t.supervisor_id
+FROM teams t
+WHERE a.team_id = t.id
+  AND a.agent_type = 'sales'
+  AND t.supervisor_id IS NOT NULL
+  AND a.supervisor_id IS NULL;

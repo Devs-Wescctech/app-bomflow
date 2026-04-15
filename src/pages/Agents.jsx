@@ -135,6 +135,7 @@ export default function Agents() {
     password: "",
     agentType: "sales",
     teamId: "",
+    supervisorId: "",
     online: false,
     active: true,
     workingHours: { start: "08:00", end: "18:00", days: [1, 2, 3, 4, 5] },
@@ -384,6 +385,7 @@ export default function Agents() {
       password: "",
       agentType: "sales",
       teamId: "",
+      supervisorId: isSupervisor ? (currentAgent?.id || "") : "",
       online: false,
       active: true,
       workingHours: { start: "08:00", end: "18:00", days: [1, 2, 3, 4, 5] },
@@ -479,6 +481,7 @@ export default function Agents() {
       password: "",
       agentType: agent.agentType || "sales",
       teamId: agent.teamId || "",
+      supervisorId: agent.supervisorId || agent.supervisor_id || "",
       online: agent.online || false,
       active: agent.active !== undefined ? agent.active : true,
       workingHours: agent.workingHours || { start: "08:00", end: "18:00", days: [1, 2, 3, 4, 5] },
@@ -567,8 +570,11 @@ export default function Agents() {
       permissions: { ...originalPerms, ...formData.permissions }
     };
 
-    if (isSupervisor && supervisorTeamId) {
-      dataToSend.teamId = supervisorTeamId;
+    if (isSupervisor) {
+      if (supervisorTeamId) {
+        dataToSend.teamId = supervisorTeamId;
+      }
+      dataToSend.supervisorId = currentAgent?.id;
     }
     
     if (editingAgent) {
@@ -667,7 +673,7 @@ export default function Agents() {
         {/* ===== ABA VENDEDORES ===== */}
         <TabsContent value="agents" className="mt-6">
           <div className="flex justify-between items-center mb-6">
-            <p className="text-sm text-gray-500">{(isSupervisor ? agents.filter(a => (a.teamId || a.team_id) === supervisorTeamId) : agents).length} vendedor(es) cadastrado(s)</p>
+            <p className="text-sm text-gray-500">{(isSupervisor ? agents.filter(a => (a.supervisorId || a.supervisor_id) === currentAgent?.id) : agents).length} vendedor(es) cadastrado(s)</p>
             <Button 
               onClick={() => {
                 resetForm();
@@ -682,7 +688,7 @@ export default function Agents() {
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {(isSupervisor ? agents.filter(a => (a.teamId || a.team_id) === supervisorTeamId) : agents).map(agent => {
+            {(isSupervisor ? agents.filter(a => (a.supervisorId || a.supervisor_id) === currentAgent?.id) : agents).map(agent => {
               const typeBadge = getAgentTypeBadge(agent.agentType);
               const hasWhatsAppToken = !!agent.whatsappAccessToken;
               const tokenExpired = agent.whatsappTokenExpiresAt && new Date(agent.whatsappTokenExpiresAt) < new Date();
@@ -764,6 +770,14 @@ export default function Agents() {
                           <Users className="w-4 h-4 text-gray-400" />
                           <span className="text-gray-600 dark:text-gray-400">{getTeamName(agent.teamId)}</span>
                         </div>
+                        {(agent.supervisorId || agent.supervisor_id) && (
+                          <div className="flex items-center gap-2">
+                            <UserCheck className="w-4 h-4 text-gray-400" />
+                            <span className="text-gray-600 dark:text-gray-400">
+                              Sup: {agents.find(a => a.id === (agent.supervisorId || agent.supervisor_id))?.name || '-'}
+                            </span>
+                          </div>
+                        )}
                         {agent.workingHours && (
                           <div className="flex items-center gap-2">
                             <Clock className="w-4 h-4 text-gray-400" />
@@ -1230,6 +1244,31 @@ export default function Agents() {
                     </Select>
                   )}
                 </div>
+
+                {formData.agentType === 'sales' && (
+                  <div>
+                    <Label className="text-gray-900 dark:text-gray-100">Supervisor</Label>
+                    {isSupervisor ? (
+                      <Input
+                        value={currentAgent?.name || "Eu (Supervisor)"}
+                        disabled
+                        className="bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                      />
+                    ) : (
+                      <Select value={formData.supervisorId} onValueChange={(val) => setFormData({...formData, supervisorId: val === "none" ? "" : val})}>
+                        <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                          <SelectValue placeholder="Selecione o supervisor (opcional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Nenhum</SelectItem>
+                          {agents.filter(a => isSupervisorType(a.agentType)).map(sup => (
+                            <SelectItem key={sup.id} value={sup.id}>{sup.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Horário de Trabalho */}

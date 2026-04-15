@@ -187,6 +187,17 @@ export function getVisibleAgentIds(currentAgent, allAgents) {
     return allAgents.map(a => a.id);
   }
 
+  const agentType = currentAgent?.agent_type || currentAgent?.agentType;
+  if (isSupervisorType(agentType)) {
+    const ids = allAgents
+      .filter(a => (a.supervisorId || a.supervisor_id) === currentAgent.id)
+      .map(a => a.id);
+    if (!ids.includes(currentAgent.id)) {
+      ids.push(currentAgent.id);
+    }
+    return ids;
+  }
+
   if (hasTeamVisibility(currentAgent)) {
     const teamId = currentAgent.teamId || currentAgent.team_id;
     if (!teamId) return [currentAgent.id];

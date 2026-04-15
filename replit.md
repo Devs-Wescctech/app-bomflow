@@ -126,6 +126,14 @@ SalesTwo is a focused B2B sales management platform built on a streamlined versi
   - `canManageAgents()` returns `false`, `canAccessModule('config')` returns `false`
   - Menu shows only `dashboard` and `sales_pj` modules; no access to agents, teams, config, or reports pages
   - All report pages use `getVisibleAgentIds()` which returns only `[own id]` for sales type
+- **Vendedor → Supervisor direct link** (Phase S1):
+  - `agents.supervisor_id UUID` column links each sales agent directly to their supervisor
+  - Migration auto-populates `supervisor_id` from `teams.supervisor_id` for existing sales agents
+  - `getVisibleAgentIds()` for supervisor now filters by `agent.supervisorId === currentAgent.id` (not team_id)
+  - Agent form shows "Supervisor" dropdown when agent type is `sales`; admin/coordinator can choose any supervisor; supervisor sees their own name (fixed, not editable)
+  - Agent card displays supervisor name ("Sup: Nome") when supervisor_id is set
+  - `team_id` is preserved for backward compatibility but supervisor visibility uses `supervisor_id` as primary source
+  - Backend: supervisor creates agent → `supervisor_id` forced to their own ID; `team_id` set from their team if available
 
 ### Technical Implementations
 - **Monorepo Structure**: Frontend and Backend coexist within a single repository.
