@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -283,16 +284,28 @@ export default function Agents() {
     },
   });
 
+  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', confirmLabel: '', variant: 'default', onConfirm: null });
+
   const handleDelete = (agent) => {
-    if (window.confirm(`Tem certeza que deseja excluir o agente "${agent.name}"? Esta ação não pode ser desfeita.`)) {
-      deleteAgentMutation.mutate(agent.id);
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Excluir agente',
+      message: `Tem certeza que deseja excluir o agente "${agent.name}"? Esta ação não pode ser desfeita.`,
+      confirmLabel: 'Excluir',
+      variant: 'danger',
+      onConfirm: () => { deleteAgentMutation.mutate(agent.id); setConfirmDialog(prev => ({ ...prev, isOpen: false })); },
+    });
   };
 
   const handleDeleteTeam = (team) => {
-    if (window.confirm(`Tem certeza que deseja excluir o time "${team.name}"? Esta ação não pode ser desfeita.`)) {
-      deleteTeamMutation.mutate(team.id);
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Excluir time',
+      message: `Tem certeza que deseja excluir o time "${team.name}"? Esta ação não pode ser desfeita.`,
+      confirmLabel: 'Excluir',
+      variant: 'danger',
+      onConfirm: () => { deleteTeamMutation.mutate(team.id); setConfirmDialog(prev => ({ ...prev, isOpen: false })); },
+    });
   };
 
   const handleGenerateWhatsAppToken = async (agent) => {
@@ -432,9 +445,14 @@ export default function Agents() {
       toast.error(`Não é possível excluir: ${agentCount} agente(s) usam este tipo.`);
       return;
     }
-    if (window.confirm(`Tem certeza que deseja excluir o tipo "${type.label}"?`)) {
-      deleteTypeMutation.mutate(type.id);
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Excluir tipo',
+      message: `Tem certeza que deseja excluir o tipo "${type.label}"?`,
+      confirmLabel: 'Excluir',
+      variant: 'danger',
+      onConfirm: () => { deleteTypeMutation.mutate(type.id); setConfirmDialog(prev => ({ ...prev, isOpen: false })); },
+    });
   };
 
   const handleTypeSubmit = () => {
@@ -1980,6 +1998,17 @@ export default function Agents() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmLabel={confirmDialog.confirmLabel}
+        cancelLabel="Cancelar"
+        variant={confirmDialog.variant}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

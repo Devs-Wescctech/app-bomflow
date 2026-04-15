@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
@@ -420,6 +421,7 @@ export default function LeadsPJKanban() {
   const [listPage, setListPage] = useState(1);
   const [isDraggingCard, setIsDraggingCard] = useState(false);
   const [lostReasonDialog, setLostReasonDialog] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', confirmLabel: '', variant: 'default', onConfirm: null });
   const [lostReasonText, setLostReasonText] = useState('');
 
   // Refs para arrastar o kanban horizontalmente
@@ -992,9 +994,14 @@ export default function LeadsPJKanban() {
                         className="h-7 w-7 hover:bg-red-100 dark:hover:bg-red-950 hover:text-red-700 dark:hover:text-red-400"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (confirm('Deseja excluir esta tarefa?')) {
-                            deleteTaskMutation.mutate({ taskId: task.id });
-                          }
+                          setConfirmDialog({
+                            isOpen: true,
+                            title: 'Excluir tarefa',
+                            message: 'Tem certeza que deseja excluir esta tarefa?',
+                            confirmLabel: 'Excluir',
+                            variant: 'danger',
+                            onConfirm: () => { deleteTaskMutation.mutate({ taskId: task.id }); setConfirmDialog(prev => ({ ...prev, isOpen: false })); },
+                          });
                         }}
                         disabled={deleteTaskMutation.isPending}
                         title="Excluir tarefa"
@@ -1611,6 +1618,16 @@ export default function LeadsPJKanban() {
           </DialogContent>
         </Dialog>
       </div>
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmLabel={confirmDialog.confirmLabel}
+        cancelLabel="Cancelar"
+        variant={confirmDialog.variant}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+      />
     </motion.div>
   );
 }

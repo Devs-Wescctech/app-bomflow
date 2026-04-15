@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useNavigate } from "react-router-dom";
@@ -84,6 +85,7 @@ export default function LeadPJDetail() {
   const [hasChanges, setHasChanges] = useState(false);
   const [newNote, setNewNote] = useState("");
   const [newTask, setNewTask] = useState({ title: "", scheduledAt: "" });
+  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', confirmLabel: '', variant: 'default', onConfirm: null });
   const [showLostDialog, setShowLostDialog] = useState(false);
   const [lostReason, setLostReason] = useState("");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -683,9 +685,14 @@ export default function LeadPJDetail() {
               {(lead.stage === 'fechado_ganho' || lead.stage === 'negociacao') && !lead.concluded && (
                 <Button
                   onClick={() => {
-                    if (confirm('Confirma a conclusão desta venda B2B?\n\nEste lead sairá do pipeline de vendas.')) {
-                      concludeSaleMutation.mutate();
-                    }
+                    setConfirmDialog({
+                      isOpen: true,
+                      title: 'Concluir venda',
+                      message: 'Confirma a conclusão desta venda B2B? Este lead sairá do pipeline de vendas.',
+                      confirmLabel: 'Concluir',
+                      variant: 'default',
+                      onConfirm: () => { concludeSaleMutation.mutate(); setConfirmDialog(prev => ({ ...prev, isOpen: false })); },
+                    });
                   }}
                   disabled={concludeSaleMutation.isPending}
                   size="sm"
@@ -1695,6 +1702,17 @@ export default function LeadPJDetail() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmLabel={confirmDialog.confirmLabel}
+        cancelLabel="Cancelar"
+        variant={confirmDialog.variant}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

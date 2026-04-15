@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import { Check, Clock, CircleDot, Trophy, XCircle, Timer, DollarSign, Users } from "lucide-react";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -55,12 +56,12 @@ export default function LeadPJPipelineHistory({ lead, onStageChange }) {
     stageVisits[currentStage].exitedAt = null;
   }
 
+  const [stageConfirm, setStageConfirm] = useState({ isOpen: false, stageId: null, label: '' });
+
   const handleStageClick = (stageId) => {
     if (onStageChange && currentStage !== stageId) {
       const stage = STAGES_PJ.find(s => s.id === stageId);
-      if (confirm(`Mover lead para "${stage.label}"?`)) {
-        onStageChange(stageId);
-      }
+      setStageConfirm({ isOpen: true, stageId, label: stage?.label || stageId });
     }
   };
 
@@ -268,6 +269,16 @@ export default function LeadPJPipelineHistory({ lead, onStageChange }) {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={stageConfirm.isOpen}
+        title="Mover lead"
+        message={`Deseja mover este lead para a coluna "${stageConfirm.label}"?`}
+        confirmLabel="Mover"
+        cancelLabel="Cancelar"
+        onConfirm={() => { onStageChange(stageConfirm.stageId); setStageConfirm({ isOpen: false, stageId: null, label: '' }); }}
+        onCancel={() => setStageConfirm({ isOpen: false, stageId: null, label: '' })}
+      />
     </div>
   );
 }
