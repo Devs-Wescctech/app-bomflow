@@ -74,12 +74,14 @@ const MENU_MODULES = [
 
 const AGENT_TYPE_OPTIONS = [
   { key: "admin", label: "Administrador" },
+  { key: "coordinator", label: "Coordenador" },
   { key: "sales", label: "Vendedor" },
   { key: "sales_supervisor", label: "Supervisor de Vendas" },
 ];
 
 const AGENT_TYPE_CONFIG = {
   admin: { label: "Administrador", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
+  coordinator: { label: "Coordenador", color: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300" },
   sales_supervisor: { label: "Supervisor de Vendas", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" },
   sales: { label: "Vendedor", color: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300" },
 };
@@ -108,7 +110,7 @@ export default function Agents() {
   
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
-  const [teamFormData, setTeamFormData] = useState({ name: "", description: "", supervisorEmail: "", active: true });
+  const [teamFormData, setTeamFormData] = useState({ name: "", description: "", supervisorEmail: "", coordinatorId: "", active: true });
 
   const [typeDialogOpen, setTypeDialogOpen] = useState(false);
   const [editingType, setEditingType] = useState(null);
@@ -392,7 +394,7 @@ export default function Agents() {
   };
 
   const resetTeamForm = () => {
-    setTeamFormData({ name: "", description: "", supervisorEmail: "", active: true });
+    setTeamFormData({ name: "", description: "", supervisorEmail: "", coordinatorId: "", active: true });
     setEditingTeam(null);
   };
 
@@ -486,6 +488,7 @@ export default function Agents() {
       name: team.name || "",
       description: team.description || "",
       supervisorEmail: team.supervisorEmail || "",
+      coordinatorId: team.coordinatorId || team.coordinator_id || "",
       active: team.active !== undefined ? team.active : true,
     });
     setTeamDialogOpen(true);
@@ -572,13 +575,17 @@ export default function Agents() {
   };
 
   const handleTeamSubmit = () => {
+    const submitData = {
+      ...teamFormData,
+      coordinatorId: teamFormData.coordinatorId === "none" ? null : teamFormData.coordinatorId || null,
+    };
     if (editingTeam) {
       updateTeamMutation.mutate({
         id: editingTeam.id,
-        data: teamFormData
+        data: submitData
       });
     } else {
-      createTeamMutation.mutate(teamFormData);
+      createTeamMutation.mutate(submitData);
     }
   };
 
@@ -810,12 +817,23 @@ export default function Agents() {
                       </Button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4 text-sm text-gray-500">
-                    <div className="flex items-center gap-1">
-                      <Users className="w-4 h-4" />
-                      <span>{getAgentCountByTeam(team.id)} vendedores</span>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-4 text-sm text-gray-500">
+                      <div className="flex items-center gap-1">
+                        <Users className="w-4 h-4" />
+                        <span>{getAgentCountByTeam(team.id)} vendedores</span>
+                      </div>
+                      {!team.active && <Badge variant="outline">Inativo</Badge>}
                     </div>
-                    {!team.active && <Badge variant="outline">Inativo</Badge>}
+                    {(team.coordinatorId || team.coordinator_id) && (() => {
+                      const coord = agents?.find(a => a.id === (team.coordinatorId || team.coordinator_id));
+                      return coord ? (
+                        <div className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400">
+                          <ShieldX className="w-3.5 h-3.5" />
+                          <span>Coord: {coord.name}</span>
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                 </CardContent>
               </Card>
@@ -1158,11 +1176,15 @@ export default function Agents() {
                     </SelectTrigger>
                     <SelectContent>
                       {agentTypes.filter(t => t.active).length > 0 ? (
-                        agentTypes.filter(t => t.active).map((type) => (
-                          <SelectItem key={type.key} value={type.key}>{type.label}</SelectItem>
-                        ))
+                        agentTypes.filter(t => t.active).map((type) => {
+                          if (!isAdmin && currentAgent?.agentType === 'coordinator' && type.key === 'admin') return null;
+                          return <SelectItem key={type.key} value={type.key}>{type.label}</SelectItem>;
+                        })
                       ) : (
-                        AGENT_TYPE_OPTIONS.map((type) => (
+                        AGENT_TYPE_OPTIONS.filter(type => {
+                          if (!isAdmin && currentAgent?.agentType === 'coordinator' && type.key === 'admin') return false;
+                          return true;
+                        }).map((type) => (
                           <SelectItem key={type.key} value={type.key}>{type.label}</SelectItem>
                         ))
                       )}
@@ -1442,6 +1464,32 @@ export default function Agents() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-gray-500">O supervisor tem acesso aos relatórios e métricas do time</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-gray-900 dark:text-gray-100 font-medium">Coordenador</Label>
+              <Select 
+                value={teamFormData.coordinatorId} 
+                onValueChange={(val) => setTeamFormData({...teamFormData, coordinatorId: val})}
+              >
+                <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 h-11">
+                  <SelectValue placeholder="Selecione o coordenador do time" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhum</SelectItem>
+                  {agents?.filter(a => a.agentType === 'coordinator' || a.agentType === 'admin').map(agent => (
+                    <SelectItem key={agent.id} value={agent.id}>
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium text-white" style={{ backgroundColor: BURGUNDY }}>
+                          {agent.name?.charAt(0).toUpperCase()}
+                        </div>
+                        {agent.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">O coordenador tem visibilidade total e gerencia os times atribuídos a ele</p>
             </div>
 
             {editingTeam && (

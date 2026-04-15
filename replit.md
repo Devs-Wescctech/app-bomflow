@@ -89,7 +89,7 @@ SalesTwo is a focused B2B sales management platform built on a streamlined versi
 
 ### Agents & Permissions
 - Admin agent: `admin@wescctech.com` / `123456`, agent_type `admin`
-- Active agent_types: `admin`, `sales`, `sales_supervisor`
+- Active agent_types: `admin`, `coordinator`, `sales`, `sales_supervisor`
 - Permissions driven by `agent_types.modules` array from DB; fallback to `AGENT_PERMISSIONS` in `permissions.jsx`
 - Team: "Vendas" (single active team)
 - **Centralized visibility logic** (Phase 0 refactoring):
@@ -98,6 +98,15 @@ SalesTwo is a focused B2B sales management platform built on a streamlined versi
   - All 8 dashboard/report/kanban/agenda/tasks pages use these centralized functions instead of inline role checks
   - Old functions (`canViewAll`, `canViewTeam`) still exported for backward compatibility (used in `LeadPJSearch.jsx`)
   - `isSupervisorType()` matches: `'supervisor'`, `'sales_supervisor'`, and any `*_supervisor` pattern
+- **Coordinator role** (Phase 1):
+  - `coordinator` has full data visibility (same as admin) but NO access to system settings
+  - Can manage agents and teams, but cannot create/promote agents to `admin` type (enforced both UI and server-side)
+  - Teams have `coordinator_id UUID` column linking coordinator to managed teams
+  - `canManageTeam()` and `getManagedTeams()` functions in `permissions.jsx` for team-level access control
+  - `canAccessModule('config')` returns `true` for coordinator (to access Agents page), but `canManageSettings()` returns `false`
+  - Server-side RBAC: POST/PUT `/agents` checks if requestor is coordinator and blocks creating admin agents
+  - Agent type config: purple badge (`bg-purple-100 text-purple-700`)
+  - Team form: coordinator selector added alongside supervisor selector
 
 ### Technical Implementations
 - **Monorepo Structure**: Frontend and Backend coexist within a single repository.

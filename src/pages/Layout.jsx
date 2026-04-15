@@ -662,8 +662,9 @@ function LayoutContent({ children, currentPageName }) {
 
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
   const isAdminUser = user?.role === 'admin' || currentAgentType === 'admin';
+  const isCoordinatorUser = currentAgentType === 'coordinator';
   const isSupervisorUser = currentAgentType?.includes('supervisor');
-  const isCommercialUser = !isAdminUser && !isSupervisorUser && !!currentAgent;
+  const isCommercialUser = !isAdminUser && !isCoordinatorUser && !isSupervisorUser && !!currentAgent;
 
   const filteredMenuModules = useMemo(() => {
     let modules = user?.role === 'admin'

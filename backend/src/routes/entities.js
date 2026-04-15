@@ -386,6 +386,13 @@ router.get('/agents/:id', authMiddleware, async (req, res) => {
 router.post('/agents', authMiddleware, async (req, res) => {
   try {
     const data = convertKeysToSnake(req.body);
+
+    if (data.agent_type === 'admin' && req.user?.id) {
+      const requestor = await query('SELECT agent_type FROM agents WHERE id = $1', [req.user.id]);
+      if (requestor.rows.length > 0 && requestor.rows[0].agent_type === 'coordinator') {
+        return res.status(403).json({ message: 'Coordenadores não podem criar agentes do tipo admin' });
+      }
+    }
     
     if (!data.email) {
       return res.status(400).json({ message: 'Email is required' });
@@ -437,6 +444,13 @@ router.put('/agents/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const data = convertKeysToSnake(req.body);
+
+    if (data.agent_type === 'admin' && req.user?.id) {
+      const requestor = await query('SELECT agent_type FROM agents WHERE id = $1', [req.user.id]);
+      if (requestor.rows.length > 0 && requestor.rows[0].agent_type === 'coordinator') {
+        return res.status(403).json({ message: 'Coordenadores não podem alterar agentes para o tipo admin' });
+      }
+    }
     
     // Convert empty strings to null for UUID fields
     const uuidFields = ['team_id'];

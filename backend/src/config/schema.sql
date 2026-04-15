@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS teams (
     name VARCHAR(255) NOT NULL UNIQUE,
     description TEXT,
     supervisor_email VARCHAR(255),
+    coordinator_id UUID,
     active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
@@ -1252,3 +1253,21 @@ CREATE TABLE IF NOT EXISTS google_calendar_tokens (
 );
 
 CREATE INDEX IF NOT EXISTS idx_gcal_tokens_agent ON google_calendar_tokens(agent_id);
+
+-- =====================
+-- COORDINATOR ROLE MIGRATION
+-- =====================
+ALTER TABLE teams ADD COLUMN IF NOT EXISTS coordinator_id UUID;
+CREATE INDEX IF NOT EXISTS idx_teams_coordinator ON teams(coordinator_id);
+
+INSERT INTO agent_types (id, key, label, description, color, modules, allowed_submenus, active)
+VALUES (
+  gen_random_uuid(),
+  'coordinator',
+  'Coordenador',
+  'Coordenador de vendas com visibilidade total e gestão dos times atribuídos',
+  'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300',
+  ARRAY['dashboard', 'sales_pj', 'agents', 'teams', 'reports'],
+  ARRAY[]::TEXT[],
+  true
+) ON CONFLICT (key) DO NOTHING;

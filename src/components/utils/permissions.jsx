@@ -7,6 +7,14 @@ export const AGENT_PERMISSIONS = {
     canManageAgents: true,
     canManageSettings: true,
   },
+  coordinator: {
+    modules: ['sales_pj'],
+    canViewAllTickets: true,
+    canViewAllLeads: true,
+    canAccessReports: true,
+    canManageAgents: true,
+    canManageSettings: false,
+  },
   sales_supervisor: {
     modules: ['sales_pj'],
     canViewAllTickets: false,
@@ -29,11 +37,19 @@ export const AGENT_PERMISSIONS = {
   },
 };
 
+export function isCoordinatorType(agentType) {
+  return agentType === 'coordinator';
+}
+
 export function canAccessModule(agent, moduleId) {
   const agentType = agent?.agent_type || agent?.agentType;
   if (!agent || !agentType) return false;
   
   if (agentType === 'admin') return true;
+
+  if (agentType === 'coordinator') {
+    return moduleId !== 'settings';
+  }
   
   if (agent.modules !== undefined && agent.modules !== null) {
     if (agent.modules.length === 0) return false;
@@ -92,7 +108,7 @@ export function canManageAgents(agent) {
   const agentType = agent?.agent_type || agent?.agentType;
   if (!agent || !agentType) return false;
   
-  if (agentType === 'admin') return true;
+  if (agentType === 'admin' || agentType === 'coordinator') return true;
   
   if (agent.modules && agent.modules.length > 0) {
     if (agent.modules.includes('all') || agent.modules.includes('config')) return true;
@@ -125,7 +141,7 @@ export function isSupervisorType(agentType) {
 export function hasFullVisibility(agent) {
   const agentType = agent?.agent_type || agent?.agentType;
   if (!agentType) return false;
-  if (agentType === 'admin') return true;
+  if (agentType === 'admin' || agentType === 'coordinator') return true;
   if (canViewAll(agent, 'leads-pj')) return true;
   return false;
 }
@@ -171,6 +187,45 @@ export function getVisibleTeams(currentAgent, allTeams) {
   if (hasTeamVisibility(currentAgent)) {
     const teamId = currentAgent.teamId || currentAgent.team_id;
     return allTeams.filter(t => t.id === teamId);
+  }
+
+  return [];
+}
+
+export function canManageTeam(currentAgent, teamId, allTeams) {
+  const agentType = currentAgent?.agent_type || currentAgent?.agentType;
+  if (!currentAgent || !agentType) return false;
+
+  if (agentType === 'admin') return true;
+
+  if (agentType === 'coordinator') {
+    if (!teamId || !allTeams) return true;
+    const team = allTeams.find(t => t.id === teamId);
+    if (!team) return true;
+    return team.coordinator_id === currentAgent.id || team.coordinatorId === currentAgent.id;
+  }
+
+  if (isSupervisorType(agentType)) {
+    const myTeamId = currentAgent.teamId || currentAgent.team_id;
+    return teamId === myTeamId;
+  }
+
+  return false;
+}
+
+export function getManagedTeams(currentAgent, allTeams) {
+  const agentType = currentAgent?.agent_type || currentAgent?.agentType;
+  if (!currentAgent || !agentType) return [];
+
+  if (agentType === 'admin') return allTeams;
+
+  if (agentType === 'coordinator') {
+    return allTeams.filter(t => t.coordinator_id === currentAgent.id || t.coordinatorId === currentAgent.id);
+  }
+
+  if (isSupervisorType(agentType)) {
+    const myTeamId = currentAgent.teamId || currentAgent.team_id;
+    return allTeams.filter(t => t.id === myTeamId);
   }
 
   return [];
@@ -227,7 +282,7 @@ export function filterMenuItems(agent, menuItems) {
           return false;
         }
         
-        if (subItem.supervisorOnly && !isSupervisor) {
+        if (subItem.supervisorOnly && !isSupervisor && agentType !== 'coordinator') {
           return false;
         }
         

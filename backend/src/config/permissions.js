@@ -1,5 +1,6 @@
 export const AGENT_TYPES = {
   ADMIN: 'admin',
+  COORDINATOR: 'coordinator',
   SUPERVISOR: 'supervisor',
   SUPPORT: 'support',
   SALES: 'sales',
@@ -54,6 +55,16 @@ export const ROLE_PERMISSIONS = {
     canViewTeamLeads: true,
     canManageAgents: true,
     canManageSettings: true,
+    canAccessReports: true
+  },
+  [AGENT_TYPES.COORDINATOR]: {
+    modules: [MODULES.DASHBOARD, MODULES.SUPPORT, MODULES.SALES, MODULES.PRE_SALES, MODULES.POST_SALES, MODULES.COLLECTION, MODULES.QUALITY, MODULES.REPORTS, MODULES.REFERRALS],
+    canViewAllTickets: true,
+    canViewTeamTickets: true,
+    canViewAllLeads: true,
+    canViewTeamLeads: true,
+    canManageAgents: true,
+    canManageSettings: false,
     canAccessReports: true
   },
   [AGENT_TYPES.SUPERVISOR]: {
