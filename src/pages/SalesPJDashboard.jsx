@@ -185,7 +185,11 @@ export default function SalesPJDashboard() {
   const ticketMedio = vendas > 0 ? (receitaTotal / vendas).toFixed(2) : 0;
   const atividadesPendentes = activities.filter(a => !a.completed && a.type === 'task').length;
 
-  const topAgents = agents
+  const topAgents = visibleAgents
+    .filter(a => {
+      const at = a.agentType || a.agent_type;
+      return at === 'sales';
+    })
     .map(agent => {
       const agentLeads = leads.filter(l => (l.agentId || l.agent_id) === agent.id);
       const agentVendas = agentLeads.filter(l => l.stage === 'fechado_ganho').length;
