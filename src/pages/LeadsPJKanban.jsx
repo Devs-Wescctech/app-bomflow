@@ -48,7 +48,7 @@ import QuickLeadPJForm from "../components/sales/QuickLeadPJForm";
 import { createPageUrl } from "@/utils";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
-import { hasFullVisibility, hasTeamVisibility, getVisibleAgentIds, getDataVisibilityKey } from "@/components/utils/permissions";
+import { hasFullVisibility, hasTeamVisibility, getVisibleAgentIds, getDataVisibilityKey, getVisibleTeams, getVisibleAgentsForFilter } from "@/components/utils/permissions";
 import {
   DndContext,
   DragOverlay,
@@ -571,7 +571,13 @@ export default function LeadsPJKanban() {
     }
   }, [leadsPJ]);
 
-  const salesAgents = allAgents;
+  const salesAgents = useMemo(() => {
+    return getVisibleAgentsForFilter(currentAgent, allAgents);
+  }, [currentAgent, allAgents]);
+
+  const visibleTeamsList = useMemo(() => {
+    return getVisibleTeams(currentAgent, teams, allAgents);
+  }, [currentAgent, teams, allAgents]);
 
   const { data: allActivitiesPJ = [] } = useQuery({
     queryKey: ['allActivitiesPJ'],
@@ -1113,7 +1119,7 @@ export default function LeadsPJKanban() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">Todos os times</SelectItem>
-                          {teams.map(team => (
+                          {visibleTeamsList.map(team => (
                             <SelectItem key={team.id} value={String(team.id)}>{team.name}</SelectItem>
                           ))}
                         </SelectContent>

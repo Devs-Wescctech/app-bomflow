@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { hasFullVisibility, hasTeamVisibility, getVisibleAgentIds } from "@/components/utils/permissions";
+import { hasFullVisibility, hasTeamVisibility, getVisibleAgentIds, getVisibleTeams } from "@/components/utils/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -67,11 +67,12 @@ export default function SalesPJAgentsDashboard() {
   const isLoading = agentsLoading || teamsLoading || leadsLoading;
 
   const teamsForFilter = useMemo(() => {
-    return teams.map(team => ({
+    const visible = getVisibleTeams(currentAgent, teams, agents);
+    return visible.map(team => ({
       id: team.id,
       name: team.name
     }));
-  }, [teams]);
+  }, [currentAgent, teams, agents]);
 
   const filteredLeadsByDate = useMemo(() => {
     return leads.filter(lead => {
@@ -215,7 +216,7 @@ export default function SalesPJAgentsDashboard() {
       </div>
 
       <DashboardFilters
-        teams={canSeeAllAgents ? teamsForFilter : []}
+        teams={(canSeeAllAgents || isSupervisor) ? teamsForFilter : []}
         selectedTeam={selectedTeam}
         onTeamChange={setSelectedTeam}
         selectedPeriod={selectedPeriod}
@@ -224,7 +225,7 @@ export default function SalesPJAgentsDashboard() {
         onDateRangeChange={setDateRange}
         onClearFilters={handleClearFilters}
         showAgentFilter={false}
-        showTeamFilter={canSeeAllAgents}
+        showTeamFilter={canSeeAllAgents || isSupervisor}
         showStageFilter={false}
       />
 

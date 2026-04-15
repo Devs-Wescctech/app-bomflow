@@ -213,11 +213,24 @@ export function getVisibleAgentIds(currentAgent, allAgents) {
   return [currentAgent.id];
 }
 
-export function getVisibleTeams(currentAgent, allTeams) {
+export function getVisibleTeams(currentAgent, allTeams, allAgents) {
   if (!currentAgent) return [];
 
   if (hasFullVisibility(currentAgent)) {
     return allTeams;
+  }
+
+  const agentType = currentAgent?.agent_type || currentAgent?.agentType;
+  if (isSupervisorType(agentType) && allAgents) {
+    const visibleIds = getVisibleAgentIds(currentAgent, allAgents);
+    const teamIds = new Set();
+    allAgents
+      .filter(a => visibleIds.includes(a.id))
+      .forEach(a => {
+        const tid = a.teamId || a.team_id;
+        if (tid) teamIds.add(tid);
+      });
+    return allTeams.filter(t => teamIds.has(t.id));
   }
 
   if (hasTeamVisibility(currentAgent)) {
@@ -226,6 +239,17 @@ export function getVisibleTeams(currentAgent, allTeams) {
   }
 
   return [];
+}
+
+export function getVisibleAgentsForFilter(currentAgent, allAgents) {
+  if (!currentAgent) return [];
+
+  if (hasFullVisibility(currentAgent)) {
+    return allAgents;
+  }
+
+  const visibleIds = getVisibleAgentIds(currentAgent, allAgents);
+  return allAgents.filter(a => visibleIds.includes(a.id));
 }
 
 export function canManageTeam(currentAgent, teamId, allTeams) {

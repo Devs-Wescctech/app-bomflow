@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { hasFullVisibility, hasTeamVisibility, getVisibleAgentIds, getDataVisibilityKey } from "@/components/utils/permissions.jsx";
+import { hasFullVisibility, hasTeamVisibility, getVisibleAgentIds, getDataVisibilityKey, getVisibleTeams, getVisibleAgentsForFilter } from "@/components/utils/permissions.jsx";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 import { toast } from "sonner";
 
@@ -68,7 +68,7 @@ export default function SalesPJLostReport() {
   });
 
   const currentAgent = user?.agent;
-  const isAdmin = hasFullVisibility(currentAgent) || hasTeamVisibility(currentAgent);
+  const isAdmin = hasFullVisibility(currentAgent);
   const hasPermission = !!user;
 
   const { data: teams = [] } = useQuery({
@@ -140,10 +140,18 @@ export default function SalesPJLostReport() {
     return [...s].sort();
   }, [leadsPJ]);
 
+  const visibleAgents = useMemo(() => {
+    return getVisibleAgentsForFilter(currentAgent, allAgents);
+  }, [currentAgent, allAgents]);
+
+  const visibleTeamsList = useMemo(() => {
+    return getVisibleTeams(currentAgent, teams, allAgents);
+  }, [currentAgent, teams, allAgents]);
+
   const displayAgents = useMemo(() => {
-    if (!selectedTeam) return allAgents;
-    return allAgents.filter(a => String(a.teamId || a.team_id) === String(selectedTeam));
-  }, [allAgents, selectedTeam]);
+    if (!selectedTeam) return visibleAgents;
+    return visibleAgents.filter(a => String(a.teamId || a.team_id) === String(selectedTeam));
+  }, [visibleAgents, selectedTeam]);
 
   const filteredLeads = useMemo(() => {
     return leadsPJ.filter(lead => {
@@ -294,7 +302,7 @@ export default function SalesPJLostReport() {
       </div>
 
       <DashboardFilters
-        teams={teams}
+        teams={visibleTeamsList}
         agents={displayAgents}
         selectedPeriod={selectedPeriod}
         dateRange={dateRange}

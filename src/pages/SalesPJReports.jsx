@@ -22,7 +22,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RePieChart, Pie, Cell } from 'recharts';
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { hasFullVisibility, hasTeamVisibility, getVisibleAgentIds, getDataVisibilityKey, canAccessReports } from "@/components/utils/permissions";
+import { hasFullVisibility, hasTeamVisibility, getVisibleAgentIds, getDataVisibilityKey, canAccessReports, getVisibleTeams, getVisibleAgentsForFilter } from "@/components/utils/permissions";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 import { LEAD_PJ_STAGES } from "@/constants/stages";
 
@@ -75,12 +75,20 @@ export default function SalesPJReports() {
     enabled: hasPermission && !!user && (isAdmin || isSupervisor || !!currentAgent),
   });
 
+  const visibleAgents = useMemo(() => {
+    return getVisibleAgentsForFilter(currentAgent, allAgents);
+  }, [currentAgent, allAgents]);
+
+  const visibleTeamsList = useMemo(() => {
+    return getVisibleTeams(currentAgent, teams, allAgents);
+  }, [currentAgent, teams, allAgents]);
+
   const salesAgents = useMemo(() => {
-    return allAgents.filter(a => {
+    return visibleAgents.filter(a => {
       const agentType = a.agentType || a.agent_type;
       return agentType === 'sales' || agentType === 'pre_sales' || agentType === 'sales_supervisor' || agentType === 'admin';
     });
-  }, [allAgents]);
+  }, [visibleAgents]);
 
   const displayAgents = useMemo(() => {
     if (!selectedTeam) return salesAgents;
@@ -258,7 +266,7 @@ export default function SalesPJReports() {
       <DashboardFilters
         agents={displayAgents}
         stages={STAGES_PJ}
-        teams={teams}
+        teams={visibleTeamsList}
         selectedAgent={selectedAgent}
         selectedStage={selectedStage}
         selectedTeam={selectedTeam}

@@ -96,7 +96,10 @@ SalesTwo is a focused B2B sales management platform built on a streamlined versi
   - Backend: `getDataScope(agent)` in `backend/src/config/permissions.js` — single source of truth for `all`/`team`/`own` scoping
   - Frontend: `hasFullVisibility()`, `hasTeamVisibility()`, `getVisibleAgentIds()`, `getVisibleTeams()`, `getDataVisibilityKey()` in `src/components/utils/permissions.jsx`
   - All 8 dashboard/report/kanban/agenda/tasks pages use these centralized functions instead of inline role checks
-  - Old functions (`canViewAll`, `canViewTeam`) still exported for backward compatibility (used in `LeadPJSearch.jsx`)
+  - `getVisibleAgentsForFilter(currentAgent, allAgents)` — returns filtered agent objects for filter dropdowns (supervisor sees only their linked agents)
+  - `getVisibleTeams(currentAgent, allTeams, allAgents)` — derives visible teams from supervisor's visible agents' team_ids (requires `allAgents` param for supervisor scoping)
+  - All filter dropdowns (DashboardFilters) across SalesPJDashboard, SalesPJReports, SalesPJWonReport, SalesPJLostReport, LeadsPJKanban, LeadPJSearch, SalesPJAgentsDashboard use these functions
+  - Old functions (`canViewAll`, `canViewTeam`) still exported for backward compatibility
   - `isSupervisorType()` matches: `'supervisor'`, `'sales_supervisor'`, and any `*_supervisor` pattern
 - **Coordinator role** (Phase 1):
   - `coordinator` has full data visibility (same as admin) but NO access to system settings

@@ -24,7 +24,7 @@ import { createPageUrl } from "@/utils";
 import StatsCard from "@/components/dashboard/StatsCard";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 import MetricsHelpDialog from "@/components/dashboard/MetricsHelpDialog";
-import { hasFullVisibility, hasTeamVisibility, getVisibleAgentIds, getDataVisibilityKey } from "@/components/utils/permissions.jsx";
+import { hasFullVisibility, hasTeamVisibility, getVisibleAgentIds, getDataVisibilityKey, getVisibleTeams, getVisibleAgentsForFilter } from "@/components/utils/permissions.jsx";
 import { isWithinInterval, parseISO, startOfDay, endOfDay } from "date-fns";
 import { LEAD_PJ_STAGES, isActiveStage, isWonStage, isLostStage } from "@/constants/stages";
 
@@ -103,14 +103,22 @@ export default function SalesPJDashboard() {
     initialData: [],
   });
 
+  const visibleAgents = useMemo(() => {
+    return getVisibleAgentsForFilter(currentAgent, agents);
+  }, [currentAgent, agents]);
+
+  const visibleTeamsList = useMemo(() => {
+    return getVisibleTeams(currentAgent, teams, allAgents);
+  }, [currentAgent, teams, allAgents]);
+
   const displayAgents = useMemo(() => {
-    const salesFiltered = agents.filter(a => {
+    const salesFiltered = visibleAgents.filter(a => {
       const agentType = a.agentType || a.agent_type;
       return agentType?.includes('sales') || agentType?.includes('vendas') || agentType === 'admin' || agentType?.includes('supervisor');
     });
     if (!selectedTeam) return salesFiltered;
     return salesFiltered.filter(a => String(a.teamId || a.team_id) === String(selectedTeam));
-  }, [agents, selectedTeam]);
+  }, [visibleAgents, selectedTeam]);
 
   const leads = useMemo(() => {
     let filtered = [...rawLeads];
@@ -232,7 +240,7 @@ export default function SalesPJDashboard() {
         <DashboardFilters
           agents={displayAgents}
           stages={STAGES_PJ}
-          teams={teams}
+          teams={visibleTeamsList}
           selectedAgent={selectedAgent}
           selectedStage={selectedStage}
           selectedTeam={selectedTeam}
