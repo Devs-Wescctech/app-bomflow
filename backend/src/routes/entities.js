@@ -436,6 +436,11 @@ router.post('/agents', authMiddleware, async (req, res) => {
       delete data.password;
     }
     
+    const nonAgentFields = ['supervisor_id', 'coordinator_id', 'allowed_submenus', 'modules'];
+    for (const f of nonAgentFields) {
+      delete data[f];
+    }
+
     const keys = Object.keys(data).filter(k => k !== 'password');
     const values = keys.map(k => data[k]);
     
@@ -522,6 +527,11 @@ router.put('/agents/:id', authMiddleware, async (req, res) => {
       delete data.password;
     }
     
+    const nonAgentFields = ['supervisor_id', 'coordinator_id', 'allowed_submenus', 'modules'];
+    for (const f of nonAgentFields) {
+      delete data[f];
+    }
+
     const keys = Object.keys(data);
     const values = keys.map(k => data[k]);
     
