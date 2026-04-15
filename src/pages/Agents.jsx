@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Edit, Trash2, UserCheck, UserX, Activity, Upload, Loader2, MessageSquare, Copy, Check, ExternalLink, MoreVertical, Clock, Users, Building2, Layers, Settings, ShieldX, KeyRound } from "lucide-react";
-import { canManageAgents } from "@/components/utils/permissions.jsx";
+import { canManageAgents, canManageAgentInTeam, isSupervisorType } from "@/components/utils/permissions.jsx";
 import {
   Dialog,
   DialogContent,
@@ -75,6 +75,7 @@ const MENU_MODULES = [
 const AGENT_TYPE_OPTIONS = [
   { key: "admin", label: "Administrador" },
   { key: "coordinator", label: "Coordenador" },
+  { key: "supervisor", label: "Supervisor" },
   { key: "sales", label: "Vendedor" },
   { key: "sales_supervisor", label: "Supervisor de Vendas" },
 ];
@@ -82,6 +83,7 @@ const AGENT_TYPE_OPTIONS = [
 const AGENT_TYPE_CONFIG = {
   admin: { label: "Administrador", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
   coordinator: { label: "Coordenador", color: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300" },
+  supervisor: { label: "Supervisor", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" },
   sales_supervisor: { label: "Supervisor de Vendas", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" },
   sales: { label: "Vendedor", color: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300" },
 };
@@ -97,6 +99,9 @@ export default function Agents() {
 
   const currentAgent = user?.agent;
   const isAdmin = user?.role === 'admin';
+  const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
+  const isSupervisor = isSupervisorType(currentAgentType);
+  const supervisorTeamId = isSupervisor ? (currentAgent?.teamId || currentAgent?.team_id) : null;
   const hasPermission = isAdmin || canManageAgents(currentAgent);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -110,7 +115,7 @@ export default function Agents() {
   
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
-  const [teamFormData, setTeamFormData] = useState({ name: "", description: "", supervisorEmail: "", coordinatorId: "", active: true });
+  const [teamFormData, setTeamFormData] = useState({ name: "", description: "", supervisorEmail: "", supervisorId: "", coordinatorId: "", active: true });
 
   const [typeDialogOpen, setTypeDialogOpen] = useState(false);
   const [editingType, setEditingType] = useState(null);
@@ -488,6 +493,7 @@ export default function Agents() {
       name: team.name || "",
       description: team.description || "",
       supervisorEmail: team.supervisorEmail || "",
+      supervisorId: team.supervisorId || team.supervisor_id || "",
       coordinatorId: team.coordinatorId || team.coordinator_id || "",
       active: team.active !== undefined ? team.active : true,
     });
@@ -560,6 +566,10 @@ export default function Agents() {
       ...formData,
       permissions: { ...originalPerms, ...formData.permissions }
     };
+
+    if (isSupervisor && supervisorTeamId) {
+      dataToSend.teamId = supervisorTeamId;
+    }
     
     if (editingAgent) {
       if (!dataToSend.password) {
@@ -577,6 +587,7 @@ export default function Agents() {
   const handleTeamSubmit = () => {
     const submitData = {
       ...teamFormData,
+      supervisorId: teamFormData.supervisorId === "none" ? null : teamFormData.supervisorId || null,
       coordinatorId: teamFormData.coordinatorId === "none" ? null : teamFormData.coordinatorId || null,
     };
     if (editingTeam) {
@@ -639,20 +650,24 @@ export default function Agents() {
             <Users className="w-4 h-4 mr-2" />
             Vendedores
           </TabsTrigger>
-          <TabsTrigger value="teams" className="data-[state=active]:text-white" style={activeTab === 'teams' ? { backgroundColor: BURGUNDY } : {}}>
-            <Building2 className="w-4 h-4 mr-2" />
-            Times
-          </TabsTrigger>
-          <TabsTrigger value="types" className="data-[state=active]:text-white" style={activeTab === 'types' ? { backgroundColor: BURGUNDY } : {}}>
-            <Layers className="w-4 h-4 mr-2" />
-            Perfis de Acesso
-          </TabsTrigger>
+          {!isSupervisor && (
+            <TabsTrigger value="teams" className="data-[state=active]:text-white" style={activeTab === 'teams' ? { backgroundColor: BURGUNDY } : {}}>
+              <Building2 className="w-4 h-4 mr-2" />
+              Times
+            </TabsTrigger>
+          )}
+          {!isSupervisor && (
+            <TabsTrigger value="types" className="data-[state=active]:text-white" style={activeTab === 'types' ? { backgroundColor: BURGUNDY } : {}}>
+              <Layers className="w-4 h-4 mr-2" />
+              Perfis de Acesso
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* ===== ABA VENDEDORES ===== */}
         <TabsContent value="agents" className="mt-6">
           <div className="flex justify-between items-center mb-6">
-            <p className="text-sm text-gray-500">{agents.length} vendedor(es) cadastrado(s)</p>
+            <p className="text-sm text-gray-500">{(isSupervisor ? agents.filter(a => (a.teamId || a.team_id) === supervisorTeamId) : agents).length} vendedor(es) cadastrado(s)</p>
             <Button 
               onClick={() => {
                 resetForm();
@@ -667,7 +682,7 @@ export default function Agents() {
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {agents.map(agent => {
+            {(isSupervisor ? agents.filter(a => (a.teamId || a.team_id) === supervisorTeamId) : agents).map(agent => {
               const typeBadge = getAgentTypeBadge(agent.agentType);
               const hasWhatsAppToken = !!agent.whatsappAccessToken;
               const tokenExpired = agent.whatsappTokenExpiresAt && new Date(agent.whatsappTokenExpiresAt) < new Date();
@@ -1177,12 +1192,14 @@ export default function Agents() {
                     <SelectContent>
                       {agentTypes.filter(t => t.active).length > 0 ? (
                         agentTypes.filter(t => t.active).map((type) => {
-                          if (!isAdmin && currentAgent?.agentType === 'coordinator' && type.key === 'admin') return null;
+                          if (!isAdmin && currentAgentType === 'coordinator' && type.key === 'admin') return null;
+                          if (isSupervisor && ['admin', 'coordinator', 'supervisor', 'sales_supervisor'].includes(type.key)) return null;
                           return <SelectItem key={type.key} value={type.key}>{type.label}</SelectItem>;
                         })
                       ) : (
                         AGENT_TYPE_OPTIONS.filter(type => {
-                          if (!isAdmin && currentAgent?.agentType === 'coordinator' && type.key === 'admin') return false;
+                          if (!isAdmin && currentAgentType === 'coordinator' && type.key === 'admin') return false;
+                          if (isSupervisor && ['admin', 'coordinator', 'supervisor', 'sales_supervisor'].includes(type.key)) return false;
                           return true;
                         }).map((type) => (
                           <SelectItem key={type.key} value={type.key}>{type.label}</SelectItem>
@@ -1194,16 +1211,24 @@ export default function Agents() {
 
                 <div>
                   <Label className="text-gray-900 dark:text-gray-100">Time</Label>
-                  <Select value={formData.teamId} onValueChange={(val) => setFormData({...formData, teamId: val})}>
-                    <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                      <SelectValue placeholder="Selecione o time (opcional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {teams.map(team => (
-                        <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {isSupervisor ? (
+                    <Input
+                      value={teams.find(t => t.id === supervisorTeamId)?.name || "Meu Time"}
+                      disabled
+                      className="bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                    />
+                  ) : (
+                    <Select value={formData.teamId} onValueChange={(val) => setFormData({...formData, teamId: val})}>
+                      <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                        <SelectValue placeholder="Selecione o time (opcional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {teams.map(team => (
+                          <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               </div>
 
@@ -1444,15 +1469,23 @@ export default function Agents() {
             <div className="space-y-2">
               <Label className="text-gray-900 dark:text-gray-100 font-medium">Supervisor</Label>
               <Select 
-                value={teamFormData.supervisorEmail} 
-                onValueChange={(val) => setTeamFormData({...teamFormData, supervisorEmail: val})}
+                value={teamFormData.supervisorId} 
+                onValueChange={(val) => {
+                  const selectedAgent = agents?.find(a => a.id === val);
+                  setTeamFormData({
+                    ...teamFormData, 
+                    supervisorId: val,
+                    supervisorEmail: selectedAgent?.email || teamFormData.supervisorEmail
+                  });
+                }}
               >
                 <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 h-11">
                   <SelectValue placeholder="Selecione o supervisor do time" />
                 </SelectTrigger>
                 <SelectContent>
-                  {agents?.filter(a => a.agentType === 'supervisor' || a.agentType === 'sales_supervisor' || a.agentType === 'admin').map(agent => (
-                    <SelectItem key={agent.id} value={agent.email}>
+                  <SelectItem value="none">Nenhum</SelectItem>
+                  {agents?.filter(a => isSupervisorType(a.agentType) || a.agentType === 'admin').map(agent => (
+                    <SelectItem key={agent.id} value={agent.id}>
                       <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium text-white" style={{ backgroundColor: BURGUNDY }}>
                           {agent.name?.charAt(0).toUpperCase()}
@@ -1463,7 +1496,7 @@ export default function Agents() {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-gray-500">O supervisor tem acesso aos relatórios e métricas do time</p>
+              <p className="text-xs text-gray-500">O supervisor gerencia os agentes e dados do time</p>
             </div>
 
             <div className="space-y-2">

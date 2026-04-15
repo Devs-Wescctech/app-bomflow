@@ -68,12 +68,13 @@ export const ROLE_PERMISSIONS = {
     canAccessReports: true
   },
   [AGENT_TYPES.SUPERVISOR]: {
-    modules: [MODULES.DASHBOARD, MODULES.SUPPORT, MODULES.SALES, MODULES.PRE_SALES, MODULES.POST_SALES, MODULES.COLLECTION, MODULES.QUALITY, MODULES.REPORTS],
+    modules: [MODULES.DASHBOARD, MODULES.SALES, MODULES.REPORTS],
     canViewAllTickets: false,
     canViewTeamTickets: true,
     canViewAllLeads: false,
     canViewTeamLeads: true,
-    canManageAgents: false,
+    canManageAgents: true,
+    canManageTeams: false,
     canManageSettings: false,
     canAccessReports: true
   },

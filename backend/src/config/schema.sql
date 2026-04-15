@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS teams (
     name VARCHAR(255) NOT NULL UNIQUE,
     description TEXT,
     supervisor_email VARCHAR(255),
+    supervisor_id UUID,
     coordinator_id UUID,
     active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT NOW(),
@@ -1271,3 +1272,13 @@ VALUES (
   ARRAY[]::TEXT[],
   true
 ) ON CONFLICT (key) DO NOTHING;
+
+-- =====================
+-- SUPERVISOR ROLE MIGRATION
+-- =====================
+ALTER TABLE teams ADD COLUMN IF NOT EXISTS supervisor_id UUID;
+CREATE INDEX IF NOT EXISTS idx_teams_supervisor ON teams(supervisor_id);
+
+UPDATE agents SET agent_type = 'supervisor' WHERE agent_type = 'sales_supervisor';
+DELETE FROM agent_types WHERE key = 'sales_supervisor' AND EXISTS (SELECT 1 FROM agent_types WHERE key = 'supervisor');
+UPDATE agent_types SET key = 'supervisor', label = 'Supervisor' WHERE key = 'sales_supervisor';

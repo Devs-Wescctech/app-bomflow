@@ -89,7 +89,7 @@ SalesTwo is a focused B2B sales management platform built on a streamlined versi
 
 ### Agents & Permissions
 - Admin agent: `admin@wescctech.com` / `123456`, agent_type `admin`
-- Active agent_types: `admin`, `coordinator`, `sales`, `sales_supervisor`
+- Active agent_types: `admin`, `coordinator`, `supervisor`, `sales`
 - Permissions driven by `agent_types.modules` array from DB; fallback to `AGENT_PERMISSIONS` in `permissions.jsx`
 - Team: "Vendas" (single active team)
 - **Centralized visibility logic** (Phase 0 refactoring):
@@ -107,6 +107,18 @@ SalesTwo is a focused B2B sales management platform built on a streamlined versi
   - Server-side RBAC: POST/PUT `/agents` checks if requestor is coordinator and blocks creating admin agents
   - Agent type config: purple badge (`bg-purple-100 text-purple-700`)
   - Team form: coordinator selector added alongside supervisor selector
+- **Supervisor role** (Phase 2):
+  - `supervisor` has team-scoped data visibility (leads, reports, agents of their team only)
+  - Can manage agents in their team: create/edit/delete, but only `sales` type agents
+  - Cannot create/promote agents to `admin`, `coordinator`, or `supervisor` types (enforced server-side + UI)
+  - Teams have `supervisor_id UUID` column linking supervisor to managed teams
+  - `canManageAgentInTeam()` function in `permissions.jsx` checks team membership
+  - `canAccessModule('config')` returns `true` for supervisor (to access Agents page only)
+  - Server-side RBAC: POST/PUT/DELETE `/agents` validates supervisor can only manage their team's agents
+  - In Agents page: tabs "Times" and "Perfis de Acesso" are hidden for supervisor
+  - Agent form: team is auto-filled (supervisor's team) and not editable; type restricted to non-admin types
+  - Agent type config: emerald badge (`bg-emerald-100 text-emerald-700`)
+  - `sales_supervisor` type unified to `supervisor` via DB migration
 
 ### Technical Implementations
 - **Monorepo Structure**: Frontend and Backend coexist within a single repository.

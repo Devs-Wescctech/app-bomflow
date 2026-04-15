@@ -15,6 +15,16 @@ export const AGENT_PERMISSIONS = {
     canManageAgents: true,
     canManageSettings: false,
   },
+  supervisor: {
+    modules: ['sales_pj'],
+    canViewAllTickets: false,
+    canViewTeamTickets: false,
+    canViewAllLeads: false,
+    canViewTeamLeads: true,
+    canAccessReports: true,
+    canManageAgents: true,
+    canManageSettings: false,
+  },
   sales_supervisor: {
     modules: ['sales_pj'],
     canViewAllTickets: false,
@@ -22,7 +32,7 @@ export const AGENT_PERMISSIONS = {
     canViewAllLeads: false,
     canViewTeamLeads: true,
     canAccessReports: true,
-    canManageAgents: false,
+    canManageAgents: true,
     canManageSettings: false,
   },
   sales: {
@@ -47,7 +57,7 @@ export function canAccessModule(agent, moduleId) {
   
   if (agentType === 'admin') return true;
 
-  if (agentType === 'coordinator' && moduleId === 'config') {
+  if ((agentType === 'coordinator' || isSupervisorType(agentType)) && moduleId === 'config') {
     return true;
   }
   
@@ -109,12 +119,27 @@ export function canManageAgents(agent) {
   if (!agent || !agentType) return false;
   
   if (agentType === 'admin' || agentType === 'coordinator') return true;
+  if (isSupervisorType(agentType)) return true;
   
   if (agent.modules && agent.modules.length > 0) {
     if (agent.modules.includes('all') || agent.modules.includes('config')) return true;
   }
   
   if (agent.permissions?.can_manage_agents) return true;
+  
+  return false;
+}
+
+export function canManageAgentInTeam(currentAgent, agentTeamId) {
+  const agentType = currentAgent?.agent_type || currentAgent?.agentType;
+  if (!currentAgent || !agentType) return false;
+  
+  if (agentType === 'admin' || agentType === 'coordinator') return true;
+  
+  if (isSupervisorType(agentType)) {
+    const myTeamId = currentAgent.teamId || currentAgent.team_id;
+    return agentTeamId === myTeamId;
+  }
   
   return false;
 }
