@@ -134,6 +134,9 @@ SalesTwo is a focused B2B sales management platform built on a streamlined versi
   - Agent card displays supervisor name ("Sup: Nome") when supervisor_id is set
   - `team_id` is preserved for backward compatibility but supervisor visibility uses `supervisor_id` as primary source
   - Backend: supervisor creates agent → `supervisor_id` forced to their own ID; `team_id` set from their team if available
+  - Backend `GET /leads-pj` now applies server-side visibility filtering: supervisor sees only leads from their linked agents; sales sees only own leads; admin/coordinator see all
+  - `SalesPJAgentsDashboard.jsx` uses `getVisibleAgentIds()` for agent stats filtering (not ad-hoc `canSeeAllAgents`)
+  - `SalesAgenda.jsx` and `SalesTasks.jsx` no longer show unassigned activities to supervisor — only activities assigned to or created by visible agents
 
 ### Technical Implementations
 - **Monorepo Structure**: Frontend and Backend coexist within a single repository.

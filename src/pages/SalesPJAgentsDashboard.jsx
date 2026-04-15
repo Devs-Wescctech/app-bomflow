@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { hasFullVisibility, hasTeamVisibility } from "@/components/utils/permissions";
+import { hasFullVisibility, hasTeamVisibility, getVisibleAgentIds } from "@/components/utils/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -62,7 +62,8 @@ export default function SalesPJAgentsDashboard() {
     enabled: canFetchData,
   });
 
-  const canSeeAllAgents = isAdmin || isSupervisor;
+  const canSeeAllAgents = isAdmin;
+  const visibleAgentIds = useMemo(() => getVisibleAgentIds(currentAgent, agents), [currentAgent, agents]);
   const isLoading = agentsLoading || teamsLoading || leadsLoading;
 
   const teamsForFilter = useMemo(() => {
@@ -96,7 +97,7 @@ export default function SalesPJAgentsDashboard() {
   const agentStats = useMemo(() => {
     return agents
       .filter(agent => {
-        if (!canSeeAllAgents && agent.id !== currentAgent?.id) return false;
+        if (!canSeeAllAgents && !visibleAgentIds.includes(agent.id)) return false;
         const agentTeamId = agent.teamId || agent.team_id;
         if (selectedTeam && String(agentTeamId) !== String(selectedTeam)) return false;
         return agent.active;

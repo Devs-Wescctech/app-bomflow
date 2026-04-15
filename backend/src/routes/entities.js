@@ -693,14 +693,23 @@ router.get('/system-settings', optionalAuth, async (req, res, next) => {
   return crud.list(req, res);
 });
 
+const ALLOWED_SORT_FIELDS = new Set([
+  'created_at', 'updated_at', 'name', 'email', 'stage', 'status', 'priority',
+  'contact_name', 'razao_social', 'nome_fantasia', 'value', 'monthly_value',
+  'scheduled_at', 'due_date', 'agent_id', 'team_id', 'id'
+]);
+
 function normalizeSort(sort) {
   const field = sort.startsWith('-') ? sort.slice(1) : sort;
   const dir = sort.startsWith('-') ? 'DESC' : 'ASC';
   const aliases = {
     'createdDate': 'created_at', 'createdAt': 'created_at', 'created_date': 'created_at',
-    'updatedDate': 'updated_at', 'updatedAt': 'updated_at', 'updated_date': 'updated_at'
+    'updatedDate': 'updated_at', 'updatedAt': 'updated_at', 'updated_date': 'updated_at',
+    'scheduledAt': 'scheduled_at', 'dueDate': 'due_date'
   };
-  return { field: aliases[field] || field.replace(/([A-Z])/g, '_$1').toLowerCase(), dir };
+  const resolved = aliases[field] || field.replace(/([A-Z])/g, '_$1').toLowerCase();
+  const safeField = ALLOWED_SORT_FIELDS.has(resolved) ? resolved : 'created_at';
+  return { field: safeField, dir };
 }
 
 router.get('/leads', authMiddleware, async (req, res) => {
@@ -884,7 +893,35 @@ router.get('/leads-pj', authMiddleware, async (req, res) => {
   try {
     const { sort = '-created_at', limit = 10000 } = req.query;
     const { field: sortField, dir: sortDir } = normalizeSort(sort);
-    const result = await query(`SELECT * FROM leads_pj ORDER BY ${sortField} ${sortDir} LIMIT $1`, [parseInt(limit)]);
+
+    let sql = `SELECT * FROM leads_pj`;
+    const params = [];
+
+    if (req.user?.id) {
+      const agentResult = await query('SELECT agent_type, team_id, id FROM agents WHERE id = $1', [req.user.id]);
+      if (agentResult.rows.length === 0) {
+        return res.json([]);
+      }
+      const agentType = agentResult.rows[0].agent_type;
+      if (agentType === 'supervisor' || agentType === 'sales_supervisor') {
+        const subordinates = await query('SELECT id FROM agents WHERE supervisor_id = $1', [req.user.id]);
+        const ids = subordinates.rows.map(r => r.id);
+        ids.push(req.user.id);
+        const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
+        sql += ` WHERE agent_id::text IN (${placeholders})`;
+        params.push(...ids);
+      } else if (!['admin', 'coordinator'].includes(agentType)) {
+        sql += ` WHERE agent_id::text = $1`;
+        params.push(req.user.id);
+      }
+    } else {
+      return res.json([]);
+    }
+
+    sql += ` ORDER BY ${sortField} ${sortDir} LIMIT $${params.length + 1}`;
+    params.push(parseInt(limit));
+
+    const result = await query(sql, params);
     res.json(result.rows.map(convertKeysToCamel));
   } catch (error) {
     res.status(500).json({ message: error.message });

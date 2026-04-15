@@ -163,12 +163,13 @@ export default function SalesTasks() {
     if (hasTeamVisibility(currentAgent)) {
       return allActivities.filter(a => {
         const assignedTo = a.assignedTo || a.assigned_to;
-        return !assignedTo || visibleIds.includes(assignedTo);
+        const createdBy = a.createdBy || a.created_by;
+        return assignedTo ? visibleIds.includes(assignedTo) : (createdBy ? visibleIds.includes(createdBy) : false);
       });
     }
     return allActivities.filter(a => {
       const assignedTo = a.assignedTo || a.assigned_to;
-      return !assignedTo || assignedTo === currentAgent.id;
+      return assignedTo === currentAgent.id;
     });
   }, [allActivities, currentAgent, allAgents]);
 

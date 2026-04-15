@@ -249,13 +249,12 @@ export default function SalesAgenda() {
 
     return activities.filter((act) => {
       if (!currentAgent) return true;
-      if (hasTeamVisibility(currentAgent)) {
-        const assignedTo = getVal(act, "assignedTo", "assigned_to");
-        return !assignedTo || visibleIds.includes(assignedTo);
-      }
       const assignedTo = getVal(act, "assignedTo", "assigned_to");
       const createdBy = getVal(act, "createdBy", "created_by");
-      return assignedTo === user?.email || assignedTo === currentAgent?.id || createdBy === currentAgent?.id || !assignedTo;
+      if (hasTeamVisibility(currentAgent)) {
+        return assignedTo ? visibleIds.includes(assignedTo) : (createdBy ? visibleIds.includes(createdBy) : false);
+      }
+      return assignedTo === user?.email || assignedTo === currentAgent?.id || createdBy === currentAgent?.id;
     });
   }, [activities, currentAgent, user, agents]);
 
