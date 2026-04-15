@@ -407,10 +407,9 @@ router.post('/agents', authMiddleware, async (req, res) => {
       return res.status(400).json({ message: 'Email already registered' });
     }
     
-    const uuidFields = ['team_id', 'territory_id'];
-    for (const field of uuidFields) {
-      if (data[field] === '' || data[field] === undefined) {
-        data[field] = null;
+    for (const key of Object.keys(data)) {
+      if ((key.endsWith('_id') || key === 'id') && data[key] === '') {
+        data[key] = null;
       }
     }
 
