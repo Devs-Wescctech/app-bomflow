@@ -407,6 +407,13 @@ router.post('/agents', authMiddleware, async (req, res) => {
       return res.status(400).json({ message: 'Email already registered' });
     }
     
+    const uuidFields = ['team_id', 'territory_id'];
+    for (const field of uuidFields) {
+      if (data[field] === '' || data[field] === undefined) {
+        data[field] = null;
+      }
+    }
+
     let password_hash = null;
     if (data.password) {
       password_hash = await bcrypt.hash(data.password, 10);
