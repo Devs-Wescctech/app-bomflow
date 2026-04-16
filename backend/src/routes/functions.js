@@ -3454,9 +3454,29 @@ router.get('/commission-payment/batches', authMiddleware, loadAgentMiddleware, r
 
 router.get('/commission-payment/control', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
   try {
-    const { status, lote_id, limit: lim } = req.query;
+    const { status, lote_id, limit: lim, data_contrato_inicio, data_contrato_fim } = req.query;
     let sql = 'SELECT * FROM commission_payment_control WHERE 1=1';
     const params = [];
+
+    const isValidDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+    if (data_contrato_inicio && !isValidDate(data_contrato_inicio)) {
+      return res.status(400).json({ success: false, error: 'data_contrato_inicio inválida (use YYYY-MM-DD)' });
+    }
+    if (data_contrato_fim && !isValidDate(data_contrato_fim)) {
+      return res.status(400).json({ success: false, error: 'data_contrato_fim inválida (use YYYY-MM-DD)' });
+    }
+    if (data_contrato_inicio && data_contrato_fim && data_contrato_inicio > data_contrato_fim) {
+      return res.status(400).json({ success: false, error: 'data_contrato_inicio não pode ser maior que data_contrato_fim' });
+    }
+
+    if (data_contrato_inicio) {
+      params.push(data_contrato_inicio);
+      sql += ` AND data_contrato >= $${params.length}`;
+    }
+    if (data_contrato_fim) {
+      params.push(data_contrato_fim);
+      sql += ` AND data_contrato <= $${params.length}`;
+    }
 
     if (status && status !== 'all') {
       params.push(status);

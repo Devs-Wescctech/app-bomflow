@@ -39,6 +39,8 @@ export default function CommissionPaymentControl() {
   const [activeTab, setActiveTab] = useState('control');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterBatchId, setFilterBatchId] = useState('all');
+  const [filterDataInicio, setFilterDataInicio] = useState('');
+  const [filterDataFim, setFilterDataFim] = useState('');
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -83,11 +85,13 @@ export default function CommissionPaymentControl() {
   });
 
   const { data: controlData, isLoading: loadingControl } = useQuery({
-    queryKey: ['commission-payment-control', filterStatus, filterBatchId],
+    queryKey: ['commission-payment-control', filterStatus, filterBatchId, filterDataInicio, filterDataFim],
     queryFn: () => {
       const params = new URLSearchParams();
       if (filterStatus !== 'all') params.set('status', filterStatus);
       if (filterBatchId !== 'all') params.set('lote_id', filterBatchId);
+      if (filterDataInicio) params.set('data_contrato_inicio', filterDataInicio);
+      if (filterDataFim) params.set('data_contrato_fim', filterDataFim);
       return fetchWithAuth(`/api/functions/commission-payment/control?${params}`);
     },
     staleTime: 30000,
@@ -308,7 +312,25 @@ export default function CommissionPaymentControl() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg">Registros de Comissão</CardTitle>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap items-center">
+                <div className="flex items-center gap-1">
+                  <label className="text-xs text-gray-500">Data Contrato:</label>
+                  <input
+                    type="date"
+                    value={filterDataInicio}
+                    onChange={(e) => setFilterDataInicio(e.target.value)}
+                    className="text-sm border rounded-md px-2 py-1"
+                    title="Data Contrato (De)"
+                  />
+                  <span className="text-xs text-gray-400">até</span>
+                  <input
+                    type="date"
+                    value={filterDataFim}
+                    onChange={(e) => setFilterDataFim(e.target.value)}
+                    className="text-sm border rounded-md px-2 py-1"
+                    title="Data Contrato (Até)"
+                  />
+                </div>
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
@@ -330,6 +352,21 @@ export default function CommissionPaymentControl() {
                     <option key={b.id} value={b.id}>Lote #{b.id}</option>
                   ))}
                 </select>
+                {(filterDataInicio || filterDataFim || filterStatus !== 'all' || filterBatchId !== 'all') && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-xs"
+                    onClick={() => {
+                      setFilterDataInicio('');
+                      setFilterDataFim('');
+                      setFilterStatus('all');
+                      setFilterBatchId('all');
+                    }}
+                  >
+                    Limpar
+                  </Button>
+                )}
               </div>
             </div>
           </CardHeader>
