@@ -318,6 +318,9 @@ CREATE TABLE IF NOT EXISTS leads (
     custom_fields JSONB,
     last_contact_at TIMESTAMP,
     converted_at TIMESTAMP,
+    lost BOOLEAN DEFAULT FALSE,
+    lost_at TIMESTAMP,
+    lost_by VARCHAR(255),
     lost_reason TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
@@ -403,6 +406,9 @@ CREATE TABLE IF NOT EXISTS leads_pj (
     custom_fields JSONB,
     last_contact_at TIMESTAMP,
     converted_at TIMESTAMP,
+    lost BOOLEAN DEFAULT FALSE,
+    lost_at TIMESTAMP,
+    lost_by VARCHAR(255),
     lost_reason TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()

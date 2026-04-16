@@ -241,7 +241,7 @@ export default function ReferralDetail() {
         type: 'note',
         title: 'Indicação Perdida',
         description: `Indicação marcada como PERDIDA\nMotivo: ${lostReason}`,
-        assignedTo: referral.agentId || 'Sistema',
+        assignedTo: referral.agentId || null,
       });
       
       toast.success('Indicação marcada como perdida');
@@ -251,6 +251,16 @@ export default function ReferralDetail() {
       setTimeout(() => {
         navigate(createPageUrl("ReferralPipeline"));
       }, 2000);
+    },
+    onError: (error) => {
+      const msg = error?.message || '';
+      if (msg.includes('column') && msg.includes('lost')) {
+        toast.error("Erro interno: colunas de 'perda' não configuradas no banco de dados. Contate o suporte.");
+      } else {
+        toast.error("Erro ao marcar como perdida: " + (msg || "Tente novamente."));
+      }
+      setShowLostDialog(false);
+      setLostReason("");
     },
   });
 
