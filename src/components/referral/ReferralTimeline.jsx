@@ -141,6 +141,7 @@ export default function ReferralTimeline({ activities = [] }) {
           const config = getActivityConfig(activity.type);
           const Icon = config.icon;
           const isCompleted = activity.completed;
+          const isNote = activity.type === 'note';
 
           return (
             <div key={activity.id || idx} className="relative flex gap-4 group">
@@ -154,14 +155,14 @@ export default function ReferralTimeline({ activities = [] }) {
                     <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold ${config.bg} ${config.text}`}>
                       {config.label}
                     </span>
-                    {isCompleted !== undefined && (
+                    {isCompleted !== undefined && !isNote && (
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
                         isCompleted 
                           ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300' 
                           : 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300'
                       }`}>
                         {isCompleted ? (
-                          <><CheckCircle className="w-3 h-3" /> Concluida</>
+                          <><CheckCircle className="w-3 h-3" /> Concluída</>
                         ) : (
                           <><Clock className="w-3 h-3" /> Pendente</>
                         )}

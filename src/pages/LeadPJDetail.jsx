@@ -325,7 +325,6 @@ export default function LeadPJDetail() {
       title: 'Nota adicionada',
       description: newNote,
       assigned_to: leadAgentId,
-      completed: true,
     });
   };
 
