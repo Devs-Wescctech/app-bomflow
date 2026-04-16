@@ -437,6 +437,31 @@ router.get('/lead-generator-base', authMiddleware, async (req, res) => {
       console.log(`[LeadGenerator] tempo_ativo_contrato filter: ${before} -> ${data.length} (min=${tempoAtivoMin}, max=${tempoAtivoMax})`);
     }
 
+    const parseDateParam = (s) => {
+      if (!s) return null;
+      const str = String(s).trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(str)) return null;
+      const d = new Date(str + 'T00:00:00');
+      return isNaN(d.getTime()) ? null : d;
+    };
+    const dataContratoInicio = parseDateParam(req.query.data_contrato_inicio);
+    const dataContratoFim = parseDateParam(req.query.data_contrato_fim);
+
+    if (dataContratoInicio || dataContratoFim) {
+      const fimInclusive = dataContratoFim ? new Date(dataContratoFim.getTime() + 24 * 60 * 60 * 1000 - 1) : null;
+      const before = data.length;
+      data = data.filter(lead => {
+        const raw = lead.data_contrato;
+        if (!raw) return false;
+        const d = new Date(raw);
+        if (isNaN(d.getTime())) return false;
+        if (dataContratoInicio && d < dataContratoInicio) return false;
+        if (fimInclusive && d > fimInclusive) return false;
+        return true;
+      });
+      console.log(`[LeadGenerator] data_contrato filter: ${before} -> ${data.length} (inicio=${req.query.data_contrato_inicio || '-'}, fim=${req.query.data_contrato_fim || '-'})`);
+    }
+
     const blockedResult = await query(
       `SELECT DISTINCT lead_number FROM gerador_leads_whatsapp_logs
        WHERE success = true AND sent_at >= NOW() - INTERVAL '30 days'`
