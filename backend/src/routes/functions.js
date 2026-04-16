@@ -3552,12 +3552,12 @@ router.put('/commission-payment/pendente-conciliacao/:id', authMiddleware, loadA
     const result = await query(
       `UPDATE commission_payment_control 
        SET status_pagamento = 'pendente_conciliacao', usuario_confirmacao = $1
-       WHERE id = $2 AND status_pagamento != 'pago' RETURNING *`,
+       WHERE id = $2 AND status_pagamento = 'elegivel' RETURNING *`,
       [userEmail, id]
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Record not found or already paid' });
+      return res.status(404).json({ success: false, error: 'Record not found or not in elegivel status' });
     }
 
     res.json({ success: true, record: result.rows[0] });

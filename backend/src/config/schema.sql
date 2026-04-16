@@ -1254,3 +1254,14 @@ CREATE TABLE IF NOT EXISTS lead_whatsapp_contacts (
 CREATE INDEX IF NOT EXISTS idx_lead_wa_contacts_lead ON lead_whatsapp_contacts(lead_id);
 CREATE INDEX IF NOT EXISTS idx_lead_wa_contacts_agent ON lead_whatsapp_contacts(agent_id);
 CREATE INDEX IF NOT EXISTS idx_lead_wa_contacts_created ON lead_whatsapp_contacts(created_at);
+
+-- Lost flag for leads (B2C and B2B) — used by "Marcar como Perdida"
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS lost BOOLEAN DEFAULT FALSE;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS lost_at TIMESTAMP;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS lost_by UUID;
+ALTER TABLE leads_pj ADD COLUMN IF NOT EXISTS lost BOOLEAN DEFAULT FALSE;
+ALTER TABLE leads_pj ADD COLUMN IF NOT EXISTS lost_at TIMESTAMP;
+ALTER TABLE leads_pj ADD COLUMN IF NOT EXISTS lost_by UUID;
+
+-- Expand status_pagamento to fit 'pendente_conciliacao'
+ALTER TABLE commission_payment_control ALTER COLUMN status_pagamento TYPE VARCHAR(30);
