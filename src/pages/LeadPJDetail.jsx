@@ -91,6 +91,19 @@ export default function LeadPJDetail() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [generatingProposal, setGeneratingProposal] = useState(false);
   const [activeTab, setActiveTab] = useState('activities');
+  const tasksSectionRef = useRef(null);
+
+  const handleViewTasksClick = () => {
+    setActiveTab('tasks');
+    setTimeout(() => {
+      if (tasksSectionRef.current) {
+        tasksSectionRef.current.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }
+    }, 50);
+  };
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [proposalUrl, setProposalUrl] = useState("");
@@ -864,7 +877,7 @@ export default function LeadPJDetail() {
                 size="sm"
                 variant="outline"
                 className="border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300"
-                onClick={() => setActiveTab('tasks')}
+                onClick={handleViewTasksClick}
               >
                 Ver Tarefas
               </Button>
@@ -949,6 +962,7 @@ export default function LeadPJDetail() {
               </TabsContent>
 
               <TabsContent value="tasks" className="mt-6">
+                <div ref={tasksSectionRef} style={{ scrollMarginTop: '80px' }}>
                 <Card className="bg-white dark:bg-gray-900">
                   <CardHeader className="border-b border-gray-200 dark:border-gray-700">
                     <CardTitle className="flex items-center gap-2 text-gray-900 dark:text-gray-100">
@@ -1064,6 +1078,7 @@ export default function LeadPJDetail() {
                     </div>
                   </CardContent>
                 </Card>
+                </div>
               </TabsContent>
 
               <TabsContent value="proposal" className="mt-6">
