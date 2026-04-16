@@ -450,6 +450,27 @@ router.get('/lead-generator-base', authMiddleware, async (req, res) => {
     });
     console.log(`[LeadGenerator] 30-day block filter: ${beforeBlock} -> ${data.length} (${beforeBlock - data.length} blocked)`);
 
+    const invalidNumberResult = await query(
+      `SELECT DISTINCT lead_number FROM gerador_leads_whatsapp_logs
+       WHERE success = false
+         AND sent_at >= NOW() - INTERVAL '90 days'
+         AND (
+           api_response->>'msg' = 'INVALID_WA_NUMBER'
+           OR api_response->>'message' = 'INVALID_WA_NUMBER'
+           OR api_response->>'error' = 'INVALID_WA_NUMBER'
+           OR api_response::text ILIKE '%INVALID_WA_NUMBER%'
+           OR motivo_bloqueio ILIKE '%INVALID_WA_NUMBER%'
+         )`
+    );
+    const invalidNumbers = new Set(invalidNumberResult.rows.map(r => r.lead_number));
+
+    const beforeInvalidBlock = data.length;
+    data = data.filter(lead => {
+      const clean = normalizePhone(lead.number);
+      return clean && !invalidNumbers.has(clean);
+    });
+    console.log(`[LeadGenerator] 90-day INVALID_WA_NUMBER filter: ${beforeInvalidBlock} -> ${data.length} (${beforeInvalidBlock - data.length} blocked)`);
+
     res.json(data);
   } catch (error) {
     console.error('Error fetching lead generator base:', error);
