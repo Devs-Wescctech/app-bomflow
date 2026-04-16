@@ -17,14 +17,16 @@ const STATUS_LABELS = {
   elegivel: 'Elegível',
   pago: 'Pago',
   pendente: 'Pendente',
-  reativacao: 'Reativação'
+  reativacao: 'Reativação',
+  pendente_conciliacao: 'Pendente de Conciliação'
 };
 
 const STATUS_COLORS = {
   elegivel: 'bg-yellow-100 text-yellow-800',
   pago: 'bg-green-100 text-green-800',
   pendente: 'bg-gray-100 text-gray-800',
-  reativacao: 'bg-purple-100 text-purple-800'
+  reativacao: 'bg-purple-100 text-purple-800',
+  pendente_conciliacao: 'bg-orange-100 text-orange-800'
 };
 
 const BATCH_STATUS_COLORS = {
@@ -126,6 +128,26 @@ export default function CommissionPaymentControl() {
       toast.success('Status alterado para Reativação');
     },
     onError: () => toast.error('Erro ao alterar status'),
+  });
+
+  const pendenteConciliacaoMutation = useMutation({
+    mutationFn: (id) => fetchWithAuth(`/api/functions/commission-payment/pendente-conciliacao/${id}`, { method: 'PUT' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['commission-payment-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['commission-payment-control'] });
+      toast.success('Marcado como Pendente de Conciliação');
+    },
+    onError: () => toast.error('Erro ao alterar status'),
+  });
+
+  const restoreElegivelMutation = useMutation({
+    mutationFn: (id) => fetchWithAuth(`/api/functions/commission-payment/restore-elegivel/${id}`, { method: 'PUT' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['commission-payment-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['commission-payment-control'] });
+      toast.success('Restaurado para Elegível');
+    },
+    onError: () => toast.error('Erro ao restaurar'),
   });
 
   const confirmBatchMutation = useMutation({
@@ -296,6 +318,7 @@ export default function CommissionPaymentControl() {
                   <option value="elegivel">Elegíveis</option>
                   <option value="pago">Pagos</option>
                   <option value="reativacao">Reativação</option>
+                  <option value="pendente_conciliacao">Pendente de Conciliação</option>
                 </select>
                 <select
                   value={filterBatchId}
@@ -358,7 +381,7 @@ export default function CommissionPaymentControl() {
                         </td>
                         <td className="py-2 px-3">
                           {r.status_pagamento === 'elegivel' && (
-                            <div className="flex gap-1">
+                            <div className="flex gap-1 flex-wrap">
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -376,6 +399,37 @@ export default function CommissionPaymentControl() {
                                 disabled={reativacaoMutation.isPending}
                               >
                                 Reativação
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                                onClick={() => pendenteConciliacaoMutation.mutate(r.id)}
+                                disabled={pendenteConciliacaoMutation.isPending}
+                              >
+                                Pendente Conciliação
+                              </Button>
+                            </div>
+                          )}
+                          {r.status_pagamento === 'pendente_conciliacao' && (
+                            <div className="flex gap-1 flex-wrap">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-yellow-700 border-yellow-200 hover:bg-yellow-50"
+                                onClick={() => restoreElegivelMutation.mutate(r.id)}
+                                disabled={restoreElegivelMutation.isPending}
+                              >
+                                Voltar p/ Elegível
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => confirmMutation.mutate(r.id)}
+                                disabled={confirmMutation.isPending}
+                              >
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                Confirmar
                               </Button>
                             </div>
                           )}

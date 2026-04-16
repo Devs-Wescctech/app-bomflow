@@ -1154,7 +1154,7 @@ CREATE TABLE IF NOT EXISTS commission_payment_control (
     data_contrato VARCHAR(100),
     valor_contrato VARCHAR(100),
     contrato_servicos VARCHAR(255) NOT NULL,
-    status_pagamento VARCHAR(20) DEFAULT 'elegivel',
+    status_pagamento VARCHAR(30) DEFAULT 'elegivel',
     periodo_pagamento VARCHAR(100),
     lote_pagamento_id INTEGER REFERENCES commission_payment_batches(id),
     data_confirmacao_pagamento TIMESTAMP,

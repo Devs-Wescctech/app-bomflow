@@ -3458,9 +3458,11 @@ router.get('/commission-payment/control', authMiddleware, loadAgentMiddleware, r
     let sql = 'SELECT * FROM commission_payment_control WHERE 1=1';
     const params = [];
 
-    if (status) {
+    if (status && status !== 'all') {
       params.push(status);
       sql += ` AND status_pagamento = $${params.length}`;
+    } else {
+      sql += ` AND status_pagamento != 'pendente_conciliacao'`;
     }
     if (lote_id) {
       params.push(parseInt(lote_id));
@@ -3508,12 +3510,56 @@ router.put('/commission-payment/confirm/:id', authMiddleware, loadAgentMiddlewar
     const result = await query(
       `UPDATE commission_payment_control 
        SET status_pagamento = 'pago', data_confirmacao_pagamento = NOW(), usuario_confirmacao = $1
-       WHERE id = $2 AND status_pagamento = 'elegivel' RETURNING *`,
+       WHERE id = $2 AND status_pagamento IN ('elegivel', 'pendente_conciliacao') RETURNING *`,
       [userEmail, id]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Record not found or already paid' });
+    }
+
+    res.json({ success: true, record: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.put('/commission-payment/pendente-conciliacao/:id', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userEmail = req.user?.email || req.user?.userEmail || 'admin';
+
+    const result = await query(
+      `UPDATE commission_payment_control 
+       SET status_pagamento = 'pendente_conciliacao', usuario_confirmacao = $1
+       WHERE id = $2 AND status_pagamento != 'pago' RETURNING *`,
+      [userEmail, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Record not found or already paid' });
+    }
+
+    res.json({ success: true, record: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.put('/commission-payment/restore-elegivel/:id', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userEmail = req.user?.email || req.user?.userEmail || 'admin';
+
+    const result = await query(
+      `UPDATE commission_payment_control 
+       SET status_pagamento = 'elegivel', usuario_confirmacao = $1
+       WHERE id = $2 AND status_pagamento = 'pendente_conciliacao' RETURNING *`,
+      [userEmail, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Record not found or not in pendente_conciliacao' });
     }
 
     res.json({ success: true, record: result.rows[0] });
@@ -3589,7 +3635,7 @@ async function getCommissionReportData() {
   let controlResult;
   if (currentBatchId) {
     controlResult = await query(
-      "SELECT * FROM commission_payment_control WHERE lote_pagamento_id = $1 AND status_pagamento != 'reativacao' ORDER BY nome_indicador, created_at",
+      "SELECT * FROM commission_payment_control WHERE lote_pagamento_id = $1 AND status_pagamento NOT IN ('reativacao', 'pendente_conciliacao') ORDER BY nome_indicador, created_at",
       [currentBatchId]
     );
   } else {
@@ -3660,7 +3706,7 @@ async function getCommissionReportData() {
   const currentRecordIds = new Set(records.map(r => r.id));
 
   const pendingResult = await query(
-    "SELECT cpc.*, cpb.periodo_inicio, cpb.periodo_fim FROM commission_payment_control cpc LEFT JOIN commission_payment_batches cpb ON cpc.lote_pagamento_id = cpb.id WHERE cpc.status_pagamento NOT IN ('pago', 'reativacao') ORDER BY cpb.periodo_inicio, cpc.nome_indicador, cpc.created_at"
+    "SELECT cpc.*, cpb.periodo_inicio, cpb.periodo_fim FROM commission_payment_control cpc LEFT JOIN commission_payment_batches cpb ON cpc.lote_pagamento_id = cpb.id WHERE cpc.status_pagamento NOT IN ('pago', 'reativacao', 'pendente_conciliacao') ORDER BY cpb.periodo_inicio, cpc.nome_indicador, cpc.created_at"
   );
 
   const batchGroups = {};
