@@ -90,6 +90,7 @@ export default function LeadPJDetail() {
   const [lostReason, setLostReason] = useState("");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [generatingProposal, setGeneratingProposal] = useState(false);
+  const [activeTab, setActiveTab] = useState('activities');
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [proposalUrl, setProposalUrl] = useState("");
@@ -863,7 +864,7 @@ export default function LeadPJDetail() {
                 size="sm"
                 variant="outline"
                 className="border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300"
-                onClick={() => document.querySelector('[data-value="tasks"]')?.click()}
+                onClick={() => setActiveTab('tasks')}
               >
                 Ver Tarefas
               </Button>
@@ -887,7 +888,7 @@ export default function LeadPJDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* COLUNA ESQUERDA: TABS (2/3) */}
           <div className="lg:col-span-2">
-            <Tabs defaultValue="activities" className="w-full">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="grid w-full grid-cols-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-1">
                 <TabsTrigger value="activities" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
                   <Activity className="w-4 h-4 mr-2" />
