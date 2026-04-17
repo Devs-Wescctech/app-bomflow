@@ -1265,6 +1265,30 @@ ALTER TABLE google_calendar_tokens ADD COLUMN IF NOT EXISTS granted_scope TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_gcal_tokens_agent ON google_calendar_tokens(agent_id);
 
+-- Phase 2.1 — Outbox of pending Google Calendar operations.
+-- Hooks in entities.js enqueue rows here instead of calling the Google API
+-- directly, so that transient failures can be retried with exponential
+-- backoff by gcalOutboxWorker (see backend/src/workers/gcalOutboxWorker.js).
+CREATE TABLE IF NOT EXISTS gcal_event_outbox (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    activity_id UUID,
+    activity_table VARCHAR(20) NOT NULL CHECK (activity_table IN ('activities','activities_pj')),
+    op VARCHAR(10) NOT NULL CHECK (op IN ('create','update','delete')),
+    payload JSONB NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','processing','succeeded','failed')),
+    attempts INT NOT NULL DEFAULT 0,
+    last_error TEXT,
+    next_retry_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_gcal_event_outbox_status_next_retry
+    ON gcal_event_outbox (status, next_retry_at);
+CREATE INDEX IF NOT EXISTS idx_gcal_event_outbox_activity
+    ON gcal_event_outbox (activity_table, activity_id);
+
 -- =====================
 -- COORDINATOR ROLE MIGRATION
 -- =====================

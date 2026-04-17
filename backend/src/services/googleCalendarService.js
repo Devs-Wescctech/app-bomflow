@@ -249,12 +249,30 @@ function activityToGCalEvent(activity) {
   };
 }
 
-export async function createGoogleEvent(agentId, activity, tableName = 'activities_pj') {
+/**
+ * Create an event in Google Calendar.
+ *
+ * Phase 2.1+: this function NO LONGER persists `google_event_id` on the
+ * activity row. That responsibility belongs to gcalOutboxWorker, which
+ * updates the activity only after this function returns successfully.
+ *
+ * @returns {Promise<{id:string}>} on success
+ * @throws  {Error}                on Google API failure (worker handles retry)
+ */
+export async function createGoogleEvent(agentId, activity) {
   const oauth2 = await getAuthenticatedClient(agentId);
-  if (!oauth2) return null;
+  if (!oauth2) {
+    const err = new Error('Agent not connected to Google Calendar');
+    err.code = 'NOT_CONNECTED';
+    throw err;
+  }
 
   const event = activityToGCalEvent(activity);
-  if (!event) return null;
+  if (!event) {
+    const err = new Error('Activity has invalid scheduled_at');
+    err.code = 'INVALID_PAYLOAD';
+    throw err;
+  }
 
   try {
     const calendar = google.calendar({ version: 'v3', auth: oauth2 });
@@ -262,56 +280,59 @@ export async function createGoogleEvent(agentId, activity, tableName = 'activiti
       calendarId: 'primary',
       requestBody: event,
     });
-
-    if (result.data.id && activity.id) {
-      const safeTable = tableName === 'activities' ? 'activities' : 'activities_pj';
-      await query(
-        `UPDATE ${safeTable} SET google_event_id = $1 WHERE id = $2`,
-        [result.data.id, activity.id]
-      );
-    }
-
     console.log(`[GCal] Event created: ${result.data.id} for activity ${activity.id}`);
     return { id: result.data.id };
   } catch (error) {
-    console.error('[GCal] Error creating event:', error.message);
     if (error.code === 401) {
       await query('DELETE FROM google_calendar_tokens WHERE agent_id = $1', [agentId]);
     }
-    return null;
+    throw error;
   }
 }
 
 export async function updateGoogleEvent(agentId, googleEventId, activity) {
+  if (!googleEventId) {
+    const err = new Error('Missing googleEventId for update');
+    err.code = 'MISSING_EVENT_ID';
+    throw err;
+  }
   const oauth2 = await getAuthenticatedClient(agentId);
-  if (!oauth2 || !googleEventId) return null;
+  if (!oauth2) {
+    const err = new Error('Agent not connected to Google Calendar');
+    err.code = 'NOT_CONNECTED';
+    throw err;
+  }
 
   const event = activityToGCalEvent(activity);
-  if (!event) return null;
+  if (!event) {
+    const err = new Error('Activity has invalid scheduled_at');
+    err.code = 'INVALID_PAYLOAD';
+    throw err;
+  }
 
   if (activity.completed) {
     event.summary = `✅ ${event.summary}`;
     event.colorId = '8';
   }
 
-  try {
-    const calendar = google.calendar({ version: 'v3', auth: oauth2 });
-    await calendar.events.update({
-      calendarId: 'primary',
-      eventId: googleEventId,
-      requestBody: event,
-    });
-    console.log(`[GCal] Event updated: ${googleEventId}`);
-    return true;
-  } catch (error) {
-    console.error('[GCal] Error updating event:', error.message);
-    return null;
-  }
+  const calendar = google.calendar({ version: 'v3', auth: oauth2 });
+  await calendar.events.update({
+    calendarId: 'primary',
+    eventId: googleEventId,
+    requestBody: event,
+  });
+  console.log(`[GCal] Event updated: ${googleEventId}`);
+  return true;
 }
 
 export async function deleteGoogleEvent(agentId, googleEventId) {
+  if (!googleEventId) return true; // nothing to delete is success
   const oauth2 = await getAuthenticatedClient(agentId);
-  if (!oauth2 || !googleEventId) return null;
+  if (!oauth2) {
+    const err = new Error('Agent not connected to Google Calendar');
+    err.code = 'NOT_CONNECTED';
+    throw err;
+  }
 
   try {
     const calendar = google.calendar({ version: 'v3', auth: oauth2 });
@@ -322,8 +343,12 @@ export async function deleteGoogleEvent(agentId, googleEventId) {
     console.log(`[GCal] Event deleted: ${googleEventId}`);
     return true;
   } catch (error) {
-    console.error('[GCal] Error deleting event:', error.message);
-    return null;
+    // 404/410 means the event is already gone — treat as success (idempotent).
+    if (error.code === 404 || error.code === 410) {
+      console.log(`[GCal] Event ${googleEventId} already absent (${error.code}) — treating as deleted.`);
+      return true;
+    }
+    throw error;
   }
 }
 

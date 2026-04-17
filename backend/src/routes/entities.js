@@ -13,7 +13,7 @@ import {
   notifyProposalStatus
 } from '../services/notificationService.js';
 import { executeLeadCreatedAutomation } from '../services/automationService.js';
-import { createGoogleEvent, updateGoogleEvent, deleteGoogleEvent } from '../services/googleCalendarService.js';
+import { enqueueGcalOp } from '../services/gcalOutboxService.js';
 
 const router = Router();
 
@@ -253,13 +253,18 @@ for (const [route, options] of Object.entries(entities)) {
               json: async (data) => {
                 const agentId = data?.createdBy || data?.created_by;
                 if (data && data.id && agentId) {
-                  console.log('[GCal Hook] Creating Google event for agent', agentId, 'activity', data.id);
-                  createGoogleEvent(agentId, {
-                    id: data.id,
-                    type: data.type || data.Type,
-                    description: data.description,
-                    scheduled_at: data.scheduledAt || data.scheduled_at,
-                  }).catch(err => console.error('[GCal Hook] create error:', err.message));
+                  // Phase 2.1 — enqueue instead of calling Google directly.
+                  enqueueGcalOp({
+                    agentId,
+                    activityId: data.id,
+                    activityTable: 'activities_pj',
+                    op: 'create',
+                    payload: {
+                      type: data.type || data.Type,
+                      description: data.description,
+                      scheduled_at: data.scheduledAt || data.scheduled_at,
+                    },
+                  });
                 }
                 origStatusJson(data);
               }
@@ -278,16 +283,22 @@ for (const [route, options] of Object.entries(entities)) {
         await crud.update(req, {
           ...res,
           json: async (data) => {
-            const googleEventId = data?.googleEventId || data?.google_event_id;
             const agentId = data?.createdBy || data?.created_by;
-            if (data && googleEventId && agentId) {
-              console.log('[GCal Hook] Updating Google event', googleEventId, 'for agent', agentId);
-              updateGoogleEvent(agentId, googleEventId, {
-                type: data.type || data.Type,
-                description: data.description,
-                scheduled_at: data.scheduledAt || data.scheduled_at,
-                completed: data.completed,
-              }).catch(err => console.error('[GCal Hook] update error:', err.message));
+            if (data && data.id && agentId) {
+              // Phase 2.1 — enqueue update. Worker will resolve the
+              // google_event_id from the activity row at execution time.
+              enqueueGcalOp({
+                agentId,
+                activityId: data.id,
+                activityTable: 'activities_pj',
+                op: 'update',
+                payload: {
+                  type: data.type || data.Type,
+                  description: data.description,
+                  scheduled_at: data.scheduledAt || data.scheduled_at,
+                  completed: data.completed,
+                },
+              });
             }
             originalJson(data);
           }
@@ -308,8 +319,15 @@ for (const [route, options] of Object.entries(entities)) {
           ...res,
           json: async (data) => {
             if (row && row.google_event_id && row.created_by) {
-              deleteGoogleEvent(row.created_by, row.google_event_id)
-                .catch(err => console.error('[GCal Hook] delete error:', err.message));
+              // Phase 2.1 — enqueue deletion. activity_id is null because
+              // the row was just deleted; payload carries the event id.
+              enqueueGcalOp({
+                agentId: row.created_by,
+                activityId: null,
+                activityTable: 'activities_pj',
+                op: 'delete',
+                payload: { google_event_id: row.google_event_id },
+              });
             }
             originalJson(data);
           }
@@ -1290,9 +1308,13 @@ router.delete('/activities/:id', authMiddleware, async (req, res) => {
   try {
     const existing = await query('SELECT created_by, google_event_id FROM activities WHERE id = $1', [req.params.id]);
     if (existing.rows.length > 0 && existing.rows[0].google_event_id && existing.rows[0].created_by) {
-      console.log('[GCal Hook] Deleting Google event (PF)', existing.rows[0].google_event_id);
-      deleteGoogleEvent(existing.rows[0].created_by, existing.rows[0].google_event_id)
-        .catch(err => console.error('[GCal Hook] delete error (PF):', err.message));
+      enqueueGcalOp({
+        agentId: existing.rows[0].created_by,
+        activityId: null,
+        activityTable: 'activities',
+        op: 'delete',
+        payload: { google_event_id: existing.rows[0].google_event_id },
+      });
     }
     const result = await query('DELETE FROM activities WHERE id = $1 RETURNING *', [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ message: 'Not found' });
@@ -1337,14 +1359,19 @@ router.put('/activities/:id', authMiddleware, async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ message: 'Not found' });
     const activity = result.rows[0];
 
-    if (activity.google_event_id && activity.created_by) {
-      console.log('[GCal Hook] Updating Google event (PF)', activity.google_event_id);
-      updateGoogleEvent(activity.created_by, activity.google_event_id, {
-        type: activity.type,
-        description: activity.title || activity.description,
-        scheduled_at: activity.scheduled_at,
-        completed: activity.completed,
-      }).catch(err => console.error('[GCal Hook] update error (PF):', err.message));
+    if (activity.id && activity.created_by) {
+      enqueueGcalOp({
+        agentId: activity.created_by,
+        activityId: activity.id,
+        activityTable: 'activities',
+        op: 'update',
+        payload: {
+          type: activity.type,
+          description: activity.title || activity.description,
+          scheduled_at: activity.scheduled_at,
+          completed: activity.completed,
+        },
+      });
     }
 
     res.json(convertKeysToCamel(activity));
@@ -1381,13 +1408,17 @@ router.post('/activities', authMiddleware, async (req, res) => {
     }
 
     if (activity.created_by && activity.scheduled_at) {
-      console.log('[GCal Hook] Creating Google event for activity (PF)', activity.id);
-      createGoogleEvent(activity.created_by, {
-        id: activity.id,
-        type: activity.type,
-        description: activity.title || activity.description,
-        scheduled_at: activity.scheduled_at,
-      }, 'activities').catch(err => console.error('[GCal Hook] create error (PF):', err.message));
+      enqueueGcalOp({
+        agentId: activity.created_by,
+        activityId: activity.id,
+        activityTable: 'activities',
+        op: 'create',
+        payload: {
+          type: activity.type,
+          description: activity.title || activity.description,
+          scheduled_at: activity.scheduled_at,
+        },
+      });
     }
     
     res.status(201).json(convertKeysToCamel(activity));
