@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -305,7 +305,30 @@ function GoogleCalendarSettings({ settings, onSave, isAdmin, showSystemStatus = 
     }
   }, []);
 
+  const pollIntervalRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, []);
+
+  const FRIENDLY_AUTH_ERROR = "A integração pode não estar configurada — fale com o administrador.";
+
   const handleConnect = async () => {
+    if (connecting) return;
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+    const popup = window.open("about:blank", "_blank", "noopener,noreferrer,width=520,height=640");
+    if (!popup) {
+      toast.error("Permita pop-ups para este site para conectar sua conta Google.");
+      return;
+    }
     setConnecting(true);
     try {
       const token = localStorage.getItem("accessToken");
@@ -313,15 +336,57 @@ function GoogleCalendarSettings({ settings, onSave, isAdmin, showSystemStatus = 
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        toast.error(data.error || "Erro ao obter URL de autorização");
+      if (!res.ok || !data.url) {
+        try { popup.close(); } catch { /* ignore */ }
+        toast.error(data.error || FRIENDLY_AUTH_ERROR);
+        setConnecting(false);
+        return;
       }
+      popup.location.href = data.url;
+
+      const pollMs = 4000;
+      const maxMs = 5 * 60 * 1000;
+      const startedAt = Date.now();
+      const stop = () => {
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+        setConnecting(false);
+      };
+      pollIntervalRef.current = setInterval(async () => {
+        if (Date.now() - startedAt > maxMs) {
+          stop();
+          return;
+        }
+        try {
+          const statusRes = await fetch("/api/functions/google-calendar/status", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (statusRes.ok) {
+            const s = await statusRes.json();
+            if (s.connected) {
+              stop();
+              refetchStatus();
+              queryClient.invalidateQueries({ queryKey: ["googleCalendarEvents"] });
+              toast.success("Google Calendar conectado com sucesso!");
+              if (!popup.closed) {
+                try { popup.close(); } catch { /* cross-origin, ignore */ }
+              }
+              return;
+            }
+          }
+        } catch { /* keep polling */ }
+        if (popup.closed) {
+          stop();
+          refetchStatus();
+        }
+      }, pollMs);
     } catch {
-      toast.error("Erro ao conectar");
+      try { popup.close(); } catch { /* ignore */ }
+      toast.error(FRIENDLY_AUTH_ERROR);
+      setConnecting(false);
     }
-    setConnecting(false);
   };
 
   const handleDisconnect = async () => {
@@ -426,6 +491,9 @@ function GoogleCalendarSettings({ settings, onSave, isAdmin, showSystemStatus = 
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   URI de redirecionamento esperada: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded break-all">{window.location.origin}/api/functions/google-calendar/callback</code>
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  <strong>Dica:</strong> se ao conectar aparecer o erro <code>redirect_uri_mismatch</code>, confira se a URI acima está cadastrada exatamente igual em <em>"Authorized redirect URIs"</em> do OAuth Client no Google Cloud Console.
                 </p>
               </div>
             )}
