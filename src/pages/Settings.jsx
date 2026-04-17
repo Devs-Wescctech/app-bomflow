@@ -324,7 +324,7 @@ function GoogleCalendarSettings({ settings, onSave, isAdmin, showSystemStatus = 
       clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = null;
     }
-    const popup = window.open("about:blank", "_blank", "noopener,noreferrer,width=520,height=640");
+    const popup = window.open("about:blank", "gcalOAuth", "width=520,height=640");
     if (!popup) {
       toast.error("Permita pop-ups para este site para conectar sua conta Google.");
       return;
