@@ -62,7 +62,7 @@ export default function Settings() {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Minha Conta</h1>
           <p className="text-gray-500">Gerencie suas integrações pessoais</p>
         </div>
-        <GoogleCalendarSettings settings={settings} onSave={createOrUpdateSettingMutation} isAdmin={false} />
+        <GoogleCalendarSettings settings={settings} onSave={createOrUpdateSettingMutation} isAdmin={false} showSystemStatus={false} />
       </div>
     );
   }
@@ -113,7 +113,7 @@ export default function Settings() {
 
         {canGoogleCalendarSettings && (
           <TabsContent value="google-calendar" className="space-y-6">
-            <GoogleCalendarSettings settings={settings} onSave={createOrUpdateSettingMutation} isAdmin={isAdmin} />
+            <GoogleCalendarSettings settings={settings} onSave={createOrUpdateSettingMutation} isAdmin={isAdmin} showSystemStatus={true} />
           </TabsContent>
         )}
 
@@ -276,7 +276,7 @@ function SalesFieldsManager({ settings, onSave }) {
   );
 }
 
-function GoogleCalendarSettings({ settings, onSave, isAdmin }) {
+function GoogleCalendarSettings({ settings, onSave, isAdmin, showSystemStatus = false }) {
   const [connecting, setConnecting] = useState(false);
   const queryClient = useQueryClient();
 
@@ -356,55 +356,148 @@ function GoogleCalendarSettings({ settings, onSave, isAdmin }) {
     }
   };
 
+  const isConfigured = !!gcalStatus?.configured;
+  const isConnected = !!gcalStatus?.connected;
+
   return (
     <div className="space-y-6">
+      {showSystemStatus && (
+        <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+          <CardHeader className="border-b border-gray-200 dark:border-gray-800">
+            <CardTitle className="flex items-center gap-2 text-gray-900 dark:text-gray-100">
+              <SettingsIcon className="w-5 h-5" />
+              Integração Google Calendar do sistema
+            </CardTitle>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Status da integração que conecta o SalesTwo ao Google. Configurada pelo time técnico via variáveis de ambiente.
+            </p>
+          </CardHeader>
+          <CardContent className="pt-6 space-y-4">
+            <div
+              className="p-4 rounded-lg flex items-start gap-3"
+              style={{ backgroundColor: isConfigured ? "#f0fdf4" : "#fef2f2" }}
+            >
+              {isConfigured ? (
+                <>
+                  <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-green-700">
+                      As credenciais da integração com o Google Calendar foram configuradas pelo time técnico.
+                    </p>
+                    <p className="text-xs text-green-600 mt-1">
+                      Os vendedores já podem conectar suas contas pessoais do Google.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-red-600">
+                      A integração com o Google Calendar ainda não foi configurada pelo time técnico.
+                    </p>
+                    <p className="text-xs text-red-500 mt-1">
+                      Enquanto isso, ninguém conseguirá conectar a conta Google.
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {isAdmin && (
+              <div className="border-t pt-4 space-y-2">
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Detalhes técnicos (somente leitura)</p>
+                <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                  <li className="flex items-center gap-2">
+                    {isConfigured ? <CheckCircle2 className="w-3.5 h-3.5 text-green-600" /> : <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
+                    <span><code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">GCAL_CLIENT_ID</code> {isConfigured ? "configurado" : "não configurado"}</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    {isConfigured ? <CheckCircle2 className="w-3.5 h-3.5 text-green-600" /> : <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
+                    <span><code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">GCAL_CLIENT_SECRET</code> {isConfigured ? "configurado" : "não configurado"}</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    {isConfigured ? <CheckCircle2 className="w-3.5 h-3.5 text-green-600" /> : <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
+                    <span><code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">GCAL_REDIRECT_URI</code> {isConfigured ? "configurado" : "não configurado"}</span>
+                  </li>
+                </ul>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  Para alterar essas credenciais, contate o administrador da infraestrutura. Os valores em si não são exibidos por segurança.
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  URI de redirecionamento esperada: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded break-all">{window.location.origin}/api/functions/google-calendar/callback</code>
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
         <CardHeader className="border-b border-gray-200 dark:border-gray-800">
           <CardTitle className="flex items-center gap-2 text-gray-900 dark:text-gray-100">
             <Calendar className="w-5 h-5" />
-            Google Calendar
+            Conectar sua conta Google
           </CardTitle>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Conexão pessoal: você está conectando <strong>a sua própria conta Google</strong> ao SalesTwo, para sincronizar a sua agenda de vendas. Cada usuário conecta a conta dele.
+          </p>
         </CardHeader>
         <CardContent className="pt-6 space-y-6">
-          <div className="p-4 rounded-lg" style={{ backgroundColor: gcalStatus?.connected ? "#f0fdf4" : gcalStatus?.configured ? "#fef3c7" : "#fef2f2" }}>
-            <div className="flex items-center gap-2">
-              {gcalStatus?.connected ? (
+          <div
+            className="p-4 rounded-lg"
+            style={{ backgroundColor: isConnected ? "#f0fdf4" : isConfigured ? "#fef3c7" : "#fef2f2" }}
+          >
+            <div className="flex items-start gap-3">
+              {isConnected ? (
                 <>
-                  <Link2 className="w-5 h-5 text-green-600" />
+                  <Link2 className="w-5 h-5 text-green-600 mt-0.5 shrink-0" />
                   <div>
-                    <span className="text-sm font-medium text-green-700">Conectado ao Google Calendar</span>
+                    <p className="text-sm font-medium text-green-700">Sua conta Google está conectada</p>
                     {gcalStatus.calendarEmail && (
-                      <p className="text-xs text-green-600">{gcalStatus.calendarEmail}</p>
+                      <p className="text-xs text-green-600 mt-0.5">Conta: {gcalStatus.calendarEmail}</p>
                     )}
                     {gcalStatus.lastSync && (
-                      <p className="text-xs text-green-500">Última sincronização: {new Date(gcalStatus.lastSync).toLocaleString("pt-BR")}</p>
+                      <p className="text-xs text-green-500 mt-0.5">Última sincronização: {new Date(gcalStatus.lastSync).toLocaleString("pt-BR")}</p>
                     )}
                   </div>
                 </>
-              ) : gcalStatus?.configured ? (
+              ) : isConfigured ? (
                 <>
-                  <Unlink className="w-5 h-5 text-amber-600" />
-                  <span className="text-sm font-medium text-amber-700">Credenciais configuradas. Clique em "Conectar" para autorizar sua conta Google.</span>
+                  <Unlink className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-amber-700">
+                      A integração com o Google Calendar já está configurada no sistema.
+                    </p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      Agora você pode conectar a sua conta Google para sincronizar sua agenda.
+                    </p>
+                  </div>
                 </>
               ) : (
                 <>
-                  <Unlink className="w-5 h-5 text-red-500" />
-                  <span className="text-sm font-medium text-red-600">Integração indisponível. Contate o time técnico — as credenciais devem estar configuradas via variáveis de ambiente do servidor.</span>
+                  <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-red-600">
+                      A integração com o Google Calendar ainda não está disponível.
+                    </p>
+                    <p className="text-xs text-red-500 mt-0.5">
+                      Entre em contato com o administrador do sistema para liberar a conexão.
+                    </p>
+                  </div>
                 </>
               )}
             </div>
-            {gcalStatus?.connected && gcalStatus?.scopeOutdated && (
+            {isConnected && gcalStatus?.scopeOutdated && (
               <div className="mt-3 p-3 rounded border border-amber-300 bg-amber-50 text-amber-800 text-xs">
                 <strong>Atenção:</strong> sua conexão usa um escopo de permissão antigo. Recomendamos desconectar e conectar novamente para aplicar o novo padrão de privilégio mínimo.
               </div>
             )}
           </div>
 
-          {gcalStatus?.connected && (
-            <TargetCalendarPicker />
-          )}
+          {isConnected && <TargetCalendarPicker />}
 
-          {gcalStatus?.connected && (
+          {isConnected && (
             <div className="flex gap-2">
               <Button onClick={handleManualSync} variant="outline" className="flex-1">
                 <Save className="w-4 h-4 mr-2" />
@@ -412,12 +505,12 @@ function GoogleCalendarSettings({ settings, onSave, isAdmin }) {
               </Button>
               <Button onClick={handleDisconnect} disabled={connecting} variant="destructive">
                 {connecting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Unlink className="w-4 h-4 mr-1" />}
-                Desconectar
+                Desconectar minha conta Google
               </Button>
             </div>
           )}
 
-          {!gcalStatus?.connected && gcalStatus?.configured && (
+          {!isConnected && isConfigured && (
             <Button
               onClick={handleConnect}
               disabled={connecting}
@@ -425,30 +518,14 @@ function GoogleCalendarSettings({ settings, onSave, isAdmin }) {
               style={{ background: "linear-gradient(135deg, #5A2A3C, #F98F6F)" }}
             >
               {connecting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Calendar className="w-4 h-4 mr-2" />}
-              Conectar minha Conta Google
+              Conectar minha conta Google
             </Button>
-          )}
-
-          {isAdmin && (
-            <div className="border-t pt-4 space-y-2">
-              <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Configuração da integração</p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                A integração com Google Calendar é configurada pelo time técnico via variáveis de ambiente
-                (<code className="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">GCAL_CLIENT_ID</code>,
-                <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs ml-1">GCAL_CLIENT_SECRET</code>,
-                <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs ml-1">GCAL_REDIRECT_URI</code>).
-                Se precisar alterar as credenciais, contate o administrador da infraestrutura.
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                URI de redirecionamento do servidor: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded break-all">{window.location.origin}/api/functions/google-calendar/callback</code>
-              </p>
-            </div>
           )}
 
           <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
             <p className="text-xs text-blue-700 dark:text-blue-300">
-              <strong>Sincronização automática:</strong> Atividades criadas no SalesTwo vão automaticamente para o Google Calendar.
-              Eventos criados no Google Calendar são importados a cada 5 minutos. Tudo funciona de forma transparente.
+              <strong>Sincronização automática:</strong> Atividades criadas no SalesTwo vão automaticamente para a sua agenda Google.
+              Eventos criados na sua agenda Google são importados a cada 5 minutos. Tudo funciona de forma transparente.
             </p>
           </div>
         </CardContent>
