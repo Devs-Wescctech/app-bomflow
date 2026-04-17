@@ -75,3 +75,6 @@ BACKEND_PORT = "3001"
 SMTP_HOST = "email-ssl.com.br"
 SMTP_PORT = "465"
 COMMISSION_REPORT_RECIPIENTS = "tais.dequi@wescctech.com.br"
+
+[userenv.development]
+GCAL_TOKEN_ENC_KEY = "CsdPtPQ6j3mSeAMyADo/FW5FdPzgsht+yoHE8zUVLc4="

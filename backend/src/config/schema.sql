@@ -1240,6 +1240,10 @@ CREATE INDEX IF NOT EXISTS idx_log_est_agent_id ON gerador_leads_log_estruturado
 CREATE INDEX IF NOT EXISTS idx_log_est_status_envio ON gerador_leads_log_estruturado(status_envio);
 CREATE INDEX IF NOT EXISTS idx_log_est_convertido ON gerador_leads_log_estruturado(convertido);
 
+-- access_token / refresh_token: stored as ciphertext using AES-256-GCM
+-- with version prefix `enc:v1:` (see backend/src/utils/cryptoTokens.js).
+-- Plaintext values from before Phase 1.1 are migrated by
+-- backend/scripts/encrypt_gcal_tokens.js (idempotent).
 CREATE TABLE IF NOT EXISTS google_calendar_tokens (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     agent_id UUID REFERENCES agents(id) ON DELETE CASCADE UNIQUE,

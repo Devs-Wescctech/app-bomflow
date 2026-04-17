@@ -1,6 +1,7 @@
 import { google } from 'googleapis';
 import { query } from '../config/database.js';
 import crypto from 'crypto';
+import { encrypt, decrypt } from '../utils/cryptoTokens.js';
 
 async function getSetting(key) {
   const result = await query(
@@ -33,9 +34,19 @@ async function getAuthenticatedClient(agentId) {
   const tokenRow = result.rows[0];
   if (!tokenRow) return null;
 
+  let accessTokenPlain;
+  let refreshTokenPlain;
+  try {
+    accessTokenPlain = decrypt(tokenRow.access_token);
+    refreshTokenPlain = decrypt(tokenRow.refresh_token);
+  } catch (err) {
+    console.error('[GCal] Failed to decrypt token for agent', agentId, '-', err.message);
+    return null;
+  }
+
   oauth2.setCredentials({
-    access_token: tokenRow.access_token,
-    refresh_token: tokenRow.refresh_token,
+    access_token: accessTokenPlain,
+    refresh_token: refreshTokenPlain,
     expiry_date: tokenRow.token_expiry ? new Date(tokenRow.token_expiry).getTime() : undefined,
   });
 
@@ -46,7 +57,7 @@ async function getAuthenticatedClient(agentId) {
       let idx = 1;
       if (tokens.access_token) {
         updates.push(`access_token = $${idx++}`);
-        values.push(tokens.access_token);
+        values.push(encrypt(tokens.access_token));
       }
       if (tokens.expiry_date) {
         updates.push(`token_expiry = $${idx++}`);
@@ -115,7 +126,10 @@ export async function handleCallback(code, agentId) {
     calendarEmail = calList.data.id;
   } catch { }
 
-  if (tokens.refresh_token) {
+  const encAccess = encrypt(tokens.access_token);
+  const encRefresh = tokens.refresh_token ? encrypt(tokens.refresh_token) : null;
+
+  if (encRefresh) {
     await query(
       `INSERT INTO google_calendar_tokens (id, agent_id, access_token, refresh_token, token_expiry, calendar_email)
        VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5)
@@ -123,8 +137,8 @@ export async function handleCallback(code, agentId) {
          access_token = $2, refresh_token = $3, token_expiry = $4, calendar_email = $5, updated_at = NOW()`,
       [
         agentId,
-        tokens.access_token,
-        tokens.refresh_token,
+        encAccess,
+        encRefresh,
         tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
         calendarEmail,
       ]
@@ -137,7 +151,7 @@ export async function handleCallback(code, agentId) {
          access_token = $2, token_expiry = $3, calendar_email = $4, updated_at = NOW()`,
       [
         agentId,
-        tokens.access_token,
+        encAccess,
         tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
         calendarEmail,
       ]
