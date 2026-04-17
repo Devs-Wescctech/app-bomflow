@@ -251,16 +251,8 @@ function SalesFieldsManager({ settings, onSave }) {
 }
 
 function GoogleCalendarSettings({ settings, onSave, isAdmin }) {
-  const [clientId, setClientId] = useState("");
-  const [clientSecret, setClientSecret] = useState("");
-  const [saving, setSaving] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const queryClient = useQueryClient();
-
-  const getSetting = (key) => {
-    const s = settings.find(s => (s.setting_key || s.settingKey) === key);
-    return (s?.setting_value || s?.settingValue) || "";
-  };
 
   const { data: gcalStatus, refetch: refetchStatus } = useQuery({
     queryKey: ["gcalStatus"],
@@ -286,30 +278,6 @@ function GoogleCalendarSettings({ settings, onSave, isAdmin }) {
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
-
-  useEffect(() => {
-    if (settings.length > 0) {
-      setClientId(getSetting("google_calendar_client_id"));
-      setClientSecret(getSetting("google_calendar_client_secret"));
-    }
-  }, [settings]);
-
-  const handleSaveCredentials = async () => {
-    if (!clientId.trim() || !clientSecret.trim()) {
-      toast.error("Preencha Client ID e Client Secret");
-      return;
-    }
-    setSaving(true);
-    try {
-      await onSave.mutateAsync({ key: "google_calendar_client_id", value: clientId.trim(), type: "text" });
-      await onSave.mutateAsync({ key: "google_calendar_client_secret", value: clientSecret.trim(), type: "text" });
-      toast.success("Credenciais salvas!");
-      refetchStatus();
-    } catch {
-      toast.error("Erro ao salvar credenciais");
-    }
-    setSaving(false);
-  };
 
   const handleConnect = async () => {
     setConnecting(true);
@@ -395,10 +363,15 @@ function GoogleCalendarSettings({ settings, onSave, isAdmin }) {
               ) : (
                 <>
                   <Unlink className="w-5 h-5 text-red-500" />
-                  <span className="text-sm font-medium text-red-600">Não configurado. {isAdmin ? "Configure as credenciais abaixo." : "Peça ao admin para configurar."}</span>
+                  <span className="text-sm font-medium text-red-600">Integração indisponível. Contate o time técnico — as credenciais devem estar configuradas via variáveis de ambiente do servidor.</span>
                 </>
               )}
             </div>
+            {gcalStatus?.connected && gcalStatus?.scopeOutdated && (
+              <div className="mt-3 p-3 rounded border border-amber-300 bg-amber-50 text-amber-800 text-xs">
+                <strong>Atenção:</strong> sua conexão usa um escopo de permissão antigo. Recomendamos desconectar e conectar novamente para aplicar o novo padrão de privilégio mínimo.
+              </div>
+            )}
           </div>
 
           {gcalStatus?.connected && (
@@ -427,44 +400,18 @@ function GoogleCalendarSettings({ settings, onSave, isAdmin }) {
           )}
 
           {isAdmin && (
-            <div className="border-t pt-4 space-y-4">
-              <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Configuração do Admin (uma única vez)</p>
-              <div>
-                <Label>Google Client ID</Label>
-                <Input
-                  value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
-                  placeholder="Seu Client ID do Google Cloud Console"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label>Google Client Secret</Label>
-                <Input
-                  value={clientSecret}
-                  onChange={(e) => setClientSecret(e.target.value)}
-                  type="password"
-                  placeholder="Seu Client Secret do Google Cloud Console"
-                  className="mt-1"
-                />
-              </div>
-              <Button onClick={handleSaveCredentials} disabled={saving} className="w-full" variant="outline">
-                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                Salvar Credenciais
-              </Button>
-
-              <div className="text-sm text-gray-600 dark:text-gray-400 space-y-2 border-t pt-3">
-                <p className="font-semibold text-gray-800 dark:text-gray-200">Como obter (feito uma única vez):</p>
-                <ol className="list-decimal ml-4 space-y-1">
-                  <li>Acesse o <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Google Cloud Console</a></li>
-                  <li>Crie um projeto e ative a <strong>Google Calendar API</strong></li>
-                  <li>Vá em <strong>Credenciais → Criar Credenciais → ID do cliente OAuth</strong></li>
-                  <li>Configure a Tela de Consentimento (tipo Externo)</li>
-                  <li>Tipo: <strong>Aplicativo da Web</strong></li>
-                  <li>URI de redirecionamento: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs break-all">{window.location.origin}/api/functions/google-calendar/callback</code></li>
-                  <li>Copie Client ID e Client Secret e salve acima</li>
-                </ol>
-              </div>
+            <div className="border-t pt-4 space-y-2">
+              <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Configuração da integração</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                A integração com Google Calendar é configurada pelo time técnico via variáveis de ambiente
+                (<code className="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">GCAL_CLIENT_ID</code>,
+                <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs ml-1">GCAL_CLIENT_SECRET</code>,
+                <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs ml-1">GCAL_REDIRECT_URI</code>).
+                Se precisar alterar as credenciais, contate o administrador da infraestrutura.
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                URI de redirecionamento do servidor: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded break-all">{window.location.origin}/api/functions/google-calendar/callback</code>
+              </p>
             </div>
           )}
 

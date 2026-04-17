@@ -1253,9 +1253,15 @@ CREATE TABLE IF NOT EXISTS google_calendar_tokens (
     calendar_email VARCHAR(255),
     last_sync_at TIMESTAMPTZ,
     sync_token TEXT,
+    granted_scope TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Phase 1.2 — granted_scope tracks which OAuth scope the user actually consented
+-- to. Tokens issued before this column existed have NULL here and are flagged as
+-- outdated by the API; the UI can prompt reconnection.
+ALTER TABLE google_calendar_tokens ADD COLUMN IF NOT EXISTS granted_scope TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_gcal_tokens_agent ON google_calendar_tokens(agent_id);
 

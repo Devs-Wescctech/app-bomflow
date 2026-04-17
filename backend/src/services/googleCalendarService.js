@@ -3,28 +3,38 @@ import { query } from '../config/database.js';
 import crypto from 'crypto';
 import { encrypt, decrypt } from '../utils/cryptoTokens.js';
 
-async function getSetting(key) {
-  const result = await query(
-    'SELECT setting_value FROM system_settings WHERE setting_key = $1',
-    [key]
-  );
-  return result.rows[0]?.setting_value || null;
+// OAuth scope (Phase 1.2) — minimum privilege: events only.
+// Tokens granted before this change carry the legacy scope
+// 'https://www.googleapis.com/auth/calendar' (broader). The
+// `granted_scope` column on google_calendar_tokens lets the UI
+// detect outdated grants and prompt reconnection.
+export const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+export const GCAL_LEGACY_SCOPE = 'https://www.googleapis.com/auth/calendar';
+
+function isConfiguredViaEnv() {
+  return !!(process.env.GCAL_CLIENT_ID && process.env.GCAL_CLIENT_SECRET && process.env.GCAL_REDIRECT_URI);
 }
 
-async function getOAuth2Client() {
-  const clientId = await getSetting('google_calendar_client_id');
-  const clientSecret = await getSetting('google_calendar_client_secret');
-  if (!clientId || !clientSecret) return null;
+function getOAuth2Client() {
+  const clientId = process.env.GCAL_CLIENT_ID;
+  const clientSecret = process.env.GCAL_CLIENT_SECRET;
+  const redirectUri = process.env.GCAL_REDIRECT_URI;
 
-  const redirectUri = process.env.REPLIT_DEV_DOMAIN
-    ? `https://${process.env.REPLIT_DEV_DOMAIN}/api/functions/google-calendar/callback`
-    : (process.env.APP_URL || 'http://localhost:5173') + '/api/functions/google-calendar/callback';
+  if (!clientId || !clientSecret || !redirectUri) {
+    const missing = [
+      !clientId && 'GCAL_CLIENT_ID',
+      !clientSecret && 'GCAL_CLIENT_SECRET',
+      !redirectUri && 'GCAL_REDIRECT_URI',
+    ].filter(Boolean).join(', ');
+    console.error(`[GCal] ${missing} not configured. Set in environment variables.`);
+    return null;
+  }
 
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 }
 
 async function getAuthenticatedClient(agentId) {
-  const oauth2 = await getOAuth2Client();
+  const oauth2 = getOAuth2Client();
   if (!oauth2) return null;
 
   const result = await query(
@@ -78,8 +88,8 @@ async function getAuthenticatedClient(agentId) {
 }
 
 export async function getAuthUrl(agentId) {
-  const oauth2 = await getOAuth2Client();
-  if (!oauth2) throw new Error('Google Calendar não configurado. Admin deve informar Client ID e Secret nas Configurações.');
+  const oauth2 = getOAuth2Client();
+  if (!oauth2) throw new Error('Google Calendar não configurado no servidor. Contate o administrador (variáveis GCAL_CLIENT_ID, GCAL_CLIENT_SECRET, GCAL_REDIRECT_URI).');
 
   const state = crypto.randomBytes(20).toString('hex') + ':' + agentId;
 
@@ -90,10 +100,15 @@ export async function getAuthUrl(agentId) {
     [agentId, state]
   );
 
+  // 'openid' + 'email' are the minimum complementary scopes needed to
+  // obtain the user's email via OAuth2 userinfo (used to display which
+  // Google account is connected). They do NOT grant access to mail or
+  // any additional calendar data. The reduced 'calendar.events' scope
+  // remains the only data-access scope.
   return oauth2.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    scope: ['https://www.googleapis.com/auth/calendar'],
+    scope: [GCAL_SCOPE, 'openid', 'email'],
     state: state,
   });
 }
@@ -113,52 +128,61 @@ export async function validateOAuthState(state) {
 }
 
 export async function handleCallback(code, agentId) {
-  const oauth2 = await getOAuth2Client();
-  if (!oauth2) throw new Error('Google Calendar não configurado');
+  const oauth2 = getOAuth2Client();
+  if (!oauth2) throw new Error('Google Calendar não configurado no servidor');
 
   const { tokens } = await oauth2.getToken(code);
   oauth2.setCredentials(tokens);
 
+  // Try to read the user's email via OAuth2 userinfo. The reduced scope
+  // (calendar.events) does NOT include calendarList.get, so we fall back
+  // to OAuth2 v2 userinfo (covered by 'openid'/'email') and finally to
+  // the JWT id_token if present. May be null — UI handles it gracefully.
   let calendarEmail = null;
   try {
-    const calendar = google.calendar({ version: 'v3', auth: oauth2 });
-    const calList = await calendar.calendarList.get({ calendarId: 'primary' });
-    calendarEmail = calList.data.id;
-  } catch { }
+    const oauth2Api = google.oauth2({ version: 'v2', auth: oauth2 });
+    const userInfo = await oauth2Api.userinfo.get();
+    calendarEmail = userInfo.data.email || null;
+  } catch {
+    // userinfo requires email/openid scope; skip silently if not granted.
+  }
 
+  const grantedScope = tokens.scope || null;
   const encAccess = encrypt(tokens.access_token);
   const encRefresh = tokens.refresh_token ? encrypt(tokens.refresh_token) : null;
 
   if (encRefresh) {
     await query(
-      `INSERT INTO google_calendar_tokens (id, agent_id, access_token, refresh_token, token_expiry, calendar_email)
-       VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5)
+      `INSERT INTO google_calendar_tokens (id, agent_id, access_token, refresh_token, token_expiry, calendar_email, granted_scope)
+       VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5, $6)
        ON CONFLICT (agent_id) DO UPDATE SET
-         access_token = $2, refresh_token = $3, token_expiry = $4, calendar_email = $5, updated_at = NOW()`,
+         access_token = $2, refresh_token = $3, token_expiry = $4, calendar_email = $5, granted_scope = $6, updated_at = NOW()`,
       [
         agentId,
         encAccess,
         encRefresh,
         tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
         calendarEmail,
+        grantedScope,
       ]
     );
   } else {
     await query(
-      `INSERT INTO google_calendar_tokens (id, agent_id, access_token, refresh_token, token_expiry, calendar_email)
-       VALUES (uuid_generate_v4(), $1, $2, '', $3, $4)
+      `INSERT INTO google_calendar_tokens (id, agent_id, access_token, refresh_token, token_expiry, calendar_email, granted_scope)
+       VALUES (uuid_generate_v4(), $1, $2, '', $3, $4, $5)
        ON CONFLICT (agent_id) DO UPDATE SET
-         access_token = $2, token_expiry = $3, calendar_email = $4, updated_at = NOW()`,
+         access_token = $2, token_expiry = $3, calendar_email = $4, granted_scope = $5, updated_at = NOW()`,
       [
         agentId,
         encAccess,
         tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
         calendarEmail,
+        grantedScope,
       ]
     );
   }
 
-  return { success: true, email: calendarEmail };
+  return { success: true, email: calendarEmail, grantedScope };
 }
 
 export async function disconnectAgent(agentId) {
@@ -166,13 +190,21 @@ export async function disconnectAgent(agentId) {
   return { success: true };
 }
 
+function isScopeOutdated(grantedScope) {
+  if (!grantedScope) return true;
+  // Scope strings from Google are space-separated. We require calendar.events;
+  // the legacy 'calendar' scope (broader) does NOT satisfy this because Google
+  // returns the exact scope the user consented to. Flag as outdated whenever
+  // the canonical 'calendar.events' string is missing.
+  const scopes = grantedScope.split(/\s+/);
+  return !scopes.includes(GCAL_SCOPE);
+}
+
 export async function getAgentConnectionStatus(agentId) {
-  const clientId = await getSetting('google_calendar_client_id');
-  const clientSecret = await getSetting('google_calendar_client_secret');
-  const configured = !!clientId && !!clientSecret;
+  const configured = isConfiguredViaEnv();
 
   const result = await query(
-    'SELECT calendar_email, last_sync_at FROM google_calendar_tokens WHERE agent_id = $1',
+    'SELECT calendar_email, last_sync_at, granted_scope FROM google_calendar_tokens WHERE agent_id = $1',
     [agentId]
   );
   const tokenRow = result.rows[0];
@@ -182,15 +214,17 @@ export async function getAgentConnectionStatus(agentId) {
     connected: configured && !!tokenRow,
     calendarEmail: tokenRow?.calendar_email || null,
     lastSync: tokenRow?.last_sync_at || null,
+    grantedScope: tokenRow?.granted_scope || null,
+    scopeOutdated: tokenRow ? isScopeOutdated(tokenRow.granted_scope) : false,
+    requiredScope: GCAL_SCOPE,
   };
 }
 
 export async function getConnectionStatus() {
-  const clientId = await getSetting('google_calendar_client_id');
-  const clientSecret = await getSetting('google_calendar_client_secret');
   return {
-    configured: !!clientId && !!clientSecret,
+    configured: isConfiguredViaEnv(),
     connected: false,
+    requiredScope: GCAL_SCOPE,
   };
 }
 
