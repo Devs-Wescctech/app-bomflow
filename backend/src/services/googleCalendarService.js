@@ -186,8 +186,52 @@ export async function handleCallback(code, agentId) {
 }
 
 export async function disconnectAgent(agentId) {
+  // Phase 3.2 — Revoke at Google before purging local state.
+  // We must revoke even when the local DELETE will succeed, so a leaked
+  // or cached refresh_token can no longer be used to mint access tokens.
+  // Failures here (already-invalid token, network issue) must NOT block
+  // the local removal; we log and continue.
+  let revoked = false;
+  let revokeError = null;
+  try {
+    const tokenResult = await query(
+      'SELECT refresh_token FROM google_calendar_tokens WHERE agent_id = $1',
+      [agentId]
+    );
+    const tokenRow = tokenResult.rows[0];
+    if (tokenRow?.refresh_token) {
+      let refreshTokenPlain;
+      try {
+        refreshTokenPlain = decrypt(tokenRow.refresh_token);
+      } catch (decErr) {
+        console.warn(`[GCal] Could not decrypt refresh_token for agent ${agentId} during revoke: ${decErr.message}`);
+      }
+      if (refreshTokenPlain) {
+        const oauth2 = getOAuth2Client();
+        if (oauth2) {
+          try {
+            await oauth2.revokeToken(refreshTokenPlain);
+            revoked = true;
+            console.log(`[GCal] Revoked Google OAuth token for agent ${agentId}.`);
+          } catch (revErr) {
+            // Common cases: invalid_token (already revoked), network error.
+            revokeError = revErr.message || String(revErr);
+            console.warn(`[GCal] revokeToken for agent ${agentId} failed (proceeding with local delete): ${revokeError}`);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    revokeError = err.message || String(err);
+    console.warn(`[GCal] Unable to look up token for revoke (agent ${agentId}): ${revokeError}`);
+  }
+
   await query('DELETE FROM google_calendar_tokens WHERE agent_id = $1', [agentId]);
-  return { success: true };
+  // Drain any pending outbox entries for this agent — there is no longer
+  // a valid token, so further attempts would only fail and noise up the UI.
+  await query("DELETE FROM gcal_event_outbox WHERE agent_id = $1 AND status IN ('pending','failed','processing')", [agentId]);
+
+  return { success: true, revoked, revokeError };
 }
 
 function isScopeOutdated(grantedScope) {

@@ -4529,6 +4529,68 @@ router.post('/google-calendar/sync', authMiddleware, loadAgentMiddleware, async 
   }
 });
 
+// Phase 3.1 — Admin-only endpoint to revoke a vendor's Google Calendar access.
+// Strict authz: only req.user.role==='admin' OR req.agent.agentType==='admin'.
+// Uses the same disconnectAgent path as the user's self-disconnect, so the
+// Google revokeToken call + local cleanup are consistent.
+router.delete('/google-calendar/revoke-access/:agentId', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const isAdmin = req.user?.role === 'admin' || req.agent?.agentType === 'admin';
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Apenas administradores podem revogar o acesso de outros usuários.' });
+    }
+
+    const { agentId } = req.params;
+    if (!agentId) {
+      return res.status(400).json({ error: 'agentId obrigatório.' });
+    }
+
+    const exists = await query('SELECT id, name FROM agents WHERE id = $1', [agentId]);
+    if (exists.rows.length === 0) {
+      return res.status(404).json({ error: 'Agente não encontrado.' });
+    }
+
+    const result = await disconnectAgent(agentId);
+    res.json({
+      success: true,
+      agentId,
+      agentName: exists.rows[0].name,
+      revoked: result.revoked,
+      revokeError: result.revokeError,
+    });
+  } catch (error) {
+    console.error('[Google Calendar] Admin revoke error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Returns the list of agent IDs that currently have a Google Calendar
+// connection, so the admin UI can decide which agents to show the
+// "Revogar acesso" action for. Admin-only.
+router.get('/google-calendar/connected-agents', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const isAdmin = req.user?.role === 'admin' || req.agent?.agentType === 'admin';
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Apenas administradores podem listar conexões.' });
+    }
+    const r = await query(
+      `SELECT t.agent_id, t.calendar_email, t.last_sync_at, t.granted_scope, a.name AS agent_name
+         FROM google_calendar_tokens t
+         JOIN agents a ON a.id = t.agent_id`
+    );
+    res.json(r.rows.map(row => ({
+      agentId: row.agent_id,
+      agentName: row.agent_name,
+      calendarEmail: row.calendar_email,
+      lastSync: row.last_sync_at,
+      grantedScope: row.granted_scope,
+    })));
+  } catch (error) {
+    console.error('[Google Calendar] Connected agents error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/google-calendar/disconnect', authMiddleware, loadAgentMiddleware, async (req, res) => {
   try {
     const agentId = req.agent?.id;

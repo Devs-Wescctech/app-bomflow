@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Edit, Trash2, UserCheck, UserX, Activity, Upload, Loader2, MessageSquare, Copy, Check, ExternalLink, MoreVertical, Clock, Users, Building2, Layers, Settings, ShieldX, KeyRound } from "lucide-react";
+import { Plus, Edit, Trash2, UserCheck, UserX, Activity, Upload, Loader2, MessageSquare, Copy, Check, ExternalLink, MoreVertical, Clock, Users, Building2, Layers, Settings, ShieldX, KeyRound, Unlink } from "lucide-react";
 import { canManageAgents, canManageAgentInTeam, isSupervisorType } from "@/components/utils/permissions.jsx";
 import {
   Dialog,
@@ -210,6 +210,61 @@ export default function Agents() {
       toast.error('Erro ao excluir agente: ' + error.message);
     },
   });
+
+  // Phase 3.1/3.3 — Admin-only Google Calendar revocation.
+  const { data: gcalConnectedAgents = [] } = useQuery({
+    queryKey: ['gcal-connected-agents'],
+    queryFn: async () => {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch('/api/functions/google-calendar/connected-agents', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: user?.role === 'admin',
+    staleTime: 1000 * 60,
+  });
+  const gcalConnectedSet = new Set(gcalConnectedAgents.map(a => a.agentId));
+
+  const revokeGcalMutation = useMutation({
+    mutationFn: async (agentId) => {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(`/api/functions/google-calendar/revoke-access/${agentId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || 'Falha ao revogar acesso.');
+      return body;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['gcal-connected-agents'] });
+      const name = data?.agentName || 'vendedor';
+      if (data?.revoked) {
+        toast.success(`Acesso Google Calendar revogado para ${name}.`);
+      } else {
+        toast.success(`Acesso local removido para ${name}. Token no Google: ${data?.revokeError || 'já inválido'}.`);
+      }
+    },
+    onError: (error) => {
+      toast.error('Erro ao revogar acesso: ' + error.message);
+    },
+  });
+
+  const handleRevokeGcal = (agent) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Revogar acesso Google Calendar',
+      message: `Tem certeza que deseja revogar o acesso do Google Calendar para "${agent.name}"? O token será invalidado no Google e o vendedor precisará reconectar.`,
+      confirmLabel: 'Revogar acesso',
+      variant: 'danger',
+      onConfirm: () => {
+        revokeGcalMutation.mutate(agent.id);
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
 
   const createTeamMutation = useMutation({
     mutationFn: (data) => base44.entities.Team.create(data),
@@ -765,6 +820,18 @@ export default function Agents() {
                             <KeyRound className="w-4 h-4 mr-2 text-orange-600" />
                             Redefinir Senha
                           </DropdownMenuItem>
+                          {isAdmin && gcalConnectedSet.has(agent.id) && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => handleRevokeGcal(agent)}
+                                className="cursor-pointer text-amber-700 focus:text-amber-700 focus:bg-amber-50 dark:focus:bg-amber-950"
+                              >
+                                <Unlink className="w-4 h-4 mr-2" />
+                                Revogar Google Calendar
+                              </DropdownMenuItem>
+                            </>
+                          )}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => handleDelete(agent)} className="cursor-pointer text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950">
                             <Trash2 className="w-4 h-4 mr-2" />
