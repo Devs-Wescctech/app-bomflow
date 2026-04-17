@@ -159,6 +159,28 @@ export function canManageSettings(agent) {
   return false;
 }
 
+export const SYSTEMS_PERMISSION_KEYS = [
+  'SystemsSalesFields',
+  'SystemsGoogleCalendar',
+  'SystemsAutentique',
+];
+
+export function canAccessSystemsItem(agent, key) {
+  const agentType = agent?.agent_type || agent?.agentType;
+  if (!agent) return false;
+  if (agentType === 'admin') return true;
+  if (Array.isArray(agent.modules) && agent.modules.includes('all')) return true;
+  const allowed = agent.allowedSubmenus || agent.allowed_submenus || [];
+  return allowed.includes(key);
+}
+
+export function hasAnySystemsAccess(agent) {
+  const agentType = agent?.agent_type || agent?.agentType;
+  if (!agent) return false;
+  if (agentType === 'admin') return true;
+  return SYSTEMS_PERMISSION_KEYS.some(k => canAccessSystemsItem(agent, k));
+}
+
 export function isSupervisorType(agentType) {
   return agentType === 'supervisor' || agentType === 'sales_supervisor' || agentType?.endsWith('_supervisor');
 }

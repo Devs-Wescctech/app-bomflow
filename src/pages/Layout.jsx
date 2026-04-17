@@ -78,7 +78,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import NotificationBell from "@/components/ui/notification-bell";
-import { filterMenuItems } from "@/components/utils/permissions";
+import { filterMenuItems, hasAnySystemsAccess } from "@/components/utils/permissions";
 
 const PUBLIC_PAGES = [
   'Login', 'login', 'PublicSignature', 'PublicProposal',
@@ -377,7 +377,7 @@ function ModernSidebar({ user, filteredMenuModules, expandedModules, toggleModul
           </div>
         ))}
 
-        {user?.role === 'admin' && (
+        {(user?.role === 'admin' || hasAnySystemsAccess(user?.agent)) && (
           <div className="pt-4 mt-4 border-t border-gray-200/50 dark:border-gray-700/50">
             <Link
               to={createPageUrl("Settings")}
@@ -847,7 +847,7 @@ function LayoutContent({ children, currentPageName }) {
                   </div>
                 ))}
                 
-                {user?.role === 'admin' && (
+                {(user?.role === 'admin' || hasAnySystemsAccess(currentAgent)) && (
                   <div className="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
                     <button
                       onClick={() => {

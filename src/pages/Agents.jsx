@@ -71,6 +71,15 @@ const MENU_MODULES = [
       { id: "Agents", title: "Agentes" },
       { id: "Settings", title: "Configurações do Sistema" },
     ]
+  },
+  {
+    id: "systems",
+    title: "Sistemas",
+    items: [
+      { id: "SystemsSalesFields", title: "Campos de Vendas" },
+      { id: "SystemsGoogleCalendar", title: "Google Agenda" },
+      { id: "SystemsAutentique", title: "Autentique" },
+    ]
   }
 ];
 

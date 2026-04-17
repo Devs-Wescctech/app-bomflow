@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { canAccessSystemsItem, hasAnySystemsAccess } from "@/components/utils/permissions";
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -47,8 +48,14 @@ export default function Settings() {
     },
   });
   const isAdmin = user?.role === 'admin';
+  const currentAgent = user?.agent;
 
-  if (!isAdmin) {
+  const canSalesFields = isAdmin || canAccessSystemsItem(currentAgent, 'SystemsSalesFields');
+  const canGoogleCalendarSettings = isAdmin || canAccessSystemsItem(currentAgent, 'SystemsGoogleCalendar');
+  const canAutentiqueSettings = isAdmin || canAccessSystemsItem(currentAgent, 'SystemsAutentique');
+  const anySystemsTab = canSalesFields || canGoogleCalendarSettings || canAutentiqueSettings;
+
+  if (!anySystemsTab) {
     return (
       <div className="p-6 min-h-screen bg-gray-50 dark:bg-gray-950 space-y-6">
         <div>
@@ -60,6 +67,12 @@ export default function Settings() {
     );
   }
 
+  const defaultTab = canSalesFields
+    ? "sales-fields"
+    : canGoogleCalendarSettings
+      ? "google-calendar"
+      : "autentique";
+
   return (
     <div className="p-6 space-y-6 bg-gray-50 dark:bg-gray-950 min-h-screen">
       <div>
@@ -70,33 +83,45 @@ export default function Settings() {
         </p>
       </div>
 
-      <Tabs defaultValue="sales-fields" className="w-full">
+      <Tabs defaultValue={defaultTab} className="w-full">
         <TabsList className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
-          <TabsTrigger value="sales-fields" className="data-[state=active]:bg-blue-50 dark:data-[state=active]:bg-blue-950">
-            <ListChecks className="w-4 h-4 mr-2" />
-            Campos de Vendas
-          </TabsTrigger>
-          <TabsTrigger value="google-calendar" className="data-[state=active]:bg-blue-50 dark:data-[state=active]:bg-blue-950">
-            <Calendar className="w-4 h-4 mr-2" />
-            Google Agenda
-          </TabsTrigger>
-          <TabsTrigger value="autentique" className="data-[state=active]:bg-blue-50 dark:data-[state=active]:bg-blue-950">
-            <FileSignature className="w-4 h-4 mr-2" />
-            Autentique
-          </TabsTrigger>
+          {canSalesFields && (
+            <TabsTrigger value="sales-fields" className="data-[state=active]:bg-blue-50 dark:data-[state=active]:bg-blue-950">
+              <ListChecks className="w-4 h-4 mr-2" />
+              Campos de Vendas
+            </TabsTrigger>
+          )}
+          {canGoogleCalendarSettings && (
+            <TabsTrigger value="google-calendar" className="data-[state=active]:bg-blue-50 dark:data-[state=active]:bg-blue-950">
+              <Calendar className="w-4 h-4 mr-2" />
+              Google Agenda
+            </TabsTrigger>
+          )}
+          {canAutentiqueSettings && (
+            <TabsTrigger value="autentique" className="data-[state=active]:bg-blue-50 dark:data-[state=active]:bg-blue-950">
+              <FileSignature className="w-4 h-4 mr-2" />
+              Autentique
+            </TabsTrigger>
+          )}
         </TabsList>
 
-        <TabsContent value="sales-fields" className="space-y-6">
-          <SalesFieldsManager settings={settings} onSave={createOrUpdateSettingMutation} />
-        </TabsContent>
+        {canSalesFields && (
+          <TabsContent value="sales-fields" className="space-y-6">
+            <SalesFieldsManager settings={settings} onSave={createOrUpdateSettingMutation} />
+          </TabsContent>
+        )}
 
-        <TabsContent value="google-calendar" className="space-y-6">
-          <GoogleCalendarSettings settings={settings} onSave={createOrUpdateSettingMutation} isAdmin={isAdmin} />
-        </TabsContent>
+        {canGoogleCalendarSettings && (
+          <TabsContent value="google-calendar" className="space-y-6">
+            <GoogleCalendarSettings settings={settings} onSave={createOrUpdateSettingMutation} isAdmin={isAdmin} />
+          </TabsContent>
+        )}
 
-        <TabsContent value="autentique" className="space-y-6">
-          <AutentiqueSettings settings={settings} onSave={createOrUpdateSettingMutation} />
-        </TabsContent>
+        {canAutentiqueSettings && (
+          <TabsContent value="autentique" className="space-y-6">
+            <AutentiqueSettings settings={settings} onSave={createOrUpdateSettingMutation} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
