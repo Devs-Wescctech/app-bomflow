@@ -850,7 +850,7 @@ export default function LeadPJDetail() {
               <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/10">
                 <p className="text-white/70 text-xs uppercase tracking-wide">Funcionários</p>
                 <p className="text-lg font-semibold text-white">
-                  {lead.employee_count || lead.employeeCount || "Não Informado"}
+                  {lead.employee_count || lead.employeeCount || lead.num_employees || lead.numEmployees || "Não Informado"}
                 </p>
               </div>
             </div>

@@ -172,7 +172,7 @@ function LeadDetailModal({ leadId, open, onClose }) {
                 value={agent?.name || "Não atribuído"}
               />
               <InfoItem icon={CalendarIcon} label="Data de Cadastro" value={formatDateTime(lead.createdAt || lead.created_at)} />
-              <InfoItem icon={Building2} label="Funcionários" value={lead.employeeCount || lead.employee_count || "Não Informado"} />
+              <InfoItem icon={Building2} label="Funcionários" value={lead.employeeCount || lead.employee_count || lead.numEmployees || lead.num_employees || "Não Informado"} />
             </div>
 
             {(lead.lostReason || lead.lost_reason) && (

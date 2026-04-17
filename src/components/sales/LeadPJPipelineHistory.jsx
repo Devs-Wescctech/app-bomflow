@@ -211,7 +211,7 @@ export default function LeadPJPipelineHistory({ lead, onStageChange }) {
         )}
 
         {/* Funcionários */}
-        {(lead.employee_count || lead.employeeCount) && (
+        {(lead.employee_count || lead.employeeCount || lead.num_employees || lead.numEmployees) && (
           <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 border border-gray-100 dark:border-gray-700/50">
             <div className="flex items-center gap-2 mb-1">
               <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-900/50">
