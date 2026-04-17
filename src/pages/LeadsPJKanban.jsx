@@ -36,7 +36,9 @@ import {
   ChevronRight,
   User,
   Calendar,
-  Trophy
+  Trophy,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -394,6 +396,26 @@ export default function LeadsPJKanban() {
   const queryClient = useQueryClient();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [showClosedLeads, setShowClosedLeads] = useState(() => {
+    try {
+      return localStorage.getItem('leadsPJKanbanShowClosed') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('leadsPJKanbanShowClosed', String(showClosedLeads));
+    } catch (e) {}
+  }, [showClosedLeads]);
+
+  const displayStages = useMemo(
+    () => showClosedLeads
+      ? STAGES_PJ
+      : STAGES_PJ.filter(s => s.id !== 'fechado_ganho' && s.id !== 'fechado_perdido'),
+    [showClosedLeads]
+  );
   const [viewMode, setViewMode] = useState('kanban');
   const [filters, setFilters] = useState(() => {
     const saved = localStorage.getItem('leadsPJKanbanFilters');
@@ -1062,6 +1084,22 @@ export default function LeadsPJKanban() {
           <div className="flex flex-wrap gap-2">
             <Button
               variant="glass"
+              onClick={() => setShowClosedLeads(prev => !prev)}
+              className={`flex-1 sm:flex-none ${showClosedLeads ? 'ring-2 ring-emerald-500/50' : ''}`}
+              size="sm"
+              title={showClosedLeads ? 'Ocultar leads finalizados' : 'Mostrar leads finalizados'}
+            >
+              {showClosedLeads ? (
+                <Eye className="w-4 h-4 sm:mr-2" />
+              ) : (
+                <EyeOff className="w-4 h-4 sm:mr-2" />
+              )}
+              <span className="hidden sm:inline">
+                {showClosedLeads ? 'Ocultar Finalizados' : 'Mostrar Finalizados'}
+              </span>
+            </Button>
+            <Button
+              variant="glass"
               onClick={() => setShowFilters(!showFilters)}
               className={`flex-1 sm:flex-none ${hasActiveFilters ? 'ring-2 ring-purple-500/50' : ''}`}
               size="sm"
@@ -1291,7 +1329,7 @@ export default function LeadsPJKanban() {
               }}
             >
               <div className="flex gap-4" style={{ minWidth: 'max-content' }}>
-                {STAGES_PJ.map((stage) => {
+                {displayStages.map((stage) => {
                   const stageLeads = getOrderedLeadsByStage(stage.id);
                   const stageValue = stageLeads.reduce((sum, lead) => sum + getLeadValue(lead), 0);
                   return (
@@ -1349,7 +1387,7 @@ export default function LeadsPJKanban() {
                 }}
               >
                 <div className="flex gap-4" style={{ minWidth: 'max-content' }}>
-                  {STAGES_PJ.map((stage) => {
+                  {displayStages.map((stage) => {
                     const stageLeads = getOrderedLeadsByStage(stage.id);
 
                     return (
