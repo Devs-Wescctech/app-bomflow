@@ -444,6 +444,65 @@ export async function getConnectedAgentIds() {
   return result.rows.map(r => r.agent_id);
 }
 
+function classifyActivityType(summary) {
+  const s = (summary || '').toLowerCase();
+  if (s.includes('ligação') || s.includes('call') || s.includes('ligar')) return 'call';
+  if (s.includes('visita') || s.includes('visit')) return 'visit';
+  if (s.includes('email') || s.includes('e-mail')) return 'email';
+  if (s.includes('whatsapp') || s.includes('wpp')) return 'whatsapp';
+  if (s.includes('tarefa') || s.includes('task')) return 'task';
+  return 'meeting';
+}
+
+// Phase 4.1 — Apply a single page of Google events to activities_pj.
+// Handles cancelled events (delta sync emits status='cancelled' for deletions).
+async function applyEventsBatch(events, agentId) {
+  let synced = 0;
+  let deleted = 0;
+  for (const event of events) {
+    // Cancelled events are tombstones from delta sync; remove the local row.
+    if (event.status === 'cancelled') {
+      const r = await query(
+        'DELETE FROM activities_pj WHERE google_event_id = $1 RETURNING id',
+        [event.id]
+      );
+      if (r.rows.length > 0) deleted++;
+      continue;
+    }
+
+    if (!event.summary || event.summary.startsWith('[SalesTwo]')) continue;
+    const startDateTime = event.start?.dateTime || event.start?.date;
+    if (!startDateTime) continue;
+
+    const existing = await query(
+      'SELECT id FROM activities_pj WHERE google_event_id = $1',
+      [event.id]
+    );
+    if (existing.rows.length > 0) {
+      // Upsert the mutable fields so delta updates from Google are reflected.
+      await query(
+        `UPDATE activities_pj
+            SET description = $1,
+                scheduled_at = $2,
+                updated_at = NOW()
+          WHERE google_event_id = $3`,
+        [event.summary, startDateTime, event.id]
+      );
+      continue;
+    }
+
+    await query(
+      `INSERT INTO activities_pj (id, type, description, scheduled_at, created_by, google_event_id)
+       VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5)`,
+      [classifyActivityType(event.summary), event.summary, startDateTime, agentId, event.id]
+    );
+    synced++;
+  }
+  return { synced, deleted };
+}
+
+// Phase 4.1 — Sync from Google → SalesTwo using nextSyncToken when available.
+// Fall back to a full sync (and clear sync_token) on 410 Gone.
 export async function syncGoogleToSalesTwo(agentId) {
   console.log('[GCal Sync] Starting sync from Google for agent', agentId);
   const oauth2 = await getAuthenticatedClient(agentId);
@@ -455,66 +514,83 @@ export async function syncGoogleToSalesTwo(agentId) {
   try {
     const calendar = google.calendar({ version: 'v3', auth: oauth2 });
 
-    const now = new Date();
-    const threeMonthsAhead = new Date(now);
-    threeMonthsAhead.setMonth(threeMonthsAhead.getMonth() + 3);
+    const tokenRow = await query(
+      'SELECT sync_token FROM google_calendar_tokens WHERE agent_id = $1',
+      [agentId]
+    );
+    let storedSyncToken = tokenRow.rows[0]?.sync_token || null;
 
-    const result = await calendar.events.list({
-      calendarId: 'primary',
-      timeMin: now.toISOString(),
-      timeMax: threeMonthsAhead.toISOString(),
-      maxResults: 200,
-      singleEvents: true,
-      orderBy: 'startTime',
-    });
+    let totalSynced = 0;
+    let totalDeleted = 0;
+    let mode = storedSyncToken ? 'delta' : 'full';
+    let usedFallback = false;
+    let pageToken;
+    let nextSyncToken = null;
 
-    const events = result.data.items || [];
-    let synced = 0;
-
-    for (const event of events) {
-      if (!event.summary || event.summary.startsWith('[SalesTwo]')) continue;
-
-      const existing = await query(
-        'SELECT id FROM activities_pj WHERE google_event_id = $1',
-        [event.id]
-      );
-      if (existing.rows.length > 0) continue;
-
-      const startDateTime = event.start?.dateTime || event.start?.date;
-      if (!startDateTime) continue;
-
-      let actType = 'meeting';
-      const lowerSummary = (event.summary || '').toLowerCase();
-      if (lowerSummary.includes('ligação') || lowerSummary.includes('call') || lowerSummary.includes('ligar')) actType = 'call';
-      else if (lowerSummary.includes('visita') || lowerSummary.includes('visit')) actType = 'visit';
-      else if (lowerSummary.includes('email') || lowerSummary.includes('e-mail')) actType = 'email';
-      else if (lowerSummary.includes('whatsapp') || lowerSummary.includes('wpp')) actType = 'whatsapp';
-      else if (lowerSummary.includes('tarefa') || lowerSummary.includes('task')) actType = 'task';
-
-      const existingCheck = await query(
-        `SELECT id FROM activities_pj WHERE google_event_id = $1`,
-        [event.id]
-      );
-      if (existingCheck.rows.length > 0) {
-        console.log('[GCal Sync] Event already synced, skipping:', event.id);
-        continue;
+    // Drive the paginated loop. With syncToken, Google rejects timeMin/timeMax/orderBy.
+    while (true) {
+      const params = {
+        calendarId: 'primary',
+        maxResults: 200,
+        singleEvents: true,
+      };
+      if (pageToken) {
+        params.pageToken = pageToken;
+        if (storedSyncToken) params.syncToken = storedSyncToken;
+      } else if (storedSyncToken) {
+        params.syncToken = storedSyncToken;
+      } else {
+        // Full sync window: now → +3 months. Once the first full sync completes,
+        // subsequent ticks use nextSyncToken (delta) and ignore the window.
+        const now = new Date();
+        const threeMonthsAhead = new Date(now);
+        threeMonthsAhead.setMonth(threeMonthsAhead.getMonth() + 3);
+        params.timeMin = now.toISOString();
+        params.timeMax = threeMonthsAhead.toISOString();
+        params.orderBy = 'startTime';
       }
 
-      await query(
-        `INSERT INTO activities_pj (id, type, description, scheduled_at, created_by, google_event_id)
-         VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5)`,
-        [actType, event.summary, startDateTime, agentId, event.id]
-      );
-      synced++;
+      let pageResult;
+      try {
+        pageResult = await calendar.events.list(params);
+      } catch (err) {
+        // 410 Gone → syncToken expired/invalid. Clear it and restart as full sync once.
+        if (err.code === 410 && storedSyncToken && !usedFallback) {
+          console.warn(`[GCal Sync] syncToken expired for agent ${agentId}, falling back to full sync.`);
+          await query(
+            'UPDATE google_calendar_tokens SET sync_token = NULL WHERE agent_id = $1',
+            [agentId]
+          );
+          storedSyncToken = null;
+          pageToken = undefined;
+          usedFallback = true;
+          mode = 'full-after-410';
+          continue;
+        }
+        throw err;
+      }
+
+      const events = pageResult.data.items || [];
+      const { synced, deleted } = await applyEventsBatch(events, agentId);
+      totalSynced += synced;
+      totalDeleted += deleted;
+
+      pageToken = pageResult.data.nextPageToken;
+      // nextSyncToken only appears on the LAST page of the sequence.
+      if (pageResult.data.nextSyncToken) nextSyncToken = pageResult.data.nextSyncToken;
+      if (!pageToken) break;
     }
 
     await query(
-      'UPDATE google_calendar_tokens SET last_sync_at = NOW() WHERE agent_id = $1',
-      [agentId]
+      `UPDATE google_calendar_tokens
+          SET last_sync_at = NOW(),
+              sync_token = COALESCE($1, sync_token)
+        WHERE agent_id = $2`,
+      [nextSyncToken, agentId]
     );
 
-    console.log(`[GCal] Synced ${synced} events from Google for agent ${agentId}`);
-    return { synced };
+    console.log(`[GCal] Sync ${mode} for agent ${agentId}: +${totalSynced} added, ${totalDeleted} removed${nextSyncToken ? ' (new syncToken)' : ''}`);
+    return { synced: totalSynced, deleted: totalDeleted, mode };
   } catch (error) {
     console.error('[GCal] Sync from Google error:', error.message);
     if (error.code === 401) {
@@ -524,12 +600,37 @@ export async function syncGoogleToSalesTwo(agentId) {
   }
 }
 
+// Phase 4.2 — Cluster-wide singleton lock for the periodic sweep.
+// Distinct from the outbox worker key (7428309211) so the two workers
+// can run concurrently but neither overlaps itself.
+const SYNC_ALL_LOCK_KEY = 7428309212n;
+let syncAllInProgress = false;
+
 export async function syncAllAgents() {
+  // In-process guard: if a previous tick is still running on THIS instance,
+  // skip immediately without touching the DB lock.
+  if (syncAllInProgress) {
+    console.log('[GCal Sync] syncAllAgents skipped — previous tick still running on this instance.');
+    return 0;
+  }
+  syncAllInProgress = true;
+
+  let lockAcquired = false;
   try {
+    const lockRes = await query(
+      'SELECT pg_try_advisory_lock($1) AS got',
+      [SYNC_ALL_LOCK_KEY.toString()]
+    );
+    lockAcquired = lockRes.rows[0]?.got === true;
+    if (!lockAcquired) {
+      console.log('[GCal Sync] syncAllAgents skipped — another instance holds the lock.');
+      return 0;
+    }
+
     console.log('[GCal Sync] Running periodic sync for all agents');
     const result = await query('SELECT agent_id FROM google_calendar_tokens');
     console.log('[GCal Sync] Found', result.rows.length, 'agents with tokens');
-    
+
     let totalSynced = 0;
     for (const row of result.rows) {
       const { synced, error } = await syncGoogleToSalesTwo(row.agent_id);
@@ -547,5 +648,14 @@ export async function syncAllAgents() {
   } catch (error) {
     console.error('[GCal] syncAllAgents error:', error.message);
     return 0;
+  } finally {
+    if (lockAcquired) {
+      try {
+        await query('SELECT pg_advisory_unlock($1)', [SYNC_ALL_LOCK_KEY.toString()]);
+      } catch (e) {
+        console.warn('[GCal Sync] failed to release advisory lock:', e.message);
+      }
+    }
+    syncAllInProgress = false;
   }
 }
