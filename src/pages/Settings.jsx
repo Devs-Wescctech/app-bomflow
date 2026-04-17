@@ -495,6 +495,42 @@ function GoogleCalendarSettings({ settings, onSave, isAdmin, showSystemStatus = 
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                   <strong>Dica:</strong> se ao conectar aparecer o erro <code>redirect_uri_mismatch</code>, confira se a URI acima está cadastrada exatamente igual em <em>"Authorized redirect URIs"</em> do OAuth Client no Google Cloud Console.
                 </p>
+
+                <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Como configurar no Google Cloud Console:</p>
+                  <ol className="list-decimal ml-5 space-y-1 text-xs text-gray-600 dark:text-gray-400">
+                    <li>
+                      Acesse o{" "}
+                      <a
+                        href="https://console.cloud.google.com/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline"
+                        style={{ color: "#F98F6F" }}
+                      >
+                        Google Cloud Console
+                      </a>
+                      .
+                    </li>
+                    <li>Crie um projeto ou selecione um existente.</li>
+                    <li>
+                      Em <em>APIs &amp; Services → Library</em>, ative a <strong>Google Calendar API</strong>.
+                    </li>
+                    <li>
+                      Em <em>APIs &amp; Services → OAuth consent screen</em>, configure a tela de consentimento (User Type: External, e adicione os e-mails dos vendedores em <em>Test users</em> enquanto o app estiver em modo Testing).
+                    </li>
+                    <li>
+                      Em <em>APIs &amp; Services → Credentials</em>, crie um <strong>OAuth 2.0 Client ID</strong> do tipo <em>Aplicativo Web</em>.
+                    </li>
+                    <li>
+                      Em <em>"Authorized redirect URIs"</em>, adicione exatamente a URI mostrada acima (e a URI de produção, se houver).
+                    </li>
+                    <li>
+                      Copie o <strong>Client ID</strong> e <strong>Client Secret</strong> e configure as variáveis de ambiente <code className="bg-gray-100 dark:bg-gray-900 px-1 rounded">GCAL_CLIENT_ID</code>, <code className="bg-gray-100 dark:bg-gray-900 px-1 rounded">GCAL_CLIENT_SECRET</code> e <code className="bg-gray-100 dark:bg-gray-900 px-1 rounded">GCAL_REDIRECT_URI</code> no servidor.
+                    </li>
+                    <li>Reinicie o backend e teste o botão "Conectar minha conta Google" abaixo.</li>
+                  </ol>
+                </div>
               </div>
             )}
           </CardContent>
