@@ -111,6 +111,7 @@ const menuModules = [
       { title: "Relatórios", url: createPageUrl("SalesPJReports"), icon: FileBarChart, supervisorOnly: true },
       { title: "Rel. de Ganhos", url: createPageUrl("SalesPJWonReport"), icon: Trophy },
       { title: "Rel. de Perdidos", url: createPageUrl("SalesPJLostReport"), icon: XCircle },
+      { title: "Lista de Leads", url: createPageUrl("LeadPJReportList"), icon: FileBarChart },
       { title: "Automações", url: createPageUrl("LeadPJAutomations"), icon: Zap, supervisorOnly: true },
       { title: "Tarefas", url: createPageUrl("SalesTasks"), icon: CheckSquare },
       { title: "Templates", url: createPageUrl("ProposalTemplates"), icon: FileText, supervisorOnly: true },
