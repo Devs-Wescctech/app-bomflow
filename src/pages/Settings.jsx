@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Settings as SettingsIcon, Save, Loader2, ListChecks, Plus, X, GripVertical, Calendar, Link2, Unlink, FileSignature, CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 
 export default function Settings() {
@@ -375,6 +376,10 @@ function GoogleCalendarSettings({ settings, onSave, isAdmin }) {
           </div>
 
           {gcalStatus?.connected && (
+            <TargetCalendarPicker />
+          )}
+
+          {gcalStatus?.connected && (
             <div className="flex gap-2">
               <Button onClick={handleManualSync} variant="outline" className="flex-1">
                 <Save className="w-4 h-4 mr-2" />
@@ -581,6 +586,93 @@ function AutentiqueSettings({ settings, onSave }) {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+// Phase 5.1 — lets the seller pick which Google calendar receives SalesTwo events.
+function TargetCalendarPicker() {
+  const queryClient = useQueryClient();
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ["gcalCalendars"],
+    queryFn: async () => {
+      const token = localStorage.getItem("accessToken");
+      const res = await fetch("/api/functions/google-calendar/calendars", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || "Falha ao carregar calendários");
+      }
+      return res.json();
+    },
+    retry: false,
+  });
+
+  const [saving, setSaving] = useState(false);
+  const [pendingValue, setPendingValue] = useState(null);
+
+  const calendars = data?.calendars || [];
+  const currentValue = pendingValue ?? data?.currentTargetId ?? (calendars.find(c => c.primary)?.id || "");
+
+  const handleChange = async (value) => {
+    setPendingValue(value);
+    setSaving(true);
+    try {
+      const token = localStorage.getItem("accessToken");
+      const res = await fetch("/api/functions/google-calendar/target-calendar", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ calendarId: value }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || "Falha ao salvar calendário");
+      toast.success(`Calendário definido: ${j.summary || value}`);
+      queryClient.invalidateQueries({ queryKey: ["gcalStatus"] });
+    } catch (e) {
+      toast.error(e.message);
+      setPendingValue(null);
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        Sincronizar eventos para o calendário:
+      </Label>
+      {isLoading && (
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          <Loader2 className="w-4 h-4 animate-spin" /> Carregando calendários…
+        </div>
+      )}
+      {isError && (
+        <div className="flex items-center justify-between gap-2 text-sm text-red-600">
+          <span>Não foi possível carregar calendários.</span>
+          <Button size="sm" variant="outline" onClick={() => refetch()}>Tentar novamente</Button>
+        </div>
+      )}
+      {!isLoading && !isError && calendars.length === 0 && (
+        <p className="text-sm text-amber-700">Nenhum calendário editável encontrado nesta conta Google.</p>
+      )}
+      {!isLoading && !isError && calendars.length > 0 && (
+        <>
+          <Select value={currentValue} onValueChange={handleChange} disabled={saving}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Escolha um calendário" />
+            </SelectTrigger>
+            <SelectContent>
+              {calendars.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.summary}{c.primary ? " (principal)" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Atividades criadas no SalesTwo aparecerão neste calendário do Google. Você pode trocar a qualquer momento.
+          </p>
+        </>
+      )}
     </div>
   );
 }

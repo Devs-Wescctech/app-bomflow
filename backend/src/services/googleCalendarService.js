@@ -9,6 +9,9 @@ import { encrypt, decrypt } from '../utils/cryptoTokens.js';
 // `granted_scope` column on google_calendar_tokens lets the UI
 // detect outdated grants and prompt reconnection.
 export const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+// Phase 5.1 — minimal extra scope so we can read calendarList.list to populate
+// the seller's "target calendar" picker. Strictly read-only and metadata-only.
+export const GCAL_CALENDARLIST_SCOPE = 'https://www.googleapis.com/auth/calendar.calendarlist.readonly';
 export const GCAL_LEGACY_SCOPE = 'https://www.googleapis.com/auth/calendar';
 
 function isConfiguredViaEnv() {
@@ -108,7 +111,7 @@ export async function getAuthUrl(agentId) {
   return oauth2.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    scope: [GCAL_SCOPE, 'openid', 'email'],
+    scope: [GCAL_SCOPE, GCAL_CALENDARLIST_SCOPE, 'openid', 'email'],
     state: state,
   });
 }
@@ -236,12 +239,12 @@ export async function disconnectAgent(agentId) {
 
 function isScopeOutdated(grantedScope) {
   if (!grantedScope) return true;
-  // Scope strings from Google are space-separated. We require calendar.events;
-  // the legacy 'calendar' scope (broader) does NOT satisfy this because Google
-  // returns the exact scope the user consented to. Flag as outdated whenever
-  // the canonical 'calendar.events' string is missing.
+  // We require BOTH calendar.events (data CRUD) and the calendarlist.readonly
+  // scope added in Phase 5.1 (so the seller can pick a target calendar).
   const scopes = grantedScope.split(/\s+/);
-  return !scopes.includes(GCAL_SCOPE);
+  if (!scopes.includes(GCAL_SCOPE)) return true;
+  if (!scopes.includes(GCAL_CALENDARLIST_SCOPE)) return true;
+  return false;
 }
 
 export async function getAgentConnectionStatus(agentId) {
@@ -277,18 +280,53 @@ const ACTIVITY_TYPE_LABELS = {
   email: 'E-mail', task: 'Tarefa', meeting: 'Reunião',
 };
 
-function activityToGCalEvent(activity) {
+const DEFAULT_TIMEZONE = 'America/Sao_Paulo';
+const DEFAULT_DURATION_MINUTES = 60;
+
+// Phase 5.2 — pull the agent's preferred timezone, defaulting to São Paulo.
+async function getAgentTimezone(agentId) {
+  try {
+    const r = await query('SELECT timezone FROM agents WHERE id = $1', [agentId]);
+    const tz = r.rows[0]?.timezone;
+    return tz && tz.trim() ? tz : DEFAULT_TIMEZONE;
+  } catch {
+    return DEFAULT_TIMEZONE;
+  }
+}
+
+// Phase 5.1 — return the chosen target_calendar_id, falling back to 'primary'.
+async function getTargetCalendarId(agentId) {
+  try {
+    const r = await query(
+      'SELECT target_calendar_id FROM google_calendar_tokens WHERE agent_id = $1',
+      [agentId]
+    );
+    const cid = r.rows[0]?.target_calendar_id;
+    return cid && cid.trim() ? cid : 'primary';
+  } catch {
+    return 'primary';
+  }
+}
+
+function activityToGCalEvent(activity, timezone) {
   const scheduledAt = new Date(activity.scheduled_at);
   if (isNaN(scheduledAt.getTime())) return null;
 
-  const endTime = new Date(scheduledAt.getTime() + 60 * 60 * 1000);
+  // Phase 5.2 — duration_minutes drives endTime; falls back to legacy `duration`,
+  // then to 60 minutes if neither is set.
+  const rawDuration = activity.duration_minutes ?? activity.durationMinutes ?? activity.duration;
+  const durationMinutes = Number.isFinite(Number(rawDuration)) && Number(rawDuration) > 0
+    ? Number(rawDuration)
+    : DEFAULT_DURATION_MINUTES;
+  const endTime = new Date(scheduledAt.getTime() + durationMinutes * 60 * 1000);
+  const tz = timezone || DEFAULT_TIMEZONE;
   const typeLabel = ACTIVITY_TYPE_LABELS[activity.type] || activity.type || 'Atividade';
 
   return {
     summary: `[SalesTwo] ${typeLabel}: ${activity.description || 'Atividade'}`,
     description: `Tipo: ${typeLabel}\n${activity.description || ''}\n\nCriado pelo SalesTwo`,
-    start: { dateTime: scheduledAt.toISOString(), timeZone: 'America/Sao_Paulo' },
-    end: { dateTime: endTime.toISOString(), timeZone: 'America/Sao_Paulo' },
+    start: { dateTime: scheduledAt.toISOString(), timeZone: tz },
+    end: { dateTime: endTime.toISOString(), timeZone: tz },
     colorId: activity.type === 'visit' ? '2' : activity.type === 'call' ? '7' : '9',
   };
 }
@@ -311,7 +349,11 @@ export async function createGoogleEvent(agentId, activity) {
     throw err;
   }
 
-  const event = activityToGCalEvent(activity);
+  const [tz, calendarId] = await Promise.all([
+    getAgentTimezone(agentId),
+    getTargetCalendarId(agentId),
+  ]);
+  const event = activityToGCalEvent(activity, tz);
   if (!event) {
     const err = new Error('Activity has invalid scheduled_at');
     err.code = 'INVALID_PAYLOAD';
@@ -321,10 +363,10 @@ export async function createGoogleEvent(agentId, activity) {
   try {
     const calendar = google.calendar({ version: 'v3', auth: oauth2 });
     const result = await calendar.events.insert({
-      calendarId: 'primary',
+      calendarId,
       requestBody: event,
     });
-    console.log(`[GCal] Event created: ${result.data.id} for activity ${activity.id}`);
+    console.log(`[GCal] Event created: ${result.data.id} for activity ${activity.id} (calendar=${calendarId}, tz=${tz})`);
     return { id: result.data.id };
   } catch (error) {
     if (error.code === 401) {
@@ -347,7 +389,11 @@ export async function updateGoogleEvent(agentId, googleEventId, activity) {
     throw err;
   }
 
-  const event = activityToGCalEvent(activity);
+  const [tz, calendarId] = await Promise.all([
+    getAgentTimezone(agentId),
+    getTargetCalendarId(agentId),
+  ]);
+  const event = activityToGCalEvent(activity, tz);
   if (!event) {
     const err = new Error('Activity has invalid scheduled_at');
     err.code = 'INVALID_PAYLOAD';
@@ -361,7 +407,7 @@ export async function updateGoogleEvent(agentId, googleEventId, activity) {
 
   const calendar = google.calendar({ version: 'v3', auth: oauth2 });
   await calendar.events.update({
-    calendarId: 'primary',
+    calendarId,
     eventId: googleEventId,
     requestBody: event,
   });
@@ -379,9 +425,10 @@ export async function deleteGoogleEvent(agentId, googleEventId) {
   }
 
   try {
+    const calendarId = await getTargetCalendarId(agentId);
     const calendar = google.calendar({ version: 'v3', auth: oauth2 });
     await calendar.events.delete({
-      calendarId: 'primary',
+      calendarId,
       eventId: googleEventId,
     });
     console.log(`[GCal] Event deleted: ${googleEventId}`);
@@ -396,14 +443,87 @@ export async function deleteGoogleEvent(agentId, googleEventId) {
   }
 }
 
+// Phase 5.1 — list calendars the agent can write to (for the Settings dropdown).
+export async function listWritableCalendars(agentId) {
+  const oauth2 = await getAuthenticatedClient(agentId);
+  if (!oauth2) {
+    const err = new Error('Agent not connected to Google Calendar');
+    err.code = 'NOT_CONNECTED';
+    throw err;
+  }
+  const calendar = google.calendar({ version: 'v3', auth: oauth2 });
+  let result;
+  try {
+    result = await calendar.calendarList.list({ maxResults: 250, showHidden: false });
+  } catch (e) {
+    // Tokens issued before Phase 5.1 lack calendar.calendarlist.readonly →
+    // Google returns 403 insufficient scope. Surface a clear reconnect prompt.
+    if (e.code === 403) {
+      const err = new Error('Permissão insuficiente para listar calendários. Desconecte e reconecte o Google Calendar.');
+      err.code = 'SCOPE_INSUFFICIENT';
+      throw err;
+    }
+    throw e;
+  }
+  const items = result.data.items || [];
+  // Google's accessRole values: owner > writer > reader > freeBusyReader.
+  // Anything <= writer means we can create events.
+  const writable = items
+    .filter(c => c.accessRole === 'owner' || c.accessRole === 'writer')
+    .map(c => ({
+      id: c.id,
+      summary: c.summary,
+      primary: !!c.primary,
+      accessRole: c.accessRole,
+      backgroundColor: c.backgroundColor || null,
+      timeZone: c.timeZone || null,
+    }));
+  return writable;
+}
+
+// Phase 5.1 — persist the agent's chosen calendar after validating ownership.
+export async function setTargetCalendar(agentId, calendarId) {
+  if (!calendarId || typeof calendarId !== 'string') {
+    const err = new Error('calendarId is required');
+    err.code = 'INVALID_PAYLOAD';
+    throw err;
+  }
+  const writable = await listWritableCalendars(agentId);
+  const match = writable.find(c => c.id === calendarId);
+  if (!match) {
+    const err = new Error('Calendar not found or not writable for this agent');
+    err.code = 'CALENDAR_NOT_FOUND';
+    throw err;
+  }
+  const updated = await query(
+    `UPDATE google_calendar_tokens
+        SET target_calendar_id = $1, updated_at = NOW()
+      WHERE agent_id = $2
+      RETURNING target_calendar_id`,
+    [calendarId, agentId]
+  );
+  if (updated.rowCount === 0) {
+    const err = new Error('Agent has no Google Calendar connection');
+    err.code = 'NOT_CONNECTED';
+    throw err;
+  }
+  return { calendarId: updated.rows[0].target_calendar_id, summary: match.summary };
+}
+
+// Phase 5.1 — exposed so the status endpoint can return the saved selection.
+export async function getTargetCalendarForAgent(agentId) {
+  return getTargetCalendarId(agentId);
+}
+
 export async function fetchGoogleEvents(agentId, timeMin, timeMax) {
   const oauth2 = await getAuthenticatedClient(agentId);
   if (!oauth2) return [];
 
   try {
+    const calendarId = await getTargetCalendarId(agentId);
     const calendar = google.calendar({ version: 'v3', auth: oauth2 });
     const result = await calendar.events.list({
-      calendarId: 'primary',
+      calendarId,
       timeMin: timeMin || new Date().toISOString(),
       timeMax: timeMax || undefined,
       maxResults: 100,
@@ -519,6 +639,7 @@ export async function syncGoogleToSalesTwo(agentId) {
       [agentId]
     );
     let storedSyncToken = tokenRow.rows[0]?.sync_token || null;
+    const calendarId = await getTargetCalendarId(agentId);
 
     let totalSynced = 0;
     let totalDeleted = 0;
@@ -530,7 +651,7 @@ export async function syncGoogleToSalesTwo(agentId) {
     // Drive the paginated loop. With syncToken, Google rejects timeMin/timeMax/orderBy.
     while (true) {
       const params = {
-        calendarId: 'primary',
+        calendarId,
         maxResults: 200,
         singleEvents: true,
       };

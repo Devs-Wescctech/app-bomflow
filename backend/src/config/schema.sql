@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS agents (
     whatsapp_token_expires_at TIMESTAMP,
     phone VARCHAR(50),
     territory_id UUID,
+    timezone TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -457,6 +458,7 @@ CREATE TABLE IF NOT EXISTS activities_pj (
     priority VARCHAR(50) DEFAULT 'media',
     notes TEXT,
     duration INTEGER,
+    duration_minutes INTEGER,
     reminder VARCHAR(50),
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
@@ -1254,6 +1256,7 @@ CREATE TABLE IF NOT EXISTS google_calendar_tokens (
     last_sync_at TIMESTAMPTZ,
     sync_token TEXT,
     granted_scope TEXT,
+    target_calendar_id TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

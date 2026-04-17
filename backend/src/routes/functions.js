@@ -32,6 +32,9 @@ import {
   getConnectedAgentIds,
   syncGoogleToSalesTwo,
   syncAllAgents,
+  listWritableCalendars,
+  setTargetCalendar,
+  getTargetCalendarForAgent,
 } from '../services/googleCalendarService.js';
 
 const router = Router();
@@ -4427,6 +4430,57 @@ router.get('/google-calendar/outbox-status', authMiddleware, loadAgentMiddleware
   } catch (error) {
     console.error('[Google Calendar] Outbox status error:', error.message);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Phase 5.1 — list calendars the connected agent can write to.
+router.get('/google-calendar/calendars', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const agentId = req.agent?.id;
+    if (!agentId) return res.status(400).json({ error: 'Agente não encontrado' });
+    const [calendars, currentTargetId] = await Promise.all([
+      listWritableCalendars(agentId),
+      getTargetCalendarForAgent(agentId),
+    ]);
+    res.json({ calendars, currentTargetId });
+  } catch (error) {
+    if (error.code === 'NOT_CONNECTED') {
+      return res.status(409).json({ error: 'Conecte o Google Calendar antes de listar calendários.' });
+    }
+    if (error.code === 'SCOPE_INSUFFICIENT') {
+      return res.status(403).json({ error: error.message, scopeOutdated: true });
+    }
+    console.error('[Google Calendar] List calendars error:', error.message);
+    res.status(500).json({ error: 'Não foi possível carregar calendários' });
+  }
+});
+
+// Phase 5.1 — persist the agent's chosen target calendar.
+router.put('/google-calendar/target-calendar', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const agentId = req.agent?.id;
+    if (!agentId) return res.status(400).json({ error: 'Agente não encontrado' });
+    const { calendarId } = req.body || {};
+    if (!calendarId || typeof calendarId !== 'string') {
+      return res.status(400).json({ error: 'calendarId é obrigatório' });
+    }
+    const result = await setTargetCalendar(agentId, calendarId);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    if (error.code === 'NOT_CONNECTED') {
+      return res.status(409).json({ error: 'Conecte o Google Calendar antes de escolher o calendário.' });
+    }
+    if (error.code === 'CALENDAR_NOT_FOUND') {
+      return res.status(404).json({ error: 'Calendário não encontrado entre os seus calendários editáveis.' });
+    }
+    if (error.code === 'SCOPE_INSUFFICIENT') {
+      return res.status(403).json({ error: error.message, scopeOutdated: true });
+    }
+    if (error.code === 'INVALID_PAYLOAD') {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error('[Google Calendar] Set target calendar error:', error.message);
+    res.status(500).json({ error: 'Não foi possível salvar o calendário escolhido' });
   }
 });
 
