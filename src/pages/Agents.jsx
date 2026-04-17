@@ -57,6 +57,7 @@ const MENU_MODULES = [
       { id: "LeadPJSearch", title: "Busca de Leads" },
       { id: "SalesPJReports", title: "Relatórios" },
       { id: "SalesPJWonReport", title: "Rel. de Ganhos" },
+      { id: "LeadPJReportList", title: "Relatório de Leads" },
       { id: "LeadPJAutomations", title: "Automações" },
       { id: "AutomationLogs", title: "Logs de Automações" },
       { id: "SalesTasks", title: "Tarefas" },
