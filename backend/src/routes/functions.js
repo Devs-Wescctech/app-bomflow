@@ -4385,6 +4385,51 @@ router.get('/google-calendar/status', authMiddleware, loadAgentMiddleware, async
   }
 });
 
+router.get('/google-calendar/outbox-status', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const agentId = req.agent?.id;
+    if (!agentId) {
+      return res.json({
+        hasPendingItems: false,
+        hasFailedItems: false,
+        pendingCount: 0,
+        failedCount: 0,
+        lastFailedError: null,
+        lastFailedTimestamp: null,
+      });
+    }
+    const counts = await query(
+      `SELECT
+         COUNT(*) FILTER (WHERE status IN ('pending','processing'))::int AS pending_count,
+         COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count
+       FROM gcal_event_outbox
+       WHERE agent_id = $1`,
+      [agentId]
+    );
+    const lastFailed = await query(
+      `SELECT last_error, updated_at
+         FROM gcal_event_outbox
+        WHERE agent_id = $1 AND status = 'failed'
+        ORDER BY updated_at DESC
+        LIMIT 1`,
+      [agentId]
+    );
+    const pendingCount = counts.rows[0]?.pending_count || 0;
+    const failedCount = counts.rows[0]?.failed_count || 0;
+    res.json({
+      hasPendingItems: pendingCount > 0,
+      hasFailedItems: failedCount > 0,
+      pendingCount,
+      failedCount,
+      lastFailedError: lastFailed.rows[0]?.last_error || null,
+      lastFailedTimestamp: lastFailed.rows[0]?.updated_at || null,
+    });
+  } catch (error) {
+    console.error('[Google Calendar] Outbox status error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.get('/google-calendar/auth-url', authMiddleware, loadAgentMiddleware, async (req, res) => {
   try {
     const agentId = req.agent?.id;

@@ -24,6 +24,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Calendar as CalendarIcon,
   Clock,
   MapPin,
@@ -150,6 +155,21 @@ export default function SalesAgenda() {
       return res.json();
     },
     staleTime: 1000 * 60 * 5,
+  });
+
+  const { data: gcalOutboxStatus } = useQuery({
+    queryKey: ["gcalOutboxStatus"],
+    queryFn: async () => {
+      const token = localStorage.getItem("accessToken");
+      const res = await fetch("/api/functions/google-calendar/outbox-status", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: gcalStatus?.connected === true,
+    refetchInterval: 30000,
+    staleTime: 15000,
   });
 
   const gcalFetchRange = useMemo(() => {
@@ -379,6 +399,9 @@ export default function SalesAgenda() {
           >
             <Plus className="w-3.5 h-3.5" /> Nova Atividade
           </Button>
+          {gcalStatus?.connected && (
+            <GcalSyncStatusBadge status={gcalOutboxStatus} />
+          )}
           {gcalStatus?.connected && (
             <Button variant="ghost" size="sm" onClick={handleRefreshGcal} className="text-xs h-8 gap-1 text-gray-600">
               <RefreshCw className="w-3.5 h-3.5" /> Sincronizar
@@ -1002,5 +1025,68 @@ function ActivityPopover({ activity, getLeadById, handleToggle, onClose }) {
         </div>
       </div>
     </motion.div>
+  );
+}
+
+function GcalSyncStatusBadge({ status }) {
+  if (!status) return null;
+  const { hasFailedItems, hasPendingItems, pendingCount, failedCount, lastFailedError, lastFailedTimestamp } = status;
+  if (!hasFailedItems && !hasPendingItems) return null;
+
+  const isError = hasFailedItems;
+  const palette = isError
+    ? { bg: "#fef2f2", border: "#fecaca", text: "#b91c1c", icon: AlertCircle }
+    : { bg: "#eff6ff", border: "#bfdbfe", text: "#1d4ed8", icon: Loader2 };
+  const Icon = palette.icon;
+  const label = isError
+    ? `Erro de Sincronização (${failedCount})`
+    : `Sincronização Pendente (${pendingCount})`;
+
+  const badge = (
+    <button
+      type="button"
+      className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium border transition-colors"
+      style={{ backgroundColor: palette.bg, borderColor: palette.border, color: palette.text }}
+      title={isError ? "Clique para detalhes" : "Aguardando processamento"}
+    >
+      <Icon className={`w-3.5 h-3.5 ${!isError ? "animate-spin" : ""}`} />
+      {label}
+    </button>
+  );
+
+  if (!isError) return badge;
+
+  let when = "";
+  try {
+    if (lastFailedTimestamp) {
+      when = format(parseISO(lastFailedTimestamp), "dd/MM/yyyy HH:mm", { locale: ptBR });
+    }
+  } catch { /* noop */ }
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>{badge}</PopoverTrigger>
+      <PopoverContent align="end" className="w-80">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm font-semibold text-red-700">
+            <AlertCircle className="w-4 h-4" />
+            Erro de sincronização com Google Calendar
+          </div>
+          <p className="text-xs text-gray-600">
+            Algumas atividades não foram sincronizadas. O sistema continuará tentando automaticamente.
+          </p>
+          <div className="bg-gray-50 border border-gray-200 rounded p-2 text-xs text-gray-800 break-words">
+            <div className="font-medium text-gray-500 mb-1">Último erro:</div>
+            <div className="font-mono text-[11px] leading-snug">{lastFailedError || "Erro não informado."}</div>
+          </div>
+          {when && (
+            <div className="text-[11px] text-gray-500">Ocorrido em {when}</div>
+          )}
+          {failedCount > 0 && (
+            <div className="text-[11px] text-gray-500">{failedCount} item(ns) com falha • {pendingCount} pendente(s)</div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
