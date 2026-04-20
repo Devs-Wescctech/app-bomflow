@@ -46,6 +46,9 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ['systemSettings'] });
       toast.success('Configuração salva com sucesso!');
     },
+    onError: (error) => {
+      toast.error(`Erro ao salvar: ${error?.message || 'tente novamente'}`);
+    },
   });
   const isAdmin = user?.role === 'admin';
   const currentAgent = user?.agent;
@@ -167,7 +170,19 @@ function OptionListEditor({ title, description, settingKey, settings, onSave }) 
   };
 
   const handleSave = async () => {
-    if (options.length === 0) {
+    let toSave = options;
+    const pending = newOption.trim();
+    if (pending) {
+      if (options.includes(pending)) {
+        toast.error('Esta opção já existe');
+        return;
+      }
+      toSave = [...options, pending];
+      setOptions(toSave);
+      setNewOption("");
+    }
+
+    if (toSave.length === 0) {
       toast.error('Adicione pelo menos uma opção antes de salvar');
       return;
     }
@@ -175,11 +190,11 @@ function OptionListEditor({ title, description, settingKey, settings, onSave }) 
     try {
       await onSave.mutateAsync({
         key: settingKey,
-        value: JSON.stringify(options),
+        value: JSON.stringify(toSave),
         type: 'json',
       });
     } catch (error) {
-      toast.error('Erro ao salvar opções');
+      // erro já é tratado pelo onError da mutation
     }
     setSaving(false);
   };
