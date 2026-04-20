@@ -416,8 +416,37 @@ router.get('/referrals-relacao', authMiddleware, loadAgentMiddleware, requireSub
   }
 });
 
+const VALIDATION_FORBIDDEN_TYPES = ['vendas', 'sales', 'bom_auto_atendente', 'support', 'collection', 'pre_sales', 'post_sales'];
+
 router.post('/validate-whatsapp-numbers', authMiddleware, async (req, res) => {
   try {
+    // Mesma política do Lead Generator: bloqueia tipos não autorizados a
+    // disparar/prospectar (evita uso indevido como "proxy" do WHU).
+    const agentResult = await query(
+      'SELECT id, agent_type, email FROM agents WHERE id = $1',
+      [req.user.id]
+    );
+    const agent = agentResult.rows[0];
+    const agentType = agent?.agent_type || '';
+    const isAdmin = req.user?.role === 'admin' || agentType === 'admin';
+    if (!isAdmin && VALIDATION_FORBIDDEN_TYPES.includes(agentType)) {
+      try {
+        await query(
+          `INSERT INTO gerador_leads_audit_log (user_id, user_email, agent_type, action, details, ip_address)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            req.user?.id,
+            req.user?.email || agent?.email,
+            agentType || 'unknown',
+            'validate_whatsapp_numbers_denied',
+            JSON.stringify({ timestamp: new Date().toISOString(), path: req.originalUrl }),
+            req.ip || req.headers['x-forwarded-for'] || null,
+          ]
+        );
+      } catch (e) { /* audit failure non-fatal */ }
+      return res.status(403).json({ success: false, error: 'Acesso negado para validação de números' });
+    }
+
     const phones = Array.isArray(req.body?.phones) ? req.body.phones : [];
     if (phones.length === 0) {
       return res.json({ results: {}, stats: { total: 0, cached: 0, fetched: 0, valid: 0, invalid: 0, errors: 0 } });
