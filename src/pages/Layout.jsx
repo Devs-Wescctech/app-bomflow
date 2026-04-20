@@ -701,8 +701,27 @@ function LayoutContent({ children, currentPageName }) {
       });
     }
 
+    // Coordenador: tem visibilidade total e vê todos os itens dos perfis
+    // de Vendas e Supervisor (incluindo "Meu Dashboard"), sem remover
+    // os dashboards de equipe (SalesPJDashboard/SalesPJAgentsDashboard).
+    if (isCoordinatorUser) {
+      modules = modules.map(mod => {
+        if (mod.id !== 'sales_pj') return mod;
+        const myDashboardUrl = createPageUrl("MyDashboardPJ");
+        const alreadyHas = mod.items.some(i => i.url === myDashboardUrl);
+        if (alreadyHas) return mod;
+        return {
+          ...mod,
+          items: [
+            { title: "Meu Dashboard", url: myDashboardUrl, icon: LayoutDashboard },
+            ...mod.items
+          ]
+        };
+      });
+    }
+
     return modules;
-  }, [user, currentAgent, isCommercialUser]);
+  }, [user, currentAgent, isCommercialUser, isCoordinatorUser]);
 
   if (isPublicPage) {
     return (
