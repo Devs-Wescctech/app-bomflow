@@ -1265,3 +1265,13 @@ ALTER TABLE leads_pj ADD COLUMN IF NOT EXISTS lost_by UUID;
 
 -- Expand status_pagamento to fit 'pendente_conciliacao'
 ALTER TABLE commission_payment_control ALTER COLUMN status_pagamento TYPE VARCHAR(30);
+
+-- WhatsApp number validation cache (WHU /wa-number-check)
+CREATE TABLE IF NOT EXISTS whatsapp_number_validations (
+  phone VARCHAR(20) PRIMARY KEY,
+  status VARCHAR(32) NOT NULL,
+  raw_response JSONB,
+  validated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_wa_validations_status_validated
+  ON whatsapp_number_validations(status, validated_at);

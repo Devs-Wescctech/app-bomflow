@@ -57,6 +57,7 @@ export default function LeadGenerator() {
   });
 
   const [selectedLeads, setSelectedLeads] = useState(new Set());
+  const [validationProgress, setValidationProgress] = useState(null);
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showResultDialog, setShowResultDialog] = useState(false);
@@ -188,11 +189,67 @@ export default function LeadGenerator() {
       }
 
       setTotalFound(dedupedData.length);
-      setLeads(dedupedData.slice(0, MAX_LEADS));
+
+      // Validação WHU: percorre a base do ERP em lotes e acumula somente
+      // números com WhatsApp ativo (VALID_WA_NUMBER) até alcançar MAX_LEADS.
+      const VALIDATION_BATCH = 30;
+      const validLeads = [];
+      let processed = 0;
+      const totalAvailable = dedupedData.length;
+      setValidationProgress({ processed: 0, total: totalAvailable, validFound: 0, target: MAX_LEADS });
+
+      for (let i = 0; i < dedupedData.length && validLeads.length < MAX_LEADS; i += VALIDATION_BATCH) {
+        const batch = dedupedData.slice(i, i + VALIDATION_BATCH);
+        const phones = batch.map(l => normalizePhone(l.number)).filter(Boolean);
+        let results = {};
+        try {
+          const vRes = await fetch(`${API_BASE}/functions/validate-whatsapp-numbers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            body: JSON.stringify({ phones }),
+          });
+          if (vRes.ok) {
+            const vJson = await vRes.json();
+            results = vJson?.results || {};
+          } else {
+            console.error('[LeadGenerator] Validation HTTP', vRes.status);
+          }
+        } catch (e) {
+          console.error('[LeadGenerator] Validation batch failed:', e);
+        }
+
+        for (const lead of batch) {
+          if (validLeads.length >= MAX_LEADS) break;
+          const clean = normalizePhone(lead.number);
+          if (clean && results[clean] === 'VALID_WA_NUMBER') {
+            validLeads.push(lead);
+          }
+        }
+
+        processed += batch.length;
+        setValidationProgress({
+          processed,
+          total: totalAvailable,
+          validFound: validLeads.length,
+          target: MAX_LEADS,
+        });
+      }
+
+      setLeads(validLeads);
+      setTotalFound(validLeads.length);
+
+      if (validLeads.length === 0) {
+        toast.warning('Nenhum número com WhatsApp ativo foi encontrado nesta busca.');
+      } else if (validLeads.length < MAX_LEADS) {
+        toast.warning(`Encontrados ${validLeads.length} números com WhatsApp ativo (alvo: ${MAX_LEADS}). A base do ERP foi esgotada.`);
+      } else {
+        toast.success(`${validLeads.length} números com WhatsApp ativo prontos para disparo.`);
+      }
     } catch (err) {
       console.error('Erro ao buscar leads:', err);
       toast.error('Erro ao buscar leads: ' + err.message);
     } finally {
+      setValidationProgress(null);
       setLoading(false);
     }
   }
@@ -672,9 +729,30 @@ export default function LeadGenerator() {
 
         {loading && (
           <Card>
-            <CardContent className="py-12 flex flex-col items-center gap-3">
+            <CardContent className="py-10 flex flex-col items-center gap-4">
               <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
-              <p className="text-gray-500 dark:text-gray-400">Consultando base de leads...</p>
+              {!validationProgress ? (
+                <p className="text-gray-500 dark:text-gray-400">Consultando base de leads...</p>
+              ) : (
+                <div className="w-full max-w-xl flex flex-col gap-2">
+                  <p className="text-sm text-gray-700 dark:text-gray-300 text-center">
+                    Validando WhatsApp dos números...
+                  </p>
+                  <Progress
+                    value={validationProgress.total > 0
+                      ? Math.min(100, Math.round((validationProgress.processed / validationProgress.total) * 100))
+                      : 0}
+                  />
+                  <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                    <span>
+                      {validationProgress.processed.toLocaleString('pt-BR')} / {validationProgress.total.toLocaleString('pt-BR')} verificados
+                    </span>
+                    <span className="font-medium text-green-600 dark:text-green-400">
+                      {validationProgress.validFound.toLocaleString('pt-BR')} válidos (alvo: {validationProgress.target.toLocaleString('pt-BR')})
+                    </span>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

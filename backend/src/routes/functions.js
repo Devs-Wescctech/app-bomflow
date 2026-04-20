@@ -14,6 +14,7 @@ import { sendWhatsAppMessage, sendDocument, sendTextMessage } from '../services/
 import { v4 as uuidv4 } from 'uuid';
 import ExcelJS from 'exceljs';
 import { enqueueLeads, processQueue, retryFailed, getQueueStatus, getDashboardMetrics, getLogsWithPagination, normalizePhone, checkConversions, getConversionMetrics, getConversionsList } from '../services/whatsappQueueService.js';
+import { validateNumbers as validateWhatsappNumbers } from '../services/whatsappValidationService.js';
 import { getEnvioRegulamentoConfig } from '../services/automationService.js';
 import { getAgentByErpId, getErpAgentMap, resolveAgentFromErp } from '../services/erpIntegrationService.js';
 import OpenAI from 'openai';
@@ -411,6 +412,23 @@ router.get('/referrals-relacao', authMiddleware, loadAgentMiddleware, requireSub
     });
   } catch (error) {
     console.error('Error fetching referrals relacao:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/validate-whatsapp-numbers', authMiddleware, async (req, res) => {
+  try {
+    const phones = Array.isArray(req.body?.phones) ? req.body.phones : [];
+    if (phones.length === 0) {
+      return res.json({ results: {}, stats: { total: 0, cached: 0, fetched: 0, valid: 0, invalid: 0, errors: 0 } });
+    }
+    if (phones.length > 200) {
+      return res.status(400).json({ success: false, error: 'Máximo de 200 números por requisição' });
+    }
+    const out = await validateWhatsappNumbers(phones);
+    res.json(out);
+  } catch (error) {
+    console.error('[validate-whatsapp-numbers] error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
