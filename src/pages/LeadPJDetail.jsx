@@ -205,7 +205,7 @@ export default function LeadPJDetail() {
         type: 'note',
         title: 'Lead PJ Perdido',
         description: `Lead marcado como PERDIDO\nMotivo: ${lostReason}`,
-        assignedTo: leadAgentId || 'Sistema',
+        assignedTo: leadAgentId || null,
       });
       
       toast.success('Lead marcado como perdido');
@@ -215,6 +215,16 @@ export default function LeadPJDetail() {
       setTimeout(() => {
         navigate(createPageUrl("LeadsPJKanban"));
       }, 2000);
+    },
+    onError: (error) => {
+      const msg = error?.message || '';
+      if (msg.includes('column') && msg.includes('lost')) {
+        toast.error("Erro interno: colunas de 'perda' não configuradas no banco de dados. Contate o suporte.");
+      } else {
+        toast.error("Erro ao marcar como perdido: " + (msg || "Tente novamente."));
+      }
+      setShowLostDialog(false);
+      setLostReason("");
     },
   });
 

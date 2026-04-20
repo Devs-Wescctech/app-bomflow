@@ -437,6 +437,31 @@ router.get('/lead-generator-base', authMiddleware, async (req, res) => {
       console.log(`[LeadGenerator] tempo_ativo_contrato filter: ${before} -> ${data.length} (min=${tempoAtivoMin}, max=${tempoAtivoMax})`);
     }
 
+    const parseDateParam = (s) => {
+      if (!s) return null;
+      const str = String(s).trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(str)) return null;
+      const d = new Date(str + 'T00:00:00');
+      return isNaN(d.getTime()) ? null : d;
+    };
+    const dataContratoInicio = parseDateParam(req.query.data_contrato_inicio);
+    const dataContratoFim = parseDateParam(req.query.data_contrato_fim);
+
+    if (dataContratoInicio || dataContratoFim) {
+      const fimInclusive = dataContratoFim ? new Date(dataContratoFim.getTime() + 24 * 60 * 60 * 1000 - 1) : null;
+      const before = data.length;
+      data = data.filter(lead => {
+        const raw = lead.data_contrato;
+        if (!raw) return false;
+        const d = new Date(raw);
+        if (isNaN(d.getTime())) return false;
+        if (dataContratoInicio && d < dataContratoInicio) return false;
+        if (fimInclusive && d > fimInclusive) return false;
+        return true;
+      });
+      console.log(`[LeadGenerator] data_contrato filter: ${before} -> ${data.length} (inicio=${req.query.data_contrato_inicio || '-'}, fim=${req.query.data_contrato_fim || '-'})`);
+    }
+
     const blockedResult = await query(
       `SELECT DISTINCT lead_number FROM gerador_leads_whatsapp_logs
        WHERE success = true AND sent_at >= NOW() - INTERVAL '30 days'`
@@ -449,6 +474,27 @@ router.get('/lead-generator-base', authMiddleware, async (req, res) => {
       return clean && !blockedNumbers.has(clean);
     });
     console.log(`[LeadGenerator] 30-day block filter: ${beforeBlock} -> ${data.length} (${beforeBlock - data.length} blocked)`);
+
+    const invalidNumberResult = await query(
+      `SELECT DISTINCT lead_number FROM gerador_leads_whatsapp_logs
+       WHERE success = false
+         AND sent_at >= NOW() - INTERVAL '90 days'
+         AND (
+           api_response->>'msg' = 'INVALID_WA_NUMBER'
+           OR api_response->>'message' = 'INVALID_WA_NUMBER'
+           OR api_response->>'error' = 'INVALID_WA_NUMBER'
+           OR api_response::text ILIKE '%INVALID_WA_NUMBER%'
+           OR motivo_bloqueio ILIKE '%INVALID_WA_NUMBER%'
+         )`
+    );
+    const invalidNumbers = new Set(invalidNumberResult.rows.map(r => r.lead_number));
+
+    const beforeInvalidBlock = data.length;
+    data = data.filter(lead => {
+      const clean = normalizePhone(lead.number);
+      return clean && !invalidNumbers.has(clean);
+    });
+    console.log(`[LeadGenerator] 90-day INVALID_WA_NUMBER filter: ${beforeInvalidBlock} -> ${data.length} (${beforeInvalidBlock - data.length} blocked)`);
 
     res.json(data);
   } catch (error) {
@@ -3408,13 +3454,35 @@ router.get('/commission-payment/batches', authMiddleware, loadAgentMiddleware, r
 
 router.get('/commission-payment/control', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
   try {
-    const { status, lote_id, limit: lim } = req.query;
+    const { status, lote_id, limit: lim, data_contrato_inicio, data_contrato_fim } = req.query;
     let sql = 'SELECT * FROM commission_payment_control WHERE 1=1';
     const params = [];
 
-    if (status) {
+    const isValidDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+    if (data_contrato_inicio && !isValidDate(data_contrato_inicio)) {
+      return res.status(400).json({ success: false, error: 'data_contrato_inicio inválida (use YYYY-MM-DD)' });
+    }
+    if (data_contrato_fim && !isValidDate(data_contrato_fim)) {
+      return res.status(400).json({ success: false, error: 'data_contrato_fim inválida (use YYYY-MM-DD)' });
+    }
+    if (data_contrato_inicio && data_contrato_fim && data_contrato_inicio > data_contrato_fim) {
+      return res.status(400).json({ success: false, error: 'data_contrato_inicio não pode ser maior que data_contrato_fim' });
+    }
+
+    if (data_contrato_inicio) {
+      params.push(data_contrato_inicio);
+      sql += ` AND data_contrato >= $${params.length}`;
+    }
+    if (data_contrato_fim) {
+      params.push(data_contrato_fim);
+      sql += ` AND data_contrato <= $${params.length}`;
+    }
+
+    if (status && status !== 'all') {
       params.push(status);
       sql += ` AND status_pagamento = $${params.length}`;
+    } else {
+      sql += ` AND status_pagamento != 'pendente_conciliacao'`;
     }
     if (lote_id) {
       params.push(parseInt(lote_id));
@@ -3462,12 +3530,56 @@ router.put('/commission-payment/confirm/:id', authMiddleware, loadAgentMiddlewar
     const result = await query(
       `UPDATE commission_payment_control 
        SET status_pagamento = 'pago', data_confirmacao_pagamento = NOW(), usuario_confirmacao = $1
-       WHERE id = $2 AND status_pagamento = 'elegivel' RETURNING *`,
+       WHERE id = $2 AND status_pagamento IN ('elegivel', 'pendente_conciliacao') RETURNING *`,
       [userEmail, id]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Record not found or already paid' });
+    }
+
+    res.json({ success: true, record: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.put('/commission-payment/pendente-conciliacao/:id', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userEmail = req.user?.email || req.user?.userEmail || 'admin';
+
+    const result = await query(
+      `UPDATE commission_payment_control 
+       SET status_pagamento = 'pendente_conciliacao', usuario_confirmacao = $1
+       WHERE id = $2 AND status_pagamento = 'elegivel' RETURNING *`,
+      [userEmail, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Record not found or not in elegivel status' });
+    }
+
+    res.json({ success: true, record: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.put('/commission-payment/restore-elegivel/:id', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userEmail = req.user?.email || req.user?.userEmail || 'admin';
+
+    const result = await query(
+      `UPDATE commission_payment_control 
+       SET status_pagamento = 'elegivel', usuario_confirmacao = $1
+       WHERE id = $2 AND status_pagamento = 'pendente_conciliacao' RETURNING *`,
+      [userEmail, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Record not found or not in pendente_conciliacao' });
     }
 
     res.json({ success: true, record: result.rows[0] });
@@ -3543,7 +3655,7 @@ async function getCommissionReportData() {
   let controlResult;
   if (currentBatchId) {
     controlResult = await query(
-      "SELECT * FROM commission_payment_control WHERE lote_pagamento_id = $1 AND status_pagamento != 'reativacao' ORDER BY nome_indicador, created_at",
+      "SELECT * FROM commission_payment_control WHERE lote_pagamento_id = $1 AND status_pagamento NOT IN ('reativacao', 'pendente_conciliacao') ORDER BY nome_indicador, created_at",
       [currentBatchId]
     );
   } else {
@@ -3614,7 +3726,7 @@ async function getCommissionReportData() {
   const currentRecordIds = new Set(records.map(r => r.id));
 
   const pendingResult = await query(
-    "SELECT cpc.*, cpb.periodo_inicio, cpb.periodo_fim FROM commission_payment_control cpc LEFT JOIN commission_payment_batches cpb ON cpc.lote_pagamento_id = cpb.id WHERE cpc.status_pagamento NOT IN ('pago', 'reativacao') ORDER BY cpb.periodo_inicio, cpc.nome_indicador, cpc.created_at"
+    "SELECT cpc.*, cpb.periodo_inicio, cpb.periodo_fim FROM commission_payment_control cpc LEFT JOIN commission_payment_batches cpb ON cpc.lote_pagamento_id = cpb.id WHERE cpc.status_pagamento NOT IN ('pago', 'reativacao', 'pendente_conciliacao') ORDER BY cpb.periodo_inicio, cpc.nome_indicador, cpc.created_at"
   );
 
   const batchGroups = {};

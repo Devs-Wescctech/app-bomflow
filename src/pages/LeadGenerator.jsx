@@ -4,6 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -52,6 +53,7 @@ export default function LeadGenerator() {
 
   const [filters, setFilters] = useState({
     canal: "todos", cidade: "todos", uf: "todos", produto: "todos", situacao_contrato: "todos", tempoAtivo: "todos",
+    dataContratoInicio: "", dataContratoFim: "",
   });
 
   const [selectedLeads, setSelectedLeads] = useState(new Set());
@@ -141,6 +143,8 @@ export default function LeadGenerator() {
       if (filters.uf !== 'todos') params.set('uf', filters.uf);
       if (filters.produto !== 'todos') params.set('produto', filters.produto);
       if (filters.situacao_contrato !== 'todos') params.set('situacao_contrato', filters.situacao_contrato);
+      if (filters.dataContratoInicio) params.set('data_contrato_inicio', filters.dataContratoInicio);
+      if (filters.dataContratoFim) params.set('data_contrato_fim', filters.dataContratoFim);
       if (filters.tempoAtivo !== 'todos') {
         const faixas = {
           '0-180': { min: 0, max: 180 },
@@ -194,7 +198,7 @@ export default function LeadGenerator() {
   }
 
   function handleClearFilters() {
-    setFilters({ canal: "todos", cidade: "todos", uf: "todos", produto: "todos", situacao_contrato: "todos", tempoAtivo: "todos" });
+    setFilters({ canal: "todos", cidade: "todos", uf: "todos", produto: "todos", situacao_contrato: "todos", tempoAtivo: "todos", dataContratoInicio: "", dataContratoFim: "" });
     setLeads([]);
     setTotalFound(0);
     setHasSearched(false);
@@ -612,6 +616,24 @@ export default function LeadGenerator() {
                         {filterOptions.situacao_contrato.map(s => <SelectItem key={s} value={s}>{situacaoLabel(s)} ({s})</SelectItem>)}
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Data Contrato (De)</Label>
+                    <Input
+                      type="date"
+                      value={filters.dataContratoInicio}
+                      onChange={(e) => setFilters({ ...filters, dataContratoInicio: e.target.value })}
+                      className="border-gray-200 dark:border-gray-700"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Data Contrato (Até)</Label>
+                    <Input
+                      type="date"
+                      value={filters.dataContratoFim}
+                      onChange={(e) => setFilters({ ...filters, dataContratoFim: e.target.value })}
+                      className="border-gray-200 dark:border-gray-700"
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-medium">Tempo Ativo (dias)</Label>

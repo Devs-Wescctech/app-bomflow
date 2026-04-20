@@ -17,14 +17,16 @@ const STATUS_LABELS = {
   elegivel: 'Elegível',
   pago: 'Pago',
   pendente: 'Pendente',
-  reativacao: 'Reativação'
+  reativacao: 'Reativação',
+  pendente_conciliacao: 'Pendente de Conciliação'
 };
 
 const STATUS_COLORS = {
   elegivel: 'bg-yellow-100 text-yellow-800',
   pago: 'bg-green-100 text-green-800',
   pendente: 'bg-gray-100 text-gray-800',
-  reativacao: 'bg-purple-100 text-purple-800'
+  reativacao: 'bg-purple-100 text-purple-800',
+  pendente_conciliacao: 'bg-orange-100 text-orange-800'
 };
 
 const BATCH_STATUS_COLORS = {
@@ -37,6 +39,34 @@ export default function CommissionPaymentControl() {
   const [activeTab, setActiveTab] = useState('control');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterBatchId, setFilterBatchId] = useState('all');
+  const [filterDataInicio, setFilterDataInicio] = useState('');
+  const [filterDataFim, setFilterDataFim] = useState('');
+
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.agent?.agentType === 'admin';
+  const allowedSubmenus = currentUser?.agent?.allowedSubmenus || [];
+  const agentType = currentUser?.agent?.agentType || '';
+  const isSupervisorType = agentType === 'supervisor' || agentType === 'sales_supervisor' || agentType.endsWith('_supervisor');
+  const hasAccess = isAdmin
+    || allowedSubmenus.includes('CommissionPaymentControl')
+    || (allowedSubmenus.length === 0 && isSupervisorType);
+
+  if (currentUser && !hasAccess) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+        <ShieldX className="w-16 h-16 text-gray-400 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">Acesso Negado</h2>
+        <p className="text-gray-500 dark:text-gray-400 mb-4">Você não tem permissão para acessar o Controle de Pagamento de Comissões.</p>
+        <Link to="/ReferralPipeline">
+          <Button variant="outline"><ArrowLeft className="w-4 h-4 mr-2" />Voltar ao Pipeline</Button>
+        </Link>
+      </div>
+    );
+  }
 
   const { data: currentUser } = useQuery({
     queryKey: ['currentUser'],
@@ -81,11 +111,13 @@ export default function CommissionPaymentControl() {
   });
 
   const { data: controlData, isLoading: loadingControl } = useQuery({
-    queryKey: ['commission-payment-control', filterStatus, filterBatchId],
+    queryKey: ['commission-payment-control', filterStatus, filterBatchId, filterDataInicio, filterDataFim],
     queryFn: () => {
       const params = new URLSearchParams();
       if (filterStatus !== 'all') params.set('status', filterStatus);
       if (filterBatchId !== 'all') params.set('lote_id', filterBatchId);
+      if (filterDataInicio) params.set('data_contrato_inicio', filterDataInicio);
+      if (filterDataFim) params.set('data_contrato_fim', filterDataFim);
       return fetchWithAuth(`/api/functions/commission-payment/control?${params}`);
     },
     staleTime: 30000,
@@ -126,6 +158,26 @@ export default function CommissionPaymentControl() {
       toast.success('Status alterado para Reativação');
     },
     onError: () => toast.error('Erro ao alterar status'),
+  });
+
+  const pendenteConciliacaoMutation = useMutation({
+    mutationFn: (id) => fetchWithAuth(`/api/functions/commission-payment/pendente-conciliacao/${id}`, { method: 'PUT' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['commission-payment-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['commission-payment-control'] });
+      toast.success('Marcado como Pendente de Conciliação');
+    },
+    onError: () => toast.error('Erro ao alterar status'),
+  });
+
+  const restoreElegivelMutation = useMutation({
+    mutationFn: (id) => fetchWithAuth(`/api/functions/commission-payment/restore-elegivel/${id}`, { method: 'PUT' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['commission-payment-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['commission-payment-control'] });
+      toast.success('Restaurado para Elegível');
+    },
+    onError: () => toast.error('Erro ao restaurar'),
   });
 
   const confirmBatchMutation = useMutation({
@@ -286,7 +338,25 @@ export default function CommissionPaymentControl() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg">Registros de Comissão</CardTitle>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap items-center">
+                <div className="flex items-center gap-1">
+                  <label className="text-xs text-gray-500">Data Contrato:</label>
+                  <input
+                    type="date"
+                    value={filterDataInicio}
+                    onChange={(e) => setFilterDataInicio(e.target.value)}
+                    className="text-sm border rounded-md px-2 py-1"
+                    title="Data Contrato (De)"
+                  />
+                  <span className="text-xs text-gray-400">até</span>
+                  <input
+                    type="date"
+                    value={filterDataFim}
+                    onChange={(e) => setFilterDataFim(e.target.value)}
+                    className="text-sm border rounded-md px-2 py-1"
+                    title="Data Contrato (Até)"
+                  />
+                </div>
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
@@ -296,6 +366,7 @@ export default function CommissionPaymentControl() {
                   <option value="elegivel">Elegíveis</option>
                   <option value="pago">Pagos</option>
                   <option value="reativacao">Reativação</option>
+                  <option value="pendente_conciliacao">Pendente de Conciliação</option>
                 </select>
                 <select
                   value={filterBatchId}
@@ -307,6 +378,21 @@ export default function CommissionPaymentControl() {
                     <option key={b.id} value={b.id}>Lote #{b.id}</option>
                   ))}
                 </select>
+                {(filterDataInicio || filterDataFim || filterStatus !== 'all' || filterBatchId !== 'all') && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-xs"
+                    onClick={() => {
+                      setFilterDataInicio('');
+                      setFilterDataFim('');
+                      setFilterStatus('all');
+                      setFilterBatchId('all');
+                    }}
+                  >
+                    Limpar
+                  </Button>
+                )}
               </div>
             </div>
           </CardHeader>
@@ -358,7 +444,7 @@ export default function CommissionPaymentControl() {
                         </td>
                         <td className="py-2 px-3">
                           {r.status_pagamento === 'elegivel' && (
-                            <div className="flex gap-1">
+                            <div className="flex gap-1 flex-wrap">
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -376,6 +462,37 @@ export default function CommissionPaymentControl() {
                                 disabled={reativacaoMutation.isPending}
                               >
                                 Reativação
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                                onClick={() => pendenteConciliacaoMutation.mutate(r.id)}
+                                disabled={pendenteConciliacaoMutation.isPending}
+                              >
+                                Pendente Conciliação
+                              </Button>
+                            </div>
+                          )}
+                          {r.status_pagamento === 'pendente_conciliacao' && (
+                            <div className="flex gap-1 flex-wrap">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-yellow-700 border-yellow-200 hover:bg-yellow-50"
+                                onClick={() => restoreElegivelMutation.mutate(r.id)}
+                                disabled={restoreElegivelMutation.isPending}
+                              >
+                                Voltar p/ Elegível
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => confirmMutation.mutate(r.id)}
+                                disabled={confirmMutation.isPending}
+                              >
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                Confirmar
                               </Button>
                             </div>
                           )}
