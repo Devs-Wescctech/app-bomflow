@@ -50,7 +50,7 @@ export default function SalesPJReports() {
   const { data: allAgents = [] } = useQuery({
     queryKey: ['agents'],
     queryFn: () => base44.entities.Agent.list(),
-    initialData: [],
+    enabled: !!user,
   });
 
   const currentAgent = user?.agent;

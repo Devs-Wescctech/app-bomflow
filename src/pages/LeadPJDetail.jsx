@@ -140,7 +140,7 @@ export default function LeadPJDetail() {
   const { data: agents = [] } = useQuery({
     queryKey: ['agents'],
     queryFn: () => base44.entities.Agent.list(),
-    initialData: [],
+    enabled: !!user,
   });
 
   const { data: activities = [] } = useQuery({
