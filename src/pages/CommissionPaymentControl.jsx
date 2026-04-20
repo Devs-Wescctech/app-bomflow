@@ -68,6 +68,32 @@ export default function CommissionPaymentControl() {
     );
   }
 
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.agent?.agentType === 'admin';
+  const allowedSubmenus = currentUser?.agent?.allowedSubmenus || [];
+  const agentType = currentUser?.agent?.agentType || '';
+  const isSupervisorType = agentType === 'supervisor' || agentType === 'sales_supervisor' || agentType.endsWith('_supervisor');
+  const hasAccess = isAdmin
+    || allowedSubmenus.includes('CommissionPaymentControl')
+    || (allowedSubmenus.length === 0 && isSupervisorType);
+
+  if (currentUser && !hasAccess) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+        <ShieldX className="w-16 h-16 text-gray-400 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">Acesso Negado</h2>
+        <p className="text-gray-500 dark:text-gray-400 mb-4">Você não tem permissão para acessar o Controle de Pagamento de Comissões.</p>
+        <Link to="/ReferralPipeline">
+          <Button variant="outline"><ArrowLeft className="w-4 h-4 mr-2" />Voltar ao Pipeline</Button>
+        </Link>
+      </div>
+    );
+  }
+
   const fetchWithAuth = async (url, options = {}) => {
     const token = localStorage.getItem('accessToken');
     const resp = await fetch(url, {
