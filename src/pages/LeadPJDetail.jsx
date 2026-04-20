@@ -561,13 +561,14 @@ export default function LeadPJDetail() {
   const currentAgent = user?.agent;
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
   const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
+  const isCoordinator = currentAgentType === 'coordinator';
   const isSupervisor = user?.role === 'supervisor' || currentAgentType?.includes('supervisor');
   
   const isOwnLead = currentAgent && String(leadAgentId) === String(currentAgent.id);
   const isTeamLead = isSupervisor && currentAgent?.teamId && 
     agents.some(a => String(a.id) === String(leadAgentId) && String(a.teamId) === String(currentAgent.teamId));
   
-  if (user && !isAdmin && !isSupervisor && !isOwnLead && !isTeamLead) {
+  if (user && !isAdmin && !isCoordinator && !isSupervisor && !isOwnLead && !isTeamLead) {
     const leadAgent = agents.find(a => String(a.id) === String(leadAgentId));
     
     return (
