@@ -14,6 +14,12 @@ SalesTwo is a focused B2B sales management platform built on a streamlined versi
 2. **Agentes** — User/agent management with permissions and access control
 3. **Configurações** — System settings (branding, permissions)
 
+## Secrets Convention
+- **Never commit real secret values to `.replit`**. The `[userenv.*]` blocks are tracked in git, so any value placed there is published to GitHub.
+- Real OAuth credentials, API keys, tokens, and similar secrets must be stored in the Replit Secrets pane (workspace secrets), which the runtime injects as environment variables — **not** in `.replit`.
+- Only non-sensitive runtime configuration (ports, public redirect URIs, feature flags) belongs in `.replit`.
+- Git history was rewritten on 2026-04-20 to scrub previously leaked `GCAL_CLIENT_ID` / `GCAL_CLIENT_SECRET` values from commit `b8b4e48` and its descendants. Those Google OAuth credentials must be rotated in Google Cloud Console.
+
 ## User Preferences
 - I want iterative development.
 - I want to be asked before making major changes.
