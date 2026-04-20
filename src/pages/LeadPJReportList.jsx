@@ -46,6 +46,7 @@ import { format, parseISO, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   hasFullVisibility,
+  hasTeamVisibility,
   getVisibleAgentIds,
   getVisibleAgentsForFilter,
   getDataVisibilityKey,
@@ -228,17 +229,17 @@ export default function LeadPJReportList() {
     queryFn: () => base44.auth.me(),
   });
 
-  const currentAgent = user?.agent;
-  const isAdmin = hasFullVisibility(currentAgent);
-
-  const { data: allAgents = [] } = useQuery({
+  const { data: allAgents = [], isLoading: isLoadingAgents } = useQuery({
     queryKey: ["agents"],
     queryFn: () => base44.entities.Agent.list(),
     enabled: !!user,
   });
 
+  const currentAgent = user?.agent || allAgents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
+  const isAdmin = hasFullVisibility(currentAgent) || hasTeamVisibility(currentAgent);
+
   const { data: leads = [], isLoading } = useQuery({
-    queryKey: ["leads-pj-report-list", getDataVisibilityKey(user, currentAgent), allAgents.length],
+    queryKey: ["leads-pj-report-list", getDataVisibilityKey(user, currentAgent), allAgents.length, currentAgent?.id],
     queryFn: async () => {
       const all = await base44.entities.LeadPJ.list("-createdDate", 10000);
       if (isAdmin) return all;
@@ -247,7 +248,7 @@ export default function LeadPJReportList() {
       const set = new Set(visibleIds.map(String));
       return all.filter((l) => set.has(String(l.agentId || l.agent_id)));
     },
-    enabled: !!user && allAgents.length > 0,
+    enabled: !!user && !isLoadingAgents && allAgents.length > 0 && (isAdmin || !!currentAgent),
   });
 
   const agentMap = useMemo(() => {
