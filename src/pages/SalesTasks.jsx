@@ -155,19 +155,21 @@ export default function SalesTasks() {
   });
 
   const activities = useMemo(() => {
-    if (hasFullVisibility(currentAgent)) return allActivities;
+    const tasksOnly = allActivities.filter(a => a.type !== 'note');
+
+    if (hasFullVisibility(currentAgent)) return tasksOnly;
     if (!currentAgent) return [];
 
     const visibleIds = getVisibleAgentIds(currentAgent, allAgents);
 
     if (hasTeamVisibility(currentAgent)) {
-      return allActivities.filter(a => {
+      return tasksOnly.filter(a => {
         const assignedTo = a.assignedTo || a.assigned_to;
         const createdBy = a.createdBy || a.created_by;
         return assignedTo ? visibleIds.includes(assignedTo) : (createdBy ? visibleIds.includes(createdBy) : false);
       });
     }
-    return allActivities.filter(a => {
+    return tasksOnly.filter(a => {
       const assignedTo = a.assignedTo || a.assigned_to;
       return assignedTo === currentAgent.id;
     });
