@@ -155,7 +155,8 @@ export default function SalesTasks() {
   });
 
   const activities = useMemo(() => {
-    const tasksOnly = allActivities.filter(a => a.type !== 'note');
+    const EXCLUDED_TYPES = new Set(['note', 'stage_change']);
+    const tasksOnly = allActivities.filter(a => !EXCLUDED_TYPES.has(a.type));
 
     if (hasFullVisibility(currentAgent)) return tasksOnly;
     if (!currentAgent) return [];
