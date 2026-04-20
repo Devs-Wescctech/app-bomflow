@@ -552,7 +552,7 @@ export default function LeadsPJKanban() {
   const isAdmin = hasFullVisibility(currentAgent) || hasTeamVisibility(currentAgent);
 
   const { data: leadsPJ = [], isLoading } = useQuery({
-    queryKey: ['leadsPJ', getDataVisibilityKey(user, currentAgent)],
+    queryKey: ['leadsPJ', getDataVisibilityKey(user, currentAgent), allAgents.length],
     queryFn: async () => {
       const allLeads = await base44.entities.LeadPJ.list('-created_at');
       
@@ -571,7 +571,7 @@ export default function LeadsPJKanban() {
         (l.agentId === currentAgent.id || l.agent_id === currentAgent.id)
       );
     },
-    enabled: !!user && (isAdmin || !!currentAgent),
+    enabled: !!user && !isLoadingAgents && (isAdmin || !!currentAgent),
     staleTime: 10000,
     refetchInterval: 15000,
   });
