@@ -87,6 +87,18 @@ async function runWithConcurrency(items, limit, worker, opts = {}) {
 
 export { normalizePhone };
 
+async function logValidationRun(stats, userId) {
+  try {
+    await query(
+      `INSERT INTO whatsapp_validation_runs (total, cached, fetched, valid, invalid, errors, user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [stats.total, stats.cached, stats.fetched, stats.valid, stats.invalid, stats.errors, userId || null]
+    );
+  } catch (e) {
+    console.error('[whatsappValidation] log run failed:', e.message);
+  }
+}
+
 /**
  * Streaming/cancellable variant used by the async validation job.
  *
@@ -98,34 +110,57 @@ export { normalizePhone };
  * Stops as soon as `shouldStop()` returns true (used both for cancellation
  * and to short-circuit when the target valid count is reached).
  */
-export async function validateNumbersStreaming(phones, { onResult, shouldStop, concurrency = MAX_PARALLEL } = {}) {
+export async function validateNumbersStreaming(phones, { onResult, shouldStop, concurrency = MAX_PARALLEL, userId } = {}) {
   const token = process.env.RUDO_WHATSAPP_TOKEN;
   if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
 
   const cache = await fetchCachedValidations(phones);
+
+  let cachedCount = 0;
+  let fetchedCount = 0;
+  let validCount = 0;
+  let invalidCount = 0;
+  let errorCount = 0;
 
   await runWithConcurrency(phones, concurrency, async (phone) => {
     if (typeof shouldStop === 'function' && shouldStop()) return;
 
     if (cache.has(phone)) {
       const status = cache.get(phone);
+      cachedCount++;
+      if (status === 'VALID_WA_NUMBER') validCount++;
+      else if (status === 'INVALID_WA_NUMBER') invalidCount++;
       onResult?.({ phone, status, fromCache: true });
       return;
     }
 
     const r = await callWhuCheck(phone, token);
     if (r.status === 'VALID_WA_NUMBER' || r.status === 'INVALID_WA_NUMBER') {
+      fetchedCount++;
+      if (r.status === 'VALID_WA_NUMBER') validCount++;
+      else invalidCount++;
       try { await upsertValidation(phone, r.status, r.raw); } catch (e) {
         console.error('[whatsappValidation] upsert failed', phone, e.message);
       }
       onResult?.({ phone, status: r.status, fromCache: false });
     } else {
+      fetchedCount++;
+      errorCount++;
       onResult?.({ phone, status: 'UNKNOWN', fromCache: false, error: r.error || `http=${r.httpStatus}` });
     }
   }, { shouldStop });
+
+  await logValidationRun({
+    total: cachedCount + fetchedCount,
+    cached: cachedCount,
+    fetched: fetchedCount,
+    valid: validCount,
+    invalid: invalidCount,
+    errors: errorCount,
+  }, userId);
 }
 
-export async function validateNumbers(rawPhones) {
+export async function validateNumbers(rawPhones, options = {}) {
   const token = process.env.RUDO_WHATSAPP_TOKEN;
   if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
 
@@ -172,16 +207,17 @@ export async function validateNumbers(rawPhones) {
     else if (results[k] === 'INVALID_WA_NUMBER') invalid++;
   }
 
-  return {
-    results,
-    stats: {
-      total: normalized.length,
-      cached: cache.size,
-      fetched: toFetch.length,
-      valid,
-      invalid,
-      errors,
-    },
+  const stats = {
+    total: normalized.length,
+    cached: cache.size,
+    fetched: toFetch.length,
+    valid,
+    invalid,
+    errors,
   };
+
+  await logValidationRun(stats, options.userId);
+
+  return { results, stats };
 }
 

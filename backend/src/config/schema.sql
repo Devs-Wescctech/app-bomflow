@@ -1275,3 +1275,18 @@ CREATE TABLE IF NOT EXISTS whatsapp_number_validations (
 );
 CREATE INDEX IF NOT EXISTS idx_wa_validations_status_validated
   ON whatsapp_number_validations(status, validated_at);
+
+-- Per-call audit of WHU validation runs (used for cache hit rate dashboard)
+CREATE TABLE IF NOT EXISTS whatsapp_validation_runs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  ran_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  total INTEGER NOT NULL DEFAULT 0,
+  cached INTEGER NOT NULL DEFAULT 0,
+  fetched INTEGER NOT NULL DEFAULT 0,
+  valid INTEGER NOT NULL DEFAULT 0,
+  invalid INTEGER NOT NULL DEFAULT 0,
+  errors INTEGER NOT NULL DEFAULT 0,
+  user_id UUID
+);
+CREATE INDEX IF NOT EXISTS idx_wa_validation_runs_ran_at
+  ON whatsapp_validation_runs(ran_at);

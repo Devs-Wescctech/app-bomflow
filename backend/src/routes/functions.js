@@ -455,7 +455,7 @@ router.post('/validate-whatsapp-numbers', authMiddleware, async (req, res) => {
     if (phones.length > 200) {
       return res.status(400).json({ success: false, error: 'Máximo de 200 números por requisição' });
     }
-    const out = await validateWhatsappNumbers(phones);
+    const out = await validateWhatsappNumbers(phones, { userId: req.user?.id });
     res.json(out);
   } catch (error) {
     console.error('[validate-whatsapp-numbers] error:', error);
@@ -1056,6 +1056,209 @@ router.post('/lead-generator-whatsapp-retry', authMiddleware, async (req, res) =
     res.json({ success: true, ...result });
   } catch (error) {
     console.error('[WhatsAppQueue] Retry error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/whatsapp-validations-filters', authMiddleware, async (req, res) => {
+  try {
+    const agent = await getAgentForDispatchCheck(req);
+    if (!agent || DISPATCH_FORBIDDEN_TYPES.includes(agent.agent_type)) {
+      return res.status(403).json({ success: false, error: 'Sem permissão.' });
+    }
+    const [channels, ufs, produtos] = await Promise.all([
+      query(
+        `SELECT DISTINCT l.channel_token AS value, COALESCE(c.channel_label, l.channel_token) AS label
+           FROM gerador_leads_log_estruturado l
+           LEFT JOIN referral_channel_config c ON c.channel_token = l.channel_token
+          WHERE l.channel_token IS NOT NULL AND l.channel_token <> ''
+          ORDER BY 2`
+      ),
+      query(
+        `SELECT DISTINCT lead_uf AS value FROM gerador_leads_log_estruturado
+          WHERE lead_uf IS NOT NULL AND lead_uf <> ''
+          ORDER BY 1`
+      ),
+      query(
+        `SELECT DISTINCT lead_produto AS value FROM gerador_leads_log_estruturado
+          WHERE lead_produto IS NOT NULL AND lead_produto <> ''
+          ORDER BY 1`
+      ),
+    ]);
+    res.json({
+      success: true,
+      channels: channels.rows,
+      ufs: ufs.rows.map(r => r.value),
+      produtos: produtos.rows.map(r => r.value),
+    });
+  } catch (error) {
+    console.error('[whatsapp-validations-filters] error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/whatsapp-validations-stats', authMiddleware, async (req, res) => {
+  try {
+    const agent = await getAgentForDispatchCheck(req);
+    if (!agent || DISPATCH_FORBIDDEN_TYPES.includes(agent.agent_type)) {
+      return res.status(403).json({ success: false, error: 'Sem permissão para acessar o painel de validações.' });
+    }
+
+    const { from, to, channelToken, uf, produto } = req.query;
+    const hasMetaFilter = !!(channelToken || uf || produto);
+
+    const params = [];
+    const dateConds = [];
+    if (from) {
+      params.push(from);
+      dateConds.push(`v.validated_at >= $${params.length}::timestamp`);
+    }
+    if (to) {
+      params.push(to);
+      dateConds.push(`v.validated_at <= $${params.length}::timestamp`);
+    }
+
+    const metaConds = [];
+    if (channelToken) {
+      params.push(channelToken);
+      metaConds.push(`l.channel_token = $${params.length}`);
+    }
+    if (uf) {
+      params.push(uf);
+      metaConds.push(`l.lead_uf = $${params.length}`);
+    }
+    if (produto) {
+      params.push(produto);
+      metaConds.push(`l.lead_produto = $${params.length}`);
+    }
+
+    const allConds = [...dateConds, ...metaConds];
+    const whereSql = allConds.length > 0 ? `WHERE ${allConds.join(' AND ')}` : '';
+
+    const fromSql = hasMetaFilter
+      ? `whatsapp_number_validations v
+         JOIN LATERAL (
+           SELECT channel_token, lead_uf, lead_produto
+             FROM gerador_leads_log_estruturado le
+            WHERE le.lead_number = v.phone
+              OR le.lead_number = RIGHT(v.phone, 11)
+              OR le.lead_number = RIGHT(v.phone, 10)
+            ORDER BY le.disparado_em DESC
+            LIMIT 1
+         ) l ON TRUE`
+      : `whatsapp_number_validations v`;
+
+    const totalsResult = await query(
+      `SELECT
+         COUNT(*)::int AS total,
+         COUNT(*) FILTER (WHERE v.status = 'VALID_WA_NUMBER')::int AS valid,
+         COUNT(*) FILTER (WHERE v.status = 'INVALID_WA_NUMBER')::int AS invalid,
+         COUNT(*) FILTER (WHERE v.status NOT IN ('VALID_WA_NUMBER','INVALID_WA_NUMBER'))::int AS other,
+         COUNT(*) FILTER (
+           WHERE v.status = 'VALID_WA_NUMBER'
+             AND v.validated_at < NOW() - INTERVAL '23 days'
+             AND v.validated_at >= NOW() - INTERVAL '30 days'
+         )::int AS valid_expiring_soon,
+         COUNT(*) FILTER (
+           WHERE v.status = 'INVALID_WA_NUMBER'
+             AND v.validated_at < NOW() - INTERVAL '83 days'
+             AND v.validated_at >= NOW() - INTERVAL '90 days'
+         )::int AS invalid_expiring_soon
+       FROM ${fromSql}
+       ${whereSql}`,
+      params
+    );
+
+    const byDayResult = await query(
+      `SELECT
+         DATE_TRUNC('day', v.validated_at)::date AS dia,
+         COUNT(*)::int AS total,
+         COUNT(*) FILTER (WHERE v.status = 'VALID_WA_NUMBER')::int AS valid,
+         COUNT(*) FILTER (WHERE v.status = 'INVALID_WA_NUMBER')::int AS invalid
+       FROM ${fromSql}
+       ${whereSql}
+       GROUP BY 1
+       ORDER BY 1 DESC
+       LIMIT 30`,
+      params
+    );
+
+    // Activity counters always reflect the entire whatsapp_number_validations table
+    const baseActivityResult = await query(
+      `SELECT
+         COUNT(*)::int AS total_in_table,
+         COUNT(*) FILTER (
+           WHERE (status = 'VALID_WA_NUMBER' AND validated_at >= NOW() - INTERVAL '30 days')
+              OR (status = 'INVALID_WA_NUMBER' AND validated_at >= NOW() - INTERVAL '90 days')
+         )::int AS still_cached,
+         COUNT(*) FILTER (WHERE validated_at >= NOW() - INTERVAL '24 hours')::int AS validated_24h,
+         COUNT(*) FILTER (WHERE validated_at >= NOW() - INTERVAL '7 days')::int AS validated_7d
+       FROM whatsapp_number_validations`
+    );
+
+    // Real cache hit rate from per-call audit log (filtered by date range only)
+    const runsParams = [];
+    const runsConds = [];
+    if (from) {
+      runsParams.push(from);
+      runsConds.push(`ran_at >= $${runsParams.length}::timestamp`);
+    }
+    if (to) {
+      runsParams.push(to);
+      runsConds.push(`ran_at <= $${runsParams.length}::timestamp`);
+    }
+    const runsWhere = runsConds.length > 0 ? `WHERE ${runsConds.join(' AND ')}` : '';
+    const runsResult = await query(
+      `SELECT
+         COUNT(*)::int AS runs,
+         COALESCE(SUM(total), 0)::int AS total,
+         COALESCE(SUM(cached), 0)::int AS cached,
+         COALESCE(SUM(fetched), 0)::int AS fetched
+       FROM whatsapp_validation_runs ${runsWhere}`,
+      runsParams
+    );
+
+    const t = totalsResult.rows[0] || {};
+    const base = baseActivityResult.rows[0] || {};
+    const runs = runsResult.rows[0] || {};
+    const total = t.total || 0;
+    const validPct = total > 0 ? Number(((t.valid / total) * 100).toFixed(1)) : 0;
+    const invalidPct = total > 0 ? Number(((t.invalid / total) * 100).toFixed(1)) : 0;
+    const baseTotal = base.total_in_table || 0;
+    const cacheCoveragePct = baseTotal > 0 ? Number(((base.still_cached / baseTotal) * 100).toFixed(1)) : 0;
+    const cacheHitRatePct = runs.total > 0 ? Number(((runs.cached / runs.total) * 100).toFixed(1)) : 0;
+
+    res.json({
+      success: true,
+      filters: { from: from || null, to: to || null, channelToken: channelToken || null, uf: uf || null, produto: produto || null },
+      totals: {
+        total,
+        valid: t.valid || 0,
+        invalid: t.invalid || 0,
+        other: t.other || 0,
+        valid_pct: validPct,
+        invalid_pct: invalidPct,
+        valid_expiring_soon: t.valid_expiring_soon || 0,
+        invalid_expiring_soon: t.invalid_expiring_soon || 0,
+      },
+      base: {
+        total_in_table: baseTotal,
+        still_cached: base.still_cached || 0,
+        cache_coverage_pct: cacheCoveragePct,
+        validated_24h: base.validated_24h || 0,
+        validated_7d: base.validated_7d || 0,
+      },
+      runs: {
+        runs: runs.runs || 0,
+        total: runs.total || 0,
+        cached: runs.cached || 0,
+        fetched: runs.fetched || 0,
+        cache_hit_rate_pct: cacheHitRatePct,
+      },
+      byDay: byDayResult.rows,
+    });
+  } catch (error) {
+    console.error('[whatsapp-validations-stats] error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

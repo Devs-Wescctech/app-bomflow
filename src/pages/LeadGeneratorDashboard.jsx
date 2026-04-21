@@ -56,6 +56,9 @@ export default function LeadGeneratorDashboard() {
   const [logsPage, setLogsPage] = useState(1);
   const [checkingConversions, setCheckingConversions] = useState(false);
   const [campaignPage, setCampaignPage] = useState(1);
+  const [valChannel, setValChannel] = useState('');
+  const [valUf, setValUf] = useState('');
+  const [valProduto, setValProduto] = useState('');
 
   const dateRange = useMemo(() => ({
     from: dateFrom ? `${dateFrom}T00:00:00` : null,
@@ -103,6 +106,40 @@ export default function LeadGeneratorDashboard() {
       return res.json();
     },
     refetchInterval: 60000,
+  });
+
+  const validationQueryParams = useMemo(() => {
+    const params = new URLSearchParams();
+    if (dateRange.from) params.set('from', dateRange.from);
+    if (dateRange.to) params.set('to', dateRange.to);
+    if (valChannel) params.set('channelToken', valChannel);
+    if (valUf) params.set('uf', valUf);
+    if (valProduto) params.set('produto', valProduto);
+    return params.toString();
+  }, [dateRange, valChannel, valUf, valProduto]);
+
+  const { data: validationsData, isLoading: loadingValidations } = useQuery({
+    queryKey: ['whatsapp-validations-stats', validationQueryParams],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/functions/whatsapp-validations-stats?${validationQueryParams}`, {
+        headers: { ...getAuthHeaders() },
+      });
+      if (!res.ok) return { success: false, totals: {}, base: {}, runs: {}, byDay: [] };
+      return res.json();
+    },
+    refetchInterval: 60000,
+  });
+
+  const { data: validationFilters } = useQuery({
+    queryKey: ['whatsapp-validations-filters'],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/functions/whatsapp-validations-filters`, {
+        headers: { ...getAuthHeaders() },
+      });
+      if (!res.ok) return { channels: [], ufs: [], produtos: [] };
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: failureReasonsData } = useQuery({
@@ -435,6 +472,143 @@ export default function LeadGeneratorDashboard() {
               </Card>
             ))}
           </div>
+
+          <CollapsibleSection title="Validações de WhatsApp (WHU)" icon={Phone} iconColor="text-emerald-500" defaultOpen={false}>
+            {loadingValidations ? (
+              <div className="py-6 flex items-center justify-center text-gray-500 text-xs gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" /> Carregando validações...
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-gray-500">Canal</Label>
+                    <select
+                      value={valChannel}
+                      onChange={e => setValChannel(e.target.value)}
+                      className="h-8 text-xs border rounded px-2 bg-white dark:bg-gray-900 dark:border-gray-700 min-w-[160px]"
+                    >
+                      <option value="">Todos os canais</option>
+                      {(validationFilters?.channels || []).map(c => (
+                        <option key={c.value} value={c.value}>{c.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-gray-500">UF</Label>
+                    <select
+                      value={valUf}
+                      onChange={e => setValUf(e.target.value)}
+                      className="h-8 text-xs border rounded px-2 bg-white dark:bg-gray-900 dark:border-gray-700"
+                    >
+                      <option value="">Todas</option>
+                      {(validationFilters?.ufs || []).map(u => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-gray-500">Produto</Label>
+                    <select
+                      value={valProduto}
+                      onChange={e => setValProduto(e.target.value)}
+                      className="h-8 text-xs border rounded px-2 bg-white dark:bg-gray-900 dark:border-gray-700 min-w-[160px]"
+                    >
+                      <option value="">Todos</option>
+                      {(validationFilters?.produtos || []).map(p => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {(valChannel || valUf || valProduto) && (
+                    <Button variant="ghost" size="sm" className="text-xs h-8" onClick={() => { setValChannel(''); setValUf(''); setValProduto(''); }}>
+                      Limpar
+                    </Button>
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-500">
+                  Totais e gráfico respeitam o período e os filtros. "Buscas no período" e "Taxa cache hit" usam o período (sem filtros de canal/UF/produto). "Atividade recente" e "Tabela de cache" sempre consideram toda a base.
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {(() => {
+                    const t = validationsData?.totals || {};
+                    const cards = [
+                      { label: 'Total no período', value: (t.total || 0).toLocaleString('pt-BR'), icon: Hash, color: 'indigo', bg: 'bg-indigo-100 dark:bg-indigo-900/30' },
+                      { label: 'Válidos', value: `${(t.valid || 0).toLocaleString('pt-BR')} (${t.valid_pct || 0}%)`, icon: CheckCircle2, color: 'green', bg: 'bg-green-100 dark:bg-green-900/30', small: true },
+                      { label: 'Inválidos', value: `${(t.invalid || 0).toLocaleString('pt-BR')} (${t.invalid_pct || 0}%)`, icon: XCircle, color: 'red', bg: 'bg-red-100 dark:bg-red-900/30', small: true },
+                      { label: 'Expirando (válidos)', value: (t.valid_expiring_soon || 0).toLocaleString('pt-BR'), icon: Clock, color: 'amber', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+                      { label: 'Expirando (inválidos)', value: (t.invalid_expiring_soon || 0).toLocaleString('pt-BR'), icon: Clock, color: 'orange', bg: 'bg-orange-100 dark:bg-orange-900/30' },
+                      { label: 'Taxa cache hit', value: `${validationsData?.runs?.cache_hit_rate_pct || 0}%`, icon: Activity, color: 'blue', bg: 'bg-blue-100 dark:bg-blue-900/30' },
+                    ];
+                    return cards.map((c, i) => (
+                      <Card key={i}>
+                        <CardContent className="pt-4 pb-3">
+                          <div className="flex items-center gap-2">
+                            <div className={`p-2 rounded-lg ${c.bg}`}>
+                              <c.icon className={`w-4 h-4 text-${c.color}-600`} />
+                            </div>
+                            <div>
+                              <p className={`${c.small ? 'text-sm' : 'text-xl'} font-bold text-${c.color}-600`}>{c.value}</p>
+                              <p className="text-[10px] text-gray-500 leading-tight">{c.label}</p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ));
+                  })()}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <Card>
+                    <CardContent className="pt-4 pb-3 text-xs space-y-1">
+                      <p className="font-medium text-gray-700 dark:text-gray-300">Atividade recente (toda a base)</p>
+                      <p className="text-gray-500">Nas últimas 24h: <span className="font-semibold text-gray-800 dark:text-gray-200">{(validationsData?.base?.validated_24h || 0).toLocaleString('pt-BR')}</span> checagens</p>
+                      <p className="text-gray-500">Nos últimos 7 dias: <span className="font-semibold text-gray-800 dark:text-gray-200">{(validationsData?.base?.validated_7d || 0).toLocaleString('pt-BR')}</span> checagens</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4 pb-3 text-xs space-y-1">
+                      <p className="font-medium text-gray-700 dark:text-gray-300">Tabela de cache (toda a base)</p>
+                      <p className="text-gray-500">Total armazenado: <span className="font-semibold text-gray-800 dark:text-gray-200">{(validationsData?.base?.total_in_table || 0).toLocaleString('pt-BR')}</span></p>
+                      <p className="text-gray-500">Ainda dentro da janela (30/90d): <span className="font-semibold text-gray-800 dark:text-gray-200">{(validationsData?.base?.still_cached || 0).toLocaleString('pt-BR')}</span> ({validationsData?.base?.cache_coverage_pct || 0}%)</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4 pb-3 text-xs space-y-1">
+                      <p className="font-medium text-gray-700 dark:text-gray-300">Buscas no período</p>
+                      <p className="text-gray-500">Buscas executadas: <span className="font-semibold text-gray-800 dark:text-gray-200">{(validationsData?.runs?.runs || 0).toLocaleString('pt-BR')}</span></p>
+                      <p className="text-gray-500">
+                        Reaproveitados do cache: <span className="font-semibold text-gray-800 dark:text-gray-200">{(validationsData?.runs?.cached || 0).toLocaleString('pt-BR')}</span>
+                        {' / '}
+                        Consultados na WHU: <span className="font-semibold text-gray-800 dark:text-gray-200">{(validationsData?.runs?.fetched || 0).toLocaleString('pt-BR')}</span>
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {validationsData?.byDay?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-2">Validações por dia</p>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart data={[...validationsData.byDay].reverse().map(d => ({
+                        dia: d.dia ? format(new Date(d.dia), 'dd/MM', { locale: ptBR }) : '',
+                        validos: d.valid || 0,
+                        invalidos: d.invalid || 0,
+                      }))}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="dia" tick={{ fontSize: 10 }} />
+                        <YAxis tick={{ fontSize: 10 }} />
+                        <Tooltip />
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                        <Bar dataKey="validos" stackId="a" fill="#10b981" name="Válidos" />
+                        <Bar dataKey="invalidos" stackId="a" fill="#ef4444" name="Inválidos" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+            )}
+          </CollapsibleSection>
 
           {failureReasonsData?.reasons?.length > 0 && (
             <CollapsibleSection title="Principais Motivos de Falha" icon={AlertTriangle} iconColor="text-red-500" defaultOpen={false}>
