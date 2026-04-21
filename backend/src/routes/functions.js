@@ -4105,6 +4105,27 @@ async function getCommissionReportData() {
   }
   const hasPending = pendingList.length > 0;
 
+  const pendingRecords = [];
+  for (const r of pendingResult.rows) {
+    if (currentBatchId && r.lote_pagamento_id === currentBatchId) continue;
+    if (!currentBatchId && currentRecordIds.has(r.id)) continue;
+
+    const batchKey = r.lote_pagamento_id || 'unbatched';
+    const indicatorKey = r.cpf_indicador || r.nome_indicador || 'unknown';
+    const groupKey = `${batchKey}::${indicatorKey}`;
+    const group = batchGroups[groupKey];
+    const cpfClean = r.cpf_indicador ? String(r.cpf_indicador).replace(/\D/g, '') : '';
+
+    pendingRecords.push({
+      ...r,
+      _indicatorCount: group ? group.count : 0,
+      _pix: pixMap[cpfClean] || pixMap[r.cpf_indicador] || null,
+      _periodo: r.periodo_inicio && r.periodo_fim
+        ? `${formatDateBR(r.periodo_inicio)} → ${formatDateBR(r.periodo_fim)}`
+        : '-'
+    });
+  }
+
   console.log(`[Commission Report] Cycle: ${cycle.label} | Current: ${totalIndicadores} indicators | Pending entries: ${pendingList.length}`);
 
   return {
@@ -4115,6 +4136,7 @@ async function getCommissionReportData() {
     valorTotal,
     records,
     pending: pendingList,
+    pendingRecords,
     pendingTotal,
     hasPending,
     cycleEmpty: totalIndicadores === 0
@@ -4296,6 +4318,7 @@ function buildCommissionEmailHtml(data) {
   }
 
   if (hasPending) {
+    const pendingRecords = data.pendingRecords || [];
     html += `
   <!-- Pending Commissions Section -->
   <div style="padding: 0 40px 24px;">
@@ -4308,32 +4331,39 @@ function buildCommissionEmailHtml(data) {
         <tr style="background: #fff7ed;">
           <th style="${thStyle}">Indicador</th>
           <th style="${thStyle}">CPF</th>
-          <th style="${thStyle}">Período</th>
-          <th style="${thStyle} text-align: center;">Conversões</th>
+          <th style="${thStyle}">PIX</th>
+          <th style="${thStyle}">CPF Indicado</th>
+          <th style="${thStyle}">Nome Indicado</th>
+          <th style="${thStyle}">Nº Contrato</th>
+          <th style="${thStyle} text-align: center;">Nível</th>
           <th style="${thStyle} text-align: right;">Comissão</th>
-          <th style="${thStyle} text-align: center;">Status</th>
         </tr>
       </thead>
       <tbody>`;
 
-    pending.forEach((pend, pIdx) => {
+    pendingRecords.forEach((r, pIdx) => {
       const bg = pIdx % 2 === 0 ? '#ffffff' : '#fffbeb';
+      const count = r._indicatorCount || 0;
+      const nivel = count >= 13 ? 'Nível 3' : count >= 4 ? 'Nível 2' : count >= 1 ? 'Nível 1' : '-';
+      const unitValue = count >= 13 ? 200 : count >= 4 ? 150 : count >= 1 ? 100 : 0;
+      const pixDisplay = r._pix ? escapeHtml(r._pix) : 'PIX não informado';
       html += `
         <tr style="background: ${bg};">
-          <td style="${tdStyle} font-weight: 600;">${pend.nome}</td>
-          <td style="${tdStyle}">${formatCPF(pend.cpf)}</td>
-          <td style="${tdStyle}">${pend.periodo}</td>
-          <td style="${tdStyle} text-align: center;">${pend.count}</td>
-          <td style="${tdRight}">${formatCurrency(pend.total)}</td>
-          <td style="${tdStyle} text-align: center;"><span style="background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">Pendente</span></td>
+          <td style="${tdStyle} font-weight: 600;">${escapeHtml(r.nome_indicador) || '-'}</td>
+          <td style="${tdStyle}">${formatCPF(r.cpf_indicador)}</td>
+          <td style="${tdStyle}${!r._pix ? ' color: #94a3b8; font-style: italic;' : ''}">${pixDisplay}</td>
+          <td style="${tdStyle}">${formatCPF(r.cpf_indicado)}</td>
+          <td style="${tdStyle}">${escapeHtml(r.nome_indicado) || '-'}</td>
+          <td style="${tdStyle}">${r.contrato_servicos || '-'}</td>
+          <td style="${tdStyle} text-align: center;">${nivel}</td>
+          <td style="${tdRight}">${formatCurrency(unitValue)}</td>
         </tr>`;
     });
 
     html += `
         <tr style="background: #7c2d12;">
-          <td colspan="4" style="padding: 12px; border: 1px solid #9a3412; color: #ffffff; font-weight: 700; font-size: 14px;">TOTAL PENDENTE</td>
+          <td colspan="7" style="padding: 12px; border: 1px solid #9a3412; color: #ffffff; font-weight: 700; font-size: 14px;">TOTAL PENDENTE</td>
           <td style="padding: 12px; border: 1px solid #9a3412; color: #fb923c; font-weight: 800; font-size: 16px; text-align: right;">${formatCurrency(pendingTotal)}</td>
-          <td style="padding: 12px; border: 1px solid #9a3412;"></td>
         </tr>
       </tbody>
     </table>
@@ -4482,21 +4512,25 @@ function generateCommissionPDF(data) {
       doc.rect(40, y, doc.page.width - 80, 2).fill(orangeAccent);
       y += 8;
 
-      const colsPending = [
-        { label: 'Indicador', w: 145, align: 'left' },
-        { label: 'CPF', w: 90, align: 'left' },
-        { label: 'Período', w: 95, align: 'left' },
-        { label: 'Conversões', w: 45, align: 'center' },
-        { label: 'Comissão', w: 70, align: 'right' },
-        { label: 'Status', w: 50, align: 'center' },
-      ];
+      y = drawTableHeader(cols1, y);
 
-      y = drawTableHeader(colsPending, y);
-
-      pending.forEach((pend, pIdx) => {
-        if (y > doc.page.height - 60) { doc.addPage(); y = 40; y = drawTableHeader(colsPending, y); }
+      (data.pendingRecords || []).forEach((r, pIdx) => {
+        if (y > doc.page.height - 60) { doc.addPage(); y = 40; y = drawTableHeader(cols1, y); }
         const bg = pIdx % 2 === 1 ? [255, 251, 235] : null;
-        y = drawTableRow(colsPending, [pend.nome, formatCPF(pend.cpf), pend.periodo, String(pend.count), formatCurrency(pend.total), 'Pendente'], y, bg);
+        const count = r._indicatorCount || 0;
+        const nivel = count >= 13 ? 'Nível 3' : count >= 4 ? 'Nível 2' : count >= 1 ? 'Nível 1' : '-';
+        const unitValue = count >= 13 ? 200 : count >= 4 ? 150 : count >= 1 ? 100 : 0;
+        const pixDisplay = r._pix || 'PIX não informado';
+        y = drawTableRow(cols1, [
+          r.nome_indicador || '-',
+          formatCPF(r.cpf_indicador),
+          pixDisplay,
+          formatCPF(r.cpf_indicado),
+          r.nome_indicado || '-',
+          r.contrato_servicos || '-',
+          nivel,
+          formatCurrency(unitValue)
+        ], y, bg);
       });
 
       doc.rect(40, y, doc.page.width - 80, 20).fill([124, 45, 18]);
