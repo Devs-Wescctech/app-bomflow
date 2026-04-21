@@ -4364,7 +4364,7 @@ function generateCommissionPDF(data) {
     const periodoFim = formatDateBR(cycle.end);
     const geradoEm = formatDateTimeBR(new Date());
 
-    const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true });
+    const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 40, bufferPages: true });
     const chunks = [];
     doc.on('data', c => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
