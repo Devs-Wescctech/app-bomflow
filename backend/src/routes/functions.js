@@ -15,6 +15,7 @@ import { v4 as uuidv4 } from 'uuid';
 import ExcelJS from 'exceljs';
 import { enqueueLeads, processQueue, retryFailed, getQueueStatus, getDashboardMetrics, getLogsWithPagination, normalizePhone, checkConversions, getConversionMetrics, getConversionsList } from '../services/whatsappQueueService.js';
 import { validateNumbers as validateWhatsappNumbers } from '../services/whatsappValidationService.js';
+import { startValidationJob, getValidationJob, cancelValidationJob } from '../services/whatsappValidationJobService.js';
 import { getEnvioRegulamentoConfig } from '../services/automationService.js';
 import { getAgentByErpId, getErpAgentMap, resolveAgentFromErp } from '../services/erpIntegrationService.js';
 import OpenAI from 'openai';
@@ -458,6 +459,82 @@ router.post('/validate-whatsapp-numbers', authMiddleware, async (req, res) => {
     res.json(out);
   } catch (error) {
     console.error('[validate-whatsapp-numbers] error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+async function checkValidationAccess(req, res) {
+  const agentResult = await query(
+    'SELECT id, agent_type, email FROM agents WHERE id = $1',
+    [req.user.id]
+  );
+  const agent = agentResult.rows[0];
+  const agentType = agent?.agent_type || '';
+  const isAdmin = req.user?.role === 'admin' || agentType === 'admin';
+  if (!isAdmin && VALIDATION_FORBIDDEN_TYPES.includes(agentType)) {
+    try {
+      await query(
+        `INSERT INTO gerador_leads_audit_log (user_id, user_email, agent_type, action, details, ip_address)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          req.user?.id,
+          req.user?.email || agent?.email,
+          agentType || 'unknown',
+          'validate_whatsapp_job_denied',
+          JSON.stringify({ timestamp: new Date().toISOString(), path: req.originalUrl }),
+          req.ip || req.headers['x-forwarded-for'] || null,
+        ]
+      );
+    } catch (e) { /* audit failure non-fatal */ }
+    res.status(403).json({ success: false, error: 'Acesso negado para validação de números' });
+    return null;
+  }
+  return { isAdmin, agentType };
+}
+
+router.post('/validate-whatsapp-job', authMiddleware, async (req, res) => {
+  try {
+    const access = await checkValidationAccess(req, res);
+    if (!access) return;
+
+    const phones = Array.isArray(req.body?.phones) ? req.body.phones : [];
+    const target = Number.isFinite(Number(req.body?.target)) ? Number(req.body.target) : 0;
+
+    if (phones.length === 0) {
+      return res.status(400).json({ success: false, error: 'Lista de números vazia' });
+    }
+    if (phones.length > 100000) {
+      return res.status(400).json({ success: false, error: 'Lista de números muito grande (máx. 100000)' });
+    }
+
+    const view = startValidationJob({ rawPhones: phones, target, userId: req.user.id });
+    res.json({ success: true, ...view });
+  } catch (error) {
+    console.error('[validate-whatsapp-job:start] error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/validate-whatsapp-job/:id', authMiddleware, async (req, res) => {
+  try {
+    const isAdmin = req.user?.role === 'admin';
+    const view = getValidationJob(req.params.id, req.user.id, { isAdmin });
+    if (!view) return res.status(404).json({ success: false, error: 'Job não encontrado' });
+    res.json({ success: true, ...view });
+  } catch (error) {
+    console.error('[validate-whatsapp-job:status] error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/validate-whatsapp-job/:id/cancel', authMiddleware, async (req, res) => {
+  try {
+    const isAdmin = req.user?.role === 'admin';
+    const view = cancelValidationJob(req.params.id, req.user.id, { isAdmin });
+    if (!view) return res.status(404).json({ success: false, error: 'Job não encontrado' });
+    res.json({ success: true, ...view });
+  } catch (error) {
+    console.error('[validate-whatsapp-job:cancel] error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

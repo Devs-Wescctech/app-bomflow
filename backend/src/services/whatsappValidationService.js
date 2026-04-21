@@ -68,11 +68,13 @@ async function callWhuCheck(phone, token) {
   }
 }
 
-async function runWithConcurrency(items, limit, worker) {
+async function runWithConcurrency(items, limit, worker, opts = {}) {
+  const { shouldStop } = opts;
   const results = new Array(items.length);
   let cursor = 0;
   async function next() {
     while (true) {
+      if (typeof shouldStop === 'function' && shouldStop()) return;
       const i = cursor++;
       if (i >= items.length) return;
       results[i] = await worker(items[i], i);
@@ -81,6 +83,46 @@ async function runWithConcurrency(items, limit, worker) {
   const runners = Array.from({ length: Math.min(limit, items.length) }, () => next());
   await Promise.all(runners);
   return results;
+}
+
+export { normalizePhone };
+
+/**
+ * Streaming/cancellable variant used by the async validation job.
+ *
+ * Validates `phones` (already deduped + normalized) one-by-one with internal
+ * concurrency. As each phone is resolved, `onResult({ phone, status, fromCache, error })`
+ * is invoked synchronously so the caller can update progress / accumulate
+ * valid phones / decide to stop early via `shouldStop()`.
+ *
+ * Stops as soon as `shouldStop()` returns true (used both for cancellation
+ * and to short-circuit when the target valid count is reached).
+ */
+export async function validateNumbersStreaming(phones, { onResult, shouldStop, concurrency = MAX_PARALLEL } = {}) {
+  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+
+  const cache = await fetchCachedValidations(phones);
+
+  await runWithConcurrency(phones, concurrency, async (phone) => {
+    if (typeof shouldStop === 'function' && shouldStop()) return;
+
+    if (cache.has(phone)) {
+      const status = cache.get(phone);
+      onResult?.({ phone, status, fromCache: true });
+      return;
+    }
+
+    const r = await callWhuCheck(phone, token);
+    if (r.status === 'VALID_WA_NUMBER' || r.status === 'INVALID_WA_NUMBER') {
+      try { await upsertValidation(phone, r.status, r.raw); } catch (e) {
+        console.error('[whatsappValidation] upsert failed', phone, e.message);
+      }
+      onResult?.({ phone, status: r.status, fromCache: false });
+    } else {
+      onResult?.({ phone, status: 'UNKNOWN', fromCache: false, error: r.error || `http=${r.httpStatus}` });
+    }
+  }, { shouldStop });
 }
 
 export async function validateNumbers(rawPhones) {

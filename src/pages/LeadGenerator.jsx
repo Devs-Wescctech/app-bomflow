@@ -58,6 +58,11 @@ export default function LeadGenerator() {
 
   const [selectedLeads, setSelectedLeads] = useState(new Set());
   const [validationProgress, setValidationProgress] = useState(null);
+  const [validationJobId, setValidationJobId] = useState(null);
+  const validationJobIdRef = useRef(null);
+  const validationLeadsRef = useRef([]);
+  const validationPollRef = useRef(null);
+  const validationCancelRef = useRef(false);
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showResultDialog, setShowResultDialog] = useState(false);
@@ -90,8 +95,151 @@ export default function LeadGenerator() {
   useEffect(() => {
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
+      if (validationPollRef.current) clearInterval(validationPollRef.current);
     };
   }, []);
+
+  // Restaura job de validação ativo após reload/reabertura da aba.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('leadGenerator:validationJob');
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (!saved?.jobId || !Array.isArray(saved?.leads)) return;
+      validationLeadsRef.current = saved.leads;
+      setHasSearched(true);
+      setLoading(true);
+      setValidationProgress({
+        processed: 0,
+        total: saved.leads.length,
+        validFound: 0,
+        target: MAX_LEADS,
+      });
+      pollValidationJob(saved.jobId);
+    } catch (e) {
+      console.warn('Falha ao restaurar job de validação:', e);
+      try { localStorage.removeItem('leadGenerator:validationJob'); } catch {}
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function clearValidationJobStorage() {
+    try { localStorage.removeItem('leadGenerator:validationJob'); } catch {}
+  }
+
+  function finishValidation(jobView, { silent = false } = {}) {
+    if (validationPollRef.current) {
+      clearInterval(validationPollRef.current);
+      validationPollRef.current = null;
+    }
+    const validPhones = Array.isArray(jobView?.validPhones) ? jobView.validPhones : [];
+    const validSet = new Set(validPhones);
+    const baseLeads = validationLeadsRef.current || [];
+
+    const matched = [];
+    const matchedKeys = new Set();
+    for (const lead of baseLeads) {
+      const clean = normalizeLeadPhone(lead.number);
+      if (clean && validSet.has(clean) && !matchedKeys.has(clean)) {
+        matched.push(lead);
+        matchedKeys.add(clean);
+        if (matched.length >= MAX_LEADS) break;
+      }
+    }
+
+    setLeads(matched);
+    setTotalFound(matched.length);
+    setValidationProgress(null);
+    setValidationJobId(null);
+    validationJobIdRef.current = null;
+    validationLeadsRef.current = [];
+    validationCancelRef.current = false;
+    setLoading(false);
+    clearValidationJobStorage();
+
+    if (silent) return;
+    if (jobView?.status === 'cancelled') {
+      toast.info(`Validação cancelada. ${matched.length} números válidos encontrados até o momento.`);
+    } else if (jobView?.status === 'error') {
+      toast.error(`Erro durante a validação: ${jobView?.error || 'desconhecido'}`);
+    } else if (matched.length === 0) {
+      toast.warning('Nenhum número com WhatsApp ativo foi encontrado nesta busca.');
+    } else if (matched.length < MAX_LEADS) {
+      toast.warning(`Encontrados ${matched.length} números com WhatsApp ativo (alvo: ${MAX_LEADS}). A base do ERP foi esgotada.`);
+    } else {
+      toast.success(`${matched.length} números com WhatsApp ativo prontos para disparo.`);
+    }
+  }
+
+  function pollValidationJob(jobId) {
+    setValidationJobId(jobId);
+    validationJobIdRef.current = jobId;
+    if (validationPollRef.current) clearInterval(validationPollRef.current);
+
+    const tick = async () => {
+      if (validationJobIdRef.current !== jobId) return;
+      try {
+        const res = await fetch(`${API_BASE}/functions/validate-whatsapp-job/${jobId}`, {
+          headers: { ...getAuthHeaders() },
+        });
+        if (res.status === 404) {
+          if (validationPollRef.current) clearInterval(validationPollRef.current);
+          validationPollRef.current = null;
+          clearValidationJobStorage();
+          setValidationJobId(null);
+          validationJobIdRef.current = null;
+          setValidationProgress(null);
+          setLoading(false);
+          toast.error('A sessão de validação expirou ou foi removida.');
+          return;
+        }
+        if (!res.ok) return;
+        const data = await res.json();
+
+        setValidationProgress({
+          processed: data.processed || 0,
+          total: data.total || 0,
+          validFound: data.validFound || 0,
+          target: data.target || MAX_LEADS,
+        });
+
+        if (data.finished) {
+          finishValidation(data, { silent: validationCancelRef.current && data.status !== 'cancelled' });
+        }
+      } catch (e) {
+        console.error('[LeadGenerator] poll validation job failed', e);
+      }
+    };
+
+    tick();
+    validationPollRef.current = setInterval(tick, 1500);
+  }
+
+  async function handleCancelValidation() {
+    const jobId = validationJobIdRef.current;
+    if (!jobId) return;
+    validationCancelRef.current = true;
+    try {
+      await fetch(`${API_BASE}/functions/validate-whatsapp-job/${jobId}/cancel`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders() },
+      });
+      toast.info('Cancelamento solicitado...');
+    } catch (e) {
+      console.error('[LeadGenerator] cancel failed', e);
+      toast.error('Erro ao solicitar cancelamento.');
+    }
+  }
+
+  function normalizeLeadPhone(phone) {
+    if (!phone) return '';
+    let cleaned = String(phone).replace(/\D/g, '');
+    if (cleaned.length === 0) return '';
+    if (!cleaned.startsWith('55') && (cleaned.length === 10 || cleaned.length === 11)) {
+      cleaned = '55' + cleaned;
+    }
+    return cleaned;
+  }
 
   async function loadFilterOptions(forceRefresh = false) {
     setLoadingOptions(true);
@@ -169,20 +317,10 @@ export default function LeadGenerator() {
       const data = await res.json();
       const allData = Array.isArray(data) ? data : [];
 
-      const normalizePhone = (phone) => {
-        if (!phone) return '';
-        let cleaned = String(phone).replace(/\D/g, '');
-        if (cleaned.length === 0) return '';
-        if (!cleaned.startsWith('55') && (cleaned.length === 10 || cleaned.length === 11)) {
-          cleaned = '55' + cleaned;
-        }
-        return cleaned;
-      };
-
       const seen = new Set();
       const dedupedData = [];
       for (const lead of allData) {
-        const clean = normalizePhone(lead.number);
+        const clean = normalizeLeadPhone(lead.number);
         if (!clean || seen.has(clean)) continue;
         seen.add(clean);
         dedupedData.push(lead);
@@ -190,71 +328,72 @@ export default function LeadGenerator() {
 
       setTotalFound(dedupedData.length);
 
-      // Validação WHU: percorre a base do ERP em lotes e acumula somente
-      // números com WhatsApp ativo (VALID_WA_NUMBER) até alcançar MAX_LEADS.
-      const VALIDATION_BATCH = 30;
-      const validLeads = [];
-      let processed = 0;
-      const totalAvailable = dedupedData.length;
-      setValidationProgress({ processed: 0, total: totalAvailable, validFound: 0, target: MAX_LEADS });
-
-      for (let i = 0; i < dedupedData.length && validLeads.length < MAX_LEADS; i += VALIDATION_BATCH) {
-        const batch = dedupedData.slice(i, i + VALIDATION_BATCH);
-        const phones = batch.map(l => normalizePhone(l.number)).filter(Boolean);
-        let results = {};
-        try {
-          const vRes = await fetch(`${API_BASE}/functions/validate-whatsapp-numbers`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-            body: JSON.stringify({ phones }),
-          });
-          if (vRes.ok) {
-            const vJson = await vRes.json();
-            results = vJson?.results || {};
-          } else {
-            console.error('[LeadGenerator] Validation HTTP', vRes.status);
-          }
-        } catch (e) {
-          console.error('[LeadGenerator] Validation batch failed:', e);
-        }
-
-        for (const lead of batch) {
-          if (validLeads.length >= MAX_LEADS) break;
-          const clean = normalizePhone(lead.number);
-          if (clean && results[clean] === 'VALID_WA_NUMBER') {
-            validLeads.push(lead);
-          }
-        }
-
-        processed += batch.length;
-        setValidationProgress({
-          processed,
-          total: totalAvailable,
-          validFound: validLeads.length,
-          target: MAX_LEADS,
-        });
+      if (dedupedData.length === 0) {
+        toast.warning('Nenhum lead encontrado para os filtros selecionados.');
+        setLoading(false);
+        return;
       }
 
-      setLeads(validLeads);
-      setTotalFound(validLeads.length);
+      // Validação assíncrona: dispara um job no backend e faz polling do status.
+      validationLeadsRef.current = dedupedData;
+      validationCancelRef.current = false;
+      const phones = dedupedData.map(l => normalizeLeadPhone(l.number)).filter(Boolean);
 
-      if (validLeads.length === 0) {
-        toast.warning('Nenhum número com WhatsApp ativo foi encontrado nesta busca.');
-      } else if (validLeads.length < MAX_LEADS) {
-        toast.warning(`Encontrados ${validLeads.length} números com WhatsApp ativo (alvo: ${MAX_LEADS}). A base do ERP foi esgotada.`);
-      } else {
-        toast.success(`${validLeads.length} números com WhatsApp ativo prontos para disparo.`);
+      setValidationProgress({
+        processed: 0,
+        total: dedupedData.length,
+        validFound: 0,
+        target: MAX_LEADS,
+      });
+
+      const startRes = await fetch(`${API_BASE}/functions/validate-whatsapp-job`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ phones, target: MAX_LEADS }),
+      });
+      if (!startRes.ok) {
+        const err = await startRes.json().catch(() => ({}));
+        throw new Error(err.error || `Erro ao iniciar validação (${startRes.status})`);
       }
+      const startJson = await startRes.json();
+      const jobId = startJson.jobId;
+      if (!jobId) throw new Error('Resposta inválida ao iniciar validação');
+
+      try {
+        const slimLeads = dedupedData.map(l => ({ ...l }));
+        localStorage.setItem('leadGenerator:validationJob', JSON.stringify({
+          jobId,
+          leads: slimLeads,
+          startedAt: Date.now(),
+        }));
+      } catch (e) {
+        console.warn('Não foi possível salvar progresso da validação localmente:', e);
+      }
+
+      pollValidationJob(jobId);
     } catch (err) {
       console.error('Erro ao buscar leads:', err);
       toast.error('Erro ao buscar leads: ' + err.message);
-    } finally {
       setValidationProgress(null);
       setLoading(false);
     }
   }
 
   function handleClearFilters() {
+    if (validationJobIdRef.current) {
+      handleCancelValidation();
+    }
+    if (validationPollRef.current) {
+      clearInterval(validationPollRef.current);
+      validationPollRef.current = null;
+    }
+    setValidationJobId(null);
+    validationJobIdRef.current = null;
+    validationLeadsRef.current = [];
+    validationCancelRef.current = false;
+    setValidationProgress(null);
+    setLoading(false);
+    clearValidationJobStorage();
     setFilters({ canal: "todos", cidade: "todos", uf: "todos", produto: "todos", situacao_contrato: "todos", tempoAtivo: "todos", dataContratoInicio: "", dataContratoFim: "" });
     setLeads([]);
     setTotalFound(0);
@@ -751,6 +890,23 @@ export default function LeadGenerator() {
                       {validationProgress.validFound.toLocaleString('pt-BR')} válidos (alvo: {validationProgress.target.toLocaleString('pt-BR')})
                     </span>
                   </div>
+                  {validationJobId && (
+                    <div className="flex justify-center pt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCancelValidation}
+                        disabled={validationCancelRef.current}
+                      >
+                        <X className="w-4 h-4 mr-1" />
+                        Cancelar validação
+                      </Button>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center">
+                    A validação roda no servidor. Você pode fechar esta aba e voltar depois.
+                  </p>
                 </div>
               )}
             </CardContent>
