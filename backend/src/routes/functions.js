@@ -4391,14 +4391,14 @@ function generateCommissionPDF(data) {
     y += 20;
 
     const cols1 = [
-      { label: 'Indicador', w: 78, align: 'left' },
-      { label: 'CPF', w: 68, align: 'left' },
-      { label: 'PIX', w: 62, align: 'left' },
-      { label: 'CPF Indicado', w: 68, align: 'left' },
-      { label: 'Nome Indicado', w: 78, align: 'left' },
-      { label: 'Nº Contrato', w: 52, align: 'left' },
-      { label: 'Nível', w: 38, align: 'center' },
-      { label: 'Comissão', w: 52, align: 'right' },
+      { label: 'Indicador', w: 120, align: 'left' },
+      { label: 'CPF', w: 95, align: 'left' },
+      { label: 'PIX', w: 110, align: 'left' },
+      { label: 'CPF Indicado', w: 95, align: 'left' },
+      { label: 'Nome Indicado', w: 130, align: 'left' },
+      { label: 'Nº Contrato', w: 75, align: 'left' },
+      { label: 'Nível', w: 50, align: 'center' },
+      { label: 'Comissão', w: 87, align: 'right' },
     ];
 
     const ROW_HEIGHT = 22;
