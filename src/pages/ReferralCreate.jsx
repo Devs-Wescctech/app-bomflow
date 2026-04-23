@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { buscarClienteERP, buscarHistoricoIndicacoes } from "@/api/erpService";
+import { buscarIndicadorERP, buscarHistoricoIndicacoes } from "@/api/erpService";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -110,7 +110,7 @@ export default function ReferralCreate() {
       
       const cpfClean = referrerCPF.replace(/\D/g, '');
       
-      const response = await buscarClienteERP(cpfClean);
+      const response = await buscarIndicadorERP(cpfClean);
 
       console.log('Resposta do ERP:', response);
 

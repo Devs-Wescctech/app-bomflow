@@ -33,6 +33,34 @@ export async function buscarClienteERP(cpf) {
   return data;
 }
 
+export async function buscarIndicadorERP(cpf) {
+  const cpfLimpo = cpf.replace(/\D/g, '');
+
+  if (cpfLimpo.length !== 11) {
+    throw new Error('CPF inválido');
+  }
+
+  const response = await fetch(`${API_BASE}/functions/get-indicador-from-erp`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({ cpf: cpfLimpo }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const error = new Error(data.error || 'Erro ao buscar indicador no ERP');
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
+
+  return data;
+}
+
 export async function buscarHistoricoIndicacoes(cpf) {
   const cpfLimpo = cpf.replace(/\D/g, '');
   

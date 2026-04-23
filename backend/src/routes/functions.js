@@ -2260,6 +2260,203 @@ router.post('/get-customer-from-erp', authMiddleware, async (req, res) => {
   }
 });
 
+router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
+  try {
+    const { cpf } = req.body;
+
+    if (!cpf) {
+      return res.status(400).json({ success: false, error: 'CPF é obrigatório' });
+    }
+
+    const cpfLimpo = cpf.replace(/\D/g, '');
+
+    if (cpfLimpo.length !== 11) {
+      return res.status(400).json({ success: false, error: 'CPF inválido' });
+    }
+
+    const erpAuthToken = process.env.ERP_AUTH_TOKEN;
+
+    if (!erpAuthToken) {
+      console.error('ERP credentials not configured');
+      return res.status(500).json({
+        success: false,
+        error: 'Credenciais do ERP não configuradas. Configure ERP_AUTH_TOKEN.'
+      });
+    }
+
+    const cpfFormatado = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_BUSCAR_CLIENTE_INDICADOR?cpf=${cpfFormatado}`;
+
+    console.log(`[ERP INDICADOR] Fetching for CPF: ${cpfLimpo}`);
+
+    const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
+
+    const erpResponse = await fetch(erpUrl, {
+      method: 'GET',
+      headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
+    });
+
+    if (!erpResponse.ok) {
+      if (erpResponse.status === 404) {
+        return res.status(404).json({
+          success: false,
+          error: 'Nenhum dado encontrado para este CPF',
+          notFound: true,
+          noContract: true
+        });
+      }
+      if (erpResponse.status === 401) {
+        console.error('[ERP INDICADOR] Returned 401 - Token may be expired or invalid');
+        return res.status(401).json({
+          success: false,
+          error: 'Token de autenticação do ERP inválido ou expirado. Verifique o ERP_AUTH_TOKEN.'
+        });
+      }
+      throw new Error(`ERP returned status ${erpResponse.status}`);
+    }
+
+    const erpData = await erpResponse.json();
+
+    if (!erpData || (Array.isArray(erpData) && erpData.length === 0)) {
+      return res.status(404).json({
+        success: false,
+        error: 'Nenhum dado encontrado para este CPF',
+        notFound: true,
+        noContract: true
+      });
+    }
+
+    const rawData = Array.isArray(erpData) ? erpData : [erpData];
+    const firstRecord = rawData[0];
+
+    console.log(`[ERP INDICADOR] Received ${rawData.length} records for CPF ${cpfLimpo}`);
+
+    const situacaoMap = { 'A': 'Ativo', 'C': 'Cancelado', 'S': 'Suspenso' };
+
+    const contractMap = new Map();
+    let contratosAtivos = 0;
+    let valorTotalMensal = 0;
+    const indicadosSet = new Set();
+
+    for (const record of rawData) {
+      const contratoKey = String(record.contrato_servicos || record.nrocontrato || record.id || '');
+      if (contratoKey && !contractMap.has(contratoKey)) {
+        const sit = situacaoMap[record.situacao_contrato] || record.situacao_contrato || 'Ativo';
+        const valor = parseFloat(record.valor_contrato || 0);
+        const parcelasAbertas = parseInt(record.parcelas_abertas || 0, 10);
+        contractMap.set(contratoKey, {
+          numero_contrato: contratoKey,
+          numero_contrato_erp: contratoKey,
+          plano: record.produto || '',
+          descricao_plano: record.descricao || '',
+          tipo_contrato: record.tipo_contrato || '',
+          valor_mensal: valor,
+          inicio_vigencia: record.data_contrato || '',
+          situacao: sit,
+          status_pagamento: parcelasAbertas > 0 ? 'INADIMPLENTE' : 'EM DIA',
+          nome_cliente_indicado: record.nome_cliente_indicado || null,
+          cpf_indicado: record.cpf_indicado || null,
+          canal: record.canal || '',
+          parceiro: record.parceiro || '',
+          vendedor: record.vendedor || record.vendedor_receptivo || '',
+          plano_pagamento: record.plano_pagamento || '',
+          data_vencimento: record.data_vencimento || '',
+          vidas: record.vidas || 0,
+          parcelas_pagas: parseInt(record.parcelas_pagas || 0, 10),
+          parcelas_abertas: parcelasAbertas,
+          valores_pagos: parseFloat(record.valores_pagos || 0),
+          tempo_ativo_contrato: record.tempo_ativo_contrato || record.tempo_ativo || 0,
+        });
+        if (sit.toLowerCase().includes('ativ')) contratosAtivos++;
+        valorTotalMensal += valor;
+      }
+      if (record.nome_cliente_indicado) {
+        indicadosSet.add(record.nome_cliente_indicado);
+      }
+    }
+
+    const contracts = Array.from(contractMap.values());
+
+    const cidadeUf = firstRecord.cidade || '';
+    const cidadeParts = cidadeUf.split(' - ');
+    const cidadeNome = cidadeParts[0]?.trim() || '';
+    const ufValue = firstRecord.uf || cidadeParts[1]?.trim() || '';
+
+    const primaryContractKey = contracts[0]?.numero_contrato || null;
+
+    console.log(`[ERP INDICADOR] Deduplicated to ${contracts.length} unique contracts`);
+
+    const response = {
+      success: true,
+      source: 'erp_bompastor_buscar_cliente_indicador',
+      synced_at: new Date().toISOString(),
+      data: {
+        contact: {
+          id: primaryContractKey,
+          name: firstRecord.nome_cliente || firstRecord.titular || firstRecord.nome || '',
+          document: firstRecord.cpf || cpfFormatado,
+          birth_date: firstRecord.data_nascimento || firstRecord.nascimento || '',
+          phones: [firstRecord.sms, firstRecord.cel_indicador, firstRecord.cel, firstRecord.telefone, firstRecord.celular]
+            .map(p => (typeof p === 'string' ? p.trim() : p))
+            .filter(Boolean),
+          emails: [firstRecord.e_mail, firstRecord.email]
+            .map(e => (typeof e === 'string' ? e.trim() : e))
+            .filter(Boolean),
+          address: {
+            logradouro: firstRecord.endereco || firstRecord.logradouro || '',
+            numero: firstRecord.numero || '',
+            complemento: firstRecord.complemento || '',
+            bairro: firstRecord.bairro || '',
+            cidade: cidadeNome,
+            uf: ufValue,
+            cep: firstRecord.cep || ''
+          },
+          vip: firstRecord.vip || false,
+          codigo_erp: primaryContractKey,
+          commercial: {
+            tipo_contrato: firstRecord.tipo_contrato || '',
+            parceiro: firstRecord.parceiro || '',
+            canal: firstRecord.canal || '',
+            vendedor: firstRecord.vendedor || '',
+            vendedor_receptivo: firstRecord.vendedor_receptivo || '',
+            origem_cadastro: firstRecord.origem_cadastro || '',
+            plano_pagamento: firstRecord.plano_pagamento || '',
+            tempo_ativo_dias: firstRecord.tempo_ativo || 0,
+            descricao_plano: firstRecord.descricao || '',
+            admissao: firstRecord.admissao || '',
+            representante: firstRecord.representante || '',
+            turno: firstRecord.turno || '',
+          }
+        },
+        contracts: contracts.slice(0, 50),
+        dependents: (firstRecord.dependentes || []).map(dep => ({
+          id_dependente_erp: dep.id || dep.codigo,
+          nome: dep.nome,
+          data_nascimento: dep.data_nascimento,
+          status_vida: dep.status || 'VIVO'
+        })),
+        financial: {
+          total_contratos: contracts.length,
+          valor_total_mensal: valorTotalMensal,
+          contratos_ativos: contratosAtivos,
+          total_indicados: indicadosSet.size,
+          total_registros_erp: rawData.length,
+          status_geral: contratosAtivos > 0 ? 'EM DIA' : 'SEM CONTRATO ATIVO'
+        },
+        raw_erp_data: [firstRecord]
+      }
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error('[ERP INDICADOR] Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao consultar ERP: ' + error.message
+    });
+  }
+});
+
 router.post('/generate-proposal', authMiddleware, async (req, res) => {
   try {
     const { template_id, lead_id, lead_type } = req.body;
