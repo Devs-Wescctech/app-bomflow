@@ -2443,7 +2443,10 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
           total_registros_erp: rawData.length,
           status_geral: contratosAtivos > 0 ? 'EM DIA' : 'SEM CONTRATO ATIVO'
         },
-        raw_erp_data: [firstRecord]
+        raw_erp_data: [(() => {
+          const { sexo, faixaetaria, conjuge, ...sanitized } = firstRecord || {};
+          return sanitized;
+        })()]
       }
     };
 
