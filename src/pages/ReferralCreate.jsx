@@ -91,6 +91,14 @@ export default function ReferralCreate() {
     (a.agentType === 'indicacoes_atendente' || a.agent_type === 'indicacoes_atendente')
   ).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
 
+  if (typeof window !== 'undefined') {
+    console.log('[DEBUG ReferralCreate] agents.length =', agents.length, '| isAdmin =', isAdmin, '| currentAgentType =', currentAgentType, '| salesAgentsList.length =', salesAgentsList.length);
+    if (agents.length > 0 && salesAgentsList.length === 0) {
+      console.log('[DEBUG ReferralCreate] sample agent shape:', agents[0]);
+      console.log('[DEBUG ReferralCreate] all agentTypes seen:', [...new Set(agents.map(a => a.agentType || a.agent_type))]);
+    }
+  }
+
   const createReferralMutation = useMutation({
     mutationFn: (data) => base44.entities.Referral.create(data),
   });
