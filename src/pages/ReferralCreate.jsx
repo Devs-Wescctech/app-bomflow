@@ -553,6 +553,9 @@ export default function ReferralCreate() {
                           ) : (
                             <div className="mt-1 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                               <p className="text-sm text-amber-700">Nenhum atendente de indicações disponível</p>
+                              <p className="text-[10px] text-amber-600 mt-1 font-mono">
+                                debug: total={agents.length} | types=[{[...new Set(agents.map(a => a.agentType || a.agent_type || '?'))].join(', ') || 'nenhum'}] | atendentes_ativos={agents.filter(a => (a.agentType === 'indicacoes_atendente' || a.agent_type === 'indicacoes_atendente')).map(a => `${a.name}(active=${a.active})`).join(' • ') || 'nenhum'}
+                              </p>
                             </div>
                           )}
                           <p className="text-xs text-gray-500 mt-1">
