@@ -1,23 +1,15 @@
-const PdfPrinter = require('pdfmake');
+const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 
-const fonts = {
-  Roboto: {
-    normal: 'Helvetica',
-    bold: 'Helvetica-Bold',
-    italics: 'Helvetica-Oblique',
-    bolditalics: 'Helvetica-BoldOblique',
-  },
-};
-
-const printer = new PdfPrinter(fonts);
-
 const BRAND = '#7C3AED';
+const BRAND_LIGHT = '#E9D5FF';
 const ACCENT = '#0F172A';
+const TEXT = '#1F2937';
 const MUTED = '#64748B';
 const ROW_ALT = '#F8FAFC';
 const BORDER = '#E2E8F0';
+const GREEN = '#15803D';
 
 const fmt = (n) => 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -52,458 +44,378 @@ const phases = [
 const TAXA = 180;
 const totalHoras = phases.reduce((s, p) => s + p[3], 0);
 const totalValor = totalHoras * TAXA;
-
-const phaseRows = phases.map((p, i) => [
-  { text: p[0], style: 'cell', alignment: 'center' },
-  { text: p[1], style: 'cellBold' },
-  { text: p[2], style: 'cell' },
-  { text: p[3].toString(), style: 'cell', alignment: 'right' },
-  { text: fmt(TAXA), style: 'cell', alignment: 'right' },
-  { text: fmt(p[3] * TAXA), style: 'cellBold', alignment: 'right' },
-]);
-
-const totalRow = [
-  { text: '', fillColor: BRAND },
-  { text: '', fillColor: BRAND },
-  { text: 'TOTAL', style: 'totalLabel', alignment: 'right', fillColor: BRAND, color: '#FFFFFF' },
-  { text: totalHoras.toString() + ' h', style: 'totalLabel', alignment: 'right', fillColor: BRAND, color: '#FFFFFF' },
-  { text: '', fillColor: BRAND },
-  { text: fmt(totalValor), style: 'totalLabel', alignment: 'right', fillColor: BRAND, color: '#FFFFFF' },
-];
-
 const desconto = totalValor * 0.95;
 const op2_1 = totalValor * 0.4;
 const op2_2 = totalValor * 0.3;
 const op3_1 = totalValor * 0.25;
 const op3_2 = totalValor * 0.15;
 
-const docDefinition = {
-  pageSize: 'A4',
-  pageMargins: [40, 70, 40, 60],
-
-  header: (currentPage) => {
-    if (currentPage === 1) return null;
-    return {
-      margin: [40, 25, 40, 0],
-      columns: [
-        { text: 'Proposta Comercial — CRM Bom Flow', style: 'headerSmall', color: MUTED },
-        { text: '24/04/2026', style: 'headerSmall', alignment: 'right', color: MUTED },
-      ],
-    };
-  },
-
-  footer: (currentPage, pageCount) => ({
-    margin: [40, 20, 40, 0],
-    columns: [
-      { text: 'Confidencial — uso restrito ao destinatário', style: 'footerText', color: MUTED },
-      { text: 'Página ' + currentPage + ' de ' + pageCount, style: 'footerText', alignment: 'right', color: MUTED },
-    ],
-  }),
-
-  content: [
-    {
-      table: {
-        widths: ['*'],
-        body: [[
-          {
-            stack: [
-              { text: 'PROPOSTA COMERCIAL', style: 'kicker', color: '#FFFFFF' },
-              { text: 'Sistema CRM Bom Flow', style: 'h1', color: '#FFFFFF', margin: [0, 6, 0, 4] },
-              { text: 'Plataforma multi-módulo pronta para entrega', style: 'subtitle', color: '#E9D5FF' },
-            ],
-            fillColor: BRAND,
-            border: [false, false, false, false],
-            margin: [20, 22, 20, 22],
-          },
-        ]],
-      },
-      layout: 'noBorders',
-      margin: [0, 0, 0, 20],
-    },
-
-    {
-      table: {
-        widths: ['25%', '*', '25%', '*'],
-        body: [
-          [
-            { text: 'Cliente', style: 'metaLabel', color: MUTED },
-            { text: '[Nome do Cliente]', style: 'metaValue' },
-            { text: 'Data', style: 'metaLabel', color: MUTED },
-            { text: '24/04/2026', style: 'metaValue' },
-          ],
-          [
-            { text: 'Projeto', style: 'metaLabel', color: MUTED },
-            { text: 'CRM Bom Flow — Sistema completo', style: 'metaValue' },
-            { text: 'Validade', style: 'metaLabel', color: MUTED },
-            { text: '30 dias', style: 'metaValue' },
-          ],
-          [
-            { text: 'Status', style: 'metaLabel', color: MUTED },
-            { text: 'Pronto e operacional — entrega imediata', style: 'metaValue', color: '#15803D' },
-            { text: 'Tipo', style: 'metaLabel', color: MUTED },
-            { text: 'Venda definitiva', style: 'metaValue' },
-          ],
-        ],
-      },
-      layout: {
-        hLineWidth: () => 0.5,
-        vLineWidth: () => 0,
-        hLineColor: () => BORDER,
-        paddingTop: () => 8,
-        paddingBottom: () => 8,
-        paddingLeft: () => 6,
-        paddingRight: () => 6,
-      },
-      margin: [0, 0, 0, 20],
-    },
-
-    { text: '1. Sobre o Sistema', style: 'h2', color: ACCENT, margin: [0, 8, 0, 8] },
-    {
-      text: 'Plataforma web completa de CRM, já desenvolvida e em pleno funcionamento, com módulos comerciais segregados, integrações com WhatsApp, ERP e assinatura eletrônica, RBAC granular, dashboards operacionais e sistema de comissionamento.',
-      style: 'body',
-      margin: [0, 0, 0, 8],
-    },
-    {
-      columns: [
-        {
-          width: '*',
-          stack: [
-            { text: 'Stack Técnica', style: 'cardTitle', color: BRAND },
-            { text: 'React 18 + Vite\nTailwind CSS + Radix UI\nNode.js + Express\nPostgreSQL', style: 'cardBody' },
-          ],
-        },
-        {
-          width: '*',
-          stack: [
-            { text: 'Módulos Inclusos', style: 'cardTitle', color: BRAND },
-            { text: 'Helpdesk · Vendas PF · Vendas PJ · UpCell\nIndicações + Gerador de Leads · Cobrança\nBom Auto · Base de Conhecimento · QA\nComissionamento · Automações · Disparos WhatsApp', style: 'cardBody' },
-          ],
-        },
-      ],
-      columnGap: 16,
-      margin: [0, 4, 0, 16],
-    },
-
-    { text: '2. Valoração do Sistema', style: 'h2', color: ACCENT, pageBreak: 'before', margin: [0, 0, 0, 6] },
-    {
-      text: 'A tabela abaixo representa o esforço técnico investido no desenvolvimento do sistema, base para a precificação do produto pronto.',
-      style: 'body',
-      margin: [0, 0, 0, 6],
-    },
-    {
-      text: 'Taxa horária de referência: R$ 180,00 — perfil Sênior Full-Stack Brasil. Mediana de mercado 2026 segundo Glassdoor, Catho e Get on Board (faixa R$ 150–250/h para profissionais sênior com domínio comprovado em React, Node.js, PostgreSQL e integrações REST complexas).',
-      style: 'note',
-      color: MUTED,
-      margin: [0, 0, 0, 12],
-    },
-
-    {
-      table: {
-        headerRows: 1,
-        widths: [22, 110, '*', 36, 50, 60],
-        body: [
-          [
-            { text: '#', style: 'thead', alignment: 'center' },
-            { text: 'Fase / Componente', style: 'thead' },
-            { text: 'Descrição', style: 'thead' },
-            { text: 'Horas', style: 'thead', alignment: 'right' },
-            { text: 'Taxa', style: 'thead', alignment: 'right' },
-            { text: 'Subtotal', style: 'thead', alignment: 'right' },
-          ],
-          ...phaseRows,
-          totalRow,
-        ],
-      },
-      layout: {
-        fillColor: (rowIndex) => {
-          if (rowIndex === 0) return ACCENT;
-          if (rowIndex === phaseRows.length + 1) return BRAND;
-          return rowIndex % 2 === 0 ? ROW_ALT : null;
-        },
-        hLineWidth: () => 0.5,
-        vLineWidth: () => 0,
-        hLineColor: () => BORDER,
-        paddingTop: () => 6,
-        paddingBottom: () => 6,
-        paddingLeft: () => 6,
-        paddingRight: () => 6,
-      },
-    },
-
-    { text: '3. Resumo Executivo', style: 'h2', color: ACCENT, pageBreak: 'before', margin: [0, 0, 0, 12] },
-    {
-      table: {
-        widths: ['*', 160],
-        body: [
-          [
-            { text: 'Total de horas investidas', style: 'summaryLabel' },
-            { text: totalHoras + ' horas', style: 'summaryValue', alignment: 'right' },
-          ],
-          [
-            { text: 'Valor de referência (esforço × taxa)', style: 'summaryLabel' },
-            { text: fmt(totalValor), style: 'summaryValueBig', alignment: 'right', color: BRAND },
-          ],
-          [
-            { text: 'Status', style: 'summaryLabel' },
-            { text: 'Pronto, testado e operacional', style: 'summaryValue', alignment: 'right', color: '#15803D' },
-          ],
-          [
-            { text: 'Entrega', style: 'summaryLabel' },
-            { text: 'Imediata após assinatura', style: 'summaryValue', alignment: 'right' },
-          ],
-        ],
-      },
-      layout: {
-        hLineWidth: () => 0.5,
-        vLineWidth: () => 0,
-        hLineColor: () => BORDER,
-        paddingTop: () => 12,
-        paddingBottom: () => 12,
-        paddingLeft: () => 10,
-        paddingRight: () => 10,
-      },
-      margin: [0, 0, 0, 24],
-    },
-
-    { text: '4. O Que Está Incluso na Entrega', style: 'h2', color: ACCENT, margin: [0, 0, 0, 10] },
-    {
-      ul: [
-        { text: [{ text: 'Código-fonte completo ', bold: true }, '(frontend + backend + scripts de banco)'] },
-        { text: [{ text: 'Sistema rodando ', bold: true }, 'em ambiente de produção, pronto para uso'] },
-        { text: [{ text: 'Banco de dados ', bold: true }, 'estruturado com toda a modelagem entregue'] },
-        { text: [{ text: 'Documentação técnica ', bold: true }, '(arquitetura, API, banco)'] },
-        { text: [{ text: 'Manual do usuário ', bold: true }, 'para cada módulo'] },
-        { text: [{ text: 'Treinamento: ', bold: true }, '16h para usuários finais + 8h para equipe técnica'] },
-        { text: [{ text: 'Migração de dados ', bold: true }, 'inicial (de planilhas ou sistema legado, conforme escopo)'] },
-        { text: [{ text: 'Garantia de 90 dias ', bold: true }, 'para correção de bugs sem custo adicional'] },
-      ],
-      style: 'body',
-      margin: [10, 0, 0, 20],
-    },
-
-    { text: '5. Formas de Pagamento', style: 'h2', color: ACCENT, pageBreak: 'before', margin: [0, 0, 0, 6] },
-    {
-      text: 'Como o sistema já está pronto, sugerimos modelos orientados à entrega imediata:',
-      style: 'body',
-      margin: [0, 0, 0, 14],
-    },
-
-    { text: 'Opção A — Pagamento à vista (5% de desconto)', style: 'h3', color: BRAND, margin: [0, 0, 0, 6] },
-    {
-      table: {
-        widths: ['auto', 60, 90, '*'],
-        body: [
-          [
-            { text: 'Parcela', style: 'thead', fillColor: ACCENT, color: '#FFFFFF' },
-            { text: '%', style: 'thead', alignment: 'right', fillColor: ACCENT, color: '#FFFFFF' },
-            { text: 'Valor', style: 'thead', alignment: 'right', fillColor: ACCENT, color: '#FFFFFF' },
-            { text: 'Marco', style: 'thead', fillColor: ACCENT, color: '#FFFFFF' },
-          ],
-          [
-            { text: 'Único', style: 'cellBold' },
-            { text: '100%', style: 'cell', alignment: 'right' },
-            { text: fmt(desconto), style: 'cellBold', alignment: 'right', color: BRAND },
-            { text: 'Assinatura do contrato e entrega imediata', style: 'cell' },
-          ],
-        ],
-      },
-      layout: {
-        hLineWidth: () => 0.5,
-        vLineWidth: () => 0,
-        hLineColor: () => BORDER,
-        paddingTop: () => 7,
-        paddingBottom: () => 7,
-        paddingLeft: () => 8,
-        paddingRight: () => 8,
-      },
-      margin: [0, 0, 0, 16],
-    },
-
-    { text: 'Opção B — Parcelamento curto (3 parcelas)', style: 'h3', color: BRAND, margin: [0, 0, 0, 6] },
-    {
-      table: {
-        widths: ['auto', 60, 90, '*'],
-        body: [
-          [
-            { text: 'Parcela', style: 'thead', fillColor: ACCENT, color: '#FFFFFF' },
-            { text: '%', style: 'thead', alignment: 'right', fillColor: ACCENT, color: '#FFFFFF' },
-            { text: 'Valor', style: 'thead', alignment: 'right', fillColor: ACCENT, color: '#FFFFFF' },
-            { text: 'Marco', style: 'thead', fillColor: ACCENT, color: '#FFFFFF' },
-          ],
-          [
-            { text: '1ª', style: 'cellBold' },
-            { text: '40%', style: 'cell', alignment: 'right' },
-            { text: fmt(op2_1), style: 'cellBold', alignment: 'right' },
-            { text: 'Assinatura do contrato e liberação de acesso', style: 'cell' },
-          ],
-          [
-            { text: '2ª', style: 'cellBold' },
-            { text: '30%', style: 'cell', alignment: 'right' },
-            { text: fmt(op2_2), style: 'cellBold', alignment: 'right' },
-            { text: '30 dias após a assinatura', style: 'cell' },
-          ],
-          [
-            { text: '3ª', style: 'cellBold' },
-            { text: '30%', style: 'cell', alignment: 'right' },
-            { text: fmt(op2_2), style: 'cellBold', alignment: 'right' },
-            { text: '60 dias após a assinatura', style: 'cell' },
-          ],
-        ],
-      },
-      layout: {
-        fillColor: (rowIndex) => (rowIndex > 0 && rowIndex % 2 === 0 ? ROW_ALT : null),
-        hLineWidth: () => 0.5,
-        vLineWidth: () => 0,
-        hLineColor: () => BORDER,
-        paddingTop: () => 7,
-        paddingBottom: () => 7,
-        paddingLeft: () => 8,
-        paddingRight: () => 8,
-      },
-      margin: [0, 0, 0, 16],
-    },
-
-    { text: 'Opção C — Parcelamento estendido (6 parcelas)', style: 'h3', color: BRAND, margin: [0, 0, 0, 6] },
-    {
-      table: {
-        widths: ['auto', 60, 90, '*'],
-        body: [
-          [
-            { text: 'Parcela', style: 'thead', fillColor: ACCENT, color: '#FFFFFF' },
-            { text: '%', style: 'thead', alignment: 'right', fillColor: ACCENT, color: '#FFFFFF' },
-            { text: 'Valor', style: 'thead', alignment: 'right', fillColor: ACCENT, color: '#FFFFFF' },
-            { text: 'Marco', style: 'thead', fillColor: ACCENT, color: '#FFFFFF' },
-          ],
-          [
-            { text: '1ª', style: 'cellBold' },
-            { text: '25%', style: 'cell', alignment: 'right' },
-            { text: fmt(op3_1), style: 'cellBold', alignment: 'right' },
-            { text: 'Assinatura do contrato e entrega', style: 'cell' },
-          ],
-          [
-            { text: '2ª – 6ª', style: 'cellBold' },
-            { text: '15% cada', style: 'cell', alignment: 'right' },
-            { text: fmt(op3_2) + '/mês', style: 'cellBold', alignment: 'right' },
-            { text: 'Mensais consecutivas', style: 'cell' },
-          ],
-        ],
-      },
-      layout: {
-        fillColor: (rowIndex) => (rowIndex > 0 && rowIndex % 2 === 0 ? ROW_ALT : null),
-        hLineWidth: () => 0.5,
-        vLineWidth: () => 0,
-        hLineColor: () => BORDER,
-        paddingTop: () => 7,
-        paddingBottom: () => 7,
-        paddingLeft: () => 8,
-        paddingRight: () => 8,
-      },
-      margin: [0, 0, 0, 12],
-    },
-    {
-      text: 'Forma de pagamento: boleto bancário ou PIX, com vencimento em até 5 dias úteis após a emissão da nota fiscal de serviço.',
-      style: 'note',
-      color: MUTED,
-    },
-
-    { text: '6. Observações Importantes', style: 'h2', color: ACCENT, pageBreak: 'before', margin: [0, 0, 0, 10] },
-    {
-      ol: [
-        { text: [{ text: 'Custos não inclusos: ', bold: true }, 'hospedagem em nuvem (AWS / Replit / DigitalOcean), domínios, certificados SSL pagos, licenças de software de terceiros, créditos da API WhatsApp (WHU/Meta), créditos da Autentique, custos de e-mail transacional e quaisquer ferramentas SaaS adicionais que o cliente venha a contratar.'] },
-        { text: [{ text: 'Customizações futuras: ', bold: true }, 'ajustes de escopo solicitados após a entrega serão tratados como aditivos, com nova estimativa em horas.'] },
-        { text: [{ text: 'Garantia: ', bold: true }, '90 dias após o aceite para correção de bugs sem custo adicional.'] },
-        { text: [{ text: 'Manutenção pós-garantia: ', bold: true }, 'pode ser contratada como mensalidade fixa (sugestão: pacote de 40h/mês a R$ 7.200,00) ou banco de horas pré-pago.'] },
-        { text: [{ text: 'Propriedade intelectual: ', bold: true }, 'o código-fonte completo será entregue ao cliente, sem dependência de licenças proprietárias da contratada.'] },
-        { text: [{ text: 'Confidencialidade: ', bold: true }, 'todas as informações compartilhadas serão tratadas sob NDA mútuo.'] },
-        { text: [{ text: 'Compliance: ', bold: true }, 'o sistema segue boas práticas de LGPD (consentimento registrado, criptografia em trânsito e em repouso, RBAC granular).'] },
-      ],
-      style: 'body',
-      margin: [10, 0, 0, 20],
-    },
-
-    { text: '7. Diferenciais', style: 'h2', color: ACCENT, margin: [0, 0, 0, 10] },
-    {
-      ul: [
-        'Sistema pronto para uso — sem espera por desenvolvimento',
-        'Arquitetura multi-módulo com isolamento real de dados, equipes e automações',
-        'RBAC granular com 7 perfis e 4 estruturas de time',
-        'Sistema de comissões com 6 camadas de validação contra ERP',
-        'Validação WhatsApp em larga escala (1.200+ números) com fila assíncrona e cache',
-        'Self-hosted — sem amarras com plataformas de CRM externas',
-        'Código-fonte 100% entregue ao cliente',
-      ],
-      style: 'body',
-      margin: [10, 0, 0, 24],
-    },
-
-    {
-      table: {
-        widths: ['*'],
-        body: [[
-          {
-            stack: [
-              { text: 'Próximos passos', style: 'ctaTitle', color: '#FFFFFF' },
-              { text: 'Aguardamos seu retorno para formalizar a contratação e iniciar a transferência do sistema.', style: 'ctaBody', color: '#E9D5FF', margin: [0, 6, 0, 0] },
-            ],
-            fillColor: BRAND,
-            border: [false, false, false, false],
-            margin: [20, 18, 20, 18],
-          },
-        ]],
-      },
-      layout: 'noBorders',
-      margin: [0, 0, 0, 16],
-    },
-
-    {
-      columns: [
-        {
-          width: '*',
-          stack: [
-            { text: '[Nome da Empresa Contratada]', style: 'sigName' },
-            { text: '[CNPJ / Razão Social]', style: 'sigInfo', color: MUTED },
-            { text: '[E-mail / Telefone / Site]', style: 'sigInfo', color: MUTED },
-          ],
-        },
-      ],
-    },
-  ],
-
-  styles: {
-    kicker: { fontSize: 10, bold: true, characterSpacing: 2 },
-    h1: { fontSize: 26, bold: true },
-    h2: { fontSize: 16, bold: true },
-    h3: { fontSize: 12, bold: true },
-    subtitle: { fontSize: 11 },
-    body: { fontSize: 10, lineHeight: 1.4 },
-    note: { fontSize: 9, italics: true, lineHeight: 1.4 },
-    metaLabel: { fontSize: 8, bold: true, characterSpacing: 1 },
-    metaValue: { fontSize: 10, bold: true },
-    cardTitle: { fontSize: 10, bold: true, margin: [0, 0, 0, 4] },
-    cardBody: { fontSize: 9, lineHeight: 1.5 },
-    thead: { fontSize: 9, bold: true, color: '#FFFFFF' },
-    cell: { fontSize: 9 },
-    cellBold: { fontSize: 9, bold: true },
-    totalLabel: { fontSize: 10, bold: true },
-    summaryLabel: { fontSize: 11, bold: true },
-    summaryValue: { fontSize: 11, bold: true },
-    summaryValueBig: { fontSize: 16, bold: true },
-    ctaTitle: { fontSize: 14, bold: true },
-    ctaBody: { fontSize: 10 },
-    sigName: { fontSize: 11, bold: true, margin: [0, 0, 0, 2] },
-    sigInfo: { fontSize: 9, margin: [0, 1, 0, 0] },
-    headerSmall: { fontSize: 8 },
-    footerText: { fontSize: 8 },
-  },
-
-  defaultStyle: { font: 'Roboto' },
-};
+const PAGE = { width: 595.28, height: 841.89 };
+const MARGIN = 40;
+const CONTENT_W = PAGE.width - 2 * MARGIN;
+const FOOTER_Y = PAGE.height - 30;
+const CONTENT_BOTTOM = PAGE.height - 50;
 
 const outPath = path.resolve(__dirname, '..', 'exports', 'proposta-comercial-crm-bom-flow.pdf');
-const pdfDoc = printer.createPdfKitDocument(docDefinition);
+fs.mkdirSync(path.dirname(outPath), { recursive: true });
+
+const doc = new PDFDocument({ size: 'A4', margin: MARGIN, info: { Title: 'Proposta Comercial — CRM Bom Flow', Author: 'Bom Flow' }, autoFirstPage: false });
 const stream = fs.createWriteStream(outPath);
-pdfDoc.pipe(stream);
-pdfDoc.end();
-stream.on('finish', () => {
-  console.log('OK ->', outPath);
-});
+doc.pipe(stream);
+
+let pageNum = 0;
+const totalPagesPlaceholder = '__TOTAL__';
+
+function newPage() {
+  doc.addPage();
+  pageNum++;
+  drawFooter();
+  if (pageNum > 1) drawHeader();
+}
+
+function drawHeader() {
+  doc.save();
+  doc.font('Helvetica').fontSize(8).fillColor(MUTED);
+  doc.text('Proposta Comercial — CRM Bom Flow', MARGIN, 20, { width: CONTENT_W / 2, align: 'left' });
+  doc.text('24/04/2026', MARGIN + CONTENT_W / 2, 20, { width: CONTENT_W / 2, align: 'right' });
+  doc.restore();
+}
+
+function drawFooter() {
+  doc.save();
+  doc.font('Helvetica').fontSize(8).fillColor(MUTED);
+  doc.text('Confidencial — uso restrito ao destinatário', MARGIN, FOOTER_Y, { width: CONTENT_W / 2, align: 'left', lineBreak: false });
+  doc.text('Página ' + pageNum, MARGIN + CONTENT_W / 2, FOOTER_Y, { width: CONTENT_W / 2, align: 'right', lineBreak: false });
+  doc.restore();
+}
+
+function ensureSpace(needed) {
+  if (doc.y + needed > CONTENT_BOTTOM) newPage();
+}
+
+function rect(x, y, w, h, fill, stroke) {
+  doc.save();
+  if (fill) doc.fillColor(fill).rect(x, y, w, h).fill();
+  if (stroke) doc.strokeColor(stroke).lineWidth(0.5).rect(x, y, w, h).stroke();
+  doc.restore();
+}
+
+function textInRect(text, x, y, w, h, opts = {}) {
+  doc.save();
+  doc.font(opts.bold ? 'Helvetica-Bold' : opts.italic ? 'Helvetica-Oblique' : 'Helvetica');
+  doc.fontSize(opts.size || 10).fillColor(opts.color || TEXT);
+  if (opts.charSpace) doc.text(text, x + (opts.padX || 6), y + (opts.padY || 4), { width: w - 2 * (opts.padX || 6), align: opts.align || 'left', characterSpacing: opts.charSpace, lineBreak: opts.lineBreak !== false });
+  else doc.text(text, x + (opts.padX || 6), y + (opts.padY || 4), { width: w - 2 * (opts.padX || 6), align: opts.align || 'left', lineBreak: opts.lineBreak !== false });
+  doc.restore();
+}
+
+function measureText(text, w, opts = {}) {
+  doc.save();
+  doc.font(opts.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(opts.size || 10);
+  const h = doc.heightOfString(text, { width: w - 2 * (opts.padX || 6) });
+  doc.restore();
+  return h + 2 * (opts.padY || 4);
+}
+
+function drawHero() {
+  const y = MARGIN;
+  const h = 100;
+  rect(MARGIN, y, CONTENT_W, h, BRAND);
+  textInRect('PROPOSTA COMERCIAL', MARGIN, y + 16, CONTENT_W, 14, { size: 9, bold: true, color: '#FFFFFF', padX: 20, padY: 0, charSpace: 2 });
+  textInRect('Sistema CRM Bom Flow', MARGIN, y + 34, CONTENT_W, 30, { size: 24, bold: true, color: '#FFFFFF', padX: 20, padY: 0 });
+  textInRect('Plataforma multi-módulo pronta para entrega', MARGIN, y + 70, CONTENT_W, 14, { size: 11, color: BRAND_LIGHT, padX: 20, padY: 0 });
+  doc.y = y + h + 16;
+}
+
+function drawMetaTable() {
+  const cols = [{ w: CONTENT_W * 0.18 }, { w: CONTENT_W * 0.32 }, { w: CONTENT_W * 0.18 }, { w: CONTENT_W * 0.32 }];
+  const rowH = 26;
+  const rows = [
+    ['Cliente', '[Nome do Cliente]', 'Data', '24/04/2026'],
+    ['Projeto', 'CRM Bom Flow — Sistema completo', 'Validade', '30 dias'],
+    ['Status', 'Pronto e operacional — entrega imediata', 'Tipo', 'Venda definitiva'],
+  ];
+  const greenRow = 2;
+  let y = doc.y;
+  rows.forEach((r, i) => {
+    let x = MARGIN;
+    r.forEach((cellText, j) => {
+      const isLabel = j % 2 === 0;
+      const w = cols[j].w;
+      doc.strokeColor(BORDER).lineWidth(0.5).moveTo(x, y + rowH).lineTo(x + w, y + rowH).stroke();
+      const isGreenStatus = i === greenRow && j === 1;
+      textInRect(cellText, x, y, w, rowH, {
+        size: isLabel ? 8 : 10,
+        bold: true,
+        color: isLabel ? MUTED : (isGreenStatus ? GREEN : TEXT),
+        charSpace: isLabel ? 1 : 0,
+        padY: 8,
+      });
+      x += w;
+    });
+    y += rowH;
+  });
+  doc.y = y + 8;
+}
+
+function h2(text) {
+  ensureSpace(40);
+  doc.moveDown(0.5);
+  doc.font('Helvetica-Bold').fontSize(16).fillColor(ACCENT).text(text, MARGIN, doc.y);
+  doc.moveDown(0.4);
+}
+
+function h3(text) {
+  ensureSpace(30);
+  doc.moveDown(0.3);
+  doc.font('Helvetica-Bold').fontSize(12).fillColor(BRAND).text(text, MARGIN, doc.y);
+  doc.moveDown(0.3);
+}
+
+function body(text) {
+  doc.font('Helvetica').fontSize(10).fillColor(TEXT).text(text, MARGIN, doc.y, { width: CONTENT_W, align: 'justify' });
+  doc.moveDown(0.4);
+}
+
+function note(text) {
+  doc.font('Helvetica-Oblique').fontSize(9).fillColor(MUTED).text(text, MARGIN, doc.y, { width: CONTENT_W, align: 'justify' });
+  doc.moveDown(0.4);
+}
+
+function bullet(text) {
+  ensureSpace(20);
+  doc.font('Helvetica').fontSize(10).fillColor(TEXT);
+  doc.text('•  ' + text, MARGIN + 10, doc.y, { width: CONTENT_W - 10 });
+  doc.moveDown(0.2);
+}
+
+function bulletRich(label, rest) {
+  ensureSpace(20);
+  const startY = doc.y;
+  doc.font('Helvetica').fontSize(10).fillColor(TEXT).text('•  ', MARGIN + 10, startY, { continued: true, width: CONTENT_W - 10 });
+  doc.font('Helvetica-Bold').text(label, { continued: true });
+  doc.font('Helvetica').text(rest);
+  doc.moveDown(0.2);
+}
+
+function numbered(n, label, rest) {
+  ensureSpace(24);
+  const startY = doc.y;
+  doc.font('Helvetica').fontSize(10).fillColor(TEXT).text(n + '. ', MARGIN + 10, startY, { continued: true, width: CONTENT_W - 10 });
+  doc.font('Helvetica-Bold').text(label, { continued: true });
+  doc.font('Helvetica').text(rest);
+  doc.moveDown(0.3);
+}
+
+function drawPhasesTable() {
+  const cols = [
+    { w: 24, align: 'center', label: '#' },
+    { w: 110, align: 'left', label: 'Fase / Componente' },
+    { w: CONTENT_W - 24 - 110 - 38 - 52 - 62, align: 'left', label: 'Descrição' },
+    { w: 38, align: 'right', label: 'Horas' },
+    { w: 52, align: 'right', label: 'Taxa' },
+    { w: 62, align: 'right', label: 'Subtotal' },
+  ];
+  const headerH = 22;
+
+  const drawHeader = () => {
+    let x = MARGIN;
+    rect(MARGIN, doc.y, CONTENT_W, headerH, ACCENT);
+    cols.forEach((c) => {
+      textInRect(c.label, x, doc.y, c.w, headerH, { size: 9, bold: true, color: '#FFFFFF', align: c.align, padY: 7 });
+      x += c.w;
+    });
+    doc.y += headerH;
+  };
+
+  ensureSpace(headerH + 30);
+  drawHeader();
+
+  phases.forEach((p, i) => {
+    const cellsContent = [p[0], p[1], p[2], String(p[3]), fmt(TAXA), fmt(p[3] * TAXA)];
+    const heights = cellsContent.map((c, j) => measureText(c, cols[j].w, { size: 9, bold: j === 1 || j === 5 }));
+    const rowH = Math.max(...heights, 22);
+
+    if (doc.y + rowH > CONTENT_BOTTOM) {
+      newPage();
+      drawHeader();
+    }
+
+    if (i % 2 === 0) rect(MARGIN, doc.y, CONTENT_W, rowH, ROW_ALT);
+
+    let x = MARGIN;
+    cellsContent.forEach((c, j) => {
+      const opts = { size: 9, align: cols[j].align, padY: 6, bold: j === 1 || j === 5 };
+      textInRect(c, x, doc.y, cols[j].w, rowH, opts);
+      x += cols[j].w;
+    });
+    doc.strokeColor(BORDER).lineWidth(0.5).moveTo(MARGIN, doc.y + rowH).lineTo(MARGIN + CONTENT_W, doc.y + rowH).stroke();
+    doc.y += rowH;
+  });
+
+  ensureSpace(28);
+  const totalH = 26;
+  rect(MARGIN, doc.y, CONTENT_W, totalH, BRAND);
+  let x = MARGIN;
+  const totalCells = ['', '', 'TOTAL', totalHoras + ' h', '', fmt(totalValor)];
+  totalCells.forEach((c, j) => {
+    if (c) textInRect(c, x, doc.y, cols[j].w, totalH, { size: 11, bold: true, color: '#FFFFFF', align: j < 2 ? 'left' : 'right', padY: 8 });
+    x += cols[j].w;
+  });
+  doc.y += totalH + 6;
+}
+
+function drawSummaryTable() {
+  const labelW = CONTENT_W - 180;
+  const valueW = 180;
+  const rows = [
+    ['Total de horas investidas', totalHoras + ' horas', null, false],
+    ['Valor de referência (esforço × taxa)', fmt(totalValor), BRAND, true],
+    ['Status', 'Pronto, testado e operacional', GREEN, false],
+    ['Entrega', 'Imediata após assinatura', null, false],
+  ];
+  rows.forEach((r) => {
+    const valueSize = r[3] ? 16 : 11;
+    const rowH = Math.max(28, valueSize + 16);
+    ensureSpace(rowH);
+    textInRect(r[0], MARGIN, doc.y, labelW, rowH, { size: 11, bold: true, padY: 8 });
+    textInRect(r[1], MARGIN + labelW, doc.y, valueW, rowH, { size: valueSize, bold: true, color: r[2] || TEXT, align: 'right', padY: r[3] ? 5 : 8 });
+    doc.strokeColor(BORDER).lineWidth(0.5).moveTo(MARGIN, doc.y + rowH).lineTo(MARGIN + CONTENT_W, doc.y + rowH).stroke();
+    doc.y += rowH;
+  });
+  doc.moveDown(0.6);
+}
+
+function drawPaymentTable(rows) {
+  const cols = [
+    { w: 70, align: 'left', label: 'Parcela' },
+    { w: 60, align: 'right', label: '%' },
+    { w: 110, align: 'right', label: 'Valor' },
+    { w: CONTENT_W - 70 - 60 - 110, align: 'left', label: 'Marco' },
+  ];
+  const headerH = 22;
+  ensureSpace(headerH + rows.length * 24 + 4);
+
+  let x = MARGIN;
+  rect(MARGIN, doc.y, CONTENT_W, headerH, ACCENT);
+  cols.forEach((c) => {
+    textInRect(c.label, x, doc.y, c.w, headerH, { size: 9, bold: true, color: '#FFFFFF', align: c.align, padY: 7 });
+    x += c.w;
+  });
+  doc.y += headerH;
+
+  rows.forEach((r, i) => {
+    const heights = r.slice(0, 4).map((c, j) => measureText(String(c), cols[j].w, { size: 9, bold: j === 0 || j === 2 }));
+    const rowH = Math.max(...heights, 22);
+    if (i % 2 === 0) rect(MARGIN, doc.y, CONTENT_W, rowH, ROW_ALT);
+    let xx = MARGIN;
+    r.slice(0, 4).forEach((c, j) => {
+      const color = j === 2 && r[4] ? r[4] : TEXT;
+      textInRect(String(c), xx, doc.y, cols[j].w, rowH, { size: 9, bold: j === 0 || j === 2, color, align: cols[j].align, padY: 6 });
+      xx += cols[j].w;
+    });
+    doc.strokeColor(BORDER).lineWidth(0.5).moveTo(MARGIN, doc.y + rowH).lineTo(MARGIN + CONTENT_W, doc.y + rowH).stroke();
+    doc.y += rowH;
+  });
+  doc.moveDown(0.5);
+}
+
+function drawCTA() {
+  const h = 70;
+  ensureSpace(h + 10);
+  const y = doc.y;
+  rect(MARGIN, y, CONTENT_W, h, BRAND);
+  textInRect('Próximos passos', MARGIN, y + 14, CONTENT_W, 20, { size: 14, bold: true, color: '#FFFFFF', padX: 20, padY: 0 });
+  textInRect('Aguardamos seu retorno para formalizar a contratação e iniciar a transferência do sistema.', MARGIN, y + 38, CONTENT_W, 20, { size: 10, color: BRAND_LIGHT, padX: 20, padY: 0 });
+  doc.y = y + h + 12;
+}
+
+newPage();
+drawHero();
+drawMetaTable();
+
+h2('1. Sobre o Sistema');
+body('Plataforma web completa de CRM, já desenvolvida e em pleno funcionamento, com módulos comerciais segregados, integrações com WhatsApp, ERP e assinatura eletrônica, RBAC granular, dashboards operacionais e sistema de comissionamento.');
+
+const cardW = (CONTENT_W - 12) / 2;
+const cardY = doc.y;
+const cardH = 70;
+ensureSpace(cardH + 8);
+rect(MARGIN, cardY, cardW, cardH, ROW_ALT, BORDER);
+textInRect('Stack Técnica', MARGIN, cardY + 8, cardW, 14, { size: 10, bold: true, color: BRAND, padX: 12, padY: 0 });
+textInRect('React 18 + Vite\nTailwind CSS + Radix UI\nNode.js + Express\nPostgreSQL', MARGIN, cardY + 22, cardW, cardH - 22, { size: 9, color: TEXT, padX: 12, padY: 0 });
+rect(MARGIN + cardW + 12, cardY, cardW, cardH, ROW_ALT, BORDER);
+textInRect('Módulos Inclusos', MARGIN + cardW + 12, cardY + 8, cardW, 14, { size: 10, bold: true, color: BRAND, padX: 12, padY: 0 });
+textInRect('Helpdesk · Vendas PF · Vendas PJ · UpCell\nIndicações + Gerador de Leads · Cobrança\nBom Auto · Base de Conhecimento · QA\nComissionamento · Automações · WhatsApp', MARGIN + cardW + 12, cardY + 22, cardW, cardH - 22, { size: 9, color: TEXT, padX: 12, padY: 0 });
+doc.y = cardY + cardH + 12;
+
+newPage();
+h2('2. Valoração do Sistema');
+body('A tabela abaixo representa o esforço técnico investido no desenvolvimento do sistema, base para a precificação do produto pronto.');
+note('Taxa horária de referência: R$ 180,00 — perfil Sênior Full-Stack Brasil. Mediana de mercado 2026 segundo Glassdoor, Catho e Get on Board (faixa R$ 150–250/h para profissionais sênior com domínio em React, Node.js, PostgreSQL e integrações REST complexas).');
+drawPhasesTable();
+
+newPage();
+h2('3. Resumo Executivo');
+drawSummaryTable();
+
+h2('4. O Que Está Incluso na Entrega');
+bulletRich('Código-fonte completo ', '(frontend + backend + scripts de banco)');
+bulletRich('Sistema rodando ', 'em ambiente de produção, pronto para uso');
+bulletRich('Banco de dados ', 'estruturado com toda a modelagem entregue');
+bulletRich('Documentação técnica ', '(arquitetura, API, banco)');
+bulletRich('Manual do usuário ', 'para cada módulo');
+bulletRich('Treinamento: ', '16h para usuários finais + 8h para equipe técnica');
+bulletRich('Migração de dados ', 'inicial (de planilhas ou sistema legado, conforme escopo)');
+bulletRich('Garantia de 90 dias ', 'para correção de bugs sem custo adicional');
+
+newPage();
+h2('5. Formas de Pagamento');
+body('Como o sistema já está pronto, sugerimos modelos orientados à entrega imediata:');
+
+h3('Opção A — Pagamento à vista (5% de desconto)');
+drawPaymentTable([['Único', '100%', fmt(desconto), 'Assinatura do contrato e entrega imediata', BRAND]]);
+
+h3('Opção B — Parcelamento curto (3 parcelas)');
+drawPaymentTable([
+  ['1ª', '40%', fmt(op2_1), 'Assinatura do contrato e liberação de acesso'],
+  ['2ª', '30%', fmt(op2_2), '30 dias após a assinatura'],
+  ['3ª', '30%', fmt(op2_2), '60 dias após a assinatura'],
+]);
+
+h3('Opção C — Parcelamento estendido (6 parcelas)');
+drawPaymentTable([
+  ['1ª', '25%', fmt(op3_1), 'Assinatura do contrato e entrega'],
+  ['2ª – 6ª', '15% cada', fmt(op3_2) + '/mês', 'Mensais consecutivas'],
+]);
+note('Forma de pagamento: boleto bancário ou PIX, com vencimento em até 5 dias úteis após a emissão da nota fiscal de serviço.');
+
+newPage();
+h2('6. Observações Importantes');
+numbered(1, 'Custos não inclusos: ', 'hospedagem em nuvem, domínios, certificados SSL pagos, licenças de software de terceiros, créditos da API WhatsApp (WHU/Meta), créditos da Autentique, custos de e-mail transacional e quaisquer ferramentas SaaS adicionais.');
+numbered(2, 'Customizações futuras: ', 'ajustes de escopo solicitados após a entrega serão tratados como aditivos, com nova estimativa em horas.');
+numbered(3, 'Garantia: ', '90 dias após o aceite para correção de bugs sem custo adicional.');
+numbered(4, 'Manutenção pós-garantia: ', 'pode ser contratada como mensalidade fixa (sugestão: pacote de 40h/mês a R$ 7.200,00) ou banco de horas pré-pago.');
+numbered(5, 'Propriedade intelectual: ', 'o código-fonte completo será entregue ao cliente, sem dependência de licenças proprietárias da contratada.');
+numbered(6, 'Confidencialidade: ', 'todas as informações compartilhadas serão tratadas sob NDA mútuo.');
+numbered(7, 'Compliance: ', 'o sistema segue boas práticas de LGPD (consentimento, criptografia em trânsito e em repouso, RBAC granular).');
+
+h2('7. Diferenciais');
+bullet('Sistema pronto para uso — sem espera por desenvolvimento');
+bullet('Arquitetura multi-módulo com isolamento real de dados, equipes e automações');
+bullet('RBAC granular com 7 perfis e 4 estruturas de time');
+bullet('Sistema de comissões com 6 camadas de validação contra ERP');
+bullet('Validação WhatsApp em larga escala (1.200+ números) com fila assíncrona e cache');
+bullet('Self-hosted — sem amarras com plataformas de CRM externas');
+bullet('Código-fonte 100% entregue ao cliente');
+
+doc.moveDown(0.5);
+drawCTA();
+
+doc.font('Helvetica-Bold').fontSize(11).fillColor(TEXT).text('[Nome da Empresa Contratada]', MARGIN, doc.y);
+doc.font('Helvetica').fontSize(9).fillColor(MUTED).text('[CNPJ / Razão Social]', MARGIN, doc.y);
+doc.text('[E-mail / Telefone / Site]', MARGIN, doc.y);
+
+doc.end();
+stream.on('finish', () => console.log('OK ->', outPath));
+stream.on('error', (err) => { console.error(err); process.exit(1); });
