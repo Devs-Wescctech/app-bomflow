@@ -194,6 +194,15 @@ import BomAutoRelatorio from "./BomAutoRelatorio";
 
 import SalesWonReport from "./SalesWonReport";
 import SalesPJWonReport from "./SalesPJWonReport";
+import NewLeadUpsell from "./NewLeadUpsell";
+import LeadsUpsellKanban from "./LeadsUpsellKanban";
+import LeadUpsellDetail from "./LeadUpsellDetail";
+import LeadUpsellSearch from "./LeadUpsellSearch";
+import LeadUpsellAutomations from "./LeadUpsellAutomations";
+import SalesUpsellDashboard from "./SalesUpsellDashboard";
+import SalesUpsellAgentsDashboard from "./SalesUpsellAgentsDashboard";
+import SalesUpsellReports from "./SalesUpsellReports";
+import SalesUpsellWonReport from "./SalesUpsellWonReport";
 import ReferralWonReport from "./ReferralWonReport";
 
 import Login from "./Login";
@@ -392,6 +401,15 @@ const PAGES = {
 
     SalesWonReport: SalesWonReport,
     SalesPJWonReport: SalesPJWonReport,
+    NewLeadUpsell: NewLeadUpsell,
+    LeadsUpsellKanban: LeadsUpsellKanban,
+    LeadUpsellDetail: LeadUpsellDetail,
+    LeadUpsellSearch: LeadUpsellSearch,
+    LeadUpsellAutomations: LeadUpsellAutomations,
+    SalesUpsellDashboard: SalesUpsellDashboard,
+    SalesUpsellAgentsDashboard: SalesUpsellAgentsDashboard,
+    SalesUpsellReports: SalesUpsellReports,
+    SalesUpsellWonReport: SalesUpsellWonReport,
     ReferralWonReport: ReferralWonReport,
     
 }
@@ -620,6 +638,15 @@ function PagesContent() {
 
                 <Route path="/SalesWonReport" element={<SalesWonReport />} />
                 <Route path="/SalesPJWonReport" element={<SalesPJWonReport />} />
+                <Route path="/NewLeadUpsell" element={<NewLeadUpsell />} />
+                <Route path="/LeadsUpsellKanban" element={<LeadsUpsellKanban />} />
+                <Route path="/LeadUpsellDetail" element={<LeadUpsellDetail />} />
+                <Route path="/LeadUpsellSearch" element={<LeadUpsellSearch />} />
+                <Route path="/LeadUpsellAutomations" element={<LeadUpsellAutomations />} />
+                <Route path="/SalesUpsellDashboard" element={<SalesUpsellDashboard />} />
+                <Route path="/SalesUpsellAgentsDashboard" element={<SalesUpsellAgentsDashboard />} />
+                <Route path="/SalesUpsellReports" element={<SalesUpsellReports />} />
+                <Route path="/SalesUpsellWonReport" element={<SalesUpsellWonReport />} />
                 <Route path="/ReferralWonReport" element={<ReferralWonReport />} />
                 
             </Routes>

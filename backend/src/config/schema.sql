@@ -1290,3 +1290,158 @@ CREATE TABLE IF NOT EXISTS whatsapp_validation_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_wa_validation_runs_ran_at
   ON whatsapp_validation_runs(ran_at);
+
+-- =====================
+-- SALES & LEADS (UPSELL) — espelha estrutura de Vendas PF
+-- =====================
+CREATE TABLE IF NOT EXISTS leads_upsell (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    cpf VARCHAR(20),
+    email VARCHAR(255),
+    phone VARCHAR(50),
+    whatsapp VARCHAR(50),
+    source VARCHAR(100),
+    stage VARCHAR(50) DEFAULT 'novo',
+    agent_id UUID REFERENCES agents(id),
+    territory_id UUID REFERENCES territories(id),
+    value DECIMAL(15,2),
+    status VARCHAR(50) DEFAULT 'active',
+    address TEXT,
+    city VARCHAR(100),
+    state VARCHAR(50),
+    lat DECIMAL(10,8),
+    lng DECIMAL(11,8),
+    notes TEXT,
+    custom_fields JSONB,
+    last_contact_at TIMESTAMP,
+    converted_at TIMESTAMP,
+    lost BOOLEAN DEFAULT FALSE,
+    lost_at TIMESTAMP,
+    lost_by VARCHAR(255),
+    lost_reason TEXT,
+    assigned_agent_id UUID REFERENCES agents(id),
+    stage_changed_at TIMESTAMP,
+    team_id UUID REFERENCES teams(id),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS activities_upsell (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    lead_id UUID REFERENCES leads_upsell(id) ON DELETE CASCADE,
+    type VARCHAR(50),
+    title VARCHAR(255),
+    description TEXT,
+    scheduled_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    completed BOOLEAN DEFAULT FALSE,
+    outcome VARCHAR(100),
+    priority VARCHAR(20) DEFAULT 'media',
+    assigned_to VARCHAR(255),
+    metadata JSONB,
+    created_by UUID REFERENCES agents(id),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS visits_upsell (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    lead_id UUID REFERENCES leads_upsell(id) ON DELETE CASCADE,
+    agent_id UUID REFERENCES agents(id),
+    scheduled_at TIMESTAMP,
+    visited_at TIMESTAMP,
+    check_in_lat DECIMAL(10,8),
+    check_in_lng DECIMAL(11,8),
+    notes TEXT,
+    status VARCHAR(50) DEFAULT 'scheduled',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sales_goals_upsell (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    agent_id UUID REFERENCES agents(id),
+    period VARCHAR(20),
+    year INTEGER,
+    month INTEGER,
+    target_value DECIMAL(15,2),
+    achieved_value DECIMAL(15,2) DEFAULT 0,
+    target_leads INTEGER,
+    achieved_leads INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS lead_history_upsell (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    lead_id UUID REFERENCES leads_upsell(id) ON DELETE CASCADE,
+    action VARCHAR(100),
+    old_value TEXT,
+    new_value TEXT,
+    changed_by UUID,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS lead_upsell_automations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    trigger_type VARCHAR(50),
+    trigger_config JSONB,
+    action_type VARCHAR(50),
+    action_config JSONB,
+    active BOOLEAN DEFAULT TRUE,
+    priority INTEGER DEFAULT 0,
+    stop_on_trigger BOOLEAN DEFAULT FALSE,
+    whatsapp_template_id VARCHAR(100),
+    whatsapp_template_name VARCHAR(255),
+    team_id UUID REFERENCES teams(id),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS lead_upsell_automation_teams (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    automation_id UUID NOT NULL REFERENCES lead_upsell_automations(id) ON DELETE CASCADE,
+    team_id UUID NOT NULL REFERENCES teams(id),
+    created_at TIMESTAMP DEFAULT now(),
+    UNIQUE(automation_id, team_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_leads_upsell_agent_id ON leads_upsell(agent_id);
+CREATE INDEX IF NOT EXISTS idx_leads_upsell_stage ON leads_upsell(stage);
+CREATE INDEX IF NOT EXISTS idx_leads_upsell_status ON leads_upsell(status);
+CREATE INDEX IF NOT EXISTS idx_leads_upsell_created_at ON leads_upsell(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_activities_upsell_lead_id ON activities_upsell(lead_id);
+CREATE INDEX IF NOT EXISTS idx_lead_history_upsell_lead_id ON lead_history_upsell(lead_id);
+
+-- Add Upsell columns to mirror full PF leads schema (additive, idempotent)
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS birth_date DATE;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS interest VARCHAR(100);
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS monthly_value NUMERIC;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS adhesion_value NUMERIC;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS total_dependents INTEGER;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS street VARCHAR(255);
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS number VARCHAR(50);
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS complement VARCHAR(255);
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS neighborhood VARCHAR(255);
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS cep VARCHAR(20);
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS lgpd_consent BOOLEAN DEFAULT FALSE;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS lgpd_consent_date TIMESTAMP;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS photos JSONB;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS stage_history JSONB;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS promoter_id UUID REFERENCES agents(id);
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS estimated_value NUMERIC;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS latitude NUMERIC;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS longitude NUMERIC;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS concluded BOOLEAN DEFAULT FALSE;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS concluded_at TIMESTAMP;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS concluded_by VARCHAR(255);
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS created_date TIMESTAMP DEFAULT NOW();
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS proposal_url TEXT;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS contract_token VARCHAR(255);
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS contract_signature_url TEXT;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS contract_signed_at TIMESTAMP;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS contract_uploaded_at TIMESTAMPTZ;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS contract_url TEXT;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS signature_autentique_id VARCHAR(255);
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS signature_link TEXT;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS signature_status VARCHAR(50);

@@ -72,6 +72,11 @@ const entities = {
   'lead-automations': { tableName: 'lead_automations', searchFields: ['name'] },
     'activities-pj': { tableName: 'activities_pj', allowedFilters: ['lead_id', 'type'] },
   'lead-pj-automations': { tableName: 'lead_pj_automations', searchFields: ['name'] },
+  'activities-upsell': { tableName: 'activities_upsell', allowedFilters: ['lead_id', 'type', 'completed', 'created_by'] },
+  'visits-upsell': { tableName: 'visits_upsell', allowedFilters: ['lead_id', 'agent_id', 'status'] },
+  'sales-goals-upsell': { tableName: 'sales_goals_upsell', allowedFilters: ['agent_id', 'year', 'month'] },
+  'lead-history-upsell': { tableName: 'lead_history_upsell', allowedFilters: ['lead_id'] },
+  'lead-upsell-automations': { tableName: 'lead_upsell_automations', searchFields: ['name'], allowedFilters: ['active', 'trigger_type'] },
   'referral-automations': { tableName: 'referral_automations', searchFields: ['name'] },
   'referral-channel-automations': { tableName: 'referral_channel_automations', searchFields: ['name'], allowedFilters: ['channel_token', 'active'] },
   'referral-channel-config': { tableName: 'referral_channel_config', searchFields: ['channel_label'] },
@@ -327,6 +332,108 @@ for (const [route, options] of Object.entries(entities)) {
         });
       } catch (error) {
         console.error('Error updating lead-pj-automation with teams:', error);
+        res.status(500).json({ message: error.message });
+      }
+    });
+
+    router.delete(`/${route}/:id`, authMiddleware, crud.delete);
+    router.post(`/${route}/filter`, authMiddleware, crud.filter);
+    continue;
+  }
+
+  if (route === 'lead-upsell-automations') {
+    router.get(`/${route}`, authMiddleware, async (req, res) => {
+      try {
+        await crud.list(req, {
+          ...res,
+          json: async (data) => {
+            const enriched = await enrichAutomationsWithTeams(data, 'lead_upsell_automation_teams');
+            const result = enriched.map(a => ({ ...a, teamIds: a.team_ids }));
+            result.forEach(r => delete r.team_ids);
+            res.json.bind(res)(result);
+          }
+        });
+      } catch (error) {
+        console.error('Error listing lead-upsell-automations with teams:', error);
+        res.status(500).json({ message: error.message });
+      }
+    });
+
+    router.get(`/${route}/:id`, authMiddleware, async (req, res) => {
+      try {
+        await crud.get(req, {
+          ...res,
+          json: async (data) => {
+            const enriched = await enrichAutomationsWithTeams([data], 'lead_upsell_automation_teams');
+            const result = { ...enriched[0], teamIds: enriched[0].team_ids };
+            delete result.team_ids;
+            res.json.bind(res)(result);
+          }
+        });
+      } catch (error) {
+        console.error('Error getting lead-upsell-automation with teams:', error);
+        res.status(500).json({ message: error.message });
+      }
+    });
+
+    router.post(`/${route}`, authMiddleware, async (req, res) => {
+      try {
+        const teamIds = req.body.team_ids || req.body.teamIds || [];
+        delete req.body.team_ids;
+        delete req.body.teamIds;
+        const originalStatus = res.status.bind(res);
+        await crud.create(req, {
+          ...res,
+          status: (code) => {
+            const statusRes = originalStatus(code);
+            const origStatusJson = statusRes.json.bind(statusRes);
+            return {
+              ...statusRes,
+              json: async (data) => {
+                try {
+                  if (data && data.id && teamIds.length > 0) {
+                    await syncAutomationTeams(data.id, teamIds, 'lead_upsell_automation_teams');
+                    data.teamIds = teamIds;
+                  }
+                } catch (err) {
+                  console.error('Error syncing Upsell teams on create:', err);
+                }
+                origStatusJson(data);
+              }
+            };
+          }
+        });
+      } catch (error) {
+        console.error('Error creating lead-upsell-automation with teams:', error);
+        res.status(500).json({ message: error.message });
+      }
+    });
+
+    router.put(`/${route}/:id`, authMiddleware, async (req, res) => {
+      try {
+        const hasTeamIds = 'team_ids' in req.body || 'teamIds' in req.body;
+        const teamIds = hasTeamIds ? (req.body.team_ids || req.body.teamIds || []) : null;
+        delete req.body.team_ids;
+        delete req.body.teamIds;
+        delete req.body.team_id;
+        delete req.body.teamId;
+        const originalJson = res.json.bind(res);
+        await crud.update(req, {
+          ...res,
+          json: async (data) => {
+            try {
+              if (hasTeamIds) {
+                await syncAutomationTeams(req.params.id, teamIds, 'lead_upsell_automation_teams');
+                data.teamIds = teamIds;
+              }
+            } catch (err) {
+              console.error('Error syncing Upsell teams on update:', err);
+            }
+            originalJson(data);
+          }
+        });
+      } catch (error) {
+        console.error('Error updating lead-upsell-automation with teams:', error);
         res.status(500).json({ message: error.message });
       }
     });
@@ -683,6 +790,14 @@ router.post('/leads', authMiddleware, async (req, res) => {
         const dup = dupPJ.rows[0];
         return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PJ. Lead "${dup.display_name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
       }
+      const dupUpsell = await query(
+        `SELECT l.id, l.name, a.name as agent_name FROM leads_upsell l LEFT JOIN agents a ON l.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(l.whatsapp, l.phone, ''), '[^0-9]', '', 'g') = $1`,
+        [cleanPhone]
+      );
+      if (dupUpsell.rows.length > 0) {
+        const dup = dupUpsell.rows[0];
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Upsell. Lead "${dup.name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+      }
       const dupRef = await query(
         `SELECT r.id, r.referred_name, a.name as agent_name FROM referrals r LEFT JOIN agents a ON r.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(r.referred_phone, ''), '[^0-9]', '', 'g') = $1`,
         [cleanPhone]
@@ -860,6 +975,14 @@ router.post('/leads-pj', authMiddleware, async (req, res) => {
         const dup = dupPJ.rows[0];
         return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PJ. Lead "${dup.display_name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
       }
+      const dupUpsell = await query(
+        `SELECT l.id, l.name, a.name as agent_name FROM leads_upsell l LEFT JOIN agents a ON l.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(l.whatsapp, l.phone, ''), '[^0-9]', '', 'g') = $1`,
+        [cleanPhone]
+      );
+      if (dupUpsell.rows.length > 0) {
+        const dup = dupUpsell.rows[0];
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Upsell. Lead "${dup.name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+      }
       const dupRef = await query(
         `SELECT r.id, r.referred_name, a.name as agent_name FROM referrals r LEFT JOIN agents a ON r.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(r.referred_phone, ''), '[^0-9]', '', 'g') = $1`,
         [cleanPhone]
@@ -944,6 +1067,169 @@ router.put('/leads-pj/:id', authMiddleware, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+
+// ===== LEADS UPSELL =====
+router.get('/leads-upsell', authMiddleware, async (req, res) => {
+  try {
+    const { sort = '-created_at', limit = 10000 } = req.query;
+    const { field: sortField, dir: sortDir } = normalizeSort(sort);
+    const result = await query(`SELECT * FROM leads_upsell ORDER BY ${sortField} ${sortDir} LIMIT $1`, [parseInt(limit)]);
+    res.json(result.rows.map(convertKeysToCamel));
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/leads-upsell/:id', authMiddleware, async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM leads_upsell WHERE id = $1', [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ message: 'Not found' });
+    res.json(convertKeysToCamel(result.rows[0]));
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.delete('/leads-upsell/:id', authMiddleware, async (req, res) => {
+  try {
+    const result = await query('DELETE FROM leads_upsell WHERE id = $1 RETURNING *', [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ message: 'Not found' });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/leads-upsell/filter', authMiddleware, async (req, res) => {
+  try {
+    const filters = convertKeysToSnake(req.body);
+    const keys = Object.keys(filters);
+    const values = Object.values(filters);
+    let sql = 'SELECT * FROM leads_upsell';
+    if (keys.length > 0) {
+      const conditions = keys.map((key, i) => `${key} = $${i + 1}`).join(' AND ');
+      sql += ` WHERE ${conditions}`;
+    }
+    sql += ' ORDER BY created_at DESC';
+    const result = await query(sql, values);
+    res.json(result.rows.map(convertKeysToCamel));
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/leads-upsell', authMiddleware, async (req, res) => {
+  try {
+    const data = convertKeysToSnake(req.body);
+    const dateFields = ['birth_date', 'first_contact_date', 'next_contact_date', 'scheduled_visit_date', 'created_at', 'updated_at', 'last_contact_at', 'converted_at', 'lost_at'];
+    dateFields.forEach(field => {
+      if (data[field] === '' || data[field] === 'Invalid Date') {
+        data[field] = null;
+      }
+    });
+
+    const phoneToCheck = data.whatsapp || data.phone;
+    if (phoneToCheck) {
+      const cleanPhone = phoneToCheck.replace(/\D/g, '');
+      const dupPF = await query(
+        `SELECT l.id, l.name, a.name as agent_name FROM leads l LEFT JOIN agents a ON l.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(l.whatsapp, l.phone, ''), '[^0-9]', '', 'g') = $1`,
+        [cleanPhone]
+      );
+      if (dupPF.rows.length > 0) {
+        const dup = dupPF.rows[0];
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PF. Lead "${dup.name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+      }
+      const dupPJ = await query(
+        `SELECT l.id, COALESCE(l.nome_fantasia, l.razao_social, l.contact_name) as display_name, a.name as agent_name FROM leads_pj l LEFT JOIN agents a ON l.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(l.phone, l.contact_phone, ''), '[^0-9]', '', 'g') = $1`,
+        [cleanPhone]
+      );
+      if (dupPJ.rows.length > 0) {
+        const dup = dupPJ.rows[0];
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Vendas PJ. Lead "${dup.display_name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+      }
+      const dupUpsell = await query(
+        `SELECT l.id, l.name, a.name as agent_name FROM leads_upsell l LEFT JOIN agents a ON l.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(l.whatsapp, l.phone, ''), '[^0-9]', '', 'g') = $1`,
+        [cleanPhone]
+      );
+      if (dupUpsell.rows.length > 0) {
+        const dup = dupUpsell.rows[0];
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Upsell. Lead "${dup.name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+      }
+      const dupRef = await query(
+        `SELECT r.id, r.referred_name, a.name as agent_name FROM referrals r LEFT JOIN agents a ON r.agent_id::text = a.id::text WHERE REGEXP_REPLACE(COALESCE(r.referred_phone, ''), '[^0-9]', '', 'g') = $1`,
+        [cleanPhone]
+      );
+      if (dupRef.rows.length > 0) {
+        const dup = dupRef.rows[0];
+        return res.status(409).json({ message: `WhatsApp ja cadastrado em Indicacoes. Lead "${dup.referred_name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+      }
+    }
+
+    const keys = Object.keys(data).filter(k => data[k] !== null && data[k] !== undefined && data[k] !== '');
+    const values = keys.map(k => {
+      const val = data[k];
+      if (typeof val === 'object' && val !== null) return JSON.stringify(val);
+      return val;
+    });
+
+    const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
+    const sql = `INSERT INTO leads_upsell (${keys.join(', ')}) VALUES (${placeholders}) RETURNING *`;
+
+    const result = await query(sql, values);
+    const lead = result.rows[0];
+
+    if (lead.agent_id || lead.assigned_agent_id) {
+      try { await notifyLeadAssigned(lead, lead.agent_id || lead.assigned_agent_id); } catch (e) { console.error('[Upsell] notify error:', e.message); }
+    }
+
+    res.status(201).json(convertKeysToCamel(lead));
+  } catch (error) {
+    console.error('Error creating lead upsell:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.put('/leads-upsell/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = convertKeysToSnake(req.body);
+
+    const oldLeadResult = await query('SELECT * FROM leads_upsell WHERE id = $1', [id]);
+    const oldLead = oldLeadResult.rows[0];
+
+    if (!oldLead) {
+      return res.status(404).json({ message: 'Lead Upsell not found' });
+    }
+
+    const keys = Object.keys(data);
+    const values = keys.map(k => {
+      const val = data[k];
+      if (val === null || val === undefined) return val;
+      if (Array.isArray(val)) return JSON.stringify(val);
+      if (typeof val === 'object') return JSON.stringify(val);
+      return val;
+    });
+
+    const setClause = keys.map((key, i) => `${key} = $${i + 1}`).join(', ');
+    values.push(id);
+    const sql = `UPDATE leads_upsell SET ${setClause}, updated_at = NOW() WHERE id = $${values.length} RETURNING *`;
+
+    const result = await query(sql, values);
+    const lead = result.rows[0];
+
+    const newAgentId = data.agent_id || data.assigned_agent_id;
+    const oldAgentId = oldLead.agent_id || oldLead.assigned_agent_id;
+    if (newAgentId && newAgentId !== oldAgentId) {
+      try { await notifyLeadAssigned(lead, newAgentId); } catch (e) { console.error('[Upsell] notify error:', e.message); }
+    }
+
+    res.json(convertKeysToCamel(lead));
+  } catch (error) {
+    console.error('Error updating lead upsell:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+// ===== END LEADS UPSELL =====
 
 router.get('/referrals', authMiddleware, async (req, res) => {
   try {

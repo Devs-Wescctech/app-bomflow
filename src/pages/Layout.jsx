@@ -206,6 +206,25 @@ const menuModules = [
     ]
   },
   {
+    id: "sales_upsell",
+    title: "Upsell",
+    icon: Sparkles,
+    gradient: "from-fuchsia-500 to-pink-500",
+    items: [
+      { title: "Dashboard", url: createPageUrl("SalesUpsellDashboard"), icon: LayoutDashboard, supervisorOnly: true },
+      { title: "Dashboard Vendedores", url: createPageUrl("SalesUpsellAgentsDashboard"), icon: UserCheck, supervisorOnly: true },
+      { title: "Novo Lead Upsell", url: createPageUrl("NewLeadUpsell"), icon: Plus, highlight: true },
+      { title: "Pipeline Upsell", url: createPageUrl("LeadsUpsellKanban"), icon: TrendingUp },
+      { title: "Agenda", url: createPageUrl("SalesAgenda"), icon: CalendarIcon },
+      { title: "Busca de Leads", url: createPageUrl("LeadUpsellSearch"), icon: Search },
+      { title: "Relatórios", url: createPageUrl("SalesUpsellReports"), icon: FileBarChart, supervisorOnly: true },
+      { title: "Rel. de Ganhos", url: createPageUrl("SalesUpsellWonReport"), icon: Trophy },
+      { title: "Automações", url: createPageUrl("LeadUpsellAutomations"), icon: Zap, supervisorOnly: true },
+      { title: "Tarefas", url: createPageUrl("SalesTasks"), icon: CheckSquare },
+      { title: "Templates", url: createPageUrl("ProposalTemplates"), icon: FileText, supervisorOnly: true },
+    ]
+  },
+  {
     id: "referral_meu_painel",
     moduleId: "referral",
     title: "Meu Painel",
