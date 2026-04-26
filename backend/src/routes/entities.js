@@ -1313,7 +1313,7 @@ router.post('/referrals/reactivations', authMiddleware, loadAgentMiddleware, asy
       return res.status(403).json({ message: 'Acesso negado. Apenas Indicações - Supervisor, Admin ou Indicações - Atendente podem registrar reativações.' });
     }
 
-    const { cpf, nome_completo_cliente, observacoes, atendente_id } = req.body;
+    const { cpf, nome_completo_cliente, telefone, observacoes, atendente_id } = req.body;
 
     const cleanCpf = (cpf || '').replace(/\D/g, '');
     if (cleanCpf.length !== 11) {
@@ -1342,10 +1342,12 @@ router.post('/referrals/reactivations', authMiddleware, loadAgentMiddleware, asy
       resolvedAtendenteId = atendente_id;
     }
 
+    const cleanTelefone = (telefone || '').replace(/\D/g, '') || null;
+
     const result = await query(
-      `INSERT INTO referral_reactivations (cpf, nome_completo_cliente, atendente_id, observacoes)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [cleanCpf, nome_completo_cliente.trim(), resolvedAtendenteId, observacoes?.trim() || null]
+      `INSERT INTO referral_reactivations (cpf, nome_completo_cliente, telefone, atendente_id, observacoes)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [cleanCpf, nome_completo_cliente.trim(), cleanTelefone, resolvedAtendenteId, observacoes?.trim() || null]
     );
 
     res.status(201).json({ success: true, data: convertKeysToCamel(result.rows[0]) });
@@ -1378,6 +1380,64 @@ router.get('/referrals/reactivations', authMiddleware, loadAgentMiddleware, asyn
     res.json(result.rows.map(convertKeysToCamel));
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/referrals/reactivations/report', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const agentType = req.agent?.agentType;
+    const agentId = req.agent?.id;
+
+    const allowedRoles = ['indicacoes_supervisor', 'admin', 'indicacoes_atendente'];
+    if (!agentType || !allowedRoles.includes(agentType)) {
+      return res.status(403).json({ message: 'Acesso negado.' });
+    }
+
+    const { start_date, end_date, atendente_id } = req.query;
+
+    const conditions = [];
+    const params = [];
+
+    if (agentType === 'indicacoes_atendente') {
+      params.push(agentId);
+      conditions.push(`rr.atendente_id = $${params.length}`);
+    } else if (atendente_id) {
+      params.push(atendente_id);
+      conditions.push(`rr.atendente_id = $${params.length}`);
+    }
+
+    if (start_date) {
+      params.push(start_date);
+      conditions.push(`rr.created_at >= $${params.length}::timestamptz`);
+    }
+    if (end_date) {
+      params.push(end_date);
+      conditions.push(`rr.created_at <= ($${params.length}::timestamptz + interval '1 day' - interval '1 second')`);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const sql = `
+      SELECT
+        rr.id,
+        rr.cpf,
+        rr.nome_completo_cliente,
+        rr.telefone,
+        rr.created_at,
+        rr.observacoes,
+        a.name AS atendente_nome
+      FROM referral_reactivations rr
+      LEFT JOIN agents a ON rr.atendente_id = a.id
+      ${where}
+      ORDER BY rr.created_at DESC
+      LIMIT 5000
+    `;
+
+    const result = await query(sql, params);
+    res.json(result.rows.map(convertKeysToCamel));
+  } catch (error) {
+    console.error('Error fetching reactivations report:', error);
+    res.status(500).json({ message: 'Erro interno ao carregar relatório.' });
   }
 });
 

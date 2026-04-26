@@ -21,9 +21,22 @@ const formatCPF = (value) => {
     .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
 };
 
+const formatPhone = (value) => {
+  const clean = value.replace(/\D/g, '').slice(0, 11);
+  if (clean.length <= 10) {
+    return clean
+      .replace(/(\d{2})(\d)/, '($1) $2')
+      .replace(/(\d{4})(\d{1,4})$/, '$1-$2');
+  }
+  return clean
+    .replace(/(\d{2})(\d)/, '($1) $2')
+    .replace(/(\d{5})(\d{1,4})$/, '$1-$2');
+};
+
 const INITIAL_FORM = {
   cpf: "",
   nomeCompletoCliente: "",
+  telefone: "",
   observacoes: "",
   atendenteId: "",
 };
@@ -102,7 +115,12 @@ export default function ReferralReactivation() {
       const response = await buscarClienteERP(cleanCpf);
       if (response?.success && response?.data?.contact?.name) {
         const nome = response.data.contact.name;
-        setForm((f) => ({ ...f, nomeCompletoCliente: nome }));
+        const fone = response.data.contact?.phone || response.data.contact?.celular || response.data.contact?.telefone || '';
+        setForm((f) => ({
+          ...f,
+          nomeCompletoCliente: nome,
+          telefone: fone ? formatPhone(fone) : f.telefone,
+        }));
         setErpFound(true);
         toast.success(`Cliente encontrado: ${nome}`);
       } else {
@@ -141,6 +159,7 @@ export default function ReferralReactivation() {
     const payload = {
       cpf: cleanCpf,
       nome_completo_cliente: form.nomeCompletoCliente.trim(),
+      telefone: (form.telefone || '').replace(/\D/g, '') || null,
       observacoes: (form.observacoes || '').trim() || null,
       atendente_id: resolvedAtendenteId,
     };
@@ -241,6 +260,18 @@ export default function ReferralReactivation() {
                   placeholder="Nome completo"
                   value={form.nomeCompletoCliente}
                   onChange={(e) => setForm((f) => ({ ...f, nomeCompletoCliente: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="telefone">Telefone</Label>
+                <Input
+                  id="telefone"
+                  placeholder="(00) 00000-0000"
+                  value={form.telefone}
+                  onChange={(e) => setForm((f) => ({ ...f, telefone: formatPhone(e.target.value) }))}
+                  className="font-mono"
+                  maxLength={15}
                 />
               </div>
 
