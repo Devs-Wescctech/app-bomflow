@@ -1445,3 +1445,18 @@ ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS contract_url TEXT;
 ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS signature_autentique_id VARCHAR(255);
 ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS signature_link TEXT;
 ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS signature_status VARCHAR(50);
+
+-- ============================================================
+-- REFERRAL NOTES (timeline) — added for "Editar Indicação" UI
+-- ============================================================
+CREATE TABLE IF NOT EXISTS referral_notes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    referral_id UUID NOT NULL REFERENCES referrals(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    agent_id UUID REFERENCES agents(id),
+    agent_name VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_referral_notes_referral_id ON referral_notes(referral_id);
+CREATE INDEX IF NOT EXISTS idx_referral_notes_created_at ON referral_notes(created_at);

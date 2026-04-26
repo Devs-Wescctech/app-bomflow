@@ -1396,6 +1396,115 @@ router.put('/referrals/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// ============================================================
+// REFERRAL NOTES (timeline) — list/create/update/delete
+// ============================================================
+router.get('/referrals/:id/notes', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await query(
+      `SELECT n.*, a.name AS agent_full_name
+       FROM referral_notes n
+       LEFT JOIN agents a ON a.id = n.agent_id
+       WHERE n.referral_id = $1
+       ORDER BY n.created_at ASC`,
+      [id]
+    );
+    res.json(result.rows.map(convertKeysToCamel));
+  } catch (error) {
+    console.error('Error listing referral notes:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/referrals/:id/notes', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { content } = req.body || {};
+    if (!content || !String(content).trim()) {
+      return res.status(400).json({ message: 'O conteúdo da nota é obrigatório.' });
+    }
+
+    const refCheck = await query('SELECT id FROM referrals WHERE id = $1', [id]);
+    if (refCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'Indicação não encontrada.' });
+    }
+
+    const userId = req.user?.id || null;
+    let agentName = req.user?.name || null;
+    if (userId && !agentName) {
+      const a = await query('SELECT name FROM agents WHERE id = $1', [userId]);
+      if (a.rows[0]) agentName = a.rows[0].name;
+    }
+
+    const result = await query(
+      `INSERT INTO referral_notes (referral_id, content, agent_id, agent_name)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [id, String(content).trim(), userId, agentName]
+    );
+    res.status(201).json(convertKeysToCamel(result.rows[0]));
+  } catch (error) {
+    console.error('Error creating referral note:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+function canMutateNote(req, note) {
+  const role = req.user?.role;
+  if (role === 'admin' || role === 'supervisor') return true;
+  return !!note.agent_id && note.agent_id === req.user?.id;
+}
+
+router.put('/referral-notes/:noteId', authMiddleware, async (req, res) => {
+  try {
+    const { noteId } = req.params;
+    const { content } = req.body || {};
+    if (!content || !String(content).trim()) {
+      return res.status(400).json({ message: 'O conteúdo da nota é obrigatório.' });
+    }
+
+    const existing = await query('SELECT * FROM referral_notes WHERE id = $1', [noteId]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ message: 'Nota não encontrada.' });
+    }
+    if (!canMutateNote(req, existing.rows[0])) {
+      return res.status(403).json({ message: 'Apenas o autor da nota ou um administrador pode editá-la.' });
+    }
+
+    const result = await query(
+      `UPDATE referral_notes
+       SET content = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [String(content).trim(), noteId]
+    );
+    res.json(convertKeysToCamel(result.rows[0]));
+  } catch (error) {
+    console.error('Error updating referral note:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.delete('/referral-notes/:noteId', authMiddleware, async (req, res) => {
+  try {
+    const { noteId } = req.params;
+    const existing = await query('SELECT * FROM referral_notes WHERE id = $1', [noteId]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ message: 'Nota não encontrada.' });
+    }
+    if (!canMutateNote(req, existing.rows[0])) {
+      return res.status(403).json({ message: 'Apenas o autor da nota ou um administrador pode excluí-la.' });
+    }
+
+    await query('DELETE FROM referral_notes WHERE id = $1', [noteId]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting referral note:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.get('/activities', authMiddleware, async (req, res) => {
   try {
     const { sort = '-scheduled_at', limit = 100, lead_id } = req.query;

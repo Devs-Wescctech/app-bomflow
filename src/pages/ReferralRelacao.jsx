@@ -1,17 +1,19 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
-  Search, Edit2, Loader2, ChevronLeft, ChevronRight, List, X, Save
+  Search, Edit2, Loader2, ChevronLeft, ChevronRight, List, X, Save,
+  StickyNote, Plus, Trash2, MessageCircle, User
 } from "lucide-react";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { REFERRAL_STAGES } from "@/constants/stages";
 
@@ -37,6 +39,10 @@ export default function ReferralRelacao() {
   const [editItem, setEditItem] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [saving, setSaving] = useState(false);
+  const [newNote, setNewNote] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [editingNoteContent, setEditingNoteContent] = useState('');
   const limit = 50;
 
   const queryParams = useMemo(() => {
@@ -119,6 +125,94 @@ export default function ReferralRelacao() {
       agentId: item.agentId || '',
       stage: item.stage || '',
     });
+    setNewNote('');
+    setEditingNoteId(null);
+    setEditingNoteContent('');
+  }
+
+  const { data: notesData, refetch: refetchNotes } = useQuery({
+    queryKey: ['referral-notes', editItem?.id],
+    queryFn: async () => {
+      if (!editItem?.id) return [];
+      const res = await fetch(`${API_BASE}/referrals/${editItem.id}/notes`, {
+        headers: { ...getAuthHeaders() },
+      });
+      if (!res.ok) throw new Error('Erro ao carregar notas');
+      return res.json();
+    },
+    enabled: !!editItem?.id,
+  });
+  const notes = Array.isArray(notesData) ? notesData : [];
+
+  async function handleAddNote() {
+    if (!editItem?.id || !newNote.trim()) return;
+    setSavingNote(true);
+    try {
+      const res = await fetch(`${API_BASE}/referrals/${editItem.id}/notes`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newNote.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Erro ao adicionar nota');
+      }
+      setNewNote('');
+      await refetchNotes();
+      toast.success('Nota adicionada');
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setSavingNote(false);
+    }
+  }
+
+  function startEditNote(note) {
+    setEditingNoteId(note.id);
+    setEditingNoteContent(note.content || '');
+  }
+
+  function cancelEditNote() {
+    setEditingNoteId(null);
+    setEditingNoteContent('');
+  }
+
+  async function handleUpdateNote(noteId) {
+    if (!editingNoteContent.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE}/referral-notes/${noteId}`, {
+        method: 'PUT',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: editingNoteContent.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Erro ao atualizar nota');
+      }
+      cancelEditNote();
+      await refetchNotes();
+      toast.success('Nota atualizada');
+    } catch (e) {
+      toast.error(e.message);
+    }
+  }
+
+  async function handleDeleteNote(noteId) {
+    if (!confirm('Excluir esta nota?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/referral-notes/${noteId}`, {
+        method: 'DELETE',
+        headers: { ...getAuthHeaders() },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Erro ao excluir nota');
+      }
+      await refetchNotes();
+      toast.success('Nota excluída');
+    } catch (e) {
+      toast.error(e.message);
+    }
   }
 
   async function handleSave() {
@@ -324,7 +418,7 @@ export default function ReferralRelacao() {
       </Card>
 
       <Dialog open={!!editItem} onOpenChange={(open) => !open && setEditItem(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>Editar Indicação</DialogTitle>
           </DialogHeader>
@@ -406,6 +500,132 @@ export default function ReferralRelacao() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* ===== Notas (timeline) ===== */}
+            <div className="pt-4 mt-2 border-t">
+              <div className="flex items-center gap-2 mb-3">
+                <StickyNote className="w-4 h-4 text-amber-600" />
+                <h3 className="text-sm font-semibold text-gray-800">Notas</h3>
+                <Badge variant="outline" className="text-[10px] ml-1">{notes.length}</Badge>
+              </div>
+
+              <div className="bg-amber-50/50 border border-amber-100 rounded-lg p-3 mb-4">
+                <Label className="text-xs text-gray-700">Adicionar nota</Label>
+                <Textarea
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  placeholder="Escreva uma observação sobre esta indicação..."
+                  rows={2}
+                  className="mt-1 bg-white"
+                />
+                <div className="flex justify-end mt-2">
+                  <Button
+                    size="sm"
+                    onClick={handleAddNote}
+                    disabled={savingNote || !newNote.trim()}
+                    className="gap-1.5 bg-amber-600 hover:bg-amber-700 text-white"
+                  >
+                    {savingNote ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                    Adicionar
+                  </Button>
+                </div>
+              </div>
+
+              {notes.length === 0 ? (
+                <div className="text-center py-6 text-xs text-gray-400">
+                  <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                  Nenhuma nota registrada ainda.
+                </div>
+              ) : (
+                <div className="relative pl-6">
+                  {/* Linha vertical da timeline */}
+                  <div className="absolute left-[11px] top-1 bottom-1 w-0.5 bg-gradient-to-b from-amber-300 via-amber-200 to-transparent" />
+                  <ul className="space-y-3">
+                    {notes.map((note) => {
+                      const isEditing = editingNoteId === note.id;
+                      const author = note.agentFullName || note.agentName || 'Sistema';
+                      const createdAt = note.createdAt ? new Date(note.createdAt) : null;
+                      const updatedAt = note.updatedAt ? new Date(note.updatedAt) : null;
+                      const wasEdited = createdAt && updatedAt && (updatedAt.getTime() - createdAt.getTime() > 1000);
+                      return (
+                        <li key={note.id} className="relative">
+                          {/* Bolinha da timeline */}
+                          <span className="absolute -left-[19px] top-2 w-3 h-3 rounded-full bg-amber-500 ring-4 ring-amber-100" />
+                          <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-3 hover:border-amber-200 transition-colors">
+                            <div className="flex items-start justify-between gap-2 mb-1.5">
+                              <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                                <User className="w-3 h-3 text-amber-600" />
+                                <span className="font-semibold text-gray-800">{author}</span>
+                                {createdAt && (
+                                  <>
+                                    <span className="text-gray-300">•</span>
+                                    <span title={format(createdAt, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}>
+                                      {formatDistanceToNow(createdAt, { addSuffix: true, locale: ptBR })}
+                                    </span>
+                                  </>
+                                )}
+                                {wasEdited && (
+                                  <span className="text-[10px] text-gray-400 italic">(editada)</span>
+                                )}
+                              </div>
+                              {!isEditing && (
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-gray-500 hover:text-amber-700"
+                                    onClick={() => startEditNote(note)}
+                                    title="Editar"
+                                  >
+                                    <Edit2 className="w-3 h-3" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-gray-500 hover:text-red-600"
+                                    onClick={() => handleDeleteNote(note.id)}
+                                    title="Excluir"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                            {isEditing ? (
+                              <div className="space-y-2">
+                                <Textarea
+                                  value={editingNoteContent}
+                                  onChange={(e) => setEditingNoteContent(e.target.value)}
+                                  rows={2}
+                                  className="text-sm"
+                                />
+                                <div className="flex justify-end gap-2">
+                                  <Button variant="outline" size="sm" onClick={cancelEditNote} className="gap-1">
+                                    <X className="w-3 h-3" /> Cancelar
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleUpdateNote(note.id)}
+                                    disabled={!editingNoteContent.trim()}
+                                    className="gap-1 bg-amber-600 hover:bg-amber-700 text-white"
+                                  >
+                                    <Save className="w-3 h-3" /> Salvar
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+                                {note.content}
+                              </p>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>
