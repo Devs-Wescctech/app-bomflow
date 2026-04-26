@@ -1460,3 +1460,16 @@ CREATE TABLE IF NOT EXISTS referral_notes (
 );
 CREATE INDEX IF NOT EXISTS idx_referral_notes_referral_id ON referral_notes(referral_id);
 CREATE INDEX IF NOT EXISTS idx_referral_notes_created_at ON referral_notes(created_at);
+
+CREATE TABLE IF NOT EXISTS referral_reactivations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  cpf VARCHAR(11) NOT NULL,
+  nome_completo_cliente VARCHAR(255) NOT NULL,
+  atendente_id UUID NOT NULL REFERENCES agents(id),
+  observacoes TEXT,
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_referral_reactivations_cpf ON referral_reactivations(cpf);
+CREATE INDEX IF NOT EXISTS idx_referral_reactivations_atendente_id ON referral_reactivations(atendente_id);
+CREATE INDEX IF NOT EXISTS idx_referral_reactivations_created_at ON referral_reactivations(created_at);

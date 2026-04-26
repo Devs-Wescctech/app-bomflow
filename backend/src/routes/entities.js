@@ -1303,6 +1303,84 @@ router.delete('/referrals/:id/hard', authMiddleware, loadAgentMiddleware, requir
   }
 });
 
+router.post('/referrals/reactivations', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const agentType = req.agent?.agentType;
+    const agentId = req.agent?.id;
+
+    const allowedRoles = ['indicacoes_supervisor', 'admin', 'indicacoes_atendente'];
+    if (!agentType || !allowedRoles.includes(agentType)) {
+      return res.status(403).json({ message: 'Acesso negado. Apenas Indicações - Supervisor, Admin ou Indicações - Atendente podem registrar reativações.' });
+    }
+
+    const { cpf, nome_completo_cliente, observacoes, atendente_id } = req.body;
+
+    const cleanCpf = (cpf || '').replace(/\D/g, '');
+    if (cleanCpf.length !== 11) {
+      return res.status(400).json({ message: 'CPF inválido. Informe 11 dígitos.' });
+    }
+    if (!nome_completo_cliente || !nome_completo_cliente.trim()) {
+      return res.status(400).json({ message: 'Nome completo do cliente é obrigatório.' });
+    }
+
+    let resolvedAtendenteId;
+
+    if (agentType === 'indicacoes_atendente') {
+      if (!agentId) return res.status(400).json({ message: 'Perfil de atendente não encontrado.' });
+      resolvedAtendenteId = agentId;
+    } else {
+      if (!atendente_id) {
+        return res.status(400).json({ message: 'Atendente responsável é obrigatório.' });
+      }
+      const validAgent = await query(
+        `SELECT id FROM agents WHERE id = $1 AND agent_type = 'indicacoes_atendente' AND active = true`,
+        [atendente_id]
+      );
+      if (validAgent.rows.length === 0) {
+        return res.status(400).json({ message: 'Atendente selecionado inválido ou inativo.' });
+      }
+      resolvedAtendenteId = atendente_id;
+    }
+
+    const result = await query(
+      `INSERT INTO referral_reactivations (cpf, nome_completo_cliente, atendente_id, observacoes)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [cleanCpf, nome_completo_cliente.trim(), resolvedAtendenteId, observacoes?.trim() || null]
+    );
+
+    res.status(201).json({ success: true, data: convertKeysToCamel(result.rows[0]) });
+  } catch (error) {
+    console.error('Error creating reactivation:', error);
+    res.status(500).json({ message: 'Erro interno ao registrar reativação.' });
+  }
+});
+
+router.get('/referrals/reactivations', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const agentType = req.agent?.agentType;
+    const agentId = req.agent?.id;
+
+    const allowedRoles = ['indicacoes_supervisor', 'admin', 'indicacoes_atendente'];
+    if (!agentType || !allowedRoles.includes(agentType)) {
+      return res.status(403).json({ message: 'Acesso negado.' });
+    }
+
+    let sql, params;
+    if (agentType === 'indicacoes_atendente' && agentId) {
+      sql = `SELECT rr.*, a.name as atendente_nome FROM referral_reactivations rr LEFT JOIN agents a ON rr.atendente_id = a.id WHERE rr.atendente_id = $1 ORDER BY rr.created_at DESC`;
+      params = [agentId];
+    } else {
+      sql = `SELECT rr.*, a.name as atendente_nome FROM referral_reactivations rr LEFT JOIN agents a ON rr.atendente_id = a.id ORDER BY rr.created_at DESC`;
+      params = [];
+    }
+
+    const result = await query(sql, params);
+    res.json(result.rows.map(convertKeysToCamel));
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.post('/referrals/filter', authMiddleware, async (req, res) => {
   try {
     const filters = convertKeysToSnake(req.body);

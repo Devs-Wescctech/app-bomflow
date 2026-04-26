@@ -113,6 +113,8 @@ import SalesReports from "./SalesReports";
 
 import ReferralCreate from "./ReferralCreate";
 
+import ReferralReactivation from "./ReferralReactivation";
+
 import LeadGenerator from "./LeadGenerator";
 
 import LeadGeneratorAudit from "./LeadGeneratorAudit";
@@ -322,6 +324,8 @@ const PAGES = {
     SalesReports: SalesReports,
     
     ReferralCreate: ReferralCreate,
+
+    ReferralReactivation: ReferralReactivation,
     
     LeadGenerator: LeadGenerator,
     
@@ -555,6 +559,8 @@ function PagesContent() {
                 <Route path="/SalesReports" element={<SalesReports />} />
                 
                 <Route path="/ReferralCreate" element={<ReferralCreate />} />
+
+                <Route path="/ReferralReactivation" element={<ReferralReactivation />} />
                 
                 <Route path="/LeadGenerator" element={<LeadGenerator />} />
                 

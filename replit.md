@@ -1,7 +1,7 @@
 # Wescctech CRM
 
 ## Overview
-Wescctech CRM is a comprehensive, self-hosted Customer Relationship Management system designed to streamline customer service, sales, collections, and knowledge base operations. It aims to assist businesses in migrating from legacy systems and enhancing customer interactions through a full suite of tools. Key capabilities include integrated helpdesk, B2C/B2B sales management, referral tracking, knowledge base, quality assurance, and collections. The project focuses on providing a highly customizable and scalable platform leveraging modern web technologies.
+Wescctech CRM is a comprehensive, self-hosted Customer Relationship Management system designed to streamline customer service, sales, collections, and knowledge base operations. It aims to assist businesses in migrating from legacy systems and enhancing customer interactions through a full suite of tools. Key capabilities include integrated helpdesk, B2C/B2B sales management, referral tracking, knowledge base, quality assurance, and collections. The project focuses on providing a highly customizable and scalable platform leveraging modern web technologies. It also includes specialized modules like "Bom Auto" for vehicle service consultation and "Upsell" for dedicated sales management.
 
 ## User Preferences
 - I want iterative development.
@@ -18,66 +18,35 @@ Wescctech CRM is a comprehensive, self-hosted Customer Relationship Management s
 - **Routing**: React Router
 - **Styling**: Tailwind CSS, Radix UI
 - **Charting**: Recharts
+- **UI/UX Decisions**: Kanban boards with drag-and-drop, sticky headers, auto-scroll, mobile responsiveness. Consistent design system with sticky navigation, gradient themes, distinct color gradients, temperature badges, and standardized rounded corners/shadows. Redesigned timeline components.
 
 ### Backend
 - **Framework**: Node.js with Express
 - **Database**: PostgreSQL
 - **Authentication**: JWT
 - **File Uploads**: Multer
+- **API Design**: RESTful API with standardized CRUD operations.
 
-### Core Features
-- **Helpdesk**: Ticket management with SLA, Kanban, and configurable tools.
-- **Sales (B2C & B2B)**: Lead pipeline, geolocation, activity scheduling, proposals, e-signatures, and target management.
-- **Referrals**: Referral management, commission tracking, conversion pipeline, and a Lead Generator with WhatsApp bulk messaging, audit logging, async queue processing, rate limiting, and RBAC.
+### Core Features & Technical Implementations
+- **Monorepo Structure**: Frontend and Backend coexist in a single repository.
+- **Authentication & Authorization**: JWT-based authentication with Role-Based Access Control (RBAC) supporting 7 agent types and 4 team structures.
+- **Helpdesk**: Ticket management with SLA, Kanban, and configurable tools. Dynamic ticket distribution using Round Robin and Least Active agent assignment.
+- **Sales (B2C & B2B)**: Lead pipeline, geolocation, activity scheduling, proposals, e-signatures, and target management. Automated lead triggers and actions based on stage and inactivity.
+- **Referrals**: Referral management, commission tracking, conversion pipeline, and a Lead Generator with WhatsApp bulk messaging, audit logging, async queue processing, rate limiting, and RBAC. Includes features like PIX key integration, sequential contact triggers, and hard delete with RBAC.
 - **Knowledge Base**: Categorized articles with versioning.
 - **Quality Assurance**: Monitoring, evaluation checklists, and call auditing.
 - **Collections**: Collection tickets, delinquency dashboard, and contact scheduling.
-- **Bom Auto**: Vehicle service consultation module with ERP integration, client eligibility, service registration, and operational dashboards.
-- **Upsell**: Independent sales module mirroring Vendas PF content (PF-style fields: name/cpf/whatsapp) but using PJ-style separation (duplicated pages with suffix, dedicated tables `leads_upsell`/`activities_upsell`/`visits_upsell`/`sales_goals_upsell`/`lead_history_upsell`/`lead_upsell_automations`/`lead_upsell_automation_teams`, ad-hoc backend handlers for `/leads-upsell` and `/lead-upsell-automations`, dedicated menu block "Upsell" with Sparkles icon and fuchsia-pink gradient). The `leads_upsell` table mirrors the full `leads` PF schema (61 columns including `interest`, `monthly_value`, `adhesion_value`, `total_dependents`, address split fields, contract/signature fields). Features: Dashboard, Dashboard Vendedores, Novo Lead, Pipeline, Agenda (reused from PF), Busca, Relatórios, Rel. Ganhos, Automações, Tarefas (reused), Templates (reused). Cross-module phone duplicate check extended to include `leads_upsell` in `/leads`, `/leads-pj` and `/leads-upsell` POST handlers. Automations CRUD persists `team_ids` transactionally into `lead_upsell_automation_teams` join table (mirror of PJ pattern). Frontend uses separate `src/api/upsellClient.js` (per project rule that `src/api/base44Client.js` cannot be modified). Known limitation: `upsellClient.js` does not share the global token-refresh interceptor used by base44Client (Upsell pages may need re-login on access-token expiry).
-
-### UI/UX Design
-- **Kanban Boards**: Advanced drag-and-drop implementation with sticky headers, auto-scroll, and mobile responsiveness.
-- **Component Library**: Radix UI for accessibility, styled with Tailwind CSS.
-- **Data Visualization**: Recharts for dynamic dashboards.
-- **Visual Design System**: Features sticky navigation, gradient-themed profile cards, distinct color gradients for different business types, temperature badges, and standardized rounded corners/shadows.
-- **Detail Pages**: Consistent layout for lead/referral details including header, pending tasks, pipeline history, and a two-column grid for tabs and sidebar.
-- **Timeline Components**: Redesigned with gradient connecting lines and themed activity cards.
-- **Mobile Responsiveness**: Full support with hamburger menu, collapsible sidebar, touch-friendly Kanban, and responsive grids.
-
-### Technical Implementations
-- **Monorepo Structure**: Frontend and Backend coexist within a single repository.
-- **API Design**: RESTful API with standardized CRUD operations.
-- **Authentication & Authorization**: JWT-based authentication with a comprehensive Role-Based Access Control (RBAC) system supporting 7 agent types and 4 team structures.
-- **Dynamic Ticket Distribution**: Algorithms for Round Robin and Least Active agent assignment.
-- **SLA Management**: Configurable Service Level Agreements with priority-based deadlines.
-- **Lead Automation**: Automated triggers and actions based on lead stage and inactivity, supporting multi-team assignment and both B2C (PF) and B2B (PJ) leads.
-- **WhatsApp Automation**: Integration with WHU API for automated messaging and template support, including intelligent fallback mechanisms for dispatch.
-- **Digital Contract Signing**: Public-facing module for digital contract signatures with token-based access.
-- **Optimistic UI**: Implemented for Kanban drag-and-drop interactions.
-- **Dashboard Filters**: Reusable `DashboardFilters` component for consistent data display across dashboards.
-- **ERP Agent ID Mapping**: `erp_agent_id` for integration with external ERP systems.
-- **Token Auto-Refresh**: Global fetch interceptor for transparently refreshing expired access tokens.
+- **Bom Auto**: Vehicle service consultation module with ERP integration.
+- **Upsell**: Independent sales module mirroring B2C content but with B2B-style separation and dedicated data structures.
+- **WhatsApp Automation**: Integration with WHU API for automated messaging, template support, and intelligent fallback mechanisms. Includes a professional dispatch platform with async queue processing, rate limiting, and an operational dashboard.
+- **Digital Contract Signing**: Public-facing module with token-based access.
+- **Optimistic UI**: Implemented for Kanban interactions.
+- **Dashboard Filters**: Reusable `DashboardFilters` component for consistent data display.
+- **ERP Integration**: `erp_agent_id` for integration with external ERP systems for data lookup, commission validation, and deduplication.
+- **Commission Management**: Tiered commission system, weekly snapshots, reconciliation, and payment control with email reports.
+- **Token Management**: Global fetch interceptor for transparently refreshing expired access tokens.
 - **API List Limits**: Default API list limits increased to 10000 for various endpoints.
-- **WhatsApp Dispatch Platform**: Professional system with async queue processing, rate limiting, recurrence blocking, daily duplicate prevention, intelligent retry logic, real-time polling, and an operational dashboard with RBAC.
-- **Lead Generator Metrics Audit**: Automated daily audit system for Lead Generator metrics, including ROI recalculation.
-- **Commission ERP Validation & Deduplication**: Commission eligibility validated against ERP data with a 6-layer protection system.
-- **Commission Tier System**: Commission calculated based on a unit value multiplied by conversions across different tiers.
-- **Commission Weekly Snapshot**: Frozen weekly commission data stored for reports and payment control.
-- **Commission Reconciliation**: Automated daily audit comparing ERP paid sales with system commissions.
-- **Commission Payment Control**: Financial control module for commission payments with weekly cycles, automated batch generation, and manual confirmations.
-- **Commission Email Reports**: Weekly automated email reports with commission summaries and audit tables, configurable via admin panel.
-- **Phone Normalization**: Utility function `normalizePhone()` for consistent phone number formats.
-- **Structured Dispatch Logging**: Detailed logging of every WhatsApp dispatch with lead metadata, agent info, status, and conversion tracking.
-- **Channel Automations**: Separate automation system within Indicações module allowing per-channel WhatsApp token configuration for inactivity and stage duration triggers. Menu item "Automações" was removed from the Indicações sidebar (page/route still exists and is accessible via direct URL); "Automações por Canal" remains visible in the sidebar. Automatic template variable detection (`{{1}}`, `{{2}}`) determines whether to send BODY parameters or empty components to the WHU API, stored as `template_has_variables` in `action_config`.
-- **WHU Template Parameter Resolution**: Three-layer detection applied consistently across scheduler, test-send, and all automation flows: (1) Explicit `action_config.template_has_variables` flag set by frontend on template selection; (2) Fallback regex scan of `action_config.templateMessage` for `{{N}}` patterns (supports legacy automations created before the flag); (3) `sendWhatsAppMessageWithToken` uses `Array.isArray(templateComponents)` to distinguish `[]` (no params) from `undefined` (default 1 BODY param with lead name). The same 3-layer logic is used in: `checkContatoSequencialTrigger()`, `executeChannelAutomationAction()`, `handleTestSend()` (frontend), and `/api/whatsapp/test-send` (backend). WHU API `create-new` requires `quickAnswerComponents: []` for no-variable templates.
-- **Indicador PIX Key**: PIX payment keys stored per-CPF, integrated into referral creation, commission reports, and payment control.
-- **Agent WhatsApp Channel Token**: Individual `whatsapp_channel_token` for agents for WHU/Rudo integration.
-- **Sequential Contact Triggers (2°/3°/4° Contato)**: Three new trigger types (`segundo_contato`, `terceiro_contato`, `quarto_contato`) in "Automações por Canal" module. Based on `gerador_leads_whatsapp_logs` table: if `retorno_whu != true` after 7 days of the previous contact, sends configured WhatsApp template. Columns: `data_segundo_contato`, `data_terceiro_contato`, `data_quarto_contato` (TIMESTAMP). Chain: 1° disparo original → 7d → 2° contato → 7d → 3° contato → 7d → 4° contato. If `retorno_whu = true` at any point, subsequent contacts are cancelled. Backend handler: `checkContatoSequencialTrigger()` in `automationService.js`. Runs via same `setInterval` scheduler (every 60 min).
-- **WHU ChatId Verification API**: Public endpoint for WHU webhook callbacks to update dispatch logs.
-- **Lead WhatsApp Contact Log**: Logs agent-initiated WhatsApp contacts with leads.
-- **Hard Delete de Indicações (RBAC)**: Exclusão definitiva de leads do módulo Indicações restrita a `indicacoes_supervisor` e `admin`. Frontend: botão "Excluir" com ícone Trash2 visível apenas para roles autorizados na barra de ações do `ReferralDetail.jsx`, com AlertDialog de confirmação (título "Confirmação de Exclusão Definitiva", mensagem de irreversibilidade). Backend: rota `DELETE /api/referrals/:id/hard` protegida por `authMiddleware + loadAgentMiddleware + requireRole('indicacoes_supervisor','admin')`, transacional (BEGIN/COMMIT/ROLLBACK), snapshot pré-delete, log de auditoria estruturado no console. Cascade automático via FKs existentes: `referral_activities` (CASCADE) e `referral_notes` (CASCADE). Rotas de exclusão existentes de outros módulos não foram alteradas.
-- **Referral Notes Timeline**: Tabela `referral_notes` (id, referral_id FK CASCADE, content, agent_id FK, agent_name, created_at, updated_at) com índices em `referral_id` e `created_at`. CRUD em `backend/src/routes/entities.js`: `GET/POST /referrals/:id/notes` (qualquer usuário autenticado) e `PUT/DELETE /referral-notes/:noteId` (apenas o autor original ou role `admin`/`supervisor` via helper `canMutateNote`). Frontend: seção "Notas" no diálogo "Editar Indicação" da tela Relação Indicações (`src/pages/ReferralRelacao.jsx`) em estilo timeline vertical com gradient amber, bolinhas para cada nota, autor + tempo relativo (date-fns `formatDistanceToNow` ptBR), badge "(editada)" quando `updated_at > created_at`, edição inline via `Textarea` e exclusão com `confirm()`. Diálogo expandido para `max-w-2xl max-h-[90vh] overflow-y-auto`.
-- **Lead Generator WhatsApp Pre-Validation (Async Job)**: Ao clicar em "Buscar Leads", o frontend dispara um job assíncrono no backend via `POST /api/functions/validate-whatsapp-job` (envia toda a lista de telefones deduplicados + `target=1200`) e recebe um `jobId`. O backend processa a validação em segundo plano com 16 chamadas paralelas a WHU `/wa-number-check/{phone}` (timeout 8s), interrompendo assim que `target` válidos são encontrados. O frontend faz polling de `GET /api/functions/validate-whatsapp-job/:id` a cada 1.5s exibindo barra de progresso (verificados/total + válidos/alvo). O `jobId` + lista de leads são persistidos em `localStorage` (`leadGenerator:validationJob`), permitindo retomar progresso ao recarregar a aba. Cancelamento manual via `POST /api/functions/validate-whatsapp-job/:id/cancel`. Resultados ficam em cache na tabela `whatsapp_number_validations` (PK `phone`): `VALID_WA_NUMBER` por 30 dias, `INVALID_WA_NUMBER` por 90 dias. Jobs ficam em memória por até 1h após conclusão (TTL com cleanup automático). Endpoint protegido pelo mesmo `DISPATCH_FORBIDDEN_TYPES` do gerador (vendas/sales/bom_auto_atendente/support/collection/pre_sales/post_sales bloqueados); tentativas negadas são auditadas em `gerador_leads_audit_log` (action `validate_whatsapp_job_denied`). Endpoint legado `POST /api/functions/validate-whatsapp-numbers` (síncrono, lotes de 200) mantido para compatibilidade. Services: `whatsappValidationService.js` (com `validateNumbersStreaming` cancelável) + `whatsappValidationJobService.js` (gerenciamento in-memory de jobs). Token reutilizado: `RUDO_WHATSAPP_TOKEN`.
+- **WhatsApp Pre-Validation**: Asynchronous job for validating WhatsApp numbers with caching and cancelation functionality.
 
 ## External Dependencies
 
@@ -98,3 +67,4 @@ Wescctech CRM is a comprehensive, self-hosted Customer Relationship Management s
 - **ERP Bom Pastor API**: External API for CPF and associated data lookup.
 - **ERP Bom Auto API**: External API for vehicle and client consultation.
 - **ERP API_DADOS_VENDAS_INDICACOES**: External API for sales data and commission validation.
+- **WHU API**: External API for WhatsApp messaging and number validation.
