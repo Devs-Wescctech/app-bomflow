@@ -13,6 +13,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   ArrowLeft,
   Phone,
   Mail,
@@ -47,6 +57,7 @@ import {
   Presentation,
   AlertCircle,
   Building2,
+  Trash2,
 } from "lucide-react";
 import { createPageUrl } from "@/utils";
 import { format } from "date-fns";
@@ -84,6 +95,7 @@ export default function ReferralDetail() {
   const [sendingWaMessage, setSendingWaMessage] = useState(false);
   const [uploadingContract, setUploadingContract] = useState(false);
   const [sendingContractAutentique, setSendingContractAutentique] = useState(false);
+  const [showHardDeleteDialog, setShowHardDeleteDialog] = useState(false);
   const [sendingContractLink, setSendingContractLink] = useState(false);
   const [checkingAutentique, setCheckingAutentique] = useState(false);
 
@@ -264,6 +276,31 @@ export default function ReferralDetail() {
     },
   });
 
+  const hardDeleteMutation = useMutation({
+    mutationFn: async () => {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(`/api/referrals/${referralId}/hard`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Erro ao excluir.');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['referrals'] });
+      queryClient.invalidateQueries({ queryKey: ['referral', referralId] });
+      toast.success('Lead de Indicações excluído definitivamente com sucesso.');
+      navigate(createPageUrl("ReferralPipeline"));
+    },
+    onError: (error) => {
+      toast.error(error?.message || 'Não foi possível excluir o lead de Indicações. Tente novamente ou contate o suporte.');
+      setShowHardDeleteDialog(false);
+    },
+  });
+
   const handleStageChange = async (newStage) => {
     const stageHistory = referral.stageHistory ? [...referral.stageHistory] : [];
     
@@ -412,6 +449,7 @@ export default function ReferralDetail() {
 
   const currentAgent = user?.agent;
   const isIndicacoesAtendente = currentAgent?.agentType === 'indicacoes_atendente';
+  const isHardDeleteAllowed = currentAgent?.agentType === 'indicacoes_supervisor' || currentAgent?.agentType === 'admin' || user?.role === 'admin';
   const leadPhone = referral?.referredPhone || referral?.referred_phone;
 
   const handleSendWaMessage = async () => {
@@ -686,6 +724,18 @@ export default function ReferralDetail() {
                 >
                   <MessageSquare className="w-4 h-4 mr-2" />
                   <span className="hidden sm:inline">WhatsApp</span>
+                </Button>
+              )}
+              {isHardDeleteAllowed && (
+                <Button
+                  onClick={() => setShowHardDeleteDialog(true)}
+                  variant="outline"
+                  size="sm"
+                  className="text-red-700 border-red-300 hover:bg-red-50 hover:border-red-400 dark:border-red-700 dark:hover:bg-red-950 dark:text-red-400"
+                  title="Excluir Definitivamente"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span className="hidden sm:inline ml-1.5">Excluir</span>
                 </Button>
               )}
               <Button
@@ -1712,6 +1762,43 @@ export default function ReferralDetail() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={showHardDeleteDialog} onOpenChange={setShowHardDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-red-700 dark:text-red-400 flex items-center gap-2">
+              <Trash2 className="w-5 h-5" />
+              Confirmação de Exclusão Definitiva
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-sm leading-relaxed">
+              <strong>ATENÇÃO: Esta ação é irreversível.</strong> O lead de Indicações e todos os seus dados relacionados (atividades, histórico, visitas, etc.) serão{" "}
+              <strong>PERMANENTEMENTE</strong> removidos do sistema. Deseja realmente continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={hardDeleteMutation.isPending}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => hardDeleteMutation.mutate()}
+              disabled={hardDeleteMutation.isPending}
+              className="bg-red-700 hover:bg-red-800 text-white focus:ring-red-700"
+            >
+              {hardDeleteMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Excluindo...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Excluir definitivamente
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

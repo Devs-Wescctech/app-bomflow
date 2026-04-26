@@ -2,7 +2,8 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { createCrudRouter } from '../utils/crud.js';
 import { authMiddleware, optionalAuth } from '../middleware/auth.js';
-import { query } from '../config/database.js';
+import { loadAgentMiddleware, requireRole } from '../middleware/permissions.js';
+import { query, pool } from '../config/database.js';
 import { 
   notifyLeadAssigned, 
   notifyLeadStageChanged, 
@@ -1259,6 +1260,46 @@ router.delete('/referrals/:id', authMiddleware, async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+router.delete('/referrals/:id/hard', authMiddleware, loadAgentMiddleware, requireRole('indicacoes_supervisor', 'admin'), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const snapshotResult = await client.query('SELECT * FROM referrals WHERE id = $1', [req.params.id]);
+    if (snapshotResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Lead de Indicação não encontrado.' });
+    }
+    const snapshot = snapshotResult.rows[0];
+
+    await client.query('DELETE FROM referrals WHERE id = $1', [req.params.id]);
+
+    await client.query('COMMIT');
+
+    const agentType = req.agent?.agentType || 'unknown';
+    const agentId = req.agent?.id || null;
+    const userEmail = req.user?.email || 'unknown';
+    console.log(JSON.stringify({
+      event: 'hard_delete_referral',
+      module: 'indicações',
+      referral_id: req.params.id,
+      referred_name: snapshot.referred_name,
+      deleted_by_agent_id: agentId,
+      deleted_by_email: userEmail,
+      deleted_by_agent_type: agentType,
+      deleted_at: new Date().toISOString(),
+    }));
+
+    res.json({ success: true });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Hard delete referral error:', error);
+    res.status(500).json({ message: 'Erro interno ao excluir o lead de Indicações.' });
+  } finally {
+    client.release();
   }
 });
 
