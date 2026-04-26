@@ -110,6 +110,7 @@ const MENU_MODULES = [
       { id: "ReferralDashboard", title: "Dashboard" },
       { id: "ReferralAgentsDashboard", title: "Dashboard Vendedores" },
       { id: "ReferralCreate", title: "Nova Indicação" },
+      { id: "ReferralReactivation", title: "Nova Reativação" },
       { id: "ReferralPipeline", title: "Pipeline" },
       { id: "ReferralReports", title: "Relatórios" },
       { id: "ReferralCommissions", title: "Comissões" },

@@ -246,7 +246,7 @@ const menuModules = [
       { title: "Dashboard", url: createPageUrl("ReferralDashboard"), icon: LayoutDashboard, supervisorOnly: true },
       { title: "Dashboard Vendedores", url: createPageUrl("ReferralAgentsDashboard"), icon: UserCheck, supervisorOnly: true },
       { title: "Nova Indicação", url: createPageUrl("ReferralCreate"), icon: Plus, highlight: true },
-      { title: "+ Nova Reativação", url: createPageUrl("ReferralReactivation"), icon: RefreshCw, highlight: true },
+      { title: "+ Nova Reativação", url: createPageUrl("ReferralReactivation"), icon: RefreshCw, highlight: true, requiredSubmenu: "ReferralReactivation" },
       { title: "Gerador de Leads", url: createPageUrl("LeadGenerator"), icon: Users },
       { title: "Auditoria de Métricas", url: createPageUrl("LeadGeneratorAudit"), icon: Shield, supervisorOnly: true },
       { title: "Pipeline", url: createPageUrl("ReferralPipeline"), icon: TrendingUp },
