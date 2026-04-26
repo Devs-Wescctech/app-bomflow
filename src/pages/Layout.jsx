@@ -88,6 +88,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeProvider, useTheme } from "@/components/ui/theme-provider";
 import CommandPalette from "@/components/ui/command-palette";
 import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -837,6 +838,7 @@ function LayoutContent({ children, currentPageName }) {
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/20 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
         {children}
         <Toaster />
+        <SonnerToaster richColors position="top-right" />
       </div>
     );
   }
@@ -1030,6 +1032,7 @@ function LayoutContent({ children, currentPageName }) {
 
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
       <Toaster />
+      <SonnerToaster richColors position="top-right" />
     </div>
   );
 }
