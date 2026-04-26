@@ -117,15 +117,13 @@ export default function ReferralReactivation() {
     }
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-
-    const cleanCpf = form.cpf.replace(/\D/g, '');
+  const handleSubmit = () => {
+    const cleanCpf = (form.cpf || '').replace(/\D/g, '');
     if (cleanCpf.length !== 11) {
       toast.error('CPF inválido.');
       return;
     }
-    if (!form.nomeCompletoCliente.trim()) {
+    if (!(form.nomeCompletoCliente || '').trim()) {
       toast.error('Nome completo do cliente é obrigatório.');
       return;
     }
@@ -134,11 +132,17 @@ export default function ReferralReactivation() {
       return;
     }
 
+    const resolvedAtendenteId = isAtendente ? currentAgent?.id : form.atendenteId;
+    if (!resolvedAtendenteId) {
+      toast.error('Não foi possível identificar o atendente. Tente recarregar a página.');
+      return;
+    }
+
     const payload = {
       cpf: cleanCpf,
       nome_completo_cliente: form.nomeCompletoCliente.trim(),
-      observacoes: form.observacoes.trim() || null,
-      atendente_id: isAtendente ? currentAgent?.id : form.atendenteId,
+      observacoes: (form.observacoes || '').trim() || null,
+      atendente_id: resolvedAtendenteId,
     };
 
     saveMutation.mutate(payload);
@@ -184,7 +188,7 @@ export default function ReferralReactivation() {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <div>
           <Card className="shadow-sm border-0 bg-white dark:bg-gray-900 ring-1 ring-gray-200 dark:ring-gray-800">
             <CardHeader className="pb-4">
               <CardTitle className="text-base font-semibold text-gray-900 dark:text-gray-100">
@@ -297,7 +301,8 @@ export default function ReferralReactivation() {
               Cancelar
             </Button>
             <Button
-              type="submit"
+              type="button"
+              onClick={handleSubmit}
               disabled={saveMutation.isPending}
               className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-lg shadow-amber-500/25 gap-2"
             >
@@ -314,7 +319,7 @@ export default function ReferralReactivation() {
               )}
             </Button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );
