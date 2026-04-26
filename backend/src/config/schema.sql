@@ -1258,10 +1258,19 @@ CREATE INDEX IF NOT EXISTS idx_lead_wa_contacts_created ON lead_whatsapp_contact
 -- Lost flag for leads (B2C and B2B) — used by "Marcar como Perdida"
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS lost BOOLEAN DEFAULT FALSE;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS lost_at TIMESTAMP;
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS lost_by UUID;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS lost_by VARCHAR(255);
 ALTER TABLE leads_pj ADD COLUMN IF NOT EXISTS lost BOOLEAN DEFAULT FALSE;
 ALTER TABLE leads_pj ADD COLUMN IF NOT EXISTS lost_at TIMESTAMP;
-ALTER TABLE leads_pj ADD COLUMN IF NOT EXISTS lost_by UUID;
+ALTER TABLE leads_pj ADD COLUMN IF NOT EXISTS lost_by VARCHAR(255);
+-- Ensure lost_by is VARCHAR(255) (fix environments where it may have been created as UUID)
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='leads' AND column_name='lost_by' AND data_type='uuid') THEN
+    ALTER TABLE leads ALTER COLUMN lost_by TYPE VARCHAR(255) USING lost_by::text;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='leads_pj' AND column_name='lost_by' AND data_type='uuid') THEN
+    ALTER TABLE leads_pj ALTER COLUMN lost_by TYPE VARCHAR(255) USING lost_by::text;
+  END IF;
+END $$;
 
 -- Expand status_pagamento to fit 'pendente_conciliacao'
 ALTER TABLE commission_payment_control ALTER COLUMN status_pagamento TYPE VARCHAR(30);
