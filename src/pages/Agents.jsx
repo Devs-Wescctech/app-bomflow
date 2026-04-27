@@ -127,6 +127,23 @@ const MENU_MODULES = [
     ]
   },
   {
+    id: "sales_upsell",
+    title: "Upsell",
+    items: [
+      { id: "SalesUpsellDashboard", title: "Dashboard" },
+      { id: "SalesUpsellAgentsDashboard", title: "Dashboard Vendedores" },
+      { id: "NewLeadUpsell", title: "Novo Lead Upsell" },
+      { id: "LeadsUpsellKanban", title: "Pipeline Upsell" },
+      { id: "SalesAgenda", title: "Agenda" },
+      { id: "LeadUpsellSearch", title: "Busca de Leads" },
+      { id: "SalesUpsellReports", title: "Relatórios" },
+      { id: "SalesUpsellWonReport", title: "Rel. de Ganhos" },
+      { id: "LeadUpsellAutomations", title: "Automações" },
+      { id: "SalesTasks", title: "Tarefas" },
+      { id: "ProposalTemplates", title: "Templates" },
+    ]
+  },
+  {
     id: "collection",
     title: "Cobrança",
     items: [

@@ -1484,3 +1484,51 @@ ALTER TABLE referral_reactivations ADD COLUMN IF NOT EXISTS telefone VARCHAR(20)
 CREATE INDEX IF NOT EXISTS idx_referral_reactivations_cpf ON referral_reactivations(cpf);
 CREATE INDEX IF NOT EXISTS idx_referral_reactivations_atendente_id ON referral_reactivations(atendente_id);
 CREATE INDEX IF NOT EXISTS idx_referral_reactivations_created_at ON referral_reactivations(created_at);
+
+INSERT INTO agent_types (key, label, description, color, modules, allowed_submenus, active)
+VALUES (
+  'upsell_supervisor',
+  'Upsell - Supervisor',
+  'Supervisão do módulo Upsell — dashboards, relatórios e automações',
+  'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-950 dark:text-fuchsia-300',
+  ARRAY['sales_upsell'],
+  ARRAY[]::text[],
+  true
+) ON CONFLICT (key) DO UPDATE SET
+  label = EXCLUDED.label,
+  description = EXCLUDED.description,
+  color = EXCLUDED.color,
+  modules = EXCLUDED.modules,
+  active = true;
+
+INSERT INTO agent_types (key, label, description, color, modules, allowed_submenus, active)
+VALUES (
+  'upsell_admin',
+  'Upsell - Admin',
+  'Acesso administrativo ao módulo Upsell com visibilidade total',
+  'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300',
+  ARRAY['sales_upsell'],
+  ARRAY[]::text[],
+  true
+) ON CONFLICT (key) DO UPDATE SET
+  label = EXCLUDED.label,
+  description = EXCLUDED.description,
+  color = EXCLUDED.color,
+  modules = EXCLUDED.modules,
+  active = true;
+
+INSERT INTO agent_types (key, label, description, color, modules, allowed_submenus, active)
+VALUES (
+  'upsell_atendente',
+  'Upsell - Atendente',
+  'Atendente do módulo Upsell — cadastro e gestão de leads Upsell',
+  'bg-pink-100 text-pink-700 dark:bg-pink-950 dark:text-pink-300',
+  ARRAY['sales_upsell'],
+  ARRAY[]::text[],
+  true
+) ON CONFLICT (key) DO UPDATE SET
+  label = EXCLUDED.label,
+  description = EXCLUDED.description,
+  color = EXCLUDED.color,
+  modules = EXCLUDED.modules,
+  active = true;
