@@ -108,6 +108,7 @@ const PUBLIC_PAGES = [
   'PortalUpdateData', 'PortalOffers', 'PortalReferralCreate',
   'PortalReferralList', 'PublicSignature', 'PublicProposal',
   'NPSSurvey', 'npssurvey',
+  'ApiDocumentation', 'apidocumentation', 'api-documentation',
 ];
 
 const isPublicRoute = (pathname) => {
@@ -122,6 +123,7 @@ const isPublicRoute = (pathname) => {
     '/portalreferrallist', '/portal-referral-list', '/assinatura',
     '/publicsignature', '/proposta-publica', '/publicproposal',
     '/nps', '/npssurvey', '/NPSSurvey',
+    '/apidocumentation', '/api-documentation',
   ];
   const lowerPath = pathname.toLowerCase();
   return publicPaths.some(path => lowerPath.includes(path));

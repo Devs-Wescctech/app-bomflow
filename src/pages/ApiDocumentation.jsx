@@ -1,11 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
 import {
   Search,
   Copy,
   Check,
-  ArrowLeft,
   BookOpen,
   Lock,
   Globe,
@@ -13,6 +10,7 @@ import {
   Code2,
   Menu,
   X,
+  ExternalLink,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -52,24 +50,29 @@ export default function ApiDocumentation() {
     }).filter(Boolean);
   }, [searchQuery]);
 
-  // Scroll spy on window
+  const totalEndpoints = API_SECTIONS.reduce((acc, s) => acc + (s.endpoints?.length || 0), 0);
+
+  // Scroll spy on the main scroll container
   useEffect(() => {
+    const scroller = document.getElementById("api-docs-main");
+    if (!scroller) return;
     const handler = () => {
+      const scrollerTop = scroller.getBoundingClientRect().top;
       const offsets = [];
       API_SECTIONS.forEach((s) => {
         const sec = document.getElementById(`section-${s.id}`);
-        if (sec) offsets.push({ id: s.id, top: sec.getBoundingClientRect().top });
+        if (sec) offsets.push({ id: s.id, top: sec.getBoundingClientRect().top - scrollerTop });
         (s.endpoints || []).forEach((e) => {
           const el = document.getElementById(`ep-${e.id}`);
-          if (el) offsets.push({ id: `${s.id}::${e.id}`, top: el.getBoundingClientRect().top });
+          if (el) offsets.push({ id: `${s.id}::${e.id}`, top: el.getBoundingClientRect().top - scrollerTop });
         });
       });
-      const candidates = offsets.filter((o) => o.top <= 140);
+      const candidates = offsets.filter((o) => o.top <= 80);
       if (candidates.length) setActiveId(candidates[candidates.length - 1].id);
     };
-    window.addEventListener("scroll", handler, { passive: true });
+    scroller.addEventListener("scroll", handler, { passive: true });
     handler();
-    return () => window.removeEventListener("scroll", handler);
+    return () => scroller.removeEventListener("scroll", handler);
   }, []);
 
   const handleNavClick = (anchor) => {
@@ -80,73 +83,18 @@ export default function ApiDocumentation() {
     }, 50);
   };
 
-  const totalEndpoints = API_SECTIONS.reduce((acc, s) => acc + (s.endpoints?.length || 0), 0);
-
   return (
-    <div className="-m-3 md:-m-6">
-      {/* Hero header banner */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700 px-4 sm:px-8 pt-6 pb-8">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.15),transparent_50%)]" />
-        <div className="relative max-w-6xl mx-auto">
-          <div className="flex items-center justify-between gap-4 mb-6">
-            <Link
-              to={createPageUrl("AppsHub")}
-              className="inline-flex items-center gap-1.5 text-sm text-violet-100 hover:text-white transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Voltar para APPs
-            </Link>
-            <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-              <SheetTrigger asChild>
-                <Button variant="secondary" size="sm" className="lg:hidden gap-1.5">
-                  <Menu className="w-4 h-4" />
-                  Sumário
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-[300px] p-0 overflow-y-auto">
-                <SidebarNav
-                  sections={filteredSections}
-                  activeId={activeId}
-                  onNavigate={handleNavClick}
-                  searchQuery={searchQuery}
-                  setSearchQuery={setSearchQuery}
-                />
-              </SheetContent>
-            </Sheet>
-          </div>
-
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center flex-shrink-0">
-              <BookOpen className="w-6 h-6 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <Badge variant="outline" className="mb-2 text-[10px] uppercase tracking-wider bg-white/10 text-white border-white/20 backdrop-blur-sm">
-                API Reference · v1
-              </Badge>
-              <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-                Documentação da API Wescctech
-              </h1>
-              <p className="text-sm sm:text-base text-violet-100 mt-1 max-w-2xl">
-                Referência completa da API REST do CRM. {totalEndpoints} endpoints documentados,
-                organizados por área funcional.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-5 flex flex-wrap gap-2">
-            <HeroChip label="Base URL" value={API_META.baseUrl} mono />
-            <HeroChip label="Auth" value={API_META.authScheme} icon={Lock} />
-            <HeroChip label="Formato" value="JSON" mono />
-          </div>
-        </div>
-      </div>
-
-      {/* Body */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-8 py-8">
-        <div className="lg:grid lg:grid-cols-[260px_1fr] lg:gap-10">
-          {/* Sidebar (desktop, sticky) */}
-          <aside className="hidden lg:block">
-            <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto pr-2 -mr-2">
+    <div className="fixed inset-0 flex flex-col bg-white dark:bg-gray-950 antialiased">
+      {/* Top bar */}
+      <header className="flex-shrink-0 border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md z-20">
+        <div className="flex items-center gap-3 px-4 sm:px-6 h-14">
+          <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="lg:hidden -ml-2">
+                <Menu className="w-5 h-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-[300px] p-0 overflow-y-auto">
               <SidebarNav
                 sections={filteredSections}
                 activeId={activeId}
@@ -154,65 +102,121 @@ export default function ApiDocumentation() {
                 searchQuery={searchQuery}
                 setSearchQuery={setSearchQuery}
               />
-            </div>
-          </aside>
+            </SheetContent>
+          </Sheet>
 
-          {/* Main */}
-          <main className="min-w-0 space-y-16 pt-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center flex-shrink-0">
+              <BookOpen className="w-4 h-4 text-white" />
+            </div>
+            <div className="leading-tight min-w-0">
+              <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                Wescctech API
+              </div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 -mt-0.5">
+                v1 · Reference
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 max-w-md hidden md:block ml-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar endpoint, método, recurso..."
+                className="pl-9 h-9 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-800"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-800"
+                  type="button"
+                  aria-label="Limpar busca"
+                >
+                  <X className="w-3.5 h-3.5 text-gray-400" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            <Badge
+              variant="outline"
+              className="hidden sm:inline-flex gap-1.5 font-mono text-[11px] border-gray-200 dark:border-gray-800"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              {API_META.baseUrl}
+            </Badge>
+            <a
+              href="/AppsHub"
+              className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 px-2 py-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Sistema
+            </a>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex-1 flex overflow-hidden">
+        {/* Sidebar (desktop) */}
+        <aside className="hidden lg:block w-[280px] flex-shrink-0 border-r border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/30 overflow-y-auto">
+          <SidebarNav
+            sections={filteredSections}
+            activeId={activeId}
+            onNavigate={handleNavClick}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            hideSearch
+          />
+        </aside>
+
+        {/* Main */}
+        <main id="api-docs-main" className="flex-1 overflow-y-auto scroll-smooth">
+          <div className="max-w-4xl mx-auto px-4 sm:px-8 py-10 space-y-16">
             {filteredSections.length === 0 ? (
               <EmptyResults query={searchQuery} onClear={() => setSearchQuery("")} />
             ) : (
-              filteredSections.map((section) => (
-                <SectionBlock key={section.id} section={section} />
+              filteredSections.map((section, idx) => (
+                <SectionBlock
+                  key={section.id}
+                  section={section}
+                  isFirst={idx === 0 && section.id === "intro"}
+                  totalEndpoints={totalEndpoints}
+                />
               ))
             )}
-            <footer className="pt-8 pb-4 border-t border-gray-200 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400">
+            <footer className="pt-8 pb-12 border-t border-gray-200 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400">
               Wescctech API Reference · {totalEndpoints} endpoints documentados
             </footer>
-          </main>
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function SidebarNav({ sections, activeId, onNavigate, searchQuery, setSearchQuery, hideSearch }) {
+  return (
+    <nav className="p-4 space-y-5 text-sm">
+      {!hideSearch && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Buscar endpoint..."
+            className="pl-9 h-9"
+          />
         </div>
-      </div>
-    </div>
-  );
-}
-
-function HeroChip({ label, value, icon: Icon, mono }) {
-  return (
-    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 backdrop-blur-sm border border-white/15 text-white text-xs">
-      {Icon && <Icon className="w-3.5 h-3.5 text-violet-200" />}
-      <span className="text-violet-200 uppercase tracking-wider text-[10px] font-semibold">
-        {label}
-      </span>
-      <span className={`text-white ${mono ? "font-mono" : "font-medium"}`}>{value}</span>
-    </div>
-  );
-}
-
-function SidebarNav({ sections, activeId, onNavigate, searchQuery, setSearchQuery }) {
-  return (
-    <nav className="p-4 lg:p-0 space-y-5 text-sm">
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <Input
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Buscar endpoint..."
-          className="pl-9 h-9 bg-white dark:bg-gray-900"
-        />
-        {searchQuery && (
-          <button
-            onClick={() => setSearchQuery("")}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
-            type="button"
-          >
-            <X className="w-3.5 h-3.5 text-gray-400" />
-          </button>
-        )}
-      </div>
+      )}
 
       {sections.map((section) => {
         const Icon = section.icon;
-        const isSectionActive = activeId === section.id || activeId.startsWith(`${section.id}::`);
+        const isSectionActive =
+          activeId === section.id || activeId.startsWith(`${section.id}::`);
         return (
           <div key={section.id}>
             <button
@@ -264,10 +268,34 @@ function SidebarNav({ sections, activeId, onNavigate, searchQuery, setSearchQuer
   );
 }
 
-function SectionBlock({ section }) {
+function SectionBlock({ section, isFirst, totalEndpoints }) {
   const Icon = section.icon;
   return (
     <section id={`section-${section.id}`} className="scroll-mt-6">
+      {isFirst && (
+        <div className="mb-10">
+          <Badge
+            variant="outline"
+            className="mb-4 text-[11px] uppercase tracking-wider border-violet-200 text-violet-700 dark:border-violet-800 dark:text-violet-300"
+          >
+            API Reference · v1
+          </Badge>
+          <h1 className="text-4xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
+            Documentação da API Wescctech
+          </h1>
+          <p className="mt-3 text-base text-gray-600 dark:text-gray-400 leading-relaxed max-w-2xl">
+            Referência completa da API REST do CRM. {totalEndpoints} endpoints documentados,
+            organizados por área funcional. Use estes endpoints para integrar sistemas externos,
+            automatizar fluxos ou construir novas ferramentas sobre a base.
+          </p>
+          <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <InfoTile label="Base URL" value={API_META.baseUrl} mono />
+            <InfoTile label="Autenticação" value={API_META.authScheme} icon={Lock} />
+            <InfoTile label="Formato" value={API_META.contentType} mono />
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-3 mb-2">
         {Icon && (
           <div className="w-9 h-9 rounded-lg bg-violet-50 dark:bg-violet-900/30 flex items-center justify-center">
@@ -327,11 +355,17 @@ function EndpointCard({ endpoint }) {
               {endpoint.path}
             </code>
             {endpoint.auth ? (
-              <Badge variant="outline" className="ml-auto gap-1 text-[10px] border-amber-200 text-amber-700 dark:border-amber-800/60 dark:text-amber-300">
+              <Badge
+                variant="outline"
+                className="ml-auto gap-1 text-[10px] border-amber-200 text-amber-700 dark:border-amber-800/60 dark:text-amber-300"
+              >
                 <Lock className="w-3 h-3" /> Auth
               </Badge>
             ) : (
-              <Badge variant="outline" className="ml-auto gap-1 text-[10px] border-emerald-200 text-emerald-700 dark:border-emerald-800/60 dark:text-emerald-300">
+              <Badge
+                variant="outline"
+                className="ml-auto gap-1 text-[10px] border-emerald-200 text-emerald-700 dark:border-emerald-800/60 dark:text-emerald-300"
+              >
                 <Globe className="w-3 h-3" /> Público
               </Badge>
             )}
@@ -496,6 +530,20 @@ function CodeBlock({ code, language }) {
       <pre className="px-4 py-3 text-[12px] font-mono leading-relaxed overflow-x-auto whitespace-pre">
         <code>{code}</code>
       </pre>
+    </div>
+  );
+}
+
+function InfoTile({ label, value, icon: Icon, mono }) {
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40 px-4 py-3">
+      <div className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold flex items-center gap-1.5">
+        {Icon && <Icon className="w-3 h-3" />}
+        {label}
+      </div>
+      <div className={`mt-1 text-sm text-gray-900 dark:text-gray-100 ${mono ? "font-mono" : ""}`}>
+        {value}
+      </div>
     </div>
   );
 }

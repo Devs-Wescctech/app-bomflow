@@ -18,6 +18,7 @@ export default function AppsHub() {
       icon: BookOpen,
       gradient: "from-violet-600 to-indigo-600",
       url: createPageUrl("ApiDocumentation"),
+      external: true,
     },
   ];
 
@@ -84,6 +85,18 @@ function AppCard({ app, user }) {
   const cardClass = "group relative overflow-hidden rounded-2xl bg-white dark:bg-gray-900 ring-1 ring-gray-200 dark:ring-gray-800 shadow-sm hover:shadow-lg hover:ring-violet-300 dark:hover:ring-violet-700 transition-all duration-200 p-6";
 
   if (app.url && !app.locked) {
+    if (app.external) {
+      return (
+        <a
+          href={app.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`${cardClass} block cursor-pointer`}
+        >
+          {content}
+        </a>
+      );
+    }
     return (
       <Link to={app.url} className={`${cardClass} block cursor-pointer`}>
         {content}
