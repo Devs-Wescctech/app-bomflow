@@ -53,7 +53,7 @@ export default function SalesUpsellWonReport() {
 
   const currentAgent = user?.agent;
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor';
+  const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor' || currentAgentType?.endsWith('_supervisor') || user?.role === 'supervisor';
   const hasPermission = !!user;
 
   const { data: teams = [] } = useQuery({

@@ -129,6 +129,36 @@ export const AGENT_PERMISSIONS = {
     canManageAgents: true,
     canManageSettings: false,
   },
+  upsell_supervisor: {
+    modules: ['sales_upsell'],
+    canViewAllTickets: false,
+    canViewTeamTickets: false,
+    canViewAllLeads: true,
+    canViewTeamLeads: true,
+    canAccessReports: true,
+    canManageAgents: false,
+    canManageSettings: false,
+  },
+  upsell_atendente: {
+    modules: ['sales_upsell'],
+    canViewAllTickets: false,
+    canViewTeamTickets: false,
+    canViewAllLeads: false,
+    canViewTeamLeads: false,
+    canAccessReports: false,
+    canManageAgents: false,
+    canManageSettings: false,
+  },
+  upsell_admin: {
+    modules: ['sales_upsell'],
+    canViewAllTickets: false,
+    canViewTeamTickets: false,
+    canViewAllLeads: true,
+    canViewTeamLeads: true,
+    canAccessReports: true,
+    canManageAgents: true,
+    canManageSettings: false,
+  },
 };
 
 const MODULE_ALIASES = {
