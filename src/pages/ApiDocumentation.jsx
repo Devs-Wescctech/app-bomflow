@@ -1,21 +1,53 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Search,
   Copy,
   Check,
-  BookOpen,
   Lock,
   Globe,
   Terminal,
   Code2,
-  Menu,
-  X,
   ExternalLink,
+  ChevronRight,
+  Sun,
+  Moon,
+  Hash,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  SidebarProvider,
+  Sidebar,
+  SidebarHeader,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
+  SidebarTrigger,
+  SidebarInset,
+  SidebarRail,
+  useSidebar,
+} from "@/components/ui/sidebar";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  CommandDialog,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from "@/components/ui/command";
+import { useTheme } from "@/components/ui/theme-provider";
 import {
   API_META,
   API_SECTIONS,
@@ -24,249 +56,484 @@ import {
   buildJsExample,
 } from "@/data/apiDocsSpec";
 
+const SCROLL_OFFSET = 96;
+
+function detectIsMac() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || navigator.platform || "";
+  return /Mac|iPod|iPhone|iPad/.test(ua);
+}
+
 export default function ApiDocumentation() {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeId, setActiveId] = useState("intro");
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  return (
+    <div className="fixed inset-0 z-40 bg-background text-foreground antialiased overflow-hidden">
+      <SidebarProvider defaultOpen>
+        <DocsBody />
+      </SidebarProvider>
+    </div>
+  );
+}
 
-  const filteredSections = useMemo(() => {
-    if (!searchQuery.trim()) return API_SECTIONS;
-    const q = searchQuery.toLowerCase();
-    return API_SECTIONS.map((section) => {
-      const matchSection =
-        section.title.toLowerCase().includes(q) ||
-        (section.overview || "").toLowerCase().includes(q);
-      const matchedEndpoints = (section.endpoints || []).filter(
-        (e) =>
-          e.title.toLowerCase().includes(q) ||
-          e.path.toLowerCase().includes(q) ||
-          e.description.toLowerCase().includes(q) ||
-          e.method.toLowerCase().includes(q)
-      );
-      if (matchSection || matchedEndpoints.length > 0) {
-        return { ...section, endpoints: matchSection ? section.endpoints : matchedEndpoints };
-      }
-      return null;
-    }).filter(Boolean);
-  }, [searchQuery]);
+function DocsBody() {
+  const [activeSection, setActiveSection] = useState(API_SECTIONS[0]?.id || "intro");
+  const [activeEndpoint, setActiveEndpoint] = useState(null);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [isMac] = useState(() => detectIsMac());
+  const { isMobile, setOpenMobile } = useSidebar();
 
-  const totalEndpoints = API_SECTIONS.reduce((acc, s) => acc + (s.endpoints?.length || 0), 0);
+  const totalEndpoints = useMemo(
+    () => API_SECTIONS.reduce((acc, s) => acc + (s.endpoints?.length || 0), 0),
+    []
+  );
 
-  // Scroll spy on the main scroll container
+  const currentSection = useMemo(
+    () => API_SECTIONS.find((s) => s.id === activeSection),
+    [activeSection]
+  );
+
+  const currentEndpoint = useMemo(() => {
+    if (!activeEndpoint || !currentSection) return null;
+    return (currentSection.endpoints || []).find((e) => e.id === activeEndpoint) || null;
+  }, [activeEndpoint, currentSection]);
+
+  const handleNavigate = useCallback(
+    (sectionId, endpointId) => {
+      // Auto-close the mobile drawer for smoother UX after a selection.
+      if (isMobile) setOpenMobile(false);
+      const anchor = endpointId ? `ep-${endpointId}` : `section-${sectionId}`;
+      setTimeout(() => {
+        const el = document.getElementById(anchor);
+        const scroller = document.getElementById("api-docs-scroller");
+        if (el && scroller) {
+          const elTop = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+          scroller.scrollTo({ top: scroller.scrollTop + elTop - 12, behavior: "smooth" });
+        } else if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 60);
+    },
+    [isMobile, setOpenMobile]
+  );
+
+  // Cmd+K / Ctrl+K shortcut
   useEffect(() => {
-    const scroller = document.getElementById("api-docs-main");
-    if (!scroller) return;
-    const handler = () => {
-      const scrollerTop = scroller.getBoundingClientRect().top;
-      const offsets = [];
-      API_SECTIONS.forEach((s) => {
-        const sec = document.getElementById(`section-${s.id}`);
-        if (sec) offsets.push({ id: s.id, top: sec.getBoundingClientRect().top - scrollerTop });
-        (s.endpoints || []).forEach((e) => {
-          const el = document.getElementById(`ep-${e.id}`);
-          if (el) offsets.push({ id: `${s.id}::${e.id}`, top: el.getBoundingClientRect().top - scrollerTop });
-        });
-      });
-      const candidates = offsets.filter((o) => o.top <= 80);
-      if (candidates.length) setActiveId(candidates[candidates.length - 1].id);
+    const onKey = (e) => {
+      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setCommandOpen((o) => !o);
+      }
     };
-    scroller.addEventListener("scroll", handler, { passive: true });
-    handler();
-    return () => scroller.removeEventListener("scroll", handler);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const handleNavClick = (anchor) => {
-    setMobileNavOpen(false);
-    setTimeout(() => {
-      const el = document.getElementById(anchor);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 50);
-  };
+  // Scroll spy: track active section + endpoint based on scroll position
+  useEffect(() => {
+    const scroller = document.getElementById("api-docs-scroller");
+    if (!scroller) return;
+    let raf = 0;
+    const compute = () => {
+      const scrollerTop = scroller.getBoundingClientRect().top;
+      let bestSection = API_SECTIONS[0]?.id || "intro";
+      let bestSectionDelta = -Infinity;
+      let bestEndpoint = null;
+      let bestEndpointDelta = -Infinity;
+      let bestEndpointSection = null;
+
+      API_SECTIONS.forEach((section) => {
+        const secEl = document.getElementById(`section-${section.id}`);
+        if (secEl) {
+          const delta = secEl.getBoundingClientRect().top - scrollerTop - SCROLL_OFFSET;
+          if (delta <= 0 && delta > bestSectionDelta) {
+            bestSectionDelta = delta;
+            bestSection = section.id;
+          }
+        }
+        (section.endpoints || []).forEach((ep) => {
+          const el = document.getElementById(`ep-${ep.id}`);
+          if (!el) return;
+          const delta = el.getBoundingClientRect().top - scrollerTop - SCROLL_OFFSET;
+          if (delta <= 0 && delta > bestEndpointDelta) {
+            bestEndpointDelta = delta;
+            bestEndpoint = ep.id;
+            bestEndpointSection = section.id;
+          }
+        });
+      });
+
+      setActiveSection(bestSection);
+      // Only show active endpoint if it belongs to the active section
+      setActiveEndpoint(bestEndpointSection === bestSection ? bestEndpoint : null);
+    };
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(compute);
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    compute();
+    return () => {
+      cancelAnimationFrame(raf);
+      scroller.removeEventListener("scroll", onScroll);
+    };
+  }, []);
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-white dark:bg-gray-950 antialiased">
-      {/* Top bar */}
-      <header className="flex-shrink-0 border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md z-20">
-        <div className="flex items-center gap-3 px-4 sm:px-6 h-14">
-          <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="lg:hidden -ml-2">
-                <Menu className="w-5 h-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-[300px] p-0 overflow-y-auto">
-              <SidebarNav
-                sections={filteredSections}
-                activeId={activeId}
-                onNavigate={handleNavClick}
-                searchQuery={searchQuery}
-                setSearchQuery={setSearchQuery}
-              />
-            </SheetContent>
-          </Sheet>
-
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center flex-shrink-0">
-              <BookOpen className="w-4 h-4 text-white" />
-            </div>
-            <div className="leading-tight min-w-0">
-              <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-                Wescctech API
-              </div>
-              <div className="text-[11px] text-gray-500 dark:text-gray-400 -mt-0.5">
-                v1 · Reference
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-1 max-w-md hidden md:block ml-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar endpoint, método, recurso..."
-                className="pl-9 h-9 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-800"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-800"
-                  type="button"
-                  aria-label="Limpar busca"
-                >
-                  <X className="w-3.5 h-3.5 text-gray-400" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="ml-auto flex items-center gap-2">
-            <Badge
-              variant="outline"
-              className="hidden sm:inline-flex gap-1.5 font-mono text-[11px] border-gray-200 dark:border-gray-800"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {API_META.baseUrl}
-            </Badge>
-            <a
-              href="/AppsHub"
-              className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 px-2 py-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              Sistema
-            </a>
-          </div>
-        </div>
-      </header>
-
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar (desktop) */}
-        <aside className="hidden lg:block w-[280px] flex-shrink-0 border-r border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/30 overflow-y-auto">
-          <SidebarNav
-            sections={filteredSections}
-            activeId={activeId}
-            onNavigate={handleNavClick}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            hideSearch
-          />
-        </aside>
-
-        {/* Main */}
-        <main id="api-docs-main" className="flex-1 overflow-y-auto scroll-smooth">
-          <div className="max-w-4xl mx-auto px-4 sm:px-8 py-10 space-y-16">
-            {filteredSections.length === 0 ? (
-              <EmptyResults query={searchQuery} onClear={() => setSearchQuery("")} />
-            ) : (
-              filteredSections.map((section, idx) => (
+    <>
+      <DocsSidebar
+        activeSection={activeSection}
+        activeEndpoint={activeEndpoint}
+        onNavigate={handleNavigate}
+      />
+      <SidebarInset className="min-h-0 h-svh overflow-hidden flex flex-col bg-background">
+        <DocsTopBar
+          currentSection={currentSection}
+          currentEndpoint={currentEndpoint}
+          onOpenCommand={() => setCommandOpen(true)}
+          isMac={isMac}
+        />
+        <div className="flex-1 min-h-0 flex overflow-hidden">
+          <main
+            id="api-docs-scroller"
+            className="flex-1 overflow-y-auto scroll-smooth"
+          >
+            <div className="max-w-3xl mx-auto px-4 sm:px-8 py-10 space-y-16">
+              {API_SECTIONS.map((section, idx) => (
                 <SectionBlock
                   key={section.id}
                   section={section}
                   isFirst={idx === 0 && section.id === "intro"}
                   totalEndpoints={totalEndpoints}
                 />
-              ))
-            )}
-            <footer className="pt-8 pb-12 border-t border-gray-200 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400">
-              Wescctech API Reference · {totalEndpoints} endpoints documentados
-            </footer>
-          </div>
-        </main>
-      </div>
-    </div>
-  );
-}
-
-function SidebarNav({ sections, activeId, onNavigate, searchQuery, setSearchQuery, hideSearch }) {
-  return (
-    <nav className="p-4 space-y-5 text-sm">
-      {!hideSearch && (
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar endpoint..."
-            className="pl-9 h-9"
+              ))}
+              <footer className="pt-8 pb-12 border-t border-border text-xs text-muted-foreground">
+                Bomflow API Reference · {totalEndpoints} endpoints documentados
+              </footer>
+            </div>
+          </main>
+          <OnThisPage
+            section={currentSection}
+            activeEndpoint={activeEndpoint}
+            onNavigate={handleNavigate}
           />
         </div>
-      )}
+      </SidebarInset>
 
-      {sections.map((section) => {
-        const Icon = section.icon;
-        const isSectionActive =
-          activeId === section.id || activeId.startsWith(`${section.id}::`);
-        return (
-          <div key={section.id}>
-            <button
-              onClick={() => onNavigate(`section-${section.id}`)}
-              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md font-semibold text-[13px] transition-colors text-left ${
-                isSectionActive
-                  ? "text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-900/20"
-                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50"
-              }`}
-              type="button"
-            >
-              {Icon && <Icon className="w-4 h-4 flex-shrink-0" />}
-              <span className="truncate">{section.title}</span>
-              <span className="ml-auto text-[10px] font-mono text-gray-400">
-                {section.endpoints?.length || 0}
-              </span>
-            </button>
-            {section.endpoints && section.endpoints.length > 0 && (
-              <ul className="mt-1 ml-3 border-l border-gray-200 dark:border-gray-800 space-y-0.5">
-                {section.endpoints.map((ep) => {
-                  const itemActive = activeId === `${section.id}::${ep.id}`;
-                  return (
-                    <li key={ep.id}>
-                      <button
-                        onClick={() => onNavigate(`ep-${ep.id}`)}
-                        className={`w-full flex items-center gap-2 pl-3 pr-2 py-1.5 -ml-px border-l-2 text-[12.5px] transition-colors text-left ${
-                          itemActive
-                            ? "border-violet-500 text-violet-700 dark:text-violet-300 bg-violet-50/60 dark:bg-violet-900/10"
-                            : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100/60 dark:hover:bg-gray-800/30"
-                        }`}
-                        type="button"
-                      >
-                        <span
-                          className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${HTTP_METHOD_COLORS[ep.method] || ""}`}
-                        >
-                          {ep.method}
-                        </span>
-                        <span className="truncate">{ep.title}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        );
-      })}
-    </nav>
+      <DocsCommandPalette
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        onNavigate={handleNavigate}
+      />
+    </>
   );
 }
+
+/* --------------------------------- Sidebar -------------------------------- */
+
+function DocsSidebar({ activeSection, activeEndpoint, onNavigate }) {
+  return (
+    <Sidebar collapsible="icon" className="border-r border-sidebar-border">
+      <SidebarHeader className="border-b border-sidebar-border h-14 px-2 py-0 flex-row items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-1 px-1">
+          <img
+            src="/logo-bomflow-icon.png"
+            alt="Bomflow"
+            className="h-8 w-8 object-contain flex-shrink-0"
+          />
+          <div className="leading-tight min-w-0 group-data-[collapsible=icon]:hidden">
+            <div className="text-sm font-semibold text-sidebar-foreground truncate">
+              Bomflow API
+            </div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground -mt-0.5">
+              v1 · Reference
+            </div>
+          </div>
+        </div>
+        <SidebarTrigger className="group-data-[collapsible=icon]:hidden -mr-1" />
+      </SidebarHeader>
+
+      <SidebarContent className="py-2">
+        <SidebarGroup className="py-1">
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {API_SECTIONS.map((section) => {
+                const Icon = section.icon || Hash;
+                const isActive =
+                  activeSection === section.id && !activeEndpoint;
+                const sectionContainsActive = activeSection === section.id;
+                const hasEndpoints = (section.endpoints || []).length > 0;
+
+                if (!hasEndpoints) {
+                  return (
+                    <SidebarMenuItem key={section.id}>
+                      <SidebarMenuButton
+                        tooltip={section.title}
+                        isActive={isActive}
+                        onClick={() => onNavigate(section.id)}
+                      >
+                        <Icon />
+                        <span>{section.title}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                }
+
+                return (
+                  <Collapsible
+                    key={section.id}
+                    defaultOpen={sectionContainsActive}
+                    className="group/collapsible"
+                    asChild
+                  >
+                    <SidebarMenuItem>
+                      <CollapsibleTrigger asChild>
+                        <SidebarMenuButton
+                          tooltip={section.title}
+                          isActive={sectionContainsActive}
+                          className="font-medium"
+                          onClick={() => onNavigate(section.id)}
+                        >
+                          <Icon />
+                          <span className="truncate">{section.title}</span>
+                          <span className="ml-auto text-[10px] font-mono text-muted-foreground/70 group-data-[collapsible=icon]:hidden">
+                            {section.endpoints.length}
+                          </span>
+                          <ChevronRight className="ml-1 h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 group-data-[collapsible=icon]:hidden" />
+                        </SidebarMenuButton>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <SidebarMenuSub>
+                          {section.endpoints.map((ep) => {
+                            const epActive = activeEndpoint === ep.id;
+                            return (
+                              <SidebarMenuSubItem key={ep.id}>
+                                <SidebarMenuSubButton
+                                  asChild
+                                  isActive={epActive}
+                                  className="cursor-pointer h-auto py-1.5"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => onNavigate(section.id, ep.id)}
+                                    className="w-full flex items-center gap-2 text-left"
+                                  >
+                                    <span
+                                      className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${HTTP_METHOD_COLORS[ep.method] || ""}`}
+                                    >
+                                      {ep.method}
+                                    </span>
+                                    <span className="truncate text-[12.5px]">
+                                      {ep.title}
+                                    </span>
+                                  </button>
+                                </SidebarMenuSubButton>
+                              </SidebarMenuSubItem>
+                            );
+                          })}
+                        </SidebarMenuSub>
+                      </CollapsibleContent>
+                    </SidebarMenuItem>
+                  </Collapsible>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <SidebarFooter className="border-t border-sidebar-border">
+        <div className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground group-data-[collapsible=icon]:hidden">
+          <span className="inline-flex items-center gap-1.5 font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            {API_META.baseUrl}
+          </span>
+        </div>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+  );
+}
+
+/* --------------------------------- Topbar --------------------------------- */
+
+function DocsTopBar({ currentSection, currentEndpoint, onOpenCommand, isMac }) {
+  const { theme, setTheme } = useTheme();
+  const shortcutHint = isMac ? "⌘K" : "Ctrl+K";
+  return (
+    <header className="flex-shrink-0 h-14 border-b border-border bg-background/80 backdrop-blur-md flex items-center gap-3 px-3 sm:px-5">
+      <SidebarTrigger className="-ml-1" />
+
+      <nav
+        aria-label="Breadcrumb"
+        className="flex items-center gap-1.5 text-sm min-w-0"
+      >
+        <span className="text-muted-foreground hidden sm:inline">Docs</span>
+        <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/60 hidden sm:inline" />
+        <span className="font-medium text-foreground truncate">
+          {currentSection?.title || "Introdução"}
+        </span>
+        {currentEndpoint && (
+          <>
+            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
+            <span className="text-muted-foreground truncate hidden md:inline">
+              {currentEndpoint.title}
+            </span>
+          </>
+        )}
+      </nav>
+
+      <div className="ml-auto flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onOpenCommand}
+          className="hidden sm:inline-flex items-center gap-2 h-9 pl-3 pr-1.5 rounded-md border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors text-xs w-[260px] max-w-[40vw]"
+          aria-label="Abrir busca"
+        >
+          <Search className="w-3.5 h-3.5" />
+          <span className="flex-1 text-left">Buscar na documentação...</span>
+          <kbd className="ml-auto inline-flex items-center gap-0.5 h-6 px-1.5 rounded border border-border bg-background font-mono text-[10px] text-muted-foreground">
+            {shortcutHint}
+          </kbd>
+        </button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="sm:hidden h-9 w-9"
+          onClick={onOpenCommand}
+          aria-label="Buscar"
+        >
+          <Search className="w-4 h-4" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9"
+          onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+          aria-label="Alternar tema"
+          title="Alternar tema"
+        >
+          {theme === "light" ? (
+            <Moon className="w-4 h-4" />
+          ) : (
+            <Sun className="w-4 h-4" />
+          )}
+        </Button>
+
+        <a
+          href="/AppsHub"
+          className="hidden md:inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded-md hover:bg-muted transition-colors"
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+          Sistema
+        </a>
+      </div>
+    </header>
+  );
+}
+
+/* ----------------------------- On This Page ------------------------------- */
+
+function OnThisPage({ section, activeEndpoint, onNavigate }) {
+  if (!section || !(section.endpoints && section.endpoints.length > 0)) {
+    return null;
+  }
+  return (
+    <aside className="hidden lg:block w-[240px] flex-shrink-0 border-l border-border overflow-y-auto">
+      <div className="p-5 sticky top-0">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+          Nesta página
+        </div>
+        <ul className="space-y-1 text-[12.5px]">
+          {section.endpoints.map((ep) => {
+            const isActive = activeEndpoint === ep.id;
+            return (
+              <li key={ep.id}>
+                <button
+                  type="button"
+                  onClick={() => onNavigate(section.id, ep.id)}
+                  className={`w-full text-left px-2 py-1.5 rounded-md border-l-2 -ml-px transition-colors flex items-center gap-2 ${
+                    isActive
+                      ? "border-primary text-foreground bg-muted/60 font-medium"
+                      : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                  }`}
+                >
+                  <span
+                    className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${HTTP_METHOD_COLORS[ep.method] || ""}`}
+                  >
+                    {ep.method}
+                  </span>
+                  <span className="truncate">{ep.title}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </aside>
+  );
+}
+
+/* --------------------------- Command (Cmd+K) Palette ---------------------- */
+
+function DocsCommandPalette({ open, onOpenChange, onNavigate }) {
+  return (
+    <CommandDialog open={open} onOpenChange={onOpenChange}>
+      <CommandInput placeholder="Buscar seções e endpoints..." />
+      <CommandList>
+        <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>
+        <CommandGroup heading="Seções">
+          {API_SECTIONS.map((section) => {
+            const Icon = section.icon || Hash;
+            return (
+              <CommandItem
+                key={`section-${section.id}`}
+                value={`section ${section.title} ${section.overview || ""}`}
+                onSelect={() => {
+                  onNavigate(section.id);
+                  onOpenChange(false);
+                }}
+              >
+                <Icon className="w-4 h-4 text-muted-foreground" />
+                <span>{section.title}</span>
+                <span className="ml-auto text-[10px] font-mono text-muted-foreground">
+                  {section.endpoints?.length || 0}
+                </span>
+              </CommandItem>
+            );
+          })}
+        </CommandGroup>
+        {API_SECTIONS.map((section) =>
+          section.endpoints && section.endpoints.length > 0 ? (
+            <CommandGroup key={`g-${section.id}`} heading={section.title}>
+              {section.endpoints.map((ep) => (
+                <CommandItem
+                  key={`ep-${ep.id}`}
+                  value={`${ep.method} ${ep.path} ${ep.title} ${ep.description}`}
+                  onSelect={() => {
+                    onNavigate(section.id, ep.id);
+                    onOpenChange(false);
+                  }}
+                >
+                  <span
+                    className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${HTTP_METHOD_COLORS[ep.method] || ""}`}
+                  >
+                    {ep.method}
+                  </span>
+                  <span className="truncate">{ep.title}</span>
+                  <code className="ml-auto truncate text-[11px] font-mono text-muted-foreground max-w-[220px]">
+                    {ep.path}
+                  </code>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          ) : null
+        )}
+      </CommandList>
+    </CommandDialog>
+  );
+}
+
+/* ------------------------------- Section ---------------------------------- */
 
 function SectionBlock({ section, isFirst, totalEndpoints }) {
   const Icon = section.icon;
@@ -276,15 +543,15 @@ function SectionBlock({ section, isFirst, totalEndpoints }) {
         <div className="mb-10">
           <Badge
             variant="outline"
-            className="mb-4 text-[11px] uppercase tracking-wider border-violet-200 text-violet-700 dark:border-violet-800 dark:text-violet-300"
+            className="mb-4 text-[11px] uppercase tracking-wider border-primary/30 text-primary"
           >
             API Reference · v1
           </Badge>
-          <h1 className="text-4xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
-            Documentação da API Wescctech
+          <h1 className="text-4xl font-bold tracking-tight text-foreground">
+            Documentação da API Bomflow
           </h1>
-          <p className="mt-3 text-base text-gray-600 dark:text-gray-400 leading-relaxed max-w-2xl">
-            Referência completa da API REST do CRM. {totalEndpoints} endpoints documentados,
+          <p className="mt-3 text-base text-muted-foreground leading-relaxed max-w-2xl">
+            Referência completa da API REST do Bomflow. {totalEndpoints} endpoints documentados,
             organizados por área funcional. Use estes endpoints para integrar sistemas externos,
             automatizar fluxos ou construir novas ferramentas sobre a base.
           </p>
@@ -298,14 +565,14 @@ function SectionBlock({ section, isFirst, totalEndpoints }) {
 
       <div className="flex items-center gap-3 mb-2">
         {Icon && (
-          <div className="w-9 h-9 rounded-lg bg-violet-50 dark:bg-violet-900/30 flex items-center justify-center">
-            <Icon className="w-5 h-5 text-violet-600 dark:text-violet-300" />
+          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Icon className="w-5 h-5 text-primary" />
           </div>
         )}
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{section.title}</h2>
+        <h2 className="text-2xl font-bold text-foreground">{section.title}</h2>
       </div>
       {section.overview && (
-        <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed whitespace-pre-line">
+        <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
           {renderInline(section.overview)}
         </p>
       )}
@@ -323,7 +590,7 @@ function renderInline(text) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return parts.map((p, i) =>
     p.startsWith("**") && p.endsWith("**") ? (
-      <strong key={i} className="font-semibold text-gray-900 dark:text-gray-100">
+      <strong key={i} className="font-semibold text-foreground">
         {p.slice(2, -2)}
       </strong>
     ) : (
@@ -331,6 +598,8 @@ function renderInline(text) {
     )
   );
 }
+
+/* ------------------------------ Endpoint Card ---------------------------- */
 
 function EndpointCard({ endpoint }) {
   const [tab, setTab] = useState("curl");
@@ -343,15 +612,15 @@ function EndpointCard({ endpoint }) {
 
   return (
     <article id={`ep-${endpoint.id}`} className="scroll-mt-6">
-      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/50 overflow-hidden">
-        <header className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/60">
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <header className="px-5 py-4 border-b border-border bg-muted/30">
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={`text-[11px] font-mono font-bold px-2 py-1 rounded ${HTTP_METHOD_COLORS[endpoint.method]}`}
             >
               {endpoint.method}
             </span>
-            <code className="text-sm font-mono text-gray-900 dark:text-gray-100 font-medium break-all">
+            <code className="text-sm font-mono text-foreground font-medium break-all">
               {endpoint.path}
             </code>
             {endpoint.auth ? (
@@ -370,15 +639,15 @@ function EndpointCard({ endpoint }) {
               </Badge>
             )}
           </div>
-          <h3 className="mt-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+          <h3 className="mt-2 text-base font-semibold text-foreground">
             {endpoint.title}
           </h3>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+          <p className="mt-1 text-sm text-muted-foreground">
             {endpoint.description}
           </p>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x divide-gray-200 dark:divide-gray-800">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x divide-border">
           <div className="p-5 space-y-5">
             {endpoint.params && endpoint.params.length > 0 && (
               <ParamTable title="Path Params" rows={endpoint.params} />
@@ -392,25 +661,25 @@ function EndpointCard({ endpoint }) {
             {(!endpoint.params || endpoint.params.length === 0) &&
               (!endpoint.query || endpoint.query.length === 0) &&
               (!endpoint.body || endpoint.body.length === 0) && (
-                <div className="text-xs text-gray-500 dark:text-gray-400 italic">
+                <div className="text-xs text-muted-foreground italic">
                   Este endpoint não recebe parâmetros.
                 </div>
               )}
           </div>
 
-          <div className="p-5 space-y-4 bg-gray-50/40 dark:bg-gray-900/20">
+          <div className="p-5 space-y-4 bg-muted/20">
             <div>
               <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300">
+                <div className="flex items-center gap-1 text-xs font-medium text-foreground">
                   <Terminal className="w-3.5 h-3.5" /> Requisição
                 </div>
-                <div className="inline-flex bg-gray-100 dark:bg-gray-800 rounded-md p-0.5 text-[11px]">
+                <div className="inline-flex bg-muted rounded-md p-0.5 text-[11px]">
                   <button
                     onClick={() => setTab("curl")}
-                    className={`px-2 py-0.5 rounded ${
+                    className={`px-2 py-0.5 rounded transition-colors ${
                       tab === "curl"
-                        ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
-                        : "text-gray-500 dark:text-gray-400"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
                     }`}
                     type="button"
                   >
@@ -418,10 +687,10 @@ function EndpointCard({ endpoint }) {
                   </button>
                   <button
                     onClick={() => setTab("js")}
-                    className={`px-2 py-0.5 rounded ${
+                    className={`px-2 py-0.5 rounded transition-colors ${
                       tab === "js"
-                        ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
-                        : "text-gray-500 dark:text-gray-400"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
                     }`}
                     type="button"
                   >
@@ -429,14 +698,17 @@ function EndpointCard({ endpoint }) {
                   </button>
                 </div>
               </div>
-              <CodeBlock code={codeExamples[tab]} language={tab === "curl" ? "bash" : "javascript"} />
+              <CodeBlock
+                code={codeExamples[tab]}
+                language={tab === "curl" ? "bash" : "javascript"}
+              />
             </div>
 
             {endpoint.response && (
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <Code2 className="w-3.5 h-3.5 text-gray-700 dark:text-gray-300" />
-                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                  <Code2 className="w-3.5 h-3.5 text-foreground" />
+                  <span className="text-xs font-medium text-foreground">
                     Resposta
                   </span>
                   <Badge
@@ -462,28 +734,28 @@ function EndpointCard({ endpoint }) {
 function ParamTable({ title, rows }) {
   return (
     <div>
-      <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
         {title}
       </h4>
-      <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
+      <div className="border border-border rounded-lg overflow-hidden">
         <table className="w-full text-xs">
-          <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+          <tbody className="divide-y divide-border">
             {rows.map((row, i) => (
-              <tr key={i} className="hover:bg-gray-50/60 dark:hover:bg-gray-800/30">
+              <tr key={i} className="hover:bg-muted/40">
                 <td className="px-3 py-2.5 align-top w-2/5">
-                  <code className="font-mono font-medium text-[12px] text-violet-700 dark:text-violet-300 break-all">
+                  <code className="font-mono font-medium text-[12px] text-primary break-all">
                     {row.name}
                   </code>
                   {row.required && (
-                    <span className="ml-1.5 text-[10px] text-rose-600 dark:text-rose-400 font-semibold">
+                    <span className="ml-1.5 text-[10px] text-destructive font-semibold">
                       required
                     </span>
                   )}
-                  <div className="mt-0.5 text-[10.5px] text-gray-500 dark:text-gray-400 font-mono">
+                  <div className="mt-0.5 text-[10.5px] text-muted-foreground font-mono">
                     {row.type}
                   </div>
                 </td>
-                <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400 leading-relaxed">
+                <td className="px-3 py-2.5 text-muted-foreground leading-relaxed">
                   {row.description}
                 </td>
               </tr>
@@ -502,11 +774,16 @@ function CodeBlock({ code, language }) {
       await navigator.clipboard.writeText(code);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
-    } catch {}
+    } catch {
+      // ignore
+    }
   };
   return (
     <div className="relative group rounded-lg bg-slate-900 dark:bg-slate-950 text-slate-100 overflow-hidden ring-1 ring-slate-800">
-      <div className="absolute top-2 right-2 z-10">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800">
+        <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
+          {language}
+        </span>
         <button
           onClick={onCopy}
           className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium text-slate-300 bg-slate-800/80 hover:bg-slate-700 transition-colors"
@@ -524,9 +801,6 @@ function CodeBlock({ code, language }) {
           )}
         </button>
       </div>
-      <div className="px-4 py-2.5 text-[10px] font-mono uppercase tracking-wider text-slate-500 border-b border-slate-800">
-        {language}
-      </div>
       <pre className="px-4 py-3 text-[12px] font-mono leading-relaxed overflow-x-auto whitespace-pre">
         <code>{code}</code>
       </pre>
@@ -536,31 +810,14 @@ function CodeBlock({ code, language }) {
 
 function InfoTile({ label, value, icon: Icon, mono }) {
   return (
-    <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40 px-4 py-3">
-      <div className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold flex items-center gap-1.5">
+    <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5">
         {Icon && <Icon className="w-3 h-3" />}
         {label}
       </div>
-      <div className={`mt-1 text-sm text-gray-900 dark:text-gray-100 ${mono ? "font-mono" : ""}`}>
+      <div className={`mt-1 text-sm text-foreground ${mono ? "font-mono" : ""}`}>
         {value}
       </div>
-    </div>
-  );
-}
-
-function EmptyResults({ query, onClear }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-24 text-center">
-      <Search className="w-10 h-10 text-gray-300 mb-3" />
-      <p className="text-base font-semibold text-gray-700 dark:text-gray-300">
-        Nada encontrado para "{query}"
-      </p>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-        Tente outra palavra-chave ou método HTTP.
-      </p>
-      <Button variant="outline" size="sm" onClick={onClear} className="mt-4">
-        Limpar busca
-      </Button>
     </div>
   );
 }
