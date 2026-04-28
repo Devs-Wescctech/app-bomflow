@@ -1383,6 +1383,60 @@ router.get('/referrals/reactivations', authMiddleware, loadAgentMiddleware, asyn
   }
 });
 
+router.put('/referrals/reactivations/:id', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const agentType = req.agent?.agentType;
+    const agentId = req.agent?.id;
+
+    const allowedRoles = ['indicacoes_supervisor', 'indicacoes_admin', 'admin', 'indicacoes_atendente'];
+    if (!agentType || !allowedRoles.includes(agentType)) {
+      return res.status(403).json({ message: 'Acesso negado.' });
+    }
+
+    const { id } = req.params;
+    const { nome_completo_cliente, telefone, atendente_id, observacoes } = req.body;
+
+    const existing = await query(`SELECT * FROM referral_reactivations WHERE id = $1`, [id]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ message: 'Reativação não encontrada.' });
+    }
+    const record = existing.rows[0];
+
+    if (agentType === 'indicacoes_atendente' && record.atendente_id !== agentId) {
+      return res.status(403).json({ message: 'Você só pode editar suas próprias reativações.' });
+    }
+
+    let resolvedAtendenteId = record.atendente_id;
+    if (agentType !== 'indicacoes_atendente' && atendente_id && atendente_id !== record.atendente_id) {
+      const validAgent = await query(
+        `SELECT id FROM agents WHERE id = $1 AND agent_type = 'indicacoes_atendente' AND active = true`,
+        [atendente_id]
+      );
+      if (validAgent.rows.length === 0) {
+        return res.status(400).json({ message: 'Atendente selecionado inválido ou inativo.' });
+      }
+      resolvedAtendenteId = atendente_id;
+    }
+
+    const cleanTelefone = telefone ? (telefone.replace(/\D/g, '') || null) : record.telefone;
+    const newNome = nome_completo_cliente?.trim() || record.nome_completo_cliente;
+    const newObs = observacoes !== undefined ? (observacoes?.trim() || null) : record.observacoes;
+
+    const result = await query(
+      `UPDATE referral_reactivations
+       SET nome_completo_cliente = $1, telefone = $2, atendente_id = $3, observacoes = $4, updated_at = NOW()
+       WHERE id = $5
+       RETURNING *`,
+      [newNome, cleanTelefone, resolvedAtendenteId, newObs, id]
+    );
+
+    res.json({ success: true, data: convertKeysToCamel(result.rows[0]) });
+  } catch (error) {
+    console.error('Error updating reactivation:', error);
+    res.status(500).json({ message: 'Erro interno ao atualizar reativação.' });
+  }
+});
+
 router.get('/referrals/reactivations/report', authMiddleware, loadAgentMiddleware, async (req, res) => {
   try {
     const agentType = req.agent?.agentType;
@@ -1425,6 +1479,7 @@ router.get('/referrals/reactivations/report', authMiddleware, loadAgentMiddlewar
         rr.telefone,
         rr.created_at,
         rr.observacoes,
+        rr.atendente_id,
         a.name AS atendente_nome
       FROM referral_reactivations rr
       LEFT JOIN agents a ON rr.atendente_id = a.id

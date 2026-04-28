@@ -1,12 +1,20 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   RefreshCw,
   Search,
@@ -15,6 +23,9 @@ import {
   AlertCircle,
   Loader2,
   Filter,
+  Pencil,
+  Save,
+  X,
 } from "lucide-react";
 import { format, parseISO, startOfDay, endOfDay, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -63,6 +74,7 @@ const getDateRange = (shortcut) => {
 
 export default function ReferralReactivationReport() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [shortcut, setShortcut] = useState("30d");
   const [customStart, setCustomStart] = useState("");
@@ -77,6 +89,10 @@ export default function ReferralReactivationReport() {
     agentId: "all",
   });
 
+  const [editingRow, setEditingRow] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [editError, setEditError] = useState("");
+
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
@@ -86,6 +102,7 @@ export default function ReferralReactivationReport() {
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
   const isSupervisorOrAdmin =
     currentAgentType === 'indicacoes_supervisor' ||
+    currentAgentType === 'indicacoes_admin' ||
     currentAgentType === 'admin' ||
     user?.role === 'admin';
   const isAtendente = currentAgentType === 'indicacoes_atendente';
@@ -136,6 +153,32 @@ export default function ReferralReactivationReport() {
     enabled: !!user,
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, body }) => {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(`/api/referrals/reactivations/${id}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Erro ao salvar.');
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reactivations-report'] });
+      setEditingRow(null);
+      setEditForm({});
+      setEditError("");
+    },
+    onError: (err) => {
+      setEditError(err.message || 'Erro ao salvar alterações.');
+    },
+  });
+
   const filteredRows = useMemo(() => {
     if (!searchText.trim()) return reactivations;
     const q = searchText.trim().toLowerCase();
@@ -161,6 +204,25 @@ export default function ReferralReactivationReport() {
       setCustomStart("");
       setCustomEnd("");
     }
+  };
+
+  const handleOpenEdit = (row) => {
+    setEditingRow(row);
+    setEditError("");
+    setEditForm({
+      nome_completo_cliente: row.nomeCompletoCliente || "",
+      telefone: row.telefone || "",
+      atendente_id: row.atendenteId || "",
+      observacoes: row.observacoes || "",
+    });
+  };
+
+  const handleSaveEdit = () => {
+    if (!editForm.nome_completo_cliente?.trim()) {
+      setEditError("Nome do cliente é obrigatório.");
+      return;
+    }
+    updateMutation.mutate({ id: editingRow.id, body: editForm });
   };
 
   return (
@@ -318,6 +380,8 @@ export default function ReferralReactivationReport() {
                       <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 whitespace-nowrap">Telefone</th>
                       <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 whitespace-nowrap">Data/Hora</th>
                       <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 whitespace-nowrap">Atendente</th>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 whitespace-nowrap">Obs.</th>
+                      <th className="w-10 px-4 py-3" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -340,6 +404,20 @@ export default function ReferralReactivationReport() {
                         </td>
                         <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                           {row.atendenteNome || "-"}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 max-w-[180px] truncate" title={row.observacoes || ""}>
+                          {row.observacoes || "-"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenEdit(row)}
+                            className="h-7 w-7 p-0 text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                            title="Editar reativação"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
                         </td>
                       </tr>
                     ))}
@@ -378,6 +456,110 @@ export default function ReferralReactivationReport() {
           )}
         </Card>
       </div>
+
+      <Dialog open={!!editingRow} onOpenChange={(open) => { if (!open) { setEditingRow(null); setEditError(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <div className="w-7 h-7 bg-amber-100 dark:bg-amber-900/50 rounded-lg flex items-center justify-center">
+                <Pencil className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              </div>
+              Editar Reativação
+            </DialogTitle>
+          </DialogHeader>
+
+          {editingRow && (
+            <div className="space-y-4 py-1">
+              <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-lg text-xs text-gray-500 dark:text-gray-400 font-mono">
+                CPF: {formatCPF(editingRow.cpf)}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-600 dark:text-gray-400">Nome do Cliente</Label>
+                <Input
+                  value={editForm.nome_completo_cliente || ""}
+                  onChange={(e) => setEditForm((f) => ({ ...f, nome_completo_cliente: e.target.value }))}
+                  placeholder="Nome completo"
+                  className="h-9"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-600 dark:text-gray-400">Telefone</Label>
+                <Input
+                  value={editForm.telefone || ""}
+                  onChange={(e) => setEditForm((f) => ({ ...f, telefone: e.target.value }))}
+                  placeholder="(00) 00000-0000"
+                  className="h-9"
+                />
+              </div>
+
+              {isSupervisorOrAdmin && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-gray-600 dark:text-gray-400">Atendente Responsável</Label>
+                  <Select
+                    value={editForm.atendente_id || ""}
+                    onValueChange={(val) => setEditForm((f) => ({ ...f, atendente_id: val }))}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Selecionar atendente" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {atendentesList.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-600 dark:text-gray-400">Observações</Label>
+                <Textarea
+                  value={editForm.observacoes || ""}
+                  onChange={(e) => setEditForm((f) => ({ ...f, observacoes: e.target.value }))}
+                  placeholder="Observações sobre a reativação..."
+                  rows={3}
+                  className="resize-none text-sm"
+                />
+              </div>
+
+              {editError && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-xs">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                  {editError}
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setEditingRow(null); setEditError(""); }}
+              disabled={updateMutation.isPending}
+              className="gap-1.5"
+            >
+              <X className="w-3.5 h-3.5" />
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSaveEdit}
+              disabled={updateMutation.isPending}
+              className="gap-1.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white"
+            >
+              {updateMutation.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Save className="w-3.5 h-3.5" />
+              )}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
