@@ -37,6 +37,7 @@ Wescctech CRM is a comprehensive, self-hosted Customer Relationship Management s
 - **Quality Assurance**: Monitoring, evaluation checklists, and call auditing.
 - **Collections**: Collection tickets, delinquency dashboard, and contact scheduling.
 - **Bom Auto**: Vehicle service consultation module with ERP integration.
+- **APPs Hub**: Central launcher for internal mini-apps. First app shipped: **API Reference** — modern, Stripe-style documentation page (`/ApiDocumentation`) with sticky sidebar nav, search/scroll-spy, per-endpoint cards (method badge, path/query/body tables) and live cURL/JavaScript code samples. Endpoint spec lives in `src/data/apiDocsSpec.js`.
 - **Upsell**: Independent sales module mirroring B2C content but with B2B-style separation and dedicated data structures.
 - **WhatsApp Automation**: Integration with WHU API for automated messaging, template support, and intelligent fallback mechanisms. Includes a professional dispatch platform with async queue processing, rate limiting, and an operational dashboard.
 - **Digital Contract Signing**: Public-facing module with token-based access.

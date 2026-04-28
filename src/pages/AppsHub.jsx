@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
-import { LayoutGrid, Lock } from "lucide-react";
+import { LayoutGrid, Lock, BookOpen } from "lucide-react";
 
 export default function AppsHub() {
   const { data: user } = useQuery({
@@ -8,7 +10,16 @@ export default function AppsHub() {
     queryFn: () => base44.auth.me(),
   });
 
-  const apps = [];
+  const apps = [
+    {
+      id: "api-docs",
+      title: "API Reference",
+      description: "Documentação completa da API REST do CRM, com exemplos de requisição e resposta.",
+      icon: BookOpen,
+      gradient: "from-violet-600 to-indigo-600",
+      url: createPageUrl("ApiDocumentation"),
+    },
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -55,18 +66,29 @@ export default function AppsHub() {
 }
 
 function AppCard({ app, user }) {
-  return (
-    <div className="group relative overflow-hidden rounded-2xl bg-white dark:bg-gray-900 ring-1 ring-gray-200 dark:ring-gray-800 shadow-sm hover:shadow-lg hover:ring-violet-300 dark:hover:ring-violet-700 transition-all duration-200 cursor-pointer p-6">
-      <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 bg-gradient-to-br ${app.gradient || 'from-violet-500 to-purple-600'}`}>
+  const content = (
+    <>
+      <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 bg-gradient-to-br ${app.gradient || 'from-violet-500 to-purple-600'} shadow-sm`}>
         {app.icon ? <app.icon className="w-6 h-6 text-white" /> : <LayoutGrid className="w-6 h-6 text-white" />}
       </div>
       <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">{app.title}</h3>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{app.description}</p>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">{app.description}</p>
       {app.locked && (
         <div className="absolute top-4 right-4">
           <Lock className="w-4 h-4 text-gray-400" />
         </div>
       )}
-    </div>
+    </>
   );
+
+  const cardClass = "group relative overflow-hidden rounded-2xl bg-white dark:bg-gray-900 ring-1 ring-gray-200 dark:ring-gray-800 shadow-sm hover:shadow-lg hover:ring-violet-300 dark:hover:ring-violet-700 transition-all duration-200 p-6";
+
+  if (app.url && !app.locked) {
+    return (
+      <Link to={app.url} className={`${cardClass} block cursor-pointer`}>
+        {content}
+      </Link>
+    );
+  }
+  return <div className={`${cardClass} ${app.locked ? 'opacity-60' : 'cursor-pointer'}`}>{content}</div>;
 }
