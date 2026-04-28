@@ -99,6 +99,36 @@ export const AGENT_PERMISSIONS = {
     canManageAgents: false,
     canManageSettings: false,
   },
+  indicacoes_supervisor: {
+    modules: ['referral'],
+    canViewAllTickets: false,
+    canViewTeamTickets: false,
+    canViewAllLeads: true,
+    canViewTeamLeads: true,
+    canAccessReports: true,
+    canManageAgents: false,
+    canManageSettings: false,
+  },
+  indicacoes_atendente: {
+    modules: ['referral'],
+    canViewAllTickets: false,
+    canViewTeamTickets: false,
+    canViewAllLeads: false,
+    canViewTeamLeads: false,
+    canAccessReports: false,
+    canManageAgents: false,
+    canManageSettings: false,
+  },
+  indicacoes_admin: {
+    modules: ['referral'],
+    canViewAllTickets: false,
+    canViewTeamTickets: false,
+    canViewAllLeads: true,
+    canViewTeamLeads: true,
+    canAccessReports: true,
+    canManageAgents: true,
+    canManageSettings: false,
+  },
 };
 
 const MODULE_ALIASES = {

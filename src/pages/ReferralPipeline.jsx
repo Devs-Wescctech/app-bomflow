@@ -512,7 +512,7 @@ export default function ReferralPipeline() {
 
   const currentAgent = user?.agent || agents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor';
+  const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor' || currentAgentType?.endsWith('_supervisor') || user?.role === 'supervisor';
   const currentAgentId = currentAgent?.id;
 
   const { data: referrals = [], isLoading, refetch } = useQuery({
