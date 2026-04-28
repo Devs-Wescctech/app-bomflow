@@ -82,6 +82,7 @@ import {
   Trophy,
   List,
   RefreshCw,
+  LayoutGrid,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -284,6 +285,15 @@ const menuModules = [
       { title: "Consulta Cliente", url: createPageUrl("BomAutoConsulta"), icon: Search },
       { title: "Painel Operacional", url: createPageUrl("BomAutoPainel"), icon: ClipboardList },
       { title: "Relatório de Utilizações", url: createPageUrl("BomAutoRelatorio"), icon: FileBarChart },
+    ]
+  },
+  {
+    id: "apps",
+    title: "APPs",
+    icon: LayoutGrid,
+    gradient: "from-violet-600 to-purple-600",
+    items: [
+      { title: "Hub de APPs", url: createPageUrl("AppsHub"), icon: LayoutGrid },
     ]
   },
   {

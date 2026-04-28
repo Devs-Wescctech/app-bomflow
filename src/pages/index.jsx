@@ -194,6 +194,7 @@ import BomAutoConsulta from "./BomAutoConsulta";
 
 import BomAutoPainel from "./BomAutoPainel";
 import BomAutoRelatorio from "./BomAutoRelatorio";
+import AppsHub from "./AppsHub";
 
 import SalesWonReport from "./SalesWonReport";
 import SalesPJWonReport from "./SalesPJWonReport";
@@ -404,6 +405,7 @@ const PAGES = {
     
     BomAutoPainel: BomAutoPainel,
     BomAutoRelatorio: BomAutoRelatorio,
+    AppsHub: AppsHub,
 
     SalesWonReport: SalesWonReport,
     SalesPJWonReport: SalesPJWonReport,
@@ -647,6 +649,7 @@ function PagesContent() {
 
                 <Route path="/SalesWonReport" element={<SalesWonReport />} />
                 <Route path="/SalesPJWonReport" element={<SalesPJWonReport />} />
+                <Route path="/AppsHub" element={<AppsHub />} />
                 <Route path="/NewLeadUpsell" element={<NewLeadUpsell />} />
                 <Route path="/LeadsUpsellKanban" element={<LeadsUpsellKanban />} />
                 <Route path="/LeadUpsellDetail" element={<LeadUpsellDetail />} />

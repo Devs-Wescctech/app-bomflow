@@ -164,6 +164,13 @@ const MENU_MODULES = [
     ]
   },
   {
+    id: "apps",
+    title: "APPs",
+    items: [
+      { id: "AppsHub", title: "Hub de APPs" },
+    ]
+  },
+  {
     id: "config",
     title: "Configurações",
     items: [
