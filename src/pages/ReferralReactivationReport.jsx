@@ -17,6 +17,16 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   RefreshCw,
   Search,
   ChevronLeft,
@@ -28,6 +38,7 @@ import {
   Save,
   X,
   CheckCircle,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, startOfDay, endOfDay, subDays } from "date-fns";
@@ -113,6 +124,7 @@ export default function ReferralReactivationReport() {
   const [editError, setEditError] = useState("");
   const [searchingERP, setSearchingERP] = useState(false);
   const [erpFound, setErpFound] = useState(null);
+  const [deletingRow, setDeletingRow] = useState(null);
 
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
@@ -197,6 +209,27 @@ export default function ReferralReactivationReport() {
     },
     onError: (err) => {
       setEditError(err.message || 'Erro ao salvar alterações.');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id) => {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(`/api/referrals/reactivations/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Erro ao excluir.');
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reactivations-report'] });
+      toast.success('Reativação excluída com sucesso.');
+      setDeletingRow(null);
+    },
+    onError: (err) => {
+      toast.error(err.message || 'Erro ao excluir reativação.');
     },
   });
 
@@ -477,15 +510,28 @@ export default function ReferralReactivationReport() {
                           {row.observacoes || "-"}
                         </td>
                         <td className="px-4 py-3">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenEdit(row)}
-                            className="h-7 w-7 p-0 text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20"
-                            title="Editar reativação"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenEdit(row)}
+                              className="h-7 w-7 p-0 text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                              title="Editar reativação"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                            {isSupervisorOrAdmin && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setDeletingRow(row)}
+                                className="h-7 w-7 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                title="Excluir reativação"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -667,6 +713,41 @@ export default function ReferralReactivationReport() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deletingRow} onOpenChange={(open) => { if (!open && !deleteMutation.isPending) setDeletingRow(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <div className="w-7 h-7 bg-red-100 dark:bg-red-900/50 rounded-lg flex items-center justify-center">
+                <Trash2 className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
+              </div>
+              Excluir reativação
+            </AlertDialogTitle>
+            <AlertDialogDescription className="pt-2">
+              Tem certeza que deseja excluir a reativação de{" "}
+              <span className="font-semibold text-gray-900 dark:text-gray-100">
+                {deletingRow?.nomeCompletoCliente || "este cliente"}
+              </span>
+              {deletingRow?.cpf ? ` (CPF ${formatCPF(deletingRow.cpf)})` : ""}? Essa ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); if (deletingRow) deleteMutation.mutate(deletingRow.id); }}
+              disabled={deleteMutation.isPending}
+              className="bg-red-600 hover:bg-red-700 text-white gap-1.5"
+            >
+              {deleteMutation.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="w-3.5 h-3.5" />
+              )}
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

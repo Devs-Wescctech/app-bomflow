@@ -1446,6 +1446,30 @@ router.put('/referrals/reactivations/:id', authMiddleware, loadAgentMiddleware, 
   }
 });
 
+router.delete('/referrals/reactivations/:id', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const agentType = req.agent?.agentType;
+
+    const allowedRoles = ['indicacoes_supervisor', 'indicacoes_admin', 'admin'];
+    if (!agentType || !allowedRoles.includes(agentType)) {
+      return res.status(403).json({ message: 'Acesso negado. Apenas supervisores e administradores podem excluir reativações.' });
+    }
+
+    const { id } = req.params;
+    const existing = await query(`SELECT * FROM referral_reactivations WHERE id = $1`, [id]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ message: 'Reativação não encontrada.' });
+    }
+
+    await query(`DELETE FROM referral_reactivations WHERE id = $1`, [id]);
+
+    res.json({ success: true, message: 'Reativação excluída com sucesso.' });
+  } catch (error) {
+    console.error('Error deleting reactivation:', error);
+    res.status(500).json({ message: 'Erro interno ao excluir reativação.' });
+  }
+});
+
 router.get('/referrals/reactivations/report', authMiddleware, loadAgentMiddleware, async (req, res) => {
   try {
     const agentType = req.agent?.agentType;
