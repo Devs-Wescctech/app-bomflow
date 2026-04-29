@@ -1316,8 +1316,8 @@ router.post('/referrals/reactivations', authMiddleware, loadAgentMiddleware, asy
     const { cpf, nome_completo_cliente, telefone, observacoes, atendente_id } = req.body;
 
     const cleanCpf = (cpf || '').replace(/\D/g, '');
-    if (cleanCpf.length !== 11) {
-      return res.status(400).json({ message: 'CPF inválido. Informe 11 dígitos.' });
+    if (cleanCpf.length > 0 && cleanCpf.length !== 11) {
+      return res.status(400).json({ message: 'CPF inválido. Informe 11 dígitos ou deixe em branco.' });
     }
     if (!nome_completo_cliente || !nome_completo_cliente.trim()) {
       return res.status(400).json({ message: 'Nome completo do cliente é obrigatório.' });
@@ -1347,7 +1347,7 @@ router.post('/referrals/reactivations', authMiddleware, loadAgentMiddleware, asy
     const result = await query(
       `INSERT INTO referral_reactivations (cpf, nome_completo_cliente, telefone, atendente_id, observacoes)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [cleanCpf, nome_completo_cliente.trim(), cleanTelefone, resolvedAtendenteId, observacoes?.trim() || null]
+      [cleanCpf || null, nome_completo_cliente.trim(), cleanTelefone, resolvedAtendenteId, observacoes?.trim() || null]
     );
 
     res.status(201).json({ success: true, data: convertKeysToCamel(result.rows[0]) });

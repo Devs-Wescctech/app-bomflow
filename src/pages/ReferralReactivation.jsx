@@ -137,8 +137,8 @@ export default function ReferralReactivation() {
 
   const handleSubmit = () => {
     const cleanCpf = (form.cpf || '').replace(/\D/g, '');
-    if (cleanCpf.length !== 11) {
-      toast.error('CPF inválido.');
+    if (cleanCpf.length > 0 && cleanCpf.length !== 11) {
+      toast.error('CPF inválido. Informe 11 dígitos ou deixe em branco.');
       return;
     }
     if (!(form.nomeCompletoCliente || '').trim()) {
@@ -157,7 +157,7 @@ export default function ReferralReactivation() {
     }
 
     const payload = {
-      cpf: cleanCpf,
+      cpf: cleanCpf || null,
       nome_completo_cliente: form.nomeCompletoCliente.trim(),
       telefone: (form.telefone || '').replace(/\D/g, '') || null,
       observacoes: (form.observacoes || '').trim() || null,
@@ -216,7 +216,7 @@ export default function ReferralReactivation() {
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="cpf">CPF *</Label>
+                <Label htmlFor="cpf">CPF <span className="text-xs text-gray-400 font-normal">(opcional)</span></Label>
                 <div className="flex gap-2">
                   <Input
                     id="cpf"
