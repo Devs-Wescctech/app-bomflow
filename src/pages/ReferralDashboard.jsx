@@ -64,7 +64,7 @@ export default function ReferralDashboard() {
 
   const currentAgent = user?.agent;
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
+  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin' || currentAgentType === 'indicacoes_admin';
   const isSupervisor = user?.role === 'supervisor' || currentAgentType?.includes('supervisor');
 
   const { data: rawReferrals = [] } = useQuery({
@@ -96,7 +96,7 @@ export default function ReferralDashboard() {
         (r.agentId || r.agent_id) === currentAgent.id
       );
     },
-    enabled: !!user && !!currentAgent,
+    enabled: !!user && (isAdmin || isSupervisor || !!currentAgent),
   });
 
   const agents = allAgents;
@@ -119,6 +119,21 @@ export default function ReferralDashboard() {
     });
   }, [agents]);
 
+  const indicacoesModuleAgentIds = useMemo(() => {
+    const ids = new Set();
+    agents.forEach(a => {
+      const agentType = a.agentType || a.agent_type;
+      if (
+        agentType === 'indicacoes_atendente' ||
+        agentType === 'indicacoes_supervisor' ||
+        agentType === 'indicacoes_admin'
+      ) {
+        ids.add(String(a.id));
+      }
+    });
+    return ids;
+  }, [agents]);
+
   const indicacoesAgentIds = useMemo(() => {
     return new Set(indicacoesAgents.map(a => String(a.id)));
   }, [indicacoesAgents]);
@@ -131,7 +146,8 @@ export default function ReferralDashboard() {
   const referrals = useMemo(() => {
     let filtered = rawReferrals.filter(r => {
       const agentId = String(r.agentId || r.agent_id || '');
-      return indicacoesAgentIds.has(agentId);
+      if (!agentId) return isAdmin || isSupervisor;
+      return indicacoesModuleAgentIds.has(agentId) || isAdmin || isSupervisor;
     });
 
     if (selectedTeam && !selectedAgent) {

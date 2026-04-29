@@ -37,12 +37,12 @@ export default function ReferralAgentsDashboard() {
 
   const currentAgent = user?.agent;
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
+  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin' || currentAgentType === 'indicacoes_admin';
   const isSupervisor = user?.role === 'supervisor' || currentAgentType?.includes('supervisor');
   const isSalesAgent = currentAgentType === 'sales' || currentAgentType === 'pre_sales' || currentAgentType === 'post_sales';
   const hasSubmenuAccess = (currentAgent?.allowedSubmenus || []).includes('ReferralAgentsDashboard');
   const hasPermission = isAdmin || isSupervisor || isSalesAgent || hasSubmenuAccess;
-  const canFetchData = !!user && !!currentAgent && hasPermission;
+  const canFetchData = !!user && hasPermission && (isAdmin || isSupervisor || !!currentAgent);
 
   const { data: agents = [], isLoading: agentsLoading } = useQuery({
     queryKey: ['referralDashboardAgents'],

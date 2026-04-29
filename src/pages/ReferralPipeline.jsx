@@ -512,7 +512,7 @@ export default function ReferralPipeline() {
 
   const currentAgent = user?.agent || agents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor' || currentAgentType?.endsWith('_supervisor') || user?.role === 'supervisor';
+  const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor' || currentAgentType?.endsWith('_supervisor') || currentAgentType === 'indicacoes_admin' || user?.role === 'admin' || user?.role === 'supervisor';
   const currentAgentId = currentAgent?.id;
 
   const { data: referrals = [], isLoading, refetch } = useQuery({
@@ -522,7 +522,7 @@ export default function ReferralPipeline() {
 
       const resolvedAgent = currentAgent || agents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
       const resolvedAgentType = resolvedAgent?.agentType || resolvedAgent?.agent_type;
-      const resolvedIsAdmin = resolvedAgentType === 'admin' || resolvedAgentType === 'supervisor' || resolvedAgentType === 'sales_supervisor';
+      const resolvedIsAdmin = resolvedAgentType === 'admin' || resolvedAgentType === 'supervisor' || resolvedAgentType === 'sales_supervisor' || resolvedAgentType === 'indicacoes_supervisor' || resolvedAgentType === 'indicacoes_admin' || user?.role === 'admin';
       const resolvedAgentId = resolvedAgent?.id;
 
       if (resolvedIsAdmin) {

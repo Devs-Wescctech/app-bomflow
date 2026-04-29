@@ -1263,7 +1263,7 @@ router.delete('/referrals/:id', authMiddleware, async (req, res) => {
   }
 });
 
-router.delete('/referrals/:id/hard', authMiddleware, loadAgentMiddleware, requireRole('indicacoes_supervisor', 'admin'), async (req, res) => {
+router.delete('/referrals/:id/hard', authMiddleware, loadAgentMiddleware, requireRole('indicacoes_supervisor', 'indicacoes_admin', 'admin'), async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1308,9 +1308,9 @@ router.post('/referrals/reactivations', authMiddleware, loadAgentMiddleware, asy
     const agentType = req.agent?.agentType;
     const agentId = req.agent?.id;
 
-    const allowedRoles = ['indicacoes_supervisor', 'admin', 'indicacoes_atendente'];
+    const allowedRoles = ['indicacoes_supervisor', 'indicacoes_admin', 'admin', 'indicacoes_atendente'];
     if (!agentType || !allowedRoles.includes(agentType)) {
-      return res.status(403).json({ message: 'Acesso negado. Apenas Indicações - Supervisor, Admin ou Indicações - Atendente podem registrar reativações.' });
+      return res.status(403).json({ message: 'Acesso negado. Apenas Indicações - Supervisor, Indicações - Admin, Admin ou Indicações - Atendente podem registrar reativações.' });
     }
 
     const { cpf, nome_completo_cliente, telefone, observacoes, atendente_id } = req.body;
@@ -1362,7 +1362,7 @@ router.get('/referrals/reactivations', authMiddleware, loadAgentMiddleware, asyn
     const agentType = req.agent?.agentType;
     const agentId = req.agent?.id;
 
-    const allowedRoles = ['indicacoes_supervisor', 'admin', 'indicacoes_atendente'];
+    const allowedRoles = ['indicacoes_supervisor', 'indicacoes_admin', 'admin', 'indicacoes_atendente'];
     if (!agentType || !allowedRoles.includes(agentType)) {
       return res.status(403).json({ message: 'Acesso negado.' });
     }
@@ -1451,7 +1451,7 @@ router.get('/referrals/reactivations/report', authMiddleware, loadAgentMiddlewar
     const agentType = req.agent?.agentType;
     const agentId = req.agent?.id;
 
-    const allowedRoles = ['indicacoes_supervisor', 'admin', 'indicacoes_atendente'];
+    const allowedRoles = ['indicacoes_supervisor', 'indicacoes_admin', 'admin', 'indicacoes_atendente'];
     if (!agentType || !allowedRoles.includes(agentType)) {
       return res.status(403).json({ message: 'Acesso negado.' });
     }

@@ -48,7 +48,7 @@ export default function ReferralReports() {
 
   const currentAgent = user?.agent;
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
+  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin' || currentAgentType === 'indicacoes_admin';
   const isSupervisor = currentAgentType?.includes('supervisor') || currentAgentType === 'supervisor';
   const hasSubmenuAccess = (currentAgent?.allowedSubmenus || []).includes('ReferralReports');
   const hasPermission = isAdmin || isSupervisor || canAccessReports(currentAgent) || hasSubmenuAccess;

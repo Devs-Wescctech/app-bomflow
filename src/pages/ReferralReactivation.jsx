@@ -64,6 +64,7 @@ export default function ReferralReactivation() {
   const isAtendente = currentAgentType === 'indicacoes_atendente';
   const isSupervisorOrAdmin =
     currentAgentType === 'indicacoes_supervisor' ||
+    currentAgentType === 'indicacoes_admin' ||
     currentAgentType === 'admin' ||
     user?.role === 'admin';
 

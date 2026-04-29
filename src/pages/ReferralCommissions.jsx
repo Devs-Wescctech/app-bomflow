@@ -49,7 +49,7 @@ export default function ReferralCommissions() {
 
   const currentAgent = user?.agent;
   const agentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = agentType === 'admin' || agentType === 'supervisor' || agentType === 'sales_supervisor';
+  const isAdmin = agentType === 'admin' || agentType === 'supervisor' || agentType === 'sales_supervisor' || agentType === 'indicacoes_supervisor' || agentType === 'indicacoes_admin' || user?.role === 'admin';
   const isSalesAgent = agentType === 'sales' || agentType === 'pre_sales' || agentType === 'post_sales';
   const hasSubmenuAccess = (currentAgent?.allowedSubmenus || []).includes('ReferralCommissions');
   const hasAccess = isAdmin || isSalesAgent || hasSubmenuAccess;

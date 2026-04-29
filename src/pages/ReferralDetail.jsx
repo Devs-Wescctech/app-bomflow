@@ -449,7 +449,7 @@ export default function ReferralDetail() {
 
   const currentAgent = user?.agent;
   const isIndicacoesAtendente = currentAgent?.agentType === 'indicacoes_atendente';
-  const isHardDeleteAllowed = currentAgent?.agentType === 'indicacoes_supervisor' || currentAgent?.agentType === 'admin' || user?.role === 'admin';
+  const isHardDeleteAllowed = currentAgent?.agentType === 'indicacoes_supervisor' || currentAgent?.agentType === 'indicacoes_admin' || currentAgent?.agentType === 'admin' || user?.role === 'admin';
   const leadPhone = referral?.referredPhone || referral?.referred_phone;
 
   const handleSendWaMessage = async () => {
