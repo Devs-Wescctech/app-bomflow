@@ -12,6 +12,16 @@ import {
   Sun,
   Moon,
   Hash,
+  Zap,
+  Layers,
+  Sparkles,
+  BookOpen,
+  Link2,
+  CornerDownRight,
+  ShieldAlert,
+  CircleCheck,
+  CircleSlash,
+  Activity,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -67,7 +77,13 @@ function detectIsMac() {
 export default function ApiDocumentation() {
   return (
     <div className="fixed inset-0 z-40 bg-background text-foreground antialiased overflow-hidden">
-      <SidebarProvider defaultOpen>
+      <SidebarProvider
+        defaultOpen
+        style={{
+          "--sidebar-width": "20rem",
+          "--sidebar-width-icon": "3.25rem",
+        }}
+      >
         <DocsBody />
       </SidebarProvider>
     </div>
@@ -196,7 +212,7 @@ function DocsBody() {
             id="api-docs-scroller"
             className="flex-1 overflow-y-auto scroll-smooth"
           >
-            <div className="max-w-3xl mx-auto px-4 sm:px-8 py-10 space-y-16">
+            <div className="max-w-[1180px] mx-auto px-6 sm:px-10 lg:px-12 py-10 space-y-20">
               {API_SECTIONS.map((section, idx) => (
                 <SectionBlock
                   key={section.id}
@@ -205,8 +221,21 @@ function DocsBody() {
                   totalEndpoints={totalEndpoints}
                 />
               ))}
-              <footer className="pt-8 pb-12 border-t border-border text-xs text-muted-foreground">
-                Bomflow API Reference · {totalEndpoints} endpoints documentados
+              <footer className="pt-8 pb-16 border-t border-border flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <img
+                    src="/logo-bomflow-icon.png"
+                    alt=""
+                    className="h-5 w-5 opacity-70"
+                  />
+                  <span>
+                    Bomflow API Reference · {totalEndpoints} endpoints
+                    documentados
+                  </span>
+                </div>
+                <span className="font-mono">
+                  {API_META.baseUrl} · {API_META.authScheme}
+                </span>
               </footer>
             </div>
           </main>
@@ -434,16 +463,35 @@ function DocsTopBar({ currentSection, currentEndpoint, onOpenCommand, isMac }) {
 /* ----------------------------- On This Page ------------------------------- */
 
 function OnThisPage({ section, activeEndpoint, onNavigate }) {
+  const firstSectionId = API_SECTIONS[0]?.id || "intro";
   if (!section || !(section.endpoints && section.endpoints.length > 0)) {
     return null;
   }
+  const authCount = section.endpoints.filter((e) => e.auth).length;
+  const publicCount = section.endpoints.length - authCount;
   return (
-    <aside className="hidden lg:block w-[240px] flex-shrink-0 border-l border-border overflow-y-auto">
+    <aside className="hidden xl:block w-[280px] flex-shrink-0 border-l border-border overflow-y-auto bg-muted/10">
       <div className="p-5 sticky top-0">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-          Nesta página
+        <div className="flex items-center gap-2 mb-1">
+          <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Nesta página
+          </div>
         </div>
-        <ul className="space-y-1 text-[12.5px]">
+        <div className="text-[11px] text-muted-foreground/80 mb-4 flex items-center gap-2">
+          <span>{section.endpoints.length} endpoints</span>
+          {authCount > 0 && (
+            <span className="inline-flex items-center gap-1">
+              · <Lock className="w-2.5 h-2.5" /> {authCount}
+            </span>
+          )}
+          {publicCount > 0 && (
+            <span className="inline-flex items-center gap-1">
+              · <Globe className="w-2.5 h-2.5" /> {publicCount}
+            </span>
+          )}
+        </div>
+        <ul className="space-y-0.5 text-[13px] border-l border-border/60">
           {section.endpoints.map((ep) => {
             const isActive = activeEndpoint === ep.id;
             return (
@@ -451,10 +499,10 @@ function OnThisPage({ section, activeEndpoint, onNavigate }) {
                 <button
                   type="button"
                   onClick={() => onNavigate(section.id, ep.id)}
-                  className={`w-full text-left px-2 py-1.5 rounded-md border-l-2 -ml-px transition-colors flex items-center gap-2 ${
+                  className={`w-full text-left pl-3 pr-2 py-1.5 -ml-px border-l-2 transition-all flex items-center gap-2 ${
                     isActive
-                      ? "border-primary text-foreground bg-muted/60 font-medium"
-                      : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                      ? "border-primary text-foreground bg-primary/5 font-medium"
+                      : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/40"
                   }`}
                 >
                   <span
@@ -468,6 +516,16 @@ function OnThisPage({ section, activeEndpoint, onNavigate }) {
             );
           })}
         </ul>
+        <div className="mt-6 pt-4 border-t border-border">
+          <button
+            type="button"
+            onClick={() => onNavigate(firstSectionId)}
+            className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+          >
+            <CornerDownRight className="w-3 h-3 rotate-180" />
+            Voltar ao topo
+          </button>
+        </div>
       </div>
     </aside>
   );
@@ -537,51 +595,182 @@ function DocsCommandPalette({ open, onOpenChange, onNavigate }) {
 
 function SectionBlock({ section, isFirst, totalEndpoints }) {
   const Icon = section.icon;
+  const epCount = section.endpoints?.length || 0;
+  const authCount = (section.endpoints || []).filter((e) => e.auth).length;
+  const publicCount = epCount - authCount;
+  const sectionsCount = API_SECTIONS.length;
+
   return (
     <section id={`section-${section.id}`} className="scroll-mt-6">
       {isFirst && (
-        <div className="mb-10">
-          <Badge
-            variant="outline"
-            className="mb-4 text-[11px] uppercase tracking-wider border-primary/30 text-primary"
-          >
-            API Reference · v1
-          </Badge>
-          <h1 className="text-4xl font-bold tracking-tight text-foreground">
+        <div className="mb-14 relative">
+          <div className="absolute inset-0 -z-10 bg-gradient-to-br from-primary/5 via-transparent to-purple-500/5 blur-2xl rounded-3xl" />
+          <div className="flex flex-wrap items-center gap-2 mb-5">
+            <Badge
+              variant="outline"
+              className="text-[11px] uppercase tracking-wider border-primary/30 text-primary bg-primary/5 gap-1"
+            >
+              <Sparkles className="w-3 h-3" />
+              API Reference · v1
+            </Badge>
+            <Badge
+              variant="outline"
+              className="text-[11px] gap-1 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/5"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Operacional
+            </Badge>
+          </div>
+          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-foreground bg-clip-text bg-gradient-to-br from-foreground to-foreground/70">
             Documentação da API Bomflow
           </h1>
-          <p className="mt-3 text-base text-muted-foreground leading-relaxed max-w-2xl">
-            Referência completa da API REST do Bomflow. {totalEndpoints} endpoints documentados,
-            organizados por área funcional. Use estes endpoints para integrar sistemas externos,
-            automatizar fluxos ou construir novas ferramentas sobre a base.
+          <p className="mt-4 text-base sm:text-[17px] text-muted-foreground leading-relaxed max-w-3xl">
+            Referência completa da API REST do Bomflow.{" "}
+            <strong className="text-foreground font-semibold">
+              {totalEndpoints} endpoints
+            </strong>{" "}
+            documentados em{" "}
+            <strong className="text-foreground font-semibold">
+              {sectionsCount} áreas funcionais
+            </strong>
+            . Integre sistemas externos, automatize fluxos ou construa novas
+            ferramentas sobre a base.
           </p>
-          <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <InfoTile label="Base URL" value={API_META.baseUrl} mono />
-            <InfoTile label="Autenticação" value={API_META.authScheme} icon={Lock} />
-            <InfoTile label="Formato" value={API_META.contentType} mono />
+
+          <div className="mt-8 grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <InfoTile
+              label="Base URL"
+              value={API_META.baseUrl}
+              mono
+              icon={Link2}
+              accent="primary"
+            />
+            <InfoTile
+              label="Autenticação"
+              value={API_META.authScheme}
+              icon={Lock}
+              accent="amber"
+            />
+            <InfoTile
+              label="Formato"
+              value={API_META.contentType}
+              mono
+              icon={Code2}
+              accent="violet"
+            />
+            <InfoTile
+              label="Endpoints"
+              value={`${totalEndpoints} disponíveis`}
+              icon={Layers}
+              accent="emerald"
+            />
+          </div>
+
+          <div className="mt-8 rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-muted/40">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-primary" />
+                <span className="text-sm font-semibold text-foreground">
+                  Início rápido
+                </span>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] font-mono ml-1"
+                >
+                  curl
+                </Badge>
+              </div>
+              <span className="text-[11px] text-muted-foreground">
+                Faça login e obtenha um access token
+              </span>
+            </div>
+            <div className="p-0">
+              <CodeBlock
+                code={`curl -X POST ${API_META.productionBaseUrl}/auth/login \\\n  -H "Content-Type: application/json" \\\n  -d '{"email":"voce@empresa.com","password":"sua-senha"}'`}
+                language="bash"
+                noFrame
+              />
+            </div>
           </div>
         </div>
       )}
 
-      <div className="flex items-center gap-3 mb-2">
-        {Icon && (
-          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Icon className="w-5 h-5 text-primary" />
+      {!isFirst && (
+        <div className="mb-8 rounded-2xl border border-border bg-gradient-to-br from-muted/30 via-card to-card p-6 sm:p-7">
+          <div className="flex items-start gap-4">
+            {Icon && (
+              <div className="relative flex-shrink-0">
+                <div className="absolute inset-0 bg-primary/20 blur-md rounded-xl" />
+                <div className="relative w-12 h-12 rounded-xl bg-primary/10 ring-1 ring-primary/20 flex items-center justify-center">
+                  <Icon className="w-6 h-6 text-primary" />
+                </div>
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <h2 className="text-2xl sm:text-[26px] font-bold text-foreground">
+                  {section.title}
+                </h2>
+                {epCount > 0 && (
+                  <Badge
+                    variant="secondary"
+                    className="text-[11px] font-mono"
+                  >
+                    {epCount} {epCount === 1 ? "endpoint" : "endpoints"}
+                  </Badge>
+                )}
+              </div>
+              {(authCount > 0 || publicCount > 0) && (
+                <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground mb-3">
+                  {authCount > 0 && (
+                    <span className="inline-flex items-center gap-1">
+                      <Lock className="w-3 h-3 text-amber-500" />
+                      {authCount} com autenticação
+                    </span>
+                  )}
+                  {publicCount > 0 && (
+                    <span className="inline-flex items-center gap-1">
+                      <Globe className="w-3 h-3 text-emerald-500" />
+                      {publicCount} {publicCount === 1 ? "público" : "públicos"}
+                    </span>
+                  )}
+                </div>
+              )}
+              {section.overview && (
+                <div className="text-[14px] text-muted-foreground leading-relaxed whitespace-pre-line max-w-4xl">
+                  {renderInline(section.overview)}
+                </div>
+              )}
+            </div>
           </div>
-        )}
-        <h2 className="text-2xl font-bold text-foreground">{section.title}</h2>
-      </div>
-      {section.overview && (
-        <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
-          {renderInline(section.overview)}
-        </p>
+        </div>
       )}
 
-      <div className="mt-8 space-y-10">
-        {(section.endpoints || []).map((ep) => (
-          <EndpointCard key={ep.id} endpoint={ep} />
-        ))}
-      </div>
+      {isFirst && section.overview && (
+        <div className="mt-10 mb-4 flex items-start gap-3">
+          {Icon && (
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Icon className="w-5 h-5 text-primary" />
+            </div>
+          )}
+          <div className="flex-1">
+            <h2 className="text-2xl font-bold text-foreground mb-2">
+              {section.title}
+            </h2>
+            <div className="text-[14px] text-muted-foreground leading-relaxed whitespace-pre-line">
+              {renderInline(section.overview)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {epCount > 0 && (
+        <div className="mt-8 space-y-12">
+          {section.endpoints.map((ep) => (
+            <EndpointCard key={ep.id} endpoint={ep} />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -603,80 +792,183 @@ function renderInline(text) {
 
 function EndpointCard({ endpoint }) {
   const [tab, setTab] = useState("curl");
+  const [copiedUrl, setCopiedUrl] = useState(false);
   const baseUrl = API_META.productionBaseUrl;
+  const fullUrl = `${baseUrl}${endpoint.path}`;
 
   const codeExamples = {
     curl: buildCurlExample(endpoint, baseUrl),
     js: buildJsExample(endpoint, baseUrl),
   };
 
+  const hasNoInputs =
+    (!endpoint.params || endpoint.params.length === 0) &&
+    (!endpoint.query || endpoint.query.length === 0) &&
+    (!endpoint.body || endpoint.body.length === 0);
+
+  const copyUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(fullUrl);
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const respStatus = endpoint.response?.status;
+  const respIsSuccess = respStatus && respStatus >= 200 && respStatus < 300;
+
   return (
-    <article id={`ep-${endpoint.id}`} className="scroll-mt-6">
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        <header className="px-5 py-4 border-b border-border bg-muted/30">
-          <div className="flex flex-wrap items-center gap-2">
+    <article id={`ep-${endpoint.id}`} className="scroll-mt-6 group/card">
+      <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+        <header className="px-6 py-5 border-b border-border bg-gradient-to-br from-muted/40 via-muted/20 to-transparent">
+          <div className="flex flex-wrap items-center gap-2.5">
             <span
-              className={`text-[11px] font-mono font-bold px-2 py-1 rounded ${HTTP_METHOD_COLORS[endpoint.method]}`}
+              className={`text-[11px] font-mono font-bold px-2.5 py-1 rounded-md ring-1 ring-inset ring-current/10 ${HTTP_METHOD_COLORS[endpoint.method]}`}
             >
               {endpoint.method}
             </span>
-            <code className="text-sm font-mono text-foreground font-medium break-all">
+            <code className="text-[15px] font-mono text-foreground font-semibold break-all">
               {endpoint.path}
             </code>
-            {endpoint.auth ? (
-              <Badge
-                variant="outline"
-                className="ml-auto gap-1 text-[10px] border-amber-200 text-amber-700 dark:border-amber-800/60 dark:text-amber-300"
-              >
-                <Lock className="w-3 h-3" /> Auth
-              </Badge>
-            ) : (
-              <Badge
-                variant="outline"
-                className="ml-auto gap-1 text-[10px] border-emerald-200 text-emerald-700 dark:border-emerald-800/60 dark:text-emerald-300"
-              >
-                <Globe className="w-3 h-3" /> Público
-              </Badge>
-            )}
+            <a
+              href={`#ep-${endpoint.id}`}
+              aria-label="Link para este endpoint"
+              className="opacity-0 group-hover/card:opacity-100 focus-visible:opacity-100 transition-opacity p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Hash className="w-3.5 h-3.5" />
+            </a>
+            <div className="ml-auto flex items-center gap-1.5">
+              {endpoint.auth ? (
+                <Badge
+                  variant="outline"
+                  className="gap-1 text-[10px] border-amber-200 text-amber-700 dark:border-amber-800/60 dark:text-amber-300 bg-amber-50/50 dark:bg-amber-950/20"
+                >
+                  <Lock className="w-3 h-3" /> Bearer
+                </Badge>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="gap-1 text-[10px] border-emerald-200 text-emerald-700 dark:border-emerald-800/60 dark:text-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20"
+                >
+                  <Globe className="w-3 h-3" /> Público
+                </Badge>
+              )}
+            </div>
           </div>
-          <h3 className="mt-2 text-base font-semibold text-foreground">
+          <h3 className="mt-3 text-lg font-semibold text-foreground">
             {endpoint.title}
           </h3>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-1.5 text-[14px] text-muted-foreground leading-relaxed max-w-3xl">
             {endpoint.description}
           </p>
+
+          <div className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-background/80 px-3 py-2">
+            <Link2 className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+            <code className="flex-1 text-[12px] font-mono text-muted-foreground truncate">
+              {fullUrl}
+            </code>
+            <button
+              type="button"
+              onClick={copyUrl}
+              title="Copiar URL"
+              className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              {copiedUrl ? (
+                <>
+                  <Check className="w-3 h-3 text-emerald-500" /> Copiado
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3" /> Copiar
+                </>
+              )}
+            </button>
+          </div>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x divide-border">
-          <div className="p-5 space-y-5">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-0 lg:divide-x divide-border">
+          <div className="p-6 space-y-6">
+            <div>
+              <SectionLabel icon={ShieldAlert} label="Headers" />
+              <div className="border border-border rounded-lg overflow-hidden">
+                <table className="w-full text-[13px]">
+                  <tbody className="divide-y divide-border">
+                    <tr className="hover:bg-muted/40">
+                      <td className="px-3 py-2.5 align-top w-2/5">
+                        <code className="font-mono font-medium text-[12.5px] text-primary">
+                          Content-Type
+                        </code>
+                        <div className="mt-0.5 text-[11px] text-muted-foreground font-mono">
+                          string
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-muted-foreground leading-relaxed text-[12.5px]">
+                        <code className="font-mono text-foreground/80">
+                          application/json
+                        </code>
+                      </td>
+                    </tr>
+                    {endpoint.auth && (
+                      <tr className="hover:bg-muted/40">
+                        <td className="px-3 py-2.5 align-top">
+                          <code className="font-mono font-medium text-[12.5px] text-primary">
+                            Authorization
+                          </code>
+                          <RequiredPill />
+                          <div className="mt-0.5 text-[11px] text-muted-foreground font-mono">
+                            string
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground leading-relaxed text-[12.5px]">
+                          <code className="font-mono text-foreground/80">
+                            Bearer &lt;accessToken&gt;
+                          </code>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             {endpoint.params && endpoint.params.length > 0 && (
-              <ParamTable title="Path Params" rows={endpoint.params} />
+              <ParamTable
+                title="Path Params"
+                icon={CornerDownRight}
+                rows={endpoint.params}
+              />
             )}
             {endpoint.query && endpoint.query.length > 0 && (
-              <ParamTable title="Query Params" rows={endpoint.query} />
+              <ParamTable
+                title="Query Params"
+                icon={Search}
+                rows={endpoint.query}
+              />
             )}
             {endpoint.body && endpoint.body.length > 0 && (
-              <ParamTable title="Body" rows={endpoint.body} />
+              <ParamTable
+                title="Request Body"
+                icon={Code2}
+                rows={endpoint.body}
+              />
             )}
-            {(!endpoint.params || endpoint.params.length === 0) &&
-              (!endpoint.query || endpoint.query.length === 0) &&
-              (!endpoint.body || endpoint.body.length === 0) && (
-                <div className="text-xs text-muted-foreground italic">
-                  Este endpoint não recebe parâmetros.
-                </div>
-              )}
+            {hasNoInputs && (
+              <div className="text-[12px] text-muted-foreground italic px-3 py-3 rounded-md bg-muted/30 border border-dashed border-border">
+                Este endpoint não recebe parâmetros adicionais.
+              </div>
+            )}
           </div>
 
-          <div className="p-5 space-y-4 bg-muted/20">
+          <div className="p-6 space-y-5 bg-muted/20">
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1 text-xs font-medium text-foreground">
-                  <Terminal className="w-3.5 h-3.5" /> Requisição
-                </div>
-                <div className="inline-flex bg-muted rounded-md p-0.5 text-[11px]">
+              <div className="flex items-center justify-between mb-2.5">
+                <SectionLabel icon={Terminal} label="Requisição" inline />
+                <div className="inline-flex bg-muted/70 rounded-md p-0.5 text-[11px]">
                   <button
                     onClick={() => setTab("curl")}
-                    className={`px-2 py-0.5 rounded transition-colors ${
+                    className={`px-2.5 py-1 rounded transition-colors font-medium ${
                       tab === "curl"
                         ? "bg-background text-foreground shadow-sm"
                         : "text-muted-foreground hover:text-foreground"
@@ -687,7 +979,7 @@ function EndpointCard({ endpoint }) {
                   </button>
                   <button
                     onClick={() => setTab("js")}
-                    className={`px-2 py-0.5 rounded transition-colors ${
+                    className={`px-2.5 py-1 rounded transition-colors font-medium ${
                       tab === "js"
                         ? "bg-background text-foreground shadow-sm"
                         : "text-muted-foreground hover:text-foreground"
@@ -706,17 +998,31 @@ function EndpointCard({ endpoint }) {
 
             {endpoint.response && (
               <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Code2 className="w-3.5 h-3.5 text-foreground" />
-                  <span className="text-xs font-medium text-foreground">
-                    Resposta
-                  </span>
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] gap-1 border-emerald-200 text-emerald-700 dark:border-emerald-800/60 dark:text-emerald-300"
-                  >
-                    {endpoint.response.status}
-                  </Badge>
+                <div className="flex items-center justify-between mb-2.5">
+                  <SectionLabel icon={Code2} label="Resposta" inline />
+                  <div className="flex items-center gap-1.5">
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] gap-1 font-mono ${
+                        respIsSuccess
+                          ? "border-emerald-300/60 text-emerald-700 dark:border-emerald-800/60 dark:text-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/30"
+                          : "border-rose-300/60 text-rose-700 dark:border-rose-800/60 dark:text-rose-300 bg-rose-50/60 dark:bg-rose-950/30"
+                      }`}
+                    >
+                      {respIsSuccess ? (
+                        <CircleCheck className="w-3 h-3" />
+                      ) : (
+                        <CircleSlash className="w-3 h-3" />
+                      )}
+                      {respStatus} {respIsSuccess ? "OK" : "Error"}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-mono"
+                    >
+                      JSON
+                    </Badge>
+                  </div>
                 </div>
                 <CodeBlock
                   code={JSON.stringify(endpoint.response.example, null, 2)}
@@ -724,6 +1030,15 @@ function EndpointCard({ endpoint }) {
                 />
               </div>
             )}
+
+            <div className="text-[11px] text-muted-foreground/80 flex items-center gap-1.5">
+              <Activity className="w-3 h-3" />
+              Em caso de erro, a resposta segue o formato{" "}
+              <code className="font-mono text-foreground/80">
+                {`{ error: string }`}
+              </code>{" "}
+              com o status HTTP apropriado.
+            </div>
           </div>
         </div>
       </div>
@@ -731,31 +1046,58 @@ function EndpointCard({ endpoint }) {
   );
 }
 
-function ParamTable({ title, rows }) {
+function SectionLabel({ icon: Icon, label, inline }) {
+  return (
+    <div
+      className={`flex items-center gap-1.5 text-foreground ${
+        inline ? "" : "mb-2.5"
+      }`}
+    >
+      {Icon && <Icon className="w-3.5 h-3.5 text-muted-foreground" />}
+      <span className="text-[11px] font-semibold uppercase tracking-wider">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function RequiredPill() {
+  return (
+    <span className="ml-1.5 text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+      required
+    </span>
+  );
+}
+
+function TypePill({ type }) {
+  return (
+    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-muted/60 text-muted-foreground border border-border/60">
+      {type}
+    </span>
+  );
+}
+
+function ParamTable({ title, icon, rows }) {
   return (
     <div>
-      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-        {title}
-      </h4>
+      <SectionLabel icon={icon} label={title} />
       <div className="border border-border rounded-lg overflow-hidden">
-        <table className="w-full text-xs">
+        <table className="w-full text-[13px]">
           <tbody className="divide-y divide-border">
             {rows.map((row, i) => (
-              <tr key={i} className="hover:bg-muted/40">
-                <td className="px-3 py-2.5 align-top w-2/5">
-                  <code className="font-mono font-medium text-[12px] text-primary break-all">
-                    {row.name}
-                  </code>
-                  {row.required && (
-                    <span className="ml-1.5 text-[10px] text-destructive font-semibold">
-                      required
-                    </span>
-                  )}
-                  <div className="mt-0.5 text-[10.5px] text-muted-foreground font-mono">
-                    {row.type}
+              <tr key={i} className="hover:bg-muted/40 transition-colors">
+                <td className="px-3 py-3 align-top w-[42%]">
+                  <div className="flex flex-wrap items-center gap-1">
+                    <code className="font-mono font-semibold text-[12.5px] text-primary break-all">
+                      {row.name}
+                    </code>
+                    {row.required && <RequiredPill />}
+                  </div>
+                  <div className="mt-1">
+                    <TypePill type={row.type} />
                   </div>
                 </td>
-                <td className="px-3 py-2.5 text-muted-foreground leading-relaxed">
+                <td className="px-3 py-3 text-muted-foreground leading-relaxed text-[12.5px]">
                   {row.description}
                 </td>
               </tr>
@@ -767,7 +1109,7 @@ function ParamTable({ title, rows }) {
   );
 }
 
-function CodeBlock({ code, language }) {
+function CodeBlock({ code, language, noFrame }) {
   const [copied, setCopied] = useState(false);
   const onCopy = async () => {
     try {
@@ -779,11 +1121,22 @@ function CodeBlock({ code, language }) {
     }
   };
   return (
-    <div className="relative group rounded-lg bg-slate-900 dark:bg-slate-950 text-slate-100 overflow-hidden ring-1 ring-slate-800">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800">
-        <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
-          {language}
-        </span>
+    <div
+      className={`relative group bg-slate-950 text-slate-100 overflow-hidden ${
+        noFrame ? "" : "rounded-lg ring-1 ring-slate-800"
+      }`}
+    >
+      <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800/80 bg-slate-900/40">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-rose-500/70" />
+            <span className="w-2 h-2 rounded-full bg-amber-500/70" />
+            <span className="w-2 h-2 rounded-full bg-emerald-500/70" />
+          </div>
+          <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 ml-1">
+            {language}
+          </span>
+        </div>
         <button
           onClick={onCopy}
           className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium text-slate-300 bg-slate-800/80 hover:bg-slate-700 transition-colors"
@@ -801,22 +1154,70 @@ function CodeBlock({ code, language }) {
           )}
         </button>
       </div>
-      <pre className="px-4 py-3 text-[12px] font-mono leading-relaxed overflow-x-auto whitespace-pre">
+      <pre className="px-4 py-3.5 text-[12.5px] font-mono leading-relaxed overflow-x-auto whitespace-pre">
         <code>{code}</code>
       </pre>
     </div>
   );
 }
 
-function InfoTile({ label, value, icon: Icon, mono }) {
+const ACCENT_STYLES = {
+  primary: {
+    border: "border-primary/20",
+    bg: "bg-primary/5",
+    icon: "text-primary",
+    iconBg: "bg-primary/10",
+  },
+  emerald: {
+    border: "border-emerald-500/20",
+    bg: "bg-emerald-500/5",
+    icon: "text-emerald-600 dark:text-emerald-400",
+    iconBg: "bg-emerald-500/10",
+  },
+  amber: {
+    border: "border-amber-500/20",
+    bg: "bg-amber-500/5",
+    icon: "text-amber-600 dark:text-amber-400",
+    iconBg: "bg-amber-500/10",
+  },
+  violet: {
+    border: "border-violet-500/20",
+    bg: "bg-violet-500/5",
+    icon: "text-violet-600 dark:text-violet-400",
+    iconBg: "bg-violet-500/10",
+  },
+};
+
+function InfoTile({ label, value, icon: Icon, mono, accent }) {
+  const styles = ACCENT_STYLES[accent] || {
+    border: "border-border",
+    bg: "bg-muted/30",
+    icon: "text-muted-foreground",
+    iconBg: "bg-muted",
+  };
   return (
-    <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1.5">
-        {Icon && <Icon className="w-3 h-3" />}
-        {label}
-      </div>
-      <div className={`mt-1 text-sm text-foreground ${mono ? "font-mono" : ""}`}>
-        {value}
+    <div
+      className={`rounded-xl border ${styles.border} ${styles.bg} px-4 py-3.5 transition-all hover:shadow-sm`}
+    >
+      <div className="flex items-center gap-2">
+        {Icon && (
+          <div
+            className={`w-7 h-7 rounded-lg ${styles.iconBg} flex items-center justify-center flex-shrink-0`}
+          >
+            <Icon className={`w-3.5 h-3.5 ${styles.icon}`} />
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            {label}
+          </div>
+          <div
+            className={`mt-0.5 text-[13px] text-foreground font-medium truncate ${mono ? "font-mono" : ""}`}
+            title={value}
+          >
+            {value}
+          </div>
+        </div>
       </div>
     </div>
   );
