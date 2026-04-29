@@ -1394,7 +1394,7 @@ router.put('/referrals/reactivations/:id', authMiddleware, loadAgentMiddleware, 
     }
 
     const { id } = req.params;
-    const { nome_completo_cliente, telefone, atendente_id, observacoes } = req.body;
+    const { cpf, nome_completo_cliente, telefone, atendente_id, observacoes } = req.body;
 
     const existing = await query(`SELECT * FROM referral_reactivations WHERE id = $1`, [id]);
     if (existing.rows.length === 0) {
@@ -1418,16 +1418,25 @@ router.put('/referrals/reactivations/:id', authMiddleware, loadAgentMiddleware, 
       resolvedAtendenteId = atendente_id;
     }
 
+    let newCpf = record.cpf;
+    if (cpf !== undefined) {
+      const cleanCpf = (cpf || '').replace(/\D/g, '');
+      if (cleanCpf.length > 0 && cleanCpf.length !== 11) {
+        return res.status(400).json({ message: 'CPF inválido. Informe 11 dígitos ou deixe em branco.' });
+      }
+      newCpf = cleanCpf || null;
+    }
+
     const cleanTelefone = telefone ? (telefone.replace(/\D/g, '') || null) : record.telefone;
     const newNome = nome_completo_cliente?.trim() || record.nome_completo_cliente;
     const newObs = observacoes !== undefined ? (observacoes?.trim() || null) : record.observacoes;
 
     const result = await query(
       `UPDATE referral_reactivations
-       SET nome_completo_cliente = $1, telefone = $2, atendente_id = $3, observacoes = $4, updated_at = NOW()
-       WHERE id = $5
+       SET cpf = $1, nome_completo_cliente = $2, telefone = $3, atendente_id = $4, observacoes = $5, updated_at = NOW()
+       WHERE id = $6
        RETURNING *`,
-      [newNome, cleanTelefone, resolvedAtendenteId, newObs, id]
+      [newCpf, newNome, cleanTelefone, resolvedAtendenteId, newObs, id]
     );
 
     res.json({ success: true, data: convertKeysToCamel(result.rows[0]) });

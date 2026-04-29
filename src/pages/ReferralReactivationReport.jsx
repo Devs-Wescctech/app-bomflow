@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { buscarClienteERP } from "@/api/erpService";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +27,9 @@ import {
   Pencil,
   Save,
   X,
+  CheckCircle,
 } from "lucide-react";
+import { toast } from "sonner";
 import { format, parseISO, startOfDay, endOfDay, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { createPageUrl } from "@/utils";
@@ -37,6 +40,22 @@ const formatCPF = (cpf) => {
   if (!cpf) return "-";
   const clean = String(cpf).replace(/\D/g, '').padStart(11, '0');
   return clean.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+};
+
+const formatCPFInput = (value) => {
+  const clean = String(value || '').replace(/\D/g, '').slice(0, 11);
+  if (clean.length <= 3) return clean;
+  if (clean.length <= 6) return `${clean.slice(0, 3)}.${clean.slice(3)}`;
+  if (clean.length <= 9) return `${clean.slice(0, 3)}.${clean.slice(3, 6)}.${clean.slice(6)}`;
+  return `${clean.slice(0, 3)}.${clean.slice(3, 6)}.${clean.slice(6, 9)}-${clean.slice(9)}`;
+};
+
+const formatPhoneInput = (value) => {
+  const clean = String(value || '').replace(/\D/g, '').slice(0, 11);
+  if (clean.length <= 2) return clean;
+  if (clean.length <= 6) return `(${clean.slice(0, 2)}) ${clean.slice(2)}`;
+  if (clean.length <= 10) return `(${clean.slice(0, 2)}) ${clean.slice(2, 6)}-${clean.slice(6)}`;
+  return `(${clean.slice(0, 2)}) ${clean.slice(2, 7)}-${clean.slice(7)}`;
 };
 
 const formatPhone = (phone) => {
@@ -92,6 +111,8 @@ export default function ReferralReactivationReport() {
   const [editingRow, setEditingRow] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [editError, setEditError] = useState("");
+  const [searchingERP, setSearchingERP] = useState(false);
+  const [erpFound, setErpFound] = useState(null);
 
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
@@ -209,12 +230,46 @@ export default function ReferralReactivationReport() {
   const handleOpenEdit = (row) => {
     setEditingRow(row);
     setEditError("");
+    setErpFound(null);
     setEditForm({
+      cpf: row.cpf ? formatCPF(row.cpf) : "",
       nome_completo_cliente: row.nomeCompletoCliente || "",
-      telefone: row.telefone || "",
+      telefone: row.telefone ? formatPhoneInput(row.telefone) : "",
       atendente_id: row.atendenteId || "",
       observacoes: row.observacoes || "",
     });
+  };
+
+  const handleEditCPFSearch = async () => {
+    const cleanCpf = (editForm.cpf || '').replace(/\D/g, '');
+    if (cleanCpf.length !== 11) {
+      toast.error('Digite um CPF válido com 11 dígitos.');
+      return;
+    }
+    setSearchingERP(true);
+    setErpFound(null);
+    try {
+      const response = await buscarClienteERP(cleanCpf);
+      if (response?.success && response?.data?.contact?.name) {
+        const nome = response.data.contact.name;
+        const fone = response.data.contact?.phone || response.data.contact?.celular || response.data.contact?.telefone || '';
+        setEditForm((f) => ({
+          ...f,
+          nome_completo_cliente: nome,
+          telefone: fone ? formatPhoneInput(fone) : f.telefone,
+        }));
+        setErpFound(true);
+        toast.success(`Cliente encontrado: ${nome}`);
+      } else {
+        setErpFound(false);
+        toast.error('CPF não encontrado no ERP.');
+      }
+    } catch (err) {
+      setErpFound(false);
+      toast.error(err?.message || 'Erro ao consultar o ERP.');
+    } finally {
+      setSearchingERP(false);
+    }
   };
 
   const handleSaveEdit = () => {
@@ -222,7 +277,20 @@ export default function ReferralReactivationReport() {
       setEditError("Nome do cliente é obrigatório.");
       return;
     }
-    updateMutation.mutate({ id: editingRow.id, body: editForm });
+    const cleanCpf = (editForm.cpf || '').replace(/\D/g, '');
+    if (cleanCpf.length > 0 && cleanCpf.length !== 11) {
+      setEditError("CPF inválido. Informe 11 dígitos ou deixe em branco.");
+      return;
+    }
+    const cleanPhone = (editForm.telefone || '').replace(/\D/g, '');
+    const payload = {
+      cpf: cleanCpf || null,
+      nome_completo_cliente: editForm.nome_completo_cliente.trim(),
+      telefone: cleanPhone || null,
+      atendente_id: editForm.atendente_id,
+      observacoes: (editForm.observacoes || '').trim() || null,
+    };
+    updateMutation.mutate({ id: editingRow.id, body: payload });
   };
 
   return (
@@ -457,7 +525,7 @@ export default function ReferralReactivationReport() {
         </Card>
       </div>
 
-      <Dialog open={!!editingRow} onOpenChange={(open) => { if (!open) { setEditingRow(null); setEditError(""); } }}>
+      <Dialog open={!!editingRow} onOpenChange={(open) => { if (!open) { setEditingRow(null); setEditError(""); setErpFound(null); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
@@ -470,8 +538,47 @@ export default function ReferralReactivationReport() {
 
           {editingRow && (
             <div className="space-y-4 py-1">
-              <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-lg text-xs text-gray-500 dark:text-gray-400 font-mono">
-                CPF: {formatCPF(editingRow.cpf)}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                  CPF <span className="text-gray-400 font-normal">(opcional)</span>
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={editForm.cpf || ""}
+                    onChange={(e) => {
+                      setEditForm((f) => ({ ...f, cpf: formatCPFInput(e.target.value) }));
+                      setErpFound(null);
+                    }}
+                    placeholder="000.000.000-00"
+                    className="h-9 flex-1 font-mono"
+                    maxLength={14}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleEditCPFSearch}
+                    disabled={searchingERP || (editForm.cpf || '').replace(/\D/g, '').length !== 11}
+                    className="h-9 shrink-0 gap-1.5"
+                  >
+                    {searchingERP ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Search className="w-3.5 h-3.5" />
+                    )}
+                    <span className="hidden sm:inline">ERP</span>
+                  </Button>
+                </div>
+                {erpFound === true && (
+                  <p className="text-[11px] text-green-600 dark:text-green-400 flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" /> Cliente localizado no ERP
+                  </p>
+                )}
+                {erpFound === false && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                    CPF não encontrado.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -488,7 +595,7 @@ export default function ReferralReactivationReport() {
                 <Label className="text-xs font-medium text-gray-600 dark:text-gray-400">Telefone</Label>
                 <Input
                   value={editForm.telefone || ""}
-                  onChange={(e) => setEditForm((f) => ({ ...f, telefone: e.target.value }))}
+                  onChange={(e) => setEditForm((f) => ({ ...f, telefone: formatPhoneInput(e.target.value) }))}
                   placeholder="(00) 00000-0000"
                   className="h-9"
                 />
