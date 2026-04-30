@@ -2474,7 +2474,7 @@ router.post('/generate-proposal', authMiddleware, async (req, res) => {
     }
     const template = templateResult.rows[0];
     
-    const tableName = lead_type === 'pj' ? 'leads_pj' : lead_type === 'referral' ? 'referrals' : 'leads';
+    const tableName = lead_type === 'pj' ? 'leads_pj' : lead_type === 'referral' ? 'referrals' : lead_type === 'upsell' ? 'leads_upsell' : 'leads';
     const leadResult = await query(`SELECT * FROM ${tableName} WHERE id = $1`, [lead_id]);
     if (leadResult.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Lead não encontrado' });
@@ -2516,7 +2516,7 @@ router.post('/send-proposal-whatsapp', authMiddleware, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Lead ID é obrigatório' });
     }
     
-    const tableName = lead_type === 'pj' ? 'leads_pj' : lead_type === 'referral' ? 'referrals' : 'leads';
+    const tableName = lead_type === 'pj' ? 'leads_pj' : lead_type === 'referral' ? 'referrals' : lead_type === 'upsell' ? 'leads_upsell' : 'leads';
     const leadResult = await query(`SELECT * FROM ${tableName} WHERE id = $1`, [leadId]);
     if (leadResult.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Lead não encontrado' });

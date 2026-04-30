@@ -208,6 +208,8 @@ import SalesUpsellDashboard from "./SalesUpsellDashboard";
 import SalesUpsellAgentsDashboard from "./SalesUpsellAgentsDashboard";
 import SalesUpsellReports from "./SalesUpsellReports";
 import SalesUpsellWonReport from "./SalesUpsellWonReport";
+import SalesUpsellTasks from "./SalesUpsellTasks";
+import SalesUpsellAgenda from "./SalesUpsellAgenda";
 import ReferralWonReport from "./ReferralWonReport";
 
 import Login from "./Login";
@@ -420,6 +422,8 @@ const PAGES = {
     SalesUpsellAgentsDashboard: SalesUpsellAgentsDashboard,
     SalesUpsellReports: SalesUpsellReports,
     SalesUpsellWonReport: SalesUpsellWonReport,
+    SalesUpsellTasks: SalesUpsellTasks,
+    SalesUpsellAgenda: SalesUpsellAgenda,
     ReferralWonReport: ReferralWonReport,
     
 }
@@ -662,6 +666,8 @@ function PagesContent() {
                 <Route path="/SalesUpsellAgentsDashboard" element={<SalesUpsellAgentsDashboard />} />
                 <Route path="/SalesUpsellReports" element={<SalesUpsellReports />} />
                 <Route path="/SalesUpsellWonReport" element={<SalesUpsellWonReport />} />
+                <Route path="/SalesUpsellTasks" element={<SalesUpsellTasks />} />
+                <Route path="/SalesUpsellAgenda" element={<SalesUpsellAgenda />} />
                 <Route path="/ReferralWonReport" element={<ReferralWonReport />} />
                 
             </Routes>

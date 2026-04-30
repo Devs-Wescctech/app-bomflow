@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { canAccessReports, canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
+import { canAccessReports, canViewAll, canViewTeam, isUpsellPrivileged } from "@/components/utils/permissions.jsx";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 import { LEAD_PF_STAGES } from "@/constants/stages";
 
@@ -41,7 +41,7 @@ export default function SalesUpsellReports() {
 
   const currentAgent = user?.agent;
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
+  const isAdmin = isUpsellPrivileged(user, currentAgent);
   const isSupervisor = currentAgentType?.includes('supervisor') || currentAgentType === 'supervisor';
   const hasPermission = isAdmin || isSupervisor || canAccessReports(currentAgent);
 

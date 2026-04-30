@@ -26,6 +26,7 @@ import {
 import { format, startOfMonth, endOfMonth, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
+import { isUpsellPrivileged } from "@/components/utils/permissions.jsx";
 
 export default function SalesUpsellAgentsDashboard() {
   const [selectedTeam, setSelectedTeam] = useState(null);
@@ -43,7 +44,7 @@ export default function SalesUpsellAgentsDashboard() {
 
   const currentAgent = user?.agent;
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
+  const isAdmin = isUpsellPrivileged(user, currentAgent);
   const isSupervisor = user?.role === 'supervisor' || currentAgentType?.includes('supervisor');
   const isSalesAgent = currentAgentType === 'sales' || currentAgentType === 'pre_sales' || currentAgentType === 'post_sales';
   const hasPermission = isAdmin || isSupervisor || isSalesAgent;

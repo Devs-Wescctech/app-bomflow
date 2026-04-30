@@ -73,6 +73,29 @@ export async function checkAndExecuteLeadPJAutomations() {
   }
 }
 
+export async function checkAndExecuteLeadUpsellAutomations() {
+  try {
+    const automationsResult = await query(`
+      SELECT * FROM lead_upsell_automations 
+      WHERE active = true 
+      ORDER BY priority ASC
+    `);
+    let automations = await loadAutomationTeamIds(automationsResult.rows, 'lead_upsell_automation_teams');
+
+    for (const automation of automations) {
+      const triggerConfig = typeof automation.trigger_config === 'string' 
+        ? JSON.parse(automation.trigger_config) 
+        : automation.trigger_config || {};
+
+      if (automation.trigger_type === 'inactivity' || automation.trigger_type === 'stage_duration') {
+        await checkInactivityTrigger(automation, triggerConfig, 'lead_upsell', 'leads_upsell');
+      }
+    }
+  } catch (error) {
+    console.error('Error checking lead upsell automations:', error);
+  }
+}
+
 export async function checkAndExecuteReferralAutomations() {
   try {
     const automationsResult = await query(`
@@ -682,10 +705,12 @@ async function updateAutomationCount(automationId, automationType) {
 export async function executeLeadCreatedAutomation(lead, leadType = 'lead') {
   const tableName = leadType === 'lead' ? 'lead_automations' 
     : leadType === 'lead_pj' ? 'lead_pj_automations' 
+    : leadType === 'lead_upsell' ? 'lead_upsell_automations'
     : 'referral_automations';
   
   const leadsTableName = leadType === 'lead' ? 'leads' 
     : leadType === 'lead_pj' ? 'leads_pj' 
+    : leadType === 'lead_upsell' ? 'leads_upsell'
     : 'referrals';
 
   try {
@@ -697,7 +722,9 @@ export async function executeLeadCreatedAutomation(lead, leadType = 'lead') {
       ORDER BY priority ASC
     `);
     
-    const junctionTable = leadType === 'lead_pj' ? 'lead_pj_automation_teams' : 'lead_automation_teams';
+    const junctionTable = leadType === 'lead_pj' ? 'lead_pj_automation_teams' 
+      : leadType === 'lead_upsell' ? 'lead_upsell_automation_teams'
+      : 'lead_automation_teams';
     let automations = await loadAutomationTeamIds(automationsResult.rows, junctionTable);
     
     if (automations.length === 0) {
@@ -730,11 +757,84 @@ export async function executeLeadCreatedAutomation(lead, leadType = 'lead') {
   }
 }
 
+export async function executeStageChangeAutomation(lead, fromStage, toStage, leadType = 'lead') {
+  if (!toStage || fromStage === toStage) return;
+
+  const tableName = leadType === 'lead' ? 'lead_automations' 
+    : leadType === 'lead_pj' ? 'lead_pj_automations' 
+    : leadType === 'lead_upsell' ? 'lead_upsell_automations'
+    : 'referral_automations';
+
+  const junctionTable = leadType === 'lead_pj' ? 'lead_pj_automation_teams' 
+    : leadType === 'lead_upsell' ? 'lead_upsell_automation_teams'
+    : 'lead_automation_teams';
+
+  try {
+    const automationsResult = await query(`
+      SELECT * FROM ${tableName} 
+      WHERE active = true 
+        AND trigger_type = 'stage_change'
+      ORDER BY priority ASC
+    `);
+
+    let automations = await loadAutomationTeamIds(automationsResult.rows, junctionTable);
+
+    if (automations.length === 0) {
+      console.log(`[Automation] No stage_change automations configured for ${leadType}`);
+      return;
+    }
+
+    const agentResult = lead.agent_id 
+      ? await query('SELECT name, phone, email FROM agents WHERE id = $1', [lead.agent_id])
+      : { rows: [] };
+
+    const agent = agentResult.rows[0] || null;
+    const enrichedLead = {
+      ...lead,
+      agent_name: agent?.name || 'Consultor',
+      agent_phone: agent?.phone || '',
+      agent_email: agent?.email || ''
+    };
+
+    for (const automation of automations) {
+      const triggerConfig = typeof automation.trigger_config === 'string' 
+        ? JSON.parse(automation.trigger_config) 
+        : automation.trigger_config || {};
+
+      // Filtra por estágio configurado: aceita string única ou array de stages
+      const targetStages = Array.isArray(triggerConfig.stages)
+        ? triggerConfig.stages
+        : (triggerConfig.stage ? [triggerConfig.stage] : null);
+
+      if (targetStages && !targetStages.includes(toStage)) {
+        continue;
+      }
+
+      // Filtro opcional do stage de origem
+      if (triggerConfig.fromStage && triggerConfig.fromStage !== fromStage) {
+        continue;
+      }
+
+      // Filtro de equipe
+      if (automation.team_ids && automation.team_ids.length > 0 && !automation.team_ids.includes(lead.team_id)) {
+        console.log(`[Automation] Skipping ${automation.name} — lead team (${lead.team_id}) not in automation teams`);
+        continue;
+      }
+
+      console.log(`[Automation] Executing stage_change automation ${automation.name} for ${leadType} (${fromStage} → ${toStage})`);
+      await executeAutomationAction(automation, enrichedLead, leadType);
+    }
+  } catch (error) {
+    console.error(`[Automation] Error executing stage_change automations for ${leadType}:`, error);
+  }
+}
+
 export async function runAllAutomations() {
   console.log('[Automations] Running all automation checks...');
   try {
     await checkAndExecuteLeadAutomations();
     await checkAndExecuteLeadPJAutomations();
+    await checkAndExecuteLeadUpsellAutomations();
     await checkAndExecuteReferralAutomations();
     await checkAndExecuteReferralChannelAutomations();
     console.log('[Automations] Automation checks completed.');

@@ -60,7 +60,7 @@ import { toast } from "sonner";
 import LeadTimeline from "@/components/sales/LeadTimeline";
 import LeadPipelineHistory from "@/components/sales/LeadPipelineHistory";
 
-import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
+import { canViewAll, canViewTeam, isUpsellAdmin } from "@/components/utils/permissions.jsx";
 
 const STAGES = [
   { value: "novo", label: "Novo", color: "bg-gray-500", badge: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100" },
@@ -108,6 +108,7 @@ export default function LeadUpsellDetail() {
   const [newNote, setNewNote] = useState("");
   const [newTask, setNewTask] = useState({ title: "", scheduled_at: "" });
   const [generatingProposal, setGeneratingProposal] = useState(false);
+  const [activeTab, setActiveTab] = useState("activities");
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [sendingAutentique, setSendingAutentique] = useState(false);
@@ -208,10 +209,12 @@ export default function LeadUpsellDetail() {
   const concludeSaleMutation = useMutation({
     mutationFn: async () => {
       const currentUser = await base44.auth.me();
+      const nowIso = new Date().toISOString();
       return upsell.entities.LeadUpsell.update(leadId, {
         concluded: true,
-        concludedAt: new Date().toISOString(),
+        concludedAt: nowIso,
         concludedBy: currentUser.email,
+        convertedAt: nowIso,
         stage: 'fechado_ganho',
       });
     },
@@ -563,7 +566,7 @@ export default function LeadUpsellDetail() {
   const currentAgentType = user?.agent?.agentType || user?.agent?.agent_type;
   const userAgent = user?.agent;
   
-  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
+  const isAdmin = isUpsellAdmin(user, userAgent);
   const isSupervisor = user?.role === 'supervisor' || currentAgentType?.includes('supervisor');
   
   const leadAgentId = lead?.agentId || lead?.agent_id;
@@ -896,7 +899,7 @@ export default function LeadUpsellDetail() {
                 size="sm"
                 variant="outline"
                 className="border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300"
-                onClick={() => document.querySelector('[data-value="tasks"]')?.click()}
+                onClick={() => setActiveTab("tasks")}
               >
                 Ver Tarefas
               </Button>
@@ -908,7 +911,7 @@ export default function LeadUpsellDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column: Tabs */}
           <div className="lg:col-span-2">
-            <Tabs defaultValue="activities" className="w-full">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="grid w-full grid-cols-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-1.5 shadow-sm">
                 <TabsTrigger 
                   value="activities" 

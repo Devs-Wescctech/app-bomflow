@@ -34,7 +34,7 @@ import {
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { createPageUrl } from "@/utils";
-import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
+import { canViewAll, canViewTeam, isUpsellPrivileged } from "@/components/utils/permissions.jsx";
 
 export default function LeadUpsellSearch() {
   const navigate = useNavigate();
@@ -60,7 +60,7 @@ export default function LeadUpsellSearch() {
 
   const currentAgent = user?.agent || allAgents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
+  const isAdmin = isUpsellPrivileged(user, currentAgent);
 
   const needsTeamFilter = !isAdmin && currentAgent && !canViewAll(currentAgent, 'leads') && canViewTeam(currentAgent, 'leads');
   const agentsReady = allAgents.length > 0;

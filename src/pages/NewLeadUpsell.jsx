@@ -82,7 +82,15 @@ export default function NewLeadUpsell() {
   const activeAgents = agents.filter(a => a.active !== false);
 
   const currentAgentType = user?.agent?.agentType || user?.agent?.agent_type;
-  const canSelectAgent = currentAgentType === 'admin' || currentAgentType === 'supervisor';
+  const canSelectAgent =
+    user?.role === 'admin' ||
+    user?.role === 'supervisor' ||
+    currentAgentType === 'admin' ||
+    currentAgentType === 'supervisor' ||
+    currentAgentType === 'upsell_admin' ||
+    currentAgentType === 'upsell_supervisor' ||
+    currentAgentType === 'sales_supervisor' ||
+    currentAgentType?.endsWith('_supervisor');
 
   useEffect(() => {
     if (user && !canSelectAgent && !formData.agent_id) {

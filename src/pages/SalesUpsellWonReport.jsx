@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
+import { canViewAll, canViewTeam, isUpsellPrivileged } from "@/components/utils/permissions.jsx";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 
 const createPageUrl = (pageName) => `/${pageName}`;
@@ -53,7 +53,7 @@ export default function SalesUpsellWonReport() {
 
   const currentAgent = user?.agent;
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor' || currentAgentType?.endsWith('_supervisor') || user?.role === 'supervisor';
+  const isAdmin = isUpsellPrivileged(user, currentAgent);
   const hasPermission = !!user;
 
   const { data: teams = [] } = useQuery({

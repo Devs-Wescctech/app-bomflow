@@ -13,7 +13,7 @@ import {
   notifyReferralAssigned,
   notifyProposalStatus
 } from '../services/notificationService.js';
-import { executeLeadCreatedAutomation } from '../services/automationService.js';
+import { executeLeadCreatedAutomation, executeStageChangeAutomation } from '../services/automationService.js';
 
 const router = Router();
 
@@ -1183,6 +1183,10 @@ router.post('/leads-upsell', authMiddleware, async (req, res) => {
       try { await notifyLeadAssigned(lead, lead.agent_id || lead.assigned_agent_id); } catch (e) { console.error('[Upsell] notify error:', e.message); }
     }
 
+    executeLeadCreatedAutomation(lead, 'lead_upsell').catch(err => {
+      console.error('[Upsell] executeLeadCreatedAutomation error:', err.message);
+    });
+
     res.status(201).json(convertKeysToCamel(lead));
   } catch (error) {
     console.error('Error creating lead upsell:', error);
@@ -1222,6 +1226,12 @@ router.put('/leads-upsell/:id', authMiddleware, async (req, res) => {
     const oldAgentId = oldLead.agent_id || oldLead.assigned_agent_id;
     if (newAgentId && newAgentId !== oldAgentId) {
       try { await notifyLeadAssigned(lead, newAgentId); } catch (e) { console.error('[Upsell] notify error:', e.message); }
+    }
+
+    if (data.stage && data.stage !== oldLead.stage) {
+      executeStageChangeAutomation(lead, oldLead.stage, data.stage, 'lead_upsell').catch(err => {
+        console.error('[Upsell] executeStageChangeAutomation error:', err.message);
+      });
     }
 
     res.json(convertKeysToCamel(lead));

@@ -46,7 +46,7 @@ import QuickLeadForm from "../components/sales/QuickLeadForm";
 import { createPageUrl } from "@/utils";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
-import { canViewAll, canViewTeam } from "@/components/utils/permissions";
+import { canViewAll, canViewTeam, isUpsellPrivileged } from "@/components/utils/permissions";
 import {
   DndContext,
   DragOverlay,
@@ -235,7 +235,7 @@ function DroppableColumn({ id, stage, children, overId, activeId }) {
   );
 }
 
-function SortableLeadCard({ lead, stage, pendingTasksCount, agentData, navigate, formatCurrency, formatDate, updateLeadMutation, TasksPopover }) {
+function SortableLeadCard({ lead, stage, pendingTasksCount, agentData, navigate, formatCurrency, formatDate, updateLeadMutation, TasksPopover, userEmail }) {
   const {
     attributes,
     listeners,
@@ -357,10 +357,28 @@ function SortableLeadCard({ lead, stage, pendingTasksCount, agentData, navigate,
                 }`}
                 onClick={(e) => {
                   e.stopPropagation();
+                  const nowIso = new Date().toISOString();
                   if (stage.id === 'fechado_ganho') {
-                    updateLeadMutation.mutate({ id: lead.id, data: { concluded: true } });
+                    updateLeadMutation.mutate({
+                      id: lead.id,
+                      data: {
+                        concluded: true,
+                        concluded_at: nowIso,
+                        concluded_by: userEmail || 'Sistema',
+                        converted_at: nowIso,
+                        stage: 'fechado_ganho',
+                      },
+                    });
                   } else {
-                    updateLeadMutation.mutate({ id: lead.id, data: { lost: true } });
+                    updateLeadMutation.mutate({
+                      id: lead.id,
+                      data: {
+                        lost: true,
+                        lost_at: nowIso,
+                        lost_by: userEmail || 'Sistema',
+                        stage: 'fechado_perdido',
+                      },
+                    });
                   }
                 }}
               >
@@ -559,7 +577,7 @@ export default function LeadsUpsellKanban() {
   const currentAgent = user?.agent || allAgents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
 
-  const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor' || currentAgentType?.endsWith('_supervisor') || user?.role === 'supervisor';
+  const isAdmin = isUpsellPrivileged(user, currentAgent);
   
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ['leads', isAdmin ? 'admin' : currentAgent?.id],
@@ -1410,7 +1428,7 @@ export default function LeadsUpsellKanban() {
                                 formatDate={formatDate}
                                 updateLeadMutation={updateLeadMutation}
                                 TasksPopover={TasksPopover}
-
+                                userEmail={user?.email}
                               />
                             );
                           })}

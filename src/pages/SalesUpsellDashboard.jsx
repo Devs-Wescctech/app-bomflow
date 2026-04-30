@@ -27,7 +27,7 @@ import { createPageUrl } from "@/utils";
 import StatsCard from "@/components/dashboard/StatsCard";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 import MetricsHelpDialog from "@/components/dashboard/MetricsHelpDialog";
-import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
+import { canViewAll, canViewTeam, isUpsellPrivileged } from "@/components/utils/permissions.jsx";
 import { isWithinInterval, parseISO, startOfDay, endOfDay } from "date-fns";
 import { LEAD_PF_STAGES, isActiveStage, isWonStage, isLostStage } from "@/constants/stages";
 
@@ -66,7 +66,7 @@ export default function SalesUpsellDashboard() {
 
   const currentAgent = user?.agent;
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
+  const isAdmin = isUpsellPrivileged(user, currentAgent);
   const isSupervisor = user?.role === 'supervisor' || currentAgentType?.includes('supervisor');
 
   const { data: rawLeads = [] } = useQuery({
