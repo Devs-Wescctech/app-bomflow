@@ -2162,7 +2162,11 @@ router.post('/get-customer-from-erp-reactivation', authMiddleware, async (req, r
     const nome = record.nome_completo || record.nomeCompleto || record.nome || '';
     const documento = record.documento || record.cpf || cpfFormatado;
     const pessoa = record.pessoa || record.tipo_pessoa || null;
-    const endereco = record.endereco || record.endereço || null;
+    // Observação: o ERP retorna o telefone do cliente no campo "endereco"
+    // (apesar do nome). Mapeamos para `phone` no contato para evitar
+    // confundir consumidores futuros, mantendo `endereco` no raw.
+    const telefoneRaw = record.endereco || record.endereço || record.telefone || record.celular || null;
+    const telefoneLimpo = telefoneRaw ? String(telefoneRaw).replace(/\D/g, '') : null;
 
     if (!nome) {
       return res.status(404).json({
@@ -2178,9 +2182,9 @@ router.post('/get-customer-from-erp-reactivation', authMiddleware, async (req, r
         contact: {
           name: nome,
           document: documento,
+          phone: telefoneLimpo,
         },
         pessoa,
-        endereco,
         raw: record,
       },
     });

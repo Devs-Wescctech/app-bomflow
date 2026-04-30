@@ -116,9 +116,11 @@ export default function ReferralReactivation() {
       const response = await buscarReativacaoERP(cleanCpf);
       if (response?.success && response?.data?.contact?.name) {
         const nome = response.data.contact.name;
+        const fone = response.data.contact?.phone || '';
         setForm((f) => ({
           ...f,
           nomeCompletoCliente: nome,
+          telefone: fone ? formatPhone(fone) : f.telefone,
         }));
         setErpFound(true);
         toast.success(`Cliente encontrado: ${nome}`);
