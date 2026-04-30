@@ -2631,6 +2631,12 @@ router.post('/send-proposal-whatsapp', authMiddleware, async (req, res) => {
          VALUES ($1, $2, $3, $4, NOW())`,
         [leadId, 'note', 'Proposta enviada via WhatsApp', `Proposta (PDF) enviada para ${phone}`]
       );
+    } else if (lead_type === 'upsell') {
+      await query(
+        `INSERT INTO activities_upsell (lead_id, type, title, description, assigned_to, completed)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [leadId, 'note', 'Proposta enviada via WhatsApp', `Proposta (PDF) enviada para ${phone}`, agentId, true]
+      );
     } else {
       const activityColumn = lead_type === 'pj' ? 'lead_pj_id' : 'lead_id';
       await query(
