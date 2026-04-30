@@ -2157,7 +2157,22 @@ router.post('/get-customer-from-erp-reactivation', authMiddleware, async (req, r
       });
     }
 
-    const record = Array.isArray(erpData) ? erpData[0] : erpData;
+    // O endpoint API_CPF_REATIVACAO ignora o parâmetro ?cpf= e devolve
+    // a base inteira. Filtramos aqui pelo documento (com e sem máscara).
+    const records = Array.isArray(erpData) ? erpData : [erpData];
+    const record = records.find((r) => {
+      const doc = String(r?.documento || r?.cpf || '').replace(/\D/g, '');
+      return doc === cpfLimpo;
+    });
+
+    if (!record) {
+      console.log(`[ERP Reativação] CPF ${cpfLimpo} não encontrado em ${records.length} registros retornados pelo ERP`);
+      return res.status(404).json({
+        success: false,
+        error: 'Nenhum cliente encontrado para este CPF',
+        notFound: true,
+      });
+    }
 
     const nome = record.nome_completo || record.nomeCompleto || record.nome || '';
     const documento = record.documento || record.cpf || cpfFormatado;
