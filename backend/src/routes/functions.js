@@ -2115,7 +2115,9 @@ router.post('/get-customer-from-erp-reactivation', authMiddleware, async (req, r
     }
 
     const cpfFormatado = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CPF_REATIVACAO?cpf=${cpfFormatado}`;
+    // O endpoint espera o parâmetro chamado "documento" com a máscara
+    // padrão de CPF; com "?cpf=" ou sem máscara ele devolve a base inteira.
+    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CPF_REATIVACAO?documento=${encodeURIComponent(cpfFormatado)}`;
 
     console.log(`[ERP Reativação] Fetching ERP data for CPF: ${cpfLimpo} -> ${erpUrl}`);
 
