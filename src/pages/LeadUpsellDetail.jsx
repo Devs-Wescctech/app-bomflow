@@ -281,6 +281,46 @@ export default function LeadUpsellDetail() {
     },
   });
 
+  const reopenLeadMutation = useMutation({
+    mutationFn: async () => {
+      const currentUser = await base44.auth.me();
+      const history = Array.isArray(lead?.stageHistory) ? lead.stageHistory : [];
+      const previousActiveStage = [...history]
+        .reverse()
+        .map(h => h.from)
+        .find(s => s && s !== 'fechado_ganho' && s !== 'fechado_perdido');
+      const targetStage = previousActiveStage || 'qualificado';
+      return upsell.entities.LeadUpsell.update(leadId, {
+        concluded: false,
+        concludedAt: null,
+        concludedBy: null,
+        convertedAt: null,
+        lost: false,
+        lostAt: null,
+        lostBy: null,
+        lostReason: null,
+        stage: targetStage,
+        reopenedAt: new Date().toISOString(),
+        reopenedBy: currentUser.email,
+      });
+    },
+    onSuccess: (updatedLead) => {
+      queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      createActivityMutation.mutate({
+        leadId: leadId,
+        type: 'note',
+        title: 'Lead Retomado',
+        description: `Lead reaberto para o pipeline (etapa ${updatedLead?.stage || 'qualificado'}).`,
+        assignedTo: leadAgentId || 'Sistema',
+      });
+      toast.success('Lead retomado com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('Erro ao retomar lead: ' + (error?.message || 'Tente novamente.'));
+    },
+  });
+
   // HANDLER PARA MUDANÇA DE STAGE VIA CLIQUE NO HISTÓRICO
   const handleStageChange = async (newStage) => {
     const currentLeadData = queryClient.getQueryData(['lead', leadId]); // Get latest lead data
@@ -683,9 +723,50 @@ export default function LeadUpsellDetail() {
       {lead.concluded && (
         <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-4 mx-3 sm:mx-6 mt-3 flex items-center gap-2">
           <CheckCircle className="text-green-600 dark:text-green-400 w-5 h-5 flex-shrink-0" />
-          <span className="text-green-800 dark:text-green-300 font-medium text-sm">
+          <span className="text-green-800 dark:text-green-300 font-medium text-sm flex-1">
             Venda Concluída — este registro pode ser visualizado e editado normalmente.
           </span>
+          <Button
+            onClick={() => {
+              if (confirm('Retomar este lead?\n\nA venda será desfeita e o lead voltará para o pipeline ativo.')) {
+                reopenLeadMutation.mutate();
+              }
+            }}
+            disabled={reopenLeadMutation.isPending}
+            size="sm"
+            variant="outline"
+            className="border-green-300 text-green-700 hover:bg-green-100 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-900/40"
+          >
+            {reopenLeadMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Retomar Lead'}
+          </Button>
+        </div>
+      )}
+      {lead.lost && !lead.concluded && (
+        <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-4 mx-3 sm:mx-6 mt-3 flex items-center gap-2">
+          <XCircle className="text-red-600 dark:text-red-400 w-5 h-5 flex-shrink-0" />
+          <div className="flex-1">
+            <div className="text-red-800 dark:text-red-300 font-medium text-sm">
+              Lead Perdido
+            </div>
+            {lead.lostReason && (
+              <div className="text-red-700 dark:text-red-400 text-xs mt-0.5">
+                Motivo: {lead.lostReason}
+              </div>
+            )}
+          </div>
+          <Button
+            onClick={() => {
+              if (confirm('Retomar este lead?\n\nA marcação de "perdido" será removida e o lead voltará para o pipeline ativo.')) {
+                reopenLeadMutation.mutate();
+              }
+            }}
+            disabled={reopenLeadMutation.isPending}
+            size="sm"
+            variant="outline"
+            className="border-red-300 text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-900/40"
+          >
+            {reopenLeadMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Retomar Lead'}
+          </Button>
         </div>
       )}
       {/* Top Navigation Bar */}

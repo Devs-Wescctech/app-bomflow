@@ -104,7 +104,7 @@ export default function LeadUpsellAutomations() {
   });
 
   const { data: rules = [], isLoading: rulesLoading } = useQuery({
-    queryKey: ['leadAutomations'],
+    queryKey: ['leadUpsellAutomations'],
     queryFn: () => upsell.entities.LeadUpsellAutomation.list('-createdDate'),
     staleTime: 2 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
@@ -133,7 +133,7 @@ export default function LeadUpsellAutomations() {
   const createRuleMutation = useMutation({
     mutationFn: (data) => upsell.entities.LeadUpsellAutomation.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leadAutomations'] });
+      queryClient.invalidateQueries({ queryKey: ['leadUpsellAutomations'] });
       toast.success('Regra criada com sucesso!');
       setShowDialog(false);
       resetForm();
@@ -146,7 +146,7 @@ export default function LeadUpsellAutomations() {
   const updateRuleMutation = useMutation({
     mutationFn: ({ id, data }) => upsell.entities.LeadUpsellAutomation.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leadAutomations'] });
+      queryClient.invalidateQueries({ queryKey: ['leadUpsellAutomations'] });
       toast.success('Regra atualizada!');
       setShowDialog(false);
       resetForm();
@@ -159,7 +159,7 @@ export default function LeadUpsellAutomations() {
   const toggleActiveMutation = useMutation({
     mutationFn: ({ id, active }) => upsell.entities.LeadUpsellAutomation.update(id, { active }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leadAutomations'] });
+      queryClient.invalidateQueries({ queryKey: ['leadUpsellAutomations'] });
       toast.success('Automação atualizada.');
     },
     onError: (error) => {
@@ -170,7 +170,7 @@ export default function LeadUpsellAutomations() {
   const deleteRuleMutation = useMutation({
     mutationFn: (id) => upsell.entities.LeadUpsellAutomation.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leadAutomations'] });
+      queryClient.invalidateQueries({ queryKey: ['leadUpsellAutomations'] });
       toast.success('Regra excluída!');
     },
   });
@@ -184,7 +184,7 @@ export default function LeadUpsellAutomations() {
       if (data.success) {
         toast.success(`Automações executadas! ${data.leads_affected} leads afetados`);
         queryClient.invalidateQueries({ queryKey: ['leads'] });
-        queryClient.invalidateQueries({ queryKey: ['leadAutomations'] });
+        queryClient.invalidateQueries({ queryKey: ['leadUpsellAutomations'] });
       } else {
         toast.error('Erro ao executar automações');
       }

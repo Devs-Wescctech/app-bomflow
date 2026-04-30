@@ -346,45 +346,93 @@ function SortableLeadCard({ lead, stage, pendingTasksCount, agentData, navigate,
           )}
 
           {(stage.id === 'fechado_ganho' || stage.id === 'fechado_perdido') && (
-            <div className="mt-3">
-              <Button
-                size="sm"
-                variant="outline"
-                className={`w-full text-xs font-medium ${
-                  stage.id === 'fechado_ganho' 
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' 
-                    : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400'
-                }`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const nowIso = new Date().toISOString();
-                  if (stage.id === 'fechado_ganho') {
-                    updateLeadMutation.mutate({
-                      id: lead.id,
-                      data: {
-                        concluded: true,
-                        concluded_at: nowIso,
-                        concluded_by: userEmail || 'Sistema',
-                        converted_at: nowIso,
-                        stage: 'fechado_ganho',
-                      },
-                    });
-                  } else {
-                    updateLeadMutation.mutate({
-                      id: lead.id,
-                      data: {
-                        lost: true,
-                        lost_at: nowIso,
-                        lost_by: userEmail || 'Sistema',
-                        stage: 'fechado_perdido',
-                      },
-                    });
-                  }
-                }}
-              >
-                <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
-                {stage.id === 'fechado_ganho' ? 'Dar Baixa (Ganho)' : 'Dar Baixa (Perdido)'}
-              </Button>
+            <div className="mt-3 space-y-2">
+              {(stage.id === 'fechado_ganho' && lead.concluded) || (stage.id === 'fechado_perdido' && lead.lost) ? (
+                <>
+                  <div
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold ${
+                      stage.id === 'fechado_ganho'
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                        : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {stage.id === 'fechado_ganho' ? 'Venda Concluída' : 'Lead Perdido'}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full text-xs font-medium border-gray-300 dark:border-gray-700"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!confirm('Retomar este lead?\n\nEle voltará para o pipeline ativo (etapa Qualificado).')) return;
+                      updateLeadMutation.mutate({
+                        id: lead.id,
+                        data: {
+                          concluded: false,
+                          concluded_at: null,
+                          concluded_by: null,
+                          converted_at: null,
+                          lost: false,
+                          lost_at: null,
+                          lost_by: null,
+                          lost_reason: null,
+                          stage: 'qualificado',
+                          reopened_at: new Date().toISOString(),
+                          reopened_by: userEmail || 'Sistema',
+                        },
+                      }, {
+                        onSuccess: () => toast.success('Lead retomado!'),
+                      });
+                    }}
+                  >
+                    Retomar Lead
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={`w-full text-xs font-medium ${
+                    stage.id === 'fechado_ganho' 
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' 
+                      : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400'
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const nowIso = new Date().toISOString();
+                    if (stage.id === 'fechado_ganho') {
+                      updateLeadMutation.mutate({
+                        id: lead.id,
+                        data: {
+                          concluded: true,
+                          concluded_at: nowIso,
+                          concluded_by: userEmail || 'Sistema',
+                          converted_at: nowIso,
+                          stage: 'fechado_ganho',
+                        },
+                      }, {
+                        onSuccess: () => toast.success('Venda concluída com sucesso!'),
+                      });
+                    } else {
+                      updateLeadMutation.mutate({
+                        id: lead.id,
+                        data: {
+                          lost: true,
+                          lost_at: nowIso,
+                          lost_by: userEmail || 'Sistema',
+                          stage: 'fechado_perdido',
+                        },
+                      }, {
+                        onSuccess: () => toast.success('Lead marcado como perdido.'),
+                      });
+                    }
+                  }}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                  {stage.id === 'fechado_ganho' ? 'Dar Baixa (Ganho)' : 'Dar Baixa (Perdido)'}
+                </Button>
+              )}
             </div>
           )}
 
