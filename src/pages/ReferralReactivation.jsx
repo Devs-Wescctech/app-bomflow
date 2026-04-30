@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { buscarClienteERP } from "@/api/erpService";
+import { buscarReativacaoERP } from "@/api/erpService";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -113,24 +113,25 @@ export default function ReferralReactivation() {
     setSearchingERP(true);
     setErpFound(null);
     try {
-      const response = await buscarClienteERP(cleanCpf);
+      const response = await buscarReativacaoERP(cleanCpf);
       if (response?.success && response?.data?.contact?.name) {
         const nome = response.data.contact.name;
-        const fone = response.data.contact?.phone || response.data.contact?.celular || response.data.contact?.telefone || '';
         setForm((f) => ({
           ...f,
           nomeCompletoCliente: nome,
-          telefone: fone ? formatPhone(fone) : f.telefone,
         }));
         setErpFound(true);
         toast.success(`Cliente encontrado: ${nome}`);
       } else {
         setErpFound(false);
-        toast.error('CPF não encontrado no ERP. Preencha o nome manualmente.');
+        toast.error('CPF não encontrado no ERP de reativação. Preencha o nome manualmente.');
       }
     } catch (err) {
       setErpFound(false);
-      toast.error(err?.message || 'Erro ao consultar o ERP. Preencha o nome manualmente.');
+      const msg = err?.data?.notFound
+        ? 'CPF não encontrado no ERP de reativação. Preencha o nome manualmente.'
+        : (err?.message || 'Erro ao consultar o ERP. Preencha o nome manualmente.');
+      toast.error(msg);
     } finally {
       setSearchingERP(false);
     }

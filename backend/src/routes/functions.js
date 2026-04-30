@@ -2090,6 +2090,109 @@ router.get('/lead-generator-conversions-list', authMiddleware, async (req, res) 
   }
 });
 
+router.post('/get-customer-from-erp-reactivation', authMiddleware, async (req, res) => {
+  try {
+    const { cpf } = req.body;
+
+    if (!cpf) {
+      return res.status(400).json({ success: false, error: 'CPF é obrigatório' });
+    }
+
+    const cpfLimpo = String(cpf).replace(/\D/g, '');
+
+    if (cpfLimpo.length !== 11) {
+      return res.status(400).json({ success: false, error: 'CPF inválido' });
+    }
+
+    const erpAuthToken = process.env.ERP_AUTH_TOKEN;
+
+    if (!erpAuthToken) {
+      console.error('[ERP Reativação] ERP credentials not configured');
+      return res.status(500).json({
+        success: false,
+        error: 'Credenciais do ERP não configuradas. Configure ERP_AUTH_TOKEN.',
+      });
+    }
+
+    const cpfFormatado = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CPF_REATIVACAO?cpf=${cpfFormatado}`;
+
+    console.log(`[ERP Reativação] Fetching ERP data for CPF: ${cpfLimpo} -> ${erpUrl}`);
+
+    const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
+
+    const erpResponse = await fetch(erpUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': authHeader,
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!erpResponse.ok) {
+      if (erpResponse.status === 404) {
+        return res.status(404).json({
+          success: false,
+          error: 'Nenhum cliente encontrado para este CPF',
+          notFound: true,
+        });
+      }
+      if (erpResponse.status === 401) {
+        console.error('[ERP Reativação] ERP returned 401 - Token may be expired or invalid');
+        return res.status(401).json({
+          success: false,
+          error: 'Token de autenticação do ERP inválido ou expirado. Verifique o ERP_AUTH_TOKEN.',
+        });
+      }
+      throw new Error(`ERP returned status ${erpResponse.status}`);
+    }
+
+    const erpData = await erpResponse.json();
+
+    if (!erpData || (Array.isArray(erpData) && erpData.length === 0)) {
+      return res.status(404).json({
+        success: false,
+        error: 'Nenhum cliente encontrado para este CPF',
+        notFound: true,
+      });
+    }
+
+    const record = Array.isArray(erpData) ? erpData[0] : erpData;
+
+    const nome = record.nome_completo || record.nomeCompleto || record.nome || '';
+    const documento = record.documento || record.cpf || cpfFormatado;
+    const pessoa = record.pessoa || record.tipo_pessoa || null;
+    const endereco = record.endereco || record.endereço || null;
+
+    if (!nome) {
+      return res.status(404).json({
+        success: false,
+        error: 'Cliente encontrado, mas sem nome cadastrado no ERP',
+        notFound: true,
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        contact: {
+          name: nome,
+          document: documento,
+        },
+        pessoa,
+        endereco,
+        raw: record,
+      },
+    });
+  } catch (error) {
+    console.error('[ERP Reativação] Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Erro ao consultar o ERP',
+    });
+  }
+});
+
 router.post('/get-customer-from-erp', authMiddleware, async (req, res) => {
   try {
     const { cpf } = req.body;
