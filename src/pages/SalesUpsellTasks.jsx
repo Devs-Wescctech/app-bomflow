@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { upsell } from "@/api/upsellClient";
+import { isUpsellPrivileged } from "@/components/utils/permissions.jsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -133,11 +134,33 @@ export default function SalesUpsellTasks() {
     scheduledAt: '',
   });
 
-  const { data: activities = [], isLoading: loadingActivities } = useQuery({
+  const { data: user } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  const { data: agents = [] } = useQuery({
+    queryKey: ['agents'],
+    queryFn: () => base44.entities.Agent.list(),
+    staleTime: 1000 * 60 * 2,
+  });
+
+  const currentAgent = user?.agent || agents.find(a => a.userEmail === user?.email || a.email === user?.email);
+  const privileged = isUpsellPrivileged(user, currentAgent);
+
+  const { data: allActivities = [], isLoading: loadingActivities } = useQuery({
     queryKey: ['activitiesUpsell'],
     queryFn: () => upsell.entities.ActivityUpsell.list('-scheduledAt', 500),
     staleTime: 1000 * 60 * 2,
   });
+
+  const activities = useMemo(() => {
+    if (privileged) return allActivities;
+    if (!currentAgent) return [];
+    return allActivities.filter(act =>
+      act.assignedTo === user?.email || act.assignedTo === currentAgent?.id || act.createdBy === currentAgent?.id || !act.assignedTo
+    );
+  }, [allActivities, privileged, currentAgent, user]);
 
   const { data: leads = [], isLoading: loadingLeads } = useQuery({
     queryKey: ['leadsUpsell'],

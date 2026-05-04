@@ -81,6 +81,8 @@ const entities = {
   'referral-automations': { tableName: 'referral_automations', searchFields: ['name'] },
   'referral-channel-automations': { tableName: 'referral_channel_automations', searchFields: ['name'], allowedFilters: ['channel_token', 'active'] },
   'referral-channel-config': { tableName: 'referral_channel_config', searchFields: ['channel_label'] },
+  'upsell-channel-automations': { tableName: 'upsell_channel_automations', searchFields: ['name'], allowedFilters: ['channel_token', 'active'] },
+  'upsell-channel-config': { tableName: 'upsell_channel_config', searchFields: ['channel_label'] },
   'automation-logs': { tableName: 'automation_logs', allowedFilters: ['automation_id', 'automation_type', 'lead_id', 'referral_id'] },
   'proposal-templates': { tableName: 'proposal_templates', searchFields: ['name'] },
   sales: { allowedFilters: ['lead_id', 'agent_id', 'status'] },
@@ -447,7 +449,7 @@ for (const [route, options] of Object.entries(entities)) {
   router.get(`/${route}`, authMiddleware, crud.list);
   router.get(`/${route}/:id`, authMiddleware, crud.get);
   router.post(`/${route}`, authMiddleware, crud.create);
-  if (route === 'referral-channel-config') {
+  if (route === 'referral-channel-config' || route === 'upsell-channel-config') {
     router.put(`/${route}/:id`, authMiddleware, (req, res) => {
       if (req.body.channel_token === null || req.body.channel_token === undefined || req.body.channel_token === '' ||
           req.body.channelToken === null || req.body.channelToken === undefined || req.body.channelToken === '') {

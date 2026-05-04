@@ -263,7 +263,7 @@ function SortableLeadCard({ lead, stage, pendingTasksCount, agentData, navigate,
       className={isDragging ? 'rotate-1 scale-[1.03] z-50' : ''}
     >
       <div 
-        onClick={() => navigate(`${createPageUrl("LeadUpsellDetail")}?id=${lead.id}`)}
+        onClick={() => navigate(`${createPageUrl("LeadUpsellDetail")}?id=${lead.id}`, { state: { tab: 'activities' } })}
         className={`group relative overflow-hidden rounded-2xl cursor-pointer transition-all duration-300 ${
           isDragging 
             ? 'shadow-2xl scale-[1.02] ring-2 ring-violet-400/50' 
@@ -633,14 +633,14 @@ export default function LeadsUpsellKanban() {
       const allLeads = await upsell.entities.LeadUpsell.list('-createdDate');
 
       if (isAdmin) {
-        return allLeads.filter(l => !l.lost);
+        return allLeads.filter(l => !l.lost && !l.concluded);
       }
 
       if (!currentAgent) return [];
 
       const canSeeAll = canViewAll(currentAgent, 'leads');
       if (canSeeAll) {
-        return allLeads.filter(l => !l.lost);
+        return allLeads.filter(l => !l.lost && !l.concluded);
       }
 
       const canSeeTeam = canViewTeam(currentAgent, 'leads');
@@ -649,13 +649,13 @@ export default function LeadsUpsellKanban() {
         const teamAgentIds = teamAgents.map(a => a.id);
 
         return allLeads.filter(l =>
-          !l.lost &&
+          !l.lost && !l.concluded &&
           (teamAgentIds.includes(l.agentId) || teamAgentIds.includes(l.promoterId))
         );
       }
 
       return allLeads.filter(l =>
-        !l.lost &&
+        !l.lost && !l.concluded &&
         (l.agentId === currentAgent.id || l.promoterId === currentAgent.id)
       );
     },
@@ -1120,7 +1120,7 @@ export default function LeadsUpsellKanban() {
 
         <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl">
           <Button
-            onClick={(e) => { e.stopPropagation(); navigate(`${createPageUrl("LeadUpsellDetail")}?id=${leadId}`); }}
+            onClick={(e) => { e.stopPropagation(); navigate(`${createPageUrl("LeadUpsellDetail")}?id=${leadId}`, { state: { tab: 'activities' } }); }}
             variant="outline"
             size="sm"
             className="w-full"
@@ -1566,7 +1566,7 @@ export default function LeadsUpsellKanban() {
                             <motion.tr
                               key={lead.id}
                               className="hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer transition-colors"
-                              onClick={() => navigate(`${createPageUrl("LeadUpsellDetail")}?id=${lead.id}`)}
+                              onClick={() => navigate(`${createPageUrl("LeadUpsellDetail")}?id=${lead.id}`, { state: { tab: 'activities' } })}
                               initial={{ opacity: 0, x: -20 }}
                               animate={{ opacity: 1, x: 0 }}
                               transition={{ delay: index * 0.02 }}

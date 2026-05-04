@@ -277,9 +277,14 @@ export function isSupervisorType(agentType) {
   return agentType === 'supervisor' || agentType === 'sales_supervisor' || agentType?.endsWith('_supervisor');
 }
 
-// Verifica se o usuário tem privilégios de administrador no módulo Upsell.
-// Considera: role do JWT (admin), agent_type 'admin' (admin global) e
-// agent_type 'upsell_admin' (admin específico do módulo).
+export function isAdminUser(user, agent) {
+  const agentType = agent?.agent_type || agent?.agentType;
+  return (
+    user?.role === 'admin' ||
+    agentType === 'admin'
+  );
+}
+
 export function isUpsellAdmin(user, agent) {
   const agentType = agent?.agent_type || agent?.agentType;
   return (

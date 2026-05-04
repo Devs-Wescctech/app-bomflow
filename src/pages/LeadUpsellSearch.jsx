@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { upsell } from "@/api/upsellClient";
 import { useNavigate } from "react-router-dom";
@@ -29,8 +29,10 @@ import {
   Download,
   Filter,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  RotateCcw
 } from "lucide-react";
+import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { createPageUrl } from "@/utils";
@@ -38,6 +40,7 @@ import { canViewAll, canViewTeam, isUpsellPrivileged } from "@/components/utils/
 
 export default function LeadUpsellSearch() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchType, setSearchType] = useState("all");
   const [stageFilter, setStageFilter] = useState("all");
@@ -93,6 +96,39 @@ export default function LeadUpsellSearch() {
       );
     },
     enabled: !!user && (!needsTeamFilter || agentsReady),
+  });
+
+  const reopenLeadMutation = useMutation({
+    mutationFn: async (lead) => {
+      const stageHistory = Array.isArray(lead.stageHistory || lead.stage_history) ? (lead.stageHistory || lead.stage_history) : [];
+      const closedStages = ['fechado_ganho', 'fechado_perdido'];
+      const previousStage = [...stageHistory]
+        .reverse()
+        .map(entry => typeof entry === 'object' ? entry.from : entry)
+        .find(s => s && typeof s === 'string' && !closedStages.includes(s)) || 'qualificado';
+      
+      const updatePayload = {
+        concluded: false,
+        concludedAt: null,
+        concludedBy: null,
+        lost: false,
+        lostAt: null,
+        lostBy: null,
+        lostReason: null,
+        convertedAt: null,
+        stage: previousStage,
+        reopenedAt: new Date().toISOString(),
+        reopenedBy: user?.agent?.name || user?.name || user?.email || 'sistema',
+      };
+      return upsell.entities.LeadUpsell.update(lead.id, updatePayload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      toast.success('Lead retornado ao pipeline com sucesso!');
+    },
+    onError: (err) => {
+      toast.error(err?.message || 'Erro ao retornar lead ao pipeline.');
+    },
   });
 
   const normalizeString = (str) => {
@@ -531,17 +567,34 @@ export default function LeadUpsellSearch() {
                             : '-'}
                         </td>
                         <td className="p-3 text-center">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`${createPageUrl("LeadUpsellDetail")}?id=${lead.id}`);
-                            }}
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </Button>
+                          <div className="flex items-center justify-center gap-1">
+                            {(lead.concluded || lead.lost) && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 gap-1 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                disabled={reopenLeadMutation.isPending}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  reopenLeadMutation.mutate(lead);
+                                }}
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                Retornar
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`${createPageUrl("LeadUpsellDetail")}?id=${lead.id}`);
+                              }}
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}

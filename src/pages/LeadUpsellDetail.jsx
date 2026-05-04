@@ -1,8 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { upsell } from "@/api/upsellClient";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -98,6 +98,7 @@ const SOURCE_OPTIONS = [
 
 export default function LeadUpsellDetail() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const urlParams = new URLSearchParams(window.location.search);
   const leadId = urlParams.get('id');
@@ -108,7 +109,14 @@ export default function LeadUpsellDetail() {
   const [newNote, setNewNote] = useState("");
   const [newTask, setNewTask] = useState({ title: "", scheduled_at: "" });
   const [generatingProposal, setGeneratingProposal] = useState(false);
-  const [activeTab, setActiveTab] = useState("activities");
+  const [activeTab, setActiveTab] = useState(location.state?.tab || "activities");
+
+  useEffect(() => {
+    if (location.state?.tab && location.state.tab !== activeTab) {
+      setActiveTab(location.state.tab);
+    }
+  }, [location.state?.tab]);
+
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [sendingAutentique, setSendingAutentique] = useState(false);
