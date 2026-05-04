@@ -148,6 +148,86 @@ export async function checkAndExecuteReferralChannelAutomations() {
   }
 }
 
+export async function checkAndExecuteUpsellChannelAutomations() {
+  try {
+    const automationsResult = await query(`
+      SELECT * FROM upsell_channel_automations 
+      WHERE active = true 
+      ORDER BY priority ASC
+    `);
+    const automations = automationsResult.rows;
+
+    for (const automation of automations) {
+      const triggerConfig = typeof automation.trigger_config === 'string' 
+        ? JSON.parse(automation.trigger_config) 
+        : automation.trigger_config || {};
+
+      if (automation.trigger_type === 'inactivity' || automation.trigger_type === 'stage_duration' || automation.trigger_type === 'no_activity' || automation.trigger_type === 'no_contact' || automation.trigger_type === 'no_proposal_response') {
+        await checkInactivityTriggerWithToken(automation, triggerConfig, 'upsell_channel', 'leads_upsell', automation.channel_token);
+      }
+    }
+  } catch (error) {
+    console.error('Error checking upsell channel automations:', error);
+  }
+}
+
+export async function executeUpsellChannelLeadCreatedAutomation(lead) {
+  try {
+    const automationsResult = await query(`
+      SELECT * FROM upsell_channel_automations 
+      WHERE active = true AND trigger_type = 'lead_created'
+      ORDER BY priority ASC
+    `);
+    if (automationsResult.rows.length === 0) return;
+
+    const agentResult = lead.agent_id 
+      ? await query('SELECT name, phone, email FROM agents WHERE id = $1', [lead.agent_id])
+      : { rows: [] };
+    const agent = agentResult.rows[0] || null;
+    const enrichedLead = { ...lead, agent_name: agent?.name, agent_phone: agent?.phone, agent_email: agent?.email };
+
+    for (const automation of automationsResult.rows) {
+      await executeChannelAutomationAction(automation, enrichedLead, 'upsell_channel', automation.channel_token);
+    }
+  } catch (error) {
+    console.error('[UpsellChannel] Error executing lead_created automations:', error);
+  }
+}
+
+export async function executeUpsellChannelStageChangeAutomation(lead, fromStage, toStage) {
+  if (!toStage || fromStage === toStage) return;
+  try {
+    const automationsResult = await query(`
+      SELECT * FROM upsell_channel_automations 
+      WHERE active = true AND trigger_type = 'stage_change'
+      ORDER BY priority ASC
+    `);
+    if (automationsResult.rows.length === 0) return;
+
+    const agentResult = lead.agent_id 
+      ? await query('SELECT name, phone, email FROM agents WHERE id = $1', [lead.agent_id])
+      : { rows: [] };
+    const agent = agentResult.rows[0] || null;
+    const enrichedLead = { ...lead, agent_name: agent?.name, agent_phone: agent?.phone, agent_email: agent?.email };
+
+    for (const automation of automationsResult.rows) {
+      const triggerConfig = typeof automation.trigger_config === 'string' 
+        ? JSON.parse(automation.trigger_config) : automation.trigger_config || {};
+      
+      if (triggerConfig.stages && Array.isArray(triggerConfig.stages)) {
+        if (!triggerConfig.stages.includes(toStage)) continue;
+      } else if (triggerConfig.stage && triggerConfig.stage !== toStage) {
+        continue;
+      }
+      if (triggerConfig.fromStage && triggerConfig.fromStage !== fromStage) continue;
+
+      await executeChannelAutomationAction(automation, enrichedLead, 'upsell_channel', automation.channel_token);
+    }
+  } catch (error) {
+    console.error('[UpsellChannel] Error executing stage_change automations:', error);
+  }
+}
+
 async function checkContatoSequencialTrigger(automation, contatoNumero, channelToken) {
   try {
     let sqlQuery;
@@ -837,6 +917,7 @@ export async function runAllAutomations() {
     await checkAndExecuteLeadUpsellAutomations();
     await checkAndExecuteReferralAutomations();
     await checkAndExecuteReferralChannelAutomations();
+    await checkAndExecuteUpsellChannelAutomations();
     console.log('[Automations] Automation checks completed.');
   } catch (error) {
     console.error('[Automations] Error running automations:', error);
