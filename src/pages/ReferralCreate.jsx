@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { ArrowLeft, Search, UserPlus, Loader2, CheckCircle, Gift, Phone } from "lucide-react";
+import { ArrowLeft, Search, UserPlus, Loader2, CheckCircle, Gift, Phone, Briefcase, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { useToast } from "@/components/ui/use-toast";
@@ -65,6 +65,8 @@ export default function ReferralCreate() {
   const [referrerConversions, setReferrerConversions] = useState(0);
   const [referrerPix, setReferrerPix] = useState("");
   const [pixSaving, setPixSaving] = useState(false);
+  // null = não selecionado (obrigatório), true = corretor, false = não corretor
+  const [referrerIsCorretor, setReferrerIsCorretor] = useState(null);
   
   // Dados do indicado
   const [formData, setFormData] = useState({
@@ -193,6 +195,7 @@ export default function ReferralCreate() {
     setSearchingReferrer(true);
     setReferrerData(null);
     setReferrerPix("");
+    setReferrerIsCorretor(null);
 
     try {
       console.log('Buscando indicador no ERP por telefone...');
@@ -222,6 +225,7 @@ export default function ReferralCreate() {
     setSearchingReferrer(true);
     setReferrerData(null);
     setReferrerPix("");
+    setReferrerIsCorretor(null);
 
     try {
       console.log('Buscando cliente indicador no ERP...');
@@ -254,6 +258,11 @@ export default function ReferralCreate() {
     try {
       if (!referrerData) {
         toast({ title: "Erro", description: "Busque o cliente indicador primeiro!", variant: "destructive" });
+        return;
+      }
+
+      if (referrerIsCorretor === null) {
+        toast({ title: "Erro", description: "Indique se o cliente é corretor ou não antes de prosseguir!", variant: "destructive" });
         return;
       }
 
@@ -295,6 +304,7 @@ export default function ReferralCreate() {
         referrerErpData: referrerData.erp_raw || null,
         referrerLevel: referrerLevel,
         referrerTotalConversions: referrerConversions,
+        referrerIsCorretor: referrerIsCorretor === true,
         referredName: formData.referred_name,
         referredCpf: formData.referred_cpf ? formData.referred_cpf.replace(/\D/g, '') : null,
         referredPhone: formData.referred_phone.replace(/\D/g, ''),
@@ -531,8 +541,70 @@ export default function ReferralCreate() {
               </CardContent>
             </Card>
 
-            {/* 2. DADOS DO INDICADO */}
+            {/* 1.5 TIPO DE INDICADOR — obrigatório */}
             {referrerData && (
+              <Card className={`border-2 ${referrerIsCorretor === null ? 'border-orange-400 bg-orange-50' : 'border-green-300 bg-green-50'}`}>
+                <CardHeader className="pb-3">
+                  <CardTitle className={`flex items-center gap-2 text-base ${referrerIsCorretor === null ? 'text-orange-800' : 'text-green-800'}`}>
+                    {referrerIsCorretor === null ? (
+                      <>
+                        <Briefcase className="w-5 h-5" />
+                        Este cliente é Corretor? <span className="text-red-500 ml-1">*</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-5 h-5" />
+                        Tipo de Indicador Definido
+                      </>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {referrerIsCorretor === null && (
+                    <p className="text-sm text-orange-700 mb-4">
+                      Informe o tipo de indicador para poder continuar o cadastro.
+                    </p>
+                  )}
+                  <div className="flex gap-3">
+                    <Button
+                      type="button"
+                      onClick={() => setReferrerIsCorretor(true)}
+                      className={`flex-1 flex items-center justify-center gap-2 py-5 text-sm font-semibold transition-all ${
+                        referrerIsCorretor === true
+                          ? 'bg-purple-600 hover:bg-purple-700 text-white ring-2 ring-purple-400 ring-offset-2'
+                          : 'bg-white text-gray-700 border-2 border-gray-300 hover:border-purple-400 hover:text-purple-700'
+                      }`}
+                    >
+                      <Briefcase className="w-4 h-4" />
+                      Sim, é Corretor
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => setReferrerIsCorretor(false)}
+                      className={`flex-1 flex items-center justify-center gap-2 py-5 text-sm font-semibold transition-all ${
+                        referrerIsCorretor === false
+                          ? 'bg-blue-600 hover:bg-blue-700 text-white ring-2 ring-blue-400 ring-offset-2'
+                          : 'bg-white text-gray-700 border-2 border-gray-300 hover:border-blue-400 hover:text-blue-700'
+                      }`}
+                    >
+                      <User className="w-4 h-4" />
+                      Não é Corretor
+                    </Button>
+                  </div>
+                  {referrerIsCorretor !== null && (
+                    <p className="text-xs text-green-700 mt-3 flex items-center gap-1">
+                      <CheckCircle className="w-3 h-3" />
+                      {referrerIsCorretor
+                        ? 'Marcado como Corretor — comissão e regras de corretor serão aplicadas.'
+                        : 'Marcado como Indicador comum — regras padrão de indicação serão aplicadas.'}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* 2. DADOS DO INDICADO */}
+            {referrerData && referrerIsCorretor !== null && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">

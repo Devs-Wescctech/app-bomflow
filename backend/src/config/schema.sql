@@ -1457,6 +1457,8 @@ ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS signature_autentique_id VARCHA
 ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS signature_link TEXT;
 ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS signature_status VARCHAR(50);
 
+ALTER TABLE referrals ADD COLUMN IF NOT EXISTS referrer_is_corretor BOOLEAN DEFAULT FALSE;
+
 -- ============================================================
 -- REFERRAL NOTES (timeline) — added for "Editar Indicação" UI
 -- ============================================================
