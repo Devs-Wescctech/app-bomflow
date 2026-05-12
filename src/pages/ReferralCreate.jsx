@@ -446,7 +446,7 @@ export default function ReferralCreate() {
                         value={referrerPhone}
                         onChange={(e) => setReferrerPhone(formatPhone(e.target.value))}
                         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSearchByPhone(); } }}
-                        placeholder="(11) 98545-1904"
+                        placeholder="(00) 00000-0000"
                         className="bg-white"
                         maxLength={16}
                       />
@@ -463,7 +463,7 @@ export default function ReferralCreate() {
                       </Button>
                     </div>
                     <p className="text-xs text-purple-700 mt-1">
-                      Digite DDD + número (com ou sem o 9). Ex: (11) 98545-1904
+                      Digite DDD + número (com ou sem o 9)
                     </p>
                   </TabsContent>
                 </Tabs>
