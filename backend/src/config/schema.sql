@@ -1570,3 +1570,7 @@ CREATE TABLE IF NOT EXISTS upsell_channel_automations (
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Functional index para acelerar busca por telefone do indicador (digits-only)
+CREATE INDEX IF NOT EXISTS idx_referrals_referrer_phone_digits
+ON referrals (REGEXP_REPLACE(COALESCE(referrer_phone, ''), '\D', '', 'g'));

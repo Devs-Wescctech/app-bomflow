@@ -349,7 +349,7 @@ router.get('/lead-generator-options', authMiddleware, async (req, res) => {
 
 router.get('/referrals-relacao', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('ReferralRelacao'), async (req, res) => {
   try {
-    const { cpfIndicador, nomeIndicado, vendedorId, page = 1, limit = 50 } = req.query;
+    const { cpfIndicador, telefoneIndicador, nomeIndicado, vendedorId, page = 1, limit = 50 } = req.query;
     const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
 
     let whereClause = 'WHERE 1=1';
@@ -377,6 +377,19 @@ router.get('/referrals-relacao', authMiddleware, loadAgentMiddleware, requireSub
       whereClause += ` AND REPLACE(REPLACE(REPLACE(r.referrer_cpf, '.', ''), '-', ''), '/', '') LIKE $${paramIndex}`;
       params.push(`%${cpfIndicador.replace(/\D/g, '')}%`);
       paramIndex++;
+    }
+    if (telefoneIndicador) {
+      // Normaliza ambos os lados para apenas dígitos e ignora prefixo de país (55)
+      // antes do LIKE. Aceita busca a partir de 4 dígitos para evitar full-scan.
+      let telDigits = telefoneIndicador.replace(/\D/g, '');
+      if (telDigits.length >= 12 && telDigits.startsWith('55')) {
+        telDigits = telDigits.slice(2);
+      }
+      if (telDigits.length >= 4) {
+        whereClause += ` AND REGEXP_REPLACE(COALESCE(r.referrer_phone, ''), '\\D', '', 'g') LIKE $${paramIndex}`;
+        params.push(`%${telDigits}%`);
+        paramIndex++;
+      }
     }
     if (nomeIndicado) {
       whereClause += ` AND LOWER(r.referred_name) LIKE LOWER($${paramIndex})`;
