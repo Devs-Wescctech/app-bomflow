@@ -378,16 +378,16 @@ router.get('/referrals-relacao', authMiddleware, loadAgentMiddleware, requireSub
       params.push(`%${cpfIndicador.replace(/\D/g, '')}%`);
       paramIndex++;
     }
+    // Normaliza telefone para busca local (digits-only, sem prefixo 55)
+    let telDigitsLocal = '';
     if (telefoneIndicador) {
-      // Normaliza ambos os lados para apenas dígitos e ignora prefixo de país (55)
-      // antes do LIKE. Aceita busca a partir de 4 dígitos para evitar full-scan.
-      let telDigits = telefoneIndicador.replace(/\D/g, '');
-      if (telDigits.length >= 12 && telDigits.startsWith('55')) {
-        telDigits = telDigits.slice(2);
+      telDigitsLocal = telefoneIndicador.replace(/\D/g, '');
+      if (telDigitsLocal.length >= 12 && telDigitsLocal.startsWith('55')) {
+        telDigitsLocal = telDigitsLocal.slice(2);
       }
-      if (telDigits.length >= 4) {
+      if (telDigitsLocal.length >= 4) {
         whereClause += ` AND REGEXP_REPLACE(COALESCE(r.referrer_phone, ''), '\\D', '', 'g') LIKE $${paramIndex}`;
-        params.push(`%${telDigits}%`);
+        params.push(`%${telDigitsLocal}%`);
         paramIndex++;
       }
     }
@@ -402,27 +402,97 @@ router.get('/referrals-relacao', authMiddleware, loadAgentMiddleware, requireSub
       paramIndex++;
     }
 
-    const countResult = await query(
-      `SELECT COUNT(*)::int as total FROM referrals r ${whereClause}`,
-      params
-    );
+    // Helper: executa SELECT e COUNT com o whereClause/params atuais
+    async function runQuery(wClause, wParams, wParamIndex) {
+      const countRes = await query(
+        `SELECT COUNT(*)::int as total FROM referrals r ${wClause}`,
+        wParams
+      );
+      const dataRes = await query(
+        `SELECT r.id, r.referrer_cpf, r.referrer_name, r.referred_name, r.referred_cpf,
+                r.agent_id, a.name as agent_name, p.chave_pix,
+                r.referrer_phone, r.referred_phone, r.stage, r.status, r.created_at
+         FROM referrals r
+         LEFT JOIN agents a ON r.agent_id = a.id
+         LEFT JOIN indicadores_pix p ON REPLACE(REPLACE(REPLACE(r.referrer_cpf, '.', ''), '-', ''), '/', '') = p.cpf_indicador
+         ${wClause}
+         ORDER BY r.created_at DESC
+         LIMIT $${wParamIndex} OFFSET $${wParamIndex + 1}`,
+        [...wParams, parseInt(limit), offset]
+      );
+      return { total: countRes.rows[0]?.total || 0, rows: dataRes.rows };
+    }
 
-    const result = await query(
-      `SELECT r.id, r.referrer_cpf, r.referrer_name, r.referred_name, r.referred_cpf,
-              r.agent_id, a.name as agent_name, p.chave_pix,
-              r.referrer_phone, r.referred_phone, r.stage, r.status, r.created_at
-       FROM referrals r
-       LEFT JOIN agents a ON r.agent_id = a.id
-       LEFT JOIN indicadores_pix p ON REPLACE(REPLACE(REPLACE(r.referrer_cpf, '.', ''), '-', ''), '/', '') = p.cpf_indicador
-       ${whereClause}
-       ORDER BY r.created_at DESC
-       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
-      [...params, parseInt(limit), offset]
-    );
+    let { total, rows } = await runQuery(whereClause, params, paramIndex);
+
+    // Fallback ERP: se o filtro de telefone retornou 0 resultados, consulta o ERP
+    // para resolver o CPF atual do indicador e repete a busca por CPF.
+    if (telefoneIndicador && telDigitsLocal.length >= 8 && total === 0) {
+      try {
+        let smsERP = telDigitsLocal;
+        if (!smsERP.startsWith('55')) smsERP = '55' + smsERP;
+        if (smsERP.length >= 12 && smsERP.length <= 13) {
+          const erpAuthToken = process.env.ERP_AUTH_TOKEN;
+          if (erpAuthToken) {
+            const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
+            const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_BUSCAR_CLIENTE_INDICADOR?sms=${smsERP}`;
+            console.log(`[referrals-relacao] Fallback ERP para telefone ${smsERP}`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            const erpResp = await fetch(erpUrl, {
+              method: 'GET',
+              headers: { 'Authorization': authHeader, 'Accept': 'application/json' },
+              signal: controller.signal,
+            }).finally(() => clearTimeout(timeoutId));
+
+            if (erpResp.ok) {
+              const erpData = await erpResp.json();
+              const rawData = Array.isArray(erpData) ? erpData : [erpData];
+              const cpfERP = rawData[0]?.cpf;
+              if (cpfERP) {
+                const cpfDigits = String(cpfERP).replace(/\D/g, '');
+                console.log(`[referrals-relacao] ERP resolveu telefone → CPF ${cpfDigits}`);
+                // Reconstrói whereClause usando CPF no lugar do telefone
+                let fbWhere = 'WHERE 1=1';
+                const fbParams = [];
+                let fbIdx = 1;
+                if (!canSeeAll && req.agent?.id) {
+                  fbWhere += ` AND r.agent_id = $${fbIdx}`;
+                  fbParams.push(req.agent.id);
+                  fbIdx++;
+                }
+                // Substitui filtro de telefone pelo CPF resolvido
+                fbWhere += ` AND REPLACE(REPLACE(REPLACE(r.referrer_cpf, '.', ''), '-', ''), '/', '') = $${fbIdx}`;
+                fbParams.push(cpfDigits);
+                fbIdx++;
+                if (nomeIndicado) {
+                  fbWhere += ` AND LOWER(r.referred_name) LIKE LOWER($${fbIdx})`;
+                  fbParams.push(`%${nomeIndicado}%`);
+                  fbIdx++;
+                }
+                if (vendedorId && canSeeAll) {
+                  fbWhere += ` AND r.agent_id = $${fbIdx}`;
+                  fbParams.push(vendedorId);
+                  fbIdx++;
+                }
+                const fbResult = await runQuery(fbWhere, fbParams, fbIdx);
+                if (fbResult.total > 0) {
+                  total = fbResult.total;
+                  rows = fbResult.rows;
+                }
+              }
+            }
+          }
+        }
+      } catch (erpErr) {
+        // Falha silenciosa: se ERP não responder, retorna resultado local (vazio)
+        console.warn(`[referrals-relacao] Fallback ERP falhou: ${erpErr.message}`);
+      }
+    }
 
     res.json({
       success: true,
-      data: result.rows.map(row => ({
+      data: rows.map(row => ({
         id: row.id,
         referrerCpf: row.referrer_cpf,
         referrerName: row.referrer_name,
@@ -437,7 +507,7 @@ router.get('/referrals-relacao', authMiddleware, loadAgentMiddleware, requireSub
         status: row.status,
         createdAt: row.created_at,
       })),
-      total: countResult.rows[0]?.total || 0,
+      total,
       page: parseInt(page),
       limit: parseInt(limit),
     });
@@ -815,7 +885,7 @@ router.get('/lead-generator-log-estruturado', authMiddleware, async (req, res) =
 
     res.json({
       success: true,
-      total: countResult.rows[0]?.total || 0,
+      total,
       data: dataResult.rows,
     });
   } catch (error) {
