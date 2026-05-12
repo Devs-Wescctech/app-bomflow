@@ -5051,7 +5051,7 @@ function generateCommissionPDF(data) {
     }
 
     if (hasPending) {
-      if (y > doc.page.height - 100) { doc.addPage(); y = 40; }
+      if (y > doc.page.height - 100) { console.log(`[PDF] PENDING_START addPage, y=${y}`); doc.addPage(); y = 40; }
 
       doc.roundedRect(40, y, doc.page.width - 80, 24, 4).fill([255, 251, 235]);
       doc.fontSize(9).fill([146, 64, 14]).text('Existem comissões pendentes de pagamento de ciclos anteriores', 52, y + 7, { width: doc.page.width - 104 });
@@ -5079,8 +5079,9 @@ function generateCommissionPDF(data) {
         return { ...g, total: unitVal * g.count, nivel: g.count >= 13 ? 'Nível 3' : g.count >= 4 ? 'Nível 2' : 'Nível 1' };
       });
 
+      console.log(`[PDF] pdfPendingGrouped rows: ${pdfPendingGrouped.length} | page.height=${doc.page.height} | threshold=${doc.page.height - 60}`);
       pdfPendingGrouped.forEach((g, pIdx) => {
-        if (y > doc.page.height - 60) { doc.addPage(); y = 40; y = drawTableHeader(cols1, y); }
+        if (y > doc.page.height - 60) { console.log(`[PDF] LOOP addPage at pIdx=${pIdx}, y=${y}`); doc.addPage(); y = 40; y = drawTableHeader(cols1, y); }
         const bg = pIdx % 2 === 1 ? [255, 251, 235] : null;
         const pixDisplay = g.pix || 'PIX não informado';
         y = drawTableRow(cols1, [
@@ -5099,7 +5100,7 @@ function generateCommissionPDF(data) {
       y += 30;
     }
 
-    if (y > doc.page.height - 70) { doc.addPage(); y = 40; }
+    if (y > doc.page.height - 70) { console.log(`[PDF] FOOTER addPage, y=${y}`); doc.addPage(); y = 40; }
     doc.rect(40, y, doc.page.width - 80, 58).fill(darkBg);
     doc.fontSize(9).fill([148, 163, 184]).text('Bom Pastor — Bom Flow CRM', 40, y + 6, { align: 'center', width: doc.page.width - 80 });
     doc.fontSize(8).fill([100, 116, 139]).text(`Relatório gerado automaticamente em ${geradoEm}`, 40, y + 18, { align: 'center', width: doc.page.width - 80 });
