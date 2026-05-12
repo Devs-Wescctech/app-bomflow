@@ -16,6 +16,9 @@ import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { REFERRAL_STAGES } from "@/constants/stages";
+import { base44 } from "@/api/base44Client";
+
+const PRIVILEGED_AGENT_TYPES = new Set(['admin', 'indicacoes_supervisor', 'indicacoes_admin']);
 
 const API_BASE = '/api';
 
@@ -99,6 +102,19 @@ export default function ReferralRelacao() {
     if (!agentsData) return [];
     return agentsData.filter(a => a.agentType === 'indicacoes_atendente');
   }, [agentsData]);
+
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const currentAgentType = useMemo(() => {
+    const a = currentUser?.agent || (agentsData || []).find(x => x.userEmail === currentUser?.email || x.user_email === currentUser?.email);
+    return a?.agentType || a?.agent_type || null;
+  }, [currentUser, agentsData]);
+
+  const isPrivileged = currentUser?.role === 'admin' || PRIVILEGED_AGENT_TYPES.has(currentAgentType);
   const referrals = data?.data || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / limit);
@@ -274,7 +290,7 @@ export default function ReferralRelacao() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+          <div className={`grid grid-cols-1 ${isPrivileged ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4 items-end`}>
             <div>
               <Label className="text-xs text-gray-600">CPF Indicador</Label>
               <Input
@@ -295,20 +311,22 @@ export default function ReferralRelacao() {
                 onKeyDown={e => e.key === 'Enter' && handleSearch()}
               />
             </div>
-            <div>
-              <Label className="text-xs text-gray-600">Vendedor</Label>
-              <Select value={filters.vendedorId} onValueChange={val => setFilters({ ...filters, vendedorId: val === '_all' ? '' : val })}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Todos os vendedores" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all">Todos</SelectItem>
-                  {agents.filter(a => a.active !== false).map(a => (
-                    <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {isPrivileged && (
+              <div>
+                <Label className="text-xs text-gray-600">Vendedor</Label>
+                <Select value={filters.vendedorId} onValueChange={val => setFilters({ ...filters, vendedorId: val === '_all' ? '' : val })}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Todos os vendedores" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">Todos</SelectItem>
+                    {agents.filter(a => a.active !== false).map(a => (
+                      <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="flex gap-2">
               <Button onClick={handleSearch} className="gap-2 bg-amber-600 hover:bg-amber-700 text-white">
                 <Search className="w-4 h-4" /> Buscar

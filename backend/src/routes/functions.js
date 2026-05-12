@@ -356,6 +356,23 @@ router.get('/referrals-relacao', authMiddleware, loadAgentMiddleware, requireSub
     const params = [];
     let paramIndex = 1;
 
+    // Visibilidade: admin (role) e supervisores/admins de indicações veem tudo;
+    // atendentes (e demais perfis com acesso ao menu) veem apenas as próprias indicações.
+    const userRole = req.user?.role;
+    const agentType = req.agent?.agentType;
+    const PRIVILEGED_AGENT_TYPES = new Set(['admin', 'indicacoes_supervisor', 'indicacoes_admin']);
+    const canSeeAll = userRole === 'admin' || PRIVILEGED_AGENT_TYPES.has(agentType);
+
+    if (!canSeeAll) {
+      if (!req.agent?.id) {
+        // Sem agent vinculado e sem privilégio → não pode listar nada
+        return res.json({ success: true, data: [], total: 0, page: parseInt(page), limit: parseInt(limit) });
+      }
+      whereClause += ` AND r.agent_id = $${paramIndex}`;
+      params.push(req.agent.id);
+      paramIndex++;
+    }
+
     if (cpfIndicador) {
       whereClause += ` AND REPLACE(REPLACE(REPLACE(r.referrer_cpf, '.', ''), '-', ''), '/', '') LIKE $${paramIndex}`;
       params.push(`%${cpfIndicador.replace(/\D/g, '')}%`);
@@ -366,7 +383,7 @@ router.get('/referrals-relacao', authMiddleware, loadAgentMiddleware, requireSub
       params.push(`%${nomeIndicado}%`);
       paramIndex++;
     }
-    if (vendedorId) {
+    if (vendedorId && canSeeAll) {
       whereClause += ` AND r.agent_id = $${paramIndex}`;
       params.push(vendedorId);
       paramIndex++;
