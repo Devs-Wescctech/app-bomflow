@@ -89,6 +89,35 @@ export async function buscarIndicadorERP(cpf) {
   return data;
 }
 
+export async function buscarIndicadorPorTelefoneERP(phone) {
+  let smsLimpo = String(phone || '').replace(/\D/g, '');
+  if (smsLimpo.startsWith('0')) smsLimpo = smsLimpo.replace(/^0+/, '');
+  if (!smsLimpo.startsWith('55')) smsLimpo = '55' + smsLimpo;
+  if (smsLimpo.length < 12 || smsLimpo.length > 13) {
+    throw new Error('Telefone inválido (use DDD + número)');
+  }
+
+  const response = await fetch(`${API_BASE}/functions/get-indicador-from-erp`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({ sms: smsLimpo }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const error = new Error(data.error || 'Erro ao buscar indicador no ERP por telefone');
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
+
+  return data;
+}
+
 export async function buscarHistoricoIndicacoes(cpf) {
   const cpfLimpo = cpf.replace(/\D/g, '');
   

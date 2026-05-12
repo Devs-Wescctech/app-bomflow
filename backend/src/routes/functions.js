@@ -2386,16 +2386,35 @@ router.post('/get-customer-from-erp', authMiddleware, async (req, res) => {
 
 router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
   try {
-    const { cpf } = req.body;
+    const { cpf, sms } = req.body;
 
-    if (!cpf) {
-      return res.status(400).json({ success: false, error: 'CPF é obrigatório' });
+    if (!cpf && !sms) {
+      return res.status(400).json({ success: false, error: 'CPF ou telefone é obrigatório' });
     }
 
-    const cpfLimpo = cpf.replace(/\D/g, '');
+    let cpfLimpo = '';
+    let cpfFormatado = '';
+    let erpUrl;
+    let queryDesc;
 
-    if (cpfLimpo.length !== 11) {
-      return res.status(400).json({ success: false, error: 'CPF inválido' });
+    if (cpf) {
+      cpfLimpo = cpf.replace(/\D/g, '');
+      if (cpfLimpo.length !== 11) {
+        return res.status(400).json({ success: false, error: 'CPF inválido' });
+      }
+      cpfFormatado = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+      erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_BUSCAR_CLIENTE_INDICADOR?cpf=${cpfFormatado}`;
+      queryDesc = `CPF ${cpfLimpo}`;
+    } else {
+      let smsLimpo = String(sms).replace(/\D/g, '');
+      if (smsLimpo.startsWith('0')) smsLimpo = smsLimpo.replace(/^0+/, '');
+      if (!smsLimpo.startsWith('55')) smsLimpo = '55' + smsLimpo;
+      // Esperado: 55 + DDD(2) + 8 ou 9 dígitos = 12 ou 13 chars
+      if (smsLimpo.length < 12 || smsLimpo.length > 13) {
+        return res.status(400).json({ success: false, error: 'Telefone inválido (use DDD + número)' });
+      }
+      erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_BUSCAR_CLIENTE_INDICADOR?sms=${smsLimpo}`;
+      queryDesc = `SMS ${smsLimpo}`;
     }
 
     const erpAuthToken = process.env.ERP_AUTH_TOKEN;
@@ -2408,10 +2427,7 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
       });
     }
 
-    const cpfFormatado = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_BUSCAR_CLIENTE_INDICADOR?cpf=${cpfFormatado}`;
-
-    console.log(`[ERP INDICADOR] Fetching for CPF: ${cpfLimpo}`);
+    console.log(`[ERP INDICADOR] Fetching for ${queryDesc}`);
 
     const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
 
@@ -2444,7 +2460,7 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
     if (!erpData || (Array.isArray(erpData) && erpData.length === 0)) {
       return res.status(404).json({
         success: false,
-        error: 'Nenhum dado encontrado para este CPF',
+        error: 'Nenhum dado encontrado',
         notFound: true,
         noContract: true
       });
@@ -2453,7 +2469,7 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
     const rawData = Array.isArray(erpData) ? erpData : [erpData];
     const firstRecord = rawData[0];
 
-    console.log(`[ERP INDICADOR] Received ${rawData.length} records for CPF ${cpfLimpo}`);
+    console.log(`[ERP INDICADOR] Received ${rawData.length} records for ${queryDesc}`);
 
     const situacaoMap = { 'A': 'Ativo', 'C': 'Cancelado', 'S': 'Suspenso' };
 
