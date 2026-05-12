@@ -98,6 +98,8 @@ export default function ReferralDetail() {
   const [showHardDeleteDialog, setShowHardDeleteDialog] = useState(false);
   const [sendingContractLink, setSendingContractLink] = useState(false);
   const [checkingAutentique, setCheckingAutentique] = useState(false);
+  const [pixInput, setPixInput] = useState("");
+  const [editingPix, setEditingPix] = useState(false);
 
   const { data: referral, isLoading, error } = useQuery({
     queryKey: ['referral', referralId],
@@ -127,6 +129,47 @@ export default function ReferralDetail() {
   const { data: templates = [] } = useQuery({
     queryKey: ['proposalTemplates'],
     queryFn: () => base44.entities.ProposalTemplate.list(),
+  });
+
+  const cleanReferrerCpf = (referral?.referrerCpf || '').replace(/\D/g, '');
+
+  const { data: pixData, isLoading: isLoadingPix } = useQuery({
+    queryKey: ['indicador-pix', cleanReferrerCpf],
+    queryFn: async () => {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(`/api/functions/indicadores-pix/${cleanReferrerCpf}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { chave_pix: null };
+      return res.json();
+    },
+    enabled: !!cleanReferrerCpf,
+    staleTime: 30 * 1000,
+  });
+
+  const savePixMutation = useMutation({
+    mutationFn: async (chavePix) => {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(`/api/functions/indicadores-pix/${cleanReferrerCpf}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chavePix }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Erro ao salvar Chave PIX.');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['indicador-pix', cleanReferrerCpf] });
+      toast.success('Chave PIX salva com sucesso!');
+      setEditingPix(false);
+      setPixInput("");
+    },
+    onError: (err) => {
+      toast.error(err.message || 'Erro ao salvar Chave PIX.');
+    },
   });
 
   const actionableTypes = ['task', 'visit', 'call', 'meeting', 'email', 'presentation', 'proposal'];
@@ -1471,6 +1514,62 @@ export default function ReferralDetail() {
                     <div>
                       <Label className="text-xs text-purple-700 dark:text-purple-400">Contrato</Label>
                       <p className="font-semibold text-purple-900 dark:text-purple-200 text-sm">{referral.referrerContractId}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-3 border-t border-purple-300 dark:border-purple-700">
+                  <Label className="text-xs text-purple-700 dark:text-purple-400">Chave PIX</Label>
+                  {isLoadingPix ? (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Carregando...</p>
+                  ) : !cleanReferrerCpf ? (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">CPF do indicador não informado.</p>
+                  ) : pixData?.chave_pix && !editingPix ? (
+                    <div className="mt-1 flex items-center gap-2">
+                      <p className="font-semibold text-purple-900 dark:text-purple-200 text-sm break-all flex-1">
+                        {pixData.chave_pix}
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        onClick={() => { setPixInput(pixData.chave_pix); setEditingPix(true); }}
+                      >
+                        Editar
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="mt-1 flex flex-col sm:flex-row gap-2">
+                      <Input
+                        value={pixInput}
+                        onChange={(e) => setPixInput(e.target.value)}
+                        placeholder="CPF, e-mail, telefone ou chave aleatória"
+                        className="h-9 text-sm bg-white dark:bg-gray-900 flex-1"
+                        maxLength={150}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-9"
+                          disabled={!pixInput.trim() || savePixMutation.isPending}
+                          onClick={() => savePixMutation.mutate(pixInput.trim())}
+                        >
+                          {savePixMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar'}
+                        </Button>
+                        {editingPix && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-9"
+                            onClick={() => { setEditingPix(false); setPixInput(""); }}
+                          >
+                            Cancelar
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
