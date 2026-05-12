@@ -4831,38 +4831,31 @@ function buildCommissionEmailHtml(data) {
           <th style="${thStyle}">Indicador</th>
           <th style="${thStyle}">CPF</th>
           <th style="${thStyle}">PIX</th>
-          <th style="${thStyle}">CPF Indicado</th>
-          <th style="${thStyle}">Nome Indicado</th>
-          <th style="${thStyle}">Nº Contrato</th>
+          <th style="${thStyle} text-align: center;">Qtd. Indicações</th>
           <th style="${thStyle} text-align: center;">Nível</th>
-          <th style="${thStyle} text-align: right;">Comissão</th>
+          <th style="${thStyle} text-align: right;">Total Comissão</th>
         </tr>
       </thead>
       <tbody>`;
 
-    records.forEach((r, idx) => {
+    Object.values(indicators).forEach((ind, idx) => {
       const bg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
-      const indKey = r.cpf_indicador || r.nome_indicador || 'unknown';
-      const ind = indicators[indKey] || {};
       const nivel = (ind.count || 0) >= 13 ? 'Nível 3' : (ind.count || 0) >= 4 ? 'Nível 2' : (ind.count || 0) >= 1 ? 'Nível 1' : '-';
-      const unitValue = (ind.count || 0) >= 13 ? 200 : (ind.count || 0) >= 4 ? 150 : (ind.count || 0) >= 1 ? 100 : 0;
       const pixDisplay = ind.pix ? escapeHtml(ind.pix) : 'PIX não informado';
       html += `
         <tr style="background: ${bg};">
-          <td style="${tdStyle} font-weight: 600;">${escapeHtml(r.nome_indicador) || '-'}</td>
-          <td style="${tdStyle}">${formatCPF(r.cpf_indicador)}</td>
+          <td style="${tdStyle} font-weight: 600;">${escapeHtml(ind.nome) || '-'}</td>
+          <td style="${tdStyle}">${formatCPF(ind.cpf)}</td>
           <td style="${tdStyle}${!ind.pix ? ' color: #94a3b8; font-style: italic;' : ''}">${pixDisplay}</td>
-          <td style="${tdStyle}">${formatCPF(r.cpf_indicado)}</td>
-          <td style="${tdStyle}">${escapeHtml(r.nome_indicado) || '-'}</td>
-          <td style="${tdStyle}">${r.contrato_servicos || '-'}</td>
+          <td style="${tdStyle} text-align: center;">${ind.count || 0}</td>
           <td style="${tdStyle} text-align: center;">${nivel}</td>
-          <td style="${tdRight}">${formatCurrency(unitValue)}</td>
+          <td style="${tdRight}">${formatCurrency(ind.total || 0)}</td>
         </tr>`;
     });
 
     html += `
         <tr style="background: #1e293b;">
-          <td colspan="7" style="padding: 12px; border: 1px solid #334155; color: #ffffff; font-weight: 700; font-size: 14px;">TOTAL A PAGAR</td>
+          <td colspan="5" style="padding: 12px; border: 1px solid #334155; color: #ffffff; font-weight: 700; font-size: 14px;">TOTAL A PAGAR</td>
           <td style="padding: 12px; border: 1px solid #334155; color: #f59e0b; font-weight: 800; font-size: 16px; text-align: right;">${formatCurrency(valorTotal)}</td>
         </tr>
       </tbody>
@@ -4871,7 +4864,21 @@ function buildCommissionEmailHtml(data) {
   }
 
   if (hasPending) {
-    const pendingRecords = data.pendingRecords || [];
+    // Agrupa pendentes por CPF do indicador, somando comissão
+    const pendingByCpf = {};
+    for (const r of (data.pendingRecords || [])) {
+      const cpfKey = (r.cpf_indicador || '').replace(/\D/g, '') || r.nome_indicador || 'unknown';
+      if (!pendingByCpf[cpfKey]) {
+        pendingByCpf[cpfKey] = { nome: r.nome_indicador || '-', cpf: r.cpf_indicador || '-', pix: r._pix || null, count: 0 };
+      }
+      pendingByCpf[cpfKey].count += 1;
+      if (!pendingByCpf[cpfKey].pix && r._pix) pendingByCpf[cpfKey].pix = r._pix;
+    }
+    const pendingGrouped = Object.values(pendingByCpf).map(g => {
+      const unitVal = g.count >= 13 ? 200 : g.count >= 4 ? 150 : 100;
+      return { ...g, total: unitVal * g.count, nivel: g.count >= 13 ? 'Nível 3' : g.count >= 4 ? 'Nível 2' : 'Nível 1' };
+    });
+
     html += `
   <!-- Pending Commissions Section -->
   <div style="padding: 0 40px 24px;">
@@ -4885,37 +4892,30 @@ function buildCommissionEmailHtml(data) {
           <th style="${thStyle}">Indicador</th>
           <th style="${thStyle}">CPF</th>
           <th style="${thStyle}">PIX</th>
-          <th style="${thStyle}">CPF Indicado</th>
-          <th style="${thStyle}">Nome Indicado</th>
-          <th style="${thStyle}">Nº Contrato</th>
+          <th style="${thStyle} text-align: center;">Qtd. Indicações</th>
           <th style="${thStyle} text-align: center;">Nível</th>
-          <th style="${thStyle} text-align: right;">Comissão</th>
+          <th style="${thStyle} text-align: right;">Total Comissão</th>
         </tr>
       </thead>
       <tbody>`;
 
-    pendingRecords.forEach((r, pIdx) => {
+    pendingGrouped.forEach((g, pIdx) => {
       const bg = pIdx % 2 === 0 ? '#ffffff' : '#fffbeb';
-      const count = r._indicatorCount || 0;
-      const nivel = count >= 13 ? 'Nível 3' : count >= 4 ? 'Nível 2' : count >= 1 ? 'Nível 1' : '-';
-      const unitValue = count >= 13 ? 200 : count >= 4 ? 150 : count >= 1 ? 100 : 0;
-      const pixDisplay = r._pix ? escapeHtml(r._pix) : 'PIX não informado';
+      const pixDisplay = g.pix ? escapeHtml(g.pix) : 'PIX não informado';
       html += `
         <tr style="background: ${bg};">
-          <td style="${tdStyle} font-weight: 600;">${escapeHtml(r.nome_indicador) || '-'}</td>
-          <td style="${tdStyle}">${formatCPF(r.cpf_indicador)}</td>
-          <td style="${tdStyle}${!r._pix ? ' color: #94a3b8; font-style: italic;' : ''}">${pixDisplay}</td>
-          <td style="${tdStyle}">${formatCPF(r.cpf_indicado)}</td>
-          <td style="${tdStyle}">${escapeHtml(r.nome_indicado) || '-'}</td>
-          <td style="${tdStyle}">${r.contrato_servicos || '-'}</td>
-          <td style="${tdStyle} text-align: center;">${nivel}</td>
-          <td style="${tdRight}">${formatCurrency(unitValue)}</td>
+          <td style="${tdStyle} font-weight: 600;">${escapeHtml(g.nome) || '-'}</td>
+          <td style="${tdStyle}">${formatCPF(g.cpf)}</td>
+          <td style="${tdStyle}${!g.pix ? ' color: #94a3b8; font-style: italic;' : ''}">${pixDisplay}</td>
+          <td style="${tdStyle} text-align: center;">${g.count}</td>
+          <td style="${tdStyle} text-align: center;">${g.nivel}</td>
+          <td style="${tdRight}">${formatCurrency(g.total)}</td>
         </tr>`;
     });
 
     html += `
         <tr style="background: #7c2d12;">
-          <td colspan="7" style="padding: 12px; border: 1px solid #9a3412; color: #ffffff; font-weight: 700; font-size: 14px;">TOTAL PENDENTE</td>
+          <td colspan="5" style="padding: 12px; border: 1px solid #9a3412; color: #ffffff; font-weight: 700; font-size: 14px;">TOTAL PENDENTE</td>
           <td style="padding: 12px; border: 1px solid #9a3412; color: #fb923c; font-weight: 800; font-size: 16px; text-align: right;">${formatCurrency(pendingTotal)}</td>
         </tr>
       </tbody>
@@ -4974,14 +4974,12 @@ function generateCommissionPDF(data) {
     y += 20;
 
     const cols1 = [
-      { label: 'Indicador', w: 120, align: 'left' },
-      { label: 'CPF', w: 95, align: 'left' },
-      { label: 'PIX', w: 110, align: 'left' },
-      { label: 'CPF Indicado', w: 95, align: 'left' },
-      { label: 'Nome Indicado', w: 130, align: 'left' },
-      { label: 'Nº Contrato', w: 75, align: 'left' },
-      { label: 'Nível', w: 50, align: 'center' },
-      { label: 'Comissão', w: 87, align: 'right' },
+      { label: 'Indicador', w: 170, align: 'left' },
+      { label: 'CPF', w: 100, align: 'left' },
+      { label: 'PIX', w: 160, align: 'left' },
+      { label: 'Qtd. Indicações', w: 80, align: 'center' },
+      { label: 'Nível', w: 60, align: 'center' },
+      { label: 'Total Comissão', w: 92, align: 'right' },
     ];
 
     const ROW_HEIGHT = 22;
@@ -5036,15 +5034,12 @@ function generateCommissionPDF(data) {
 
       y = drawTableHeader(cols1, y);
 
-      records.forEach((r, idx) => {
+      Object.values(indicators).forEach((ind, idx) => {
         if (y > doc.page.height - 60) { doc.addPage(); y = 40; y = drawTableHeader(cols1, y); }
         const bg = idx % 2 === 1 ? [248, 250, 252] : null;
-        const indKey = r.cpf_indicador || r.nome_indicador || 'unknown';
-        const ind = indicators[indKey] || {};
         const nivel = (ind.count || 0) >= 13 ? 'Nível 3' : (ind.count || 0) >= 4 ? 'Nível 2' : (ind.count || 0) >= 1 ? 'Nível 1' : '-';
-        const unitValue = (ind.count || 0) >= 13 ? 200 : (ind.count || 0) >= 4 ? 150 : (ind.count || 0) >= 1 ? 100 : 0;
         const pixDisplay = ind.pix || 'PIX não informado';
-        y = drawTableRow(cols1, [r.nome_indicador || '-', formatCPF(r.cpf_indicador), pixDisplay, formatCPF(r.cpf_indicado), r.nome_indicado || '-', r.contrato_servicos || '-', nivel, formatCurrency(unitValue)], y, bg);
+        y = drawTableRow(cols1, [ind.nome || '-', formatCPF(ind.cpf), pixDisplay, String(ind.count || 0), nivel, formatCurrency(ind.total || 0)], y, bg);
       });
 
       doc.rect(40, y, doc.page.width - 80, 20).fill(darkBg);
@@ -5067,22 +5062,32 @@ function generateCommissionPDF(data) {
 
       y = drawTableHeader(cols1, y);
 
-      (data.pendingRecords || []).forEach((r, pIdx) => {
+      // Agrupa pendentes por CPF para o PDF
+      const pdfPendingByCpf = {};
+      for (const r of (data.pendingRecords || [])) {
+        const cpfKey = (r.cpf_indicador || '').replace(/\D/g, '') || r.nome_indicador || 'unknown';
+        if (!pdfPendingByCpf[cpfKey]) {
+          pdfPendingByCpf[cpfKey] = { nome: r.nome_indicador || '-', cpf: r.cpf_indicador || '-', pix: r._pix || null, count: 0 };
+        }
+        pdfPendingByCpf[cpfKey].count += 1;
+        if (!pdfPendingByCpf[cpfKey].pix && r._pix) pdfPendingByCpf[cpfKey].pix = r._pix;
+      }
+      const pdfPendingGrouped = Object.values(pdfPendingByCpf).map(g => {
+        const unitVal = g.count >= 13 ? 200 : g.count >= 4 ? 150 : 100;
+        return { ...g, total: unitVal * g.count, nivel: g.count >= 13 ? 'Nível 3' : g.count >= 4 ? 'Nível 2' : 'Nível 1' };
+      });
+
+      pdfPendingGrouped.forEach((g, pIdx) => {
         if (y > doc.page.height - 60) { doc.addPage(); y = 40; y = drawTableHeader(cols1, y); }
         const bg = pIdx % 2 === 1 ? [255, 251, 235] : null;
-        const count = r._indicatorCount || 0;
-        const nivel = count >= 13 ? 'Nível 3' : count >= 4 ? 'Nível 2' : count >= 1 ? 'Nível 1' : '-';
-        const unitValue = count >= 13 ? 200 : count >= 4 ? 150 : count >= 1 ? 100 : 0;
-        const pixDisplay = r._pix || 'PIX não informado';
+        const pixDisplay = g.pix || 'PIX não informado';
         y = drawTableRow(cols1, [
-          r.nome_indicador || '-',
-          formatCPF(r.cpf_indicador),
+          g.nome,
+          formatCPF(g.cpf),
           pixDisplay,
-          formatCPF(r.cpf_indicado),
-          r.nome_indicado || '-',
-          r.contrato_servicos || '-',
-          nivel,
-          formatCurrency(unitValue)
+          String(g.count),
+          g.nivel,
+          formatCurrency(g.total)
         ], y, bg);
       });
 
