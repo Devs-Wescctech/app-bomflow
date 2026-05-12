@@ -511,6 +511,46 @@ export default function ReferralPipeline() {
     staleTime: 60000,
   });
 
+  const { data: agentTypesData = [] } = useQuery({
+    queryKey: ['agent-types-referral-pipeline'],
+    queryFn: async () => {
+      try {
+        const r = await base44.entities.AgentType.list();
+        return Array.isArray(r) ? r : [];
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const referralAgentTypeKeys = useMemo(() => {
+    const fromApi = (agentTypesData || [])
+      .filter(t => t?.modules && (t.modules.includes('referral') || t.modules.includes('all')))
+      .map(t => t.key);
+    const fallback = ['indicacoes_atendente', 'indicacoes_supervisor', 'indicacoes_admin'];
+    return new Set(fromApi.length > 0 ? fromApi : fallback);
+  }, [agentTypesData]);
+
+  const referralAgents = useMemo(() => {
+    if (!agents || agents.length === 0) return [];
+    return agents.filter(a => referralAgentTypeKeys.has(a.agentType || a.agent_type));
+  }, [agents, referralAgentTypeKeys]);
+
+  const referralTeamIds = useMemo(() => {
+    const ids = new Set();
+    referralAgents.forEach(a => {
+      const tid = a.team_id ?? a.teamId;
+      if (tid !== null && tid !== undefined && tid !== '') ids.add(String(tid));
+    });
+    return ids;
+  }, [referralAgents]);
+
+  const referralTeams = useMemo(() => {
+    if (!teams || teams.length === 0) return [];
+    return teams.filter(t => referralTeamIds.has(String(t.id)));
+  }, [teams, referralTeamIds]);
+
   const currentAgent = user?.agent || agents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
   const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor' || currentAgentType?.endsWith('_supervisor') || currentAgentType === 'indicacoes_admin' || user?.role === 'admin' || user?.role === 'supervisor';
@@ -1125,7 +1165,7 @@ export default function ReferralPipeline() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">Todos os times</SelectItem>
-                          {teams.map(team => (
+                          {referralTeams.map(team => (
                             <SelectItem key={team.id} value={String(team.id)}>{team.name}</SelectItem>
                           ))}
                         </SelectContent>
@@ -1142,7 +1182,7 @@ export default function ReferralPipeline() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">Todos os agentes</SelectItem>
-                          {(filters.team !== 'all' ? agents.filter(a => String(a.team_id) === String(filters.team) || String(a.teamId) === String(filters.team)) : agents).map(agent => (
+                          {(filters.team !== 'all' ? referralAgents.filter(a => String(a.team_id) === String(filters.team) || String(a.teamId) === String(filters.team)) : referralAgents).map(agent => (
                             <SelectItem key={agent.id} value={String(agent.id)}>{agent.name}</SelectItem>
                           ))}
                         </SelectContent>
