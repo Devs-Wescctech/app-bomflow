@@ -2628,7 +2628,7 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
       const variants = req._smsVariants;
       const dddLocal = variants[variants.length - 1]; // ex: 19989816893
       const sorted = [dddLocal, ...variants.filter(v => v !== dddLocal)];
-      api2Urls = ['telefone', 'sms'].flatMap(p => sorted.map(v => `${API2_BASE}?${p}=${v}`));
+      api2Urls = ['telefone', 'celular', 'sms'].flatMap(p => sorted.map(v => `${API2_BASE}?${p}=${v}`));
     }
 
     const api1ValidFn = d => d && !(Array.isArray(d) && d.length === 0);
