@@ -275,7 +275,7 @@ export default function ReferralCreate() {
       const adhesionValue = parseFloat(formData.adhesion_value || 0);
       const estimatedValue = monthlyValue + adhesionValue;
 
-      const commissionVal = calculateCommissionValue(referrerLevel);
+      const commissionVal = calculateCommissionValue(referrerLevel, referrerIsCorretor === true);
 
       const referralCode = `REF-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
@@ -374,7 +374,7 @@ export default function ReferralCreate() {
   };
 
   // Calcular comissão para exibição
-  const commissionValue = calculateCommissionValue(referrerLevel);
+  const commissionValue = calculateCommissionValue(referrerLevel, referrerIsCorretor === true);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white p-6">
@@ -524,15 +524,15 @@ export default function ReferralCreate() {
                       <div className="mt-3 pt-3 border-t border-purple-200">
                         <p className="text-xs text-purple-700 mb-2">Status de Indicador:</p>
                         <div className="flex items-center gap-2">
-                          <Badge className={getLevelDescription(referrerLevel).color}>
-                            {getLevelDescription(referrerLevel).badge}
+                          <Badge className={getLevelDescription(referrerLevel, referrerIsCorretor === true).color}>
+                            {getLevelDescription(referrerLevel, referrerIsCorretor === true).badge}
                           </Badge>
                           <span className="text-sm text-gray-600">
                             {referrerConversions} {referrerConversions !== 1 ? 'indicações convertidas' : 'indicação convertida'}
                           </span>
                         </div>
                         <p className="text-xs text-gray-500 mt-1">
-                          Comissão atual: R$ {calculateCommissionValue(referrerLevel)},00. {getNextLevelInfo(referrerConversions, referrerLevel)}
+                          Comissão atual: R$ {calculateCommissionValue(referrerLevel, referrerIsCorretor === true)},00. {getNextLevelInfo(referrerConversions, referrerLevel, referrerIsCorretor === true)}
                         </p>
                       </div>
                     </div>
@@ -847,12 +847,12 @@ export default function ReferralCreate() {
                       <p className="text-3xl font-bold text-blue-700">
                         R$ {commissionValue.toFixed(2)}
                       </p>
-                      <Badge className={getLevelDescription(referrerLevel).color + " mt-2"}>
-                        {getLevelDescription(referrerLevel).badge}
+                      <Badge className={getLevelDescription(referrerLevel, referrerIsCorretor === true).color + " mt-2"}>
+                        {getLevelDescription(referrerLevel, referrerIsCorretor === true).badge}
                       </Badge>
                     </div>
                     <p className="text-xs text-blue-900">
-                      {getNextLevelInfo(referrerConversions, referrerLevel)}
+                      {getNextLevelInfo(referrerConversions, referrerLevel, referrerIsCorretor === true)}
                     </p>
                   </>
                 ) : (
@@ -875,9 +875,21 @@ export default function ReferralCreate() {
                 <p>✅ <strong>4.</strong> Quando fechar, comissão é gerada</p>
                 <div className="mt-3 pt-3 border-t border-purple-300">
                   <p className="font-semibold mb-2">💎 Sistema de Níveis:</p>
-                  <p className="text-xs">• <strong>Nível 1:</strong> R$ 100,00 por venda (1-3 vendas convertidas)</p>
-                  <p className="text-xs">• <strong>Nível 2:</strong> R$ 150,00 por venda (4-12 vendas convertidas)</p>
-                  <p className="text-xs">• <strong>Nível 3:</strong> R$ 200,00 por venda (13+ vendas convertidas)</p>
+                  {referrerIsCorretor === true ? (
+                    <>
+                      <p className="text-xs font-semibold text-purple-700 mb-1">Corretor:</p>
+                      <p className="text-xs">• <strong>Nível 1:</strong> R$ 200,00 por venda (1-3 indicações)</p>
+                      <p className="text-xs">• <strong>Nível 2:</strong> R$ 300,00 por venda (4-12 indicações)</p>
+                      <p className="text-xs">• <strong>Nível 3:</strong> R$ 400,00 por venda (13+ indicações)</p>
+                    </>
+                  ) : (
+                    <>
+                      {referrerIsCorretor === false && <p className="text-xs font-semibold text-blue-700 mb-1">Indicador comum:</p>}
+                      <p className="text-xs">• <strong>Nível 1:</strong> R$ 100,00 por venda (1-3 vendas convertidas)</p>
+                      <p className="text-xs">• <strong>Nível 2:</strong> R$ 150,00 por venda (4-12 vendas convertidas)</p>
+                      <p className="text-xs">• <strong>Nível 3:</strong> R$ 200,00 por venda (13+ vendas convertidas)</p>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>
