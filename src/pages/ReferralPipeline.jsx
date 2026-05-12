@@ -809,7 +809,7 @@ export default function ReferralPipeline() {
   };
 
   const getOrderedReferralsByStage = useCallback((stage) => {
-    const stageReferrals = filteredReferrals.filter(ref => ref.stage === stage);
+    const stageReferrals = filteredReferrals.filter(ref => ref.stage === stage && !ref.concluded);
     if (localOrder[stage]) {
       const orderMap = {};
       localOrder[stage].forEach((id, index) => {
