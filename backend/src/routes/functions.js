@@ -2531,6 +2531,76 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
 
     const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
 
+    // Fallback: consulta API_DADOS_BASE_COMPLETA quando API 1 não encontra o CPF.
+    // Só aplicável para busca por CPF (API 2 não tem busca por telefone).
+    async function tryFallbackApi2() {
+      if (!cpfLimpo) return null; // Não aplica para busca por SMS/telefone
+      try {
+        const api2Url = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_DADOS_BASE_COMPLETA?cpf=${cpfFormatado}`;
+        console.log(`[ERP INDICADOR] API 1 não encontrou — tentando API_DADOS_BASE_COMPLETA para CPF ${cpfLimpo}`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const api2Resp = await fetch(api2Url, {
+          method: 'GET',
+          headers: { 'Authorization': authHeader, 'Accept': 'application/json' },
+          signal: controller.signal,
+        }).finally(() => clearTimeout(timeoutId));
+
+        if (!api2Resp.ok) {
+          console.warn(`[ERP INDICADOR] API_DADOS_BASE_COMPLETA retornou ${api2Resp.status}`);
+          return null;
+        }
+
+        const api2Data = await api2Resp.json();
+        const rawData2 = Array.isArray(api2Data) ? api2Data : [api2Data];
+        if (!rawData2.length || !rawData2[0]) return null;
+
+        const rec = rawData2[0];
+        console.log(`[ERP INDICADOR] API_DADOS_BASE_COMPLETA encontrou dados para CPF ${cpfLimpo}`);
+
+        // Normaliza para o mesmo formato que o frontend consome
+        return {
+          success: true,
+          source: 'erp_dados_base_completa',
+          synced_at: new Date().toISOString(),
+          data: {
+            contact: {
+              id: null,
+              name: rec.nome || '',
+              document: rec.cpf || cpfFormatado,
+              birth_date: rec.data_nascimento || '',
+              phones: [rec.telefone].filter(Boolean),
+              emails: [rec.email].filter(Boolean),
+              address: {
+                logradouro: rec.logradouro || '',
+                numero: rec.numero || '',
+                complemento: '',
+                bairro: rec.bairro || '',
+                cidade: rec.cidade || '',
+                uf: '',
+                cep: ''
+              },
+              vip: false,
+              codigo_erp: null,
+            },
+            contracts: [],
+            financial: {
+              total_contratos: 0,
+              valor_total_mensal: 0,
+              contratos_ativos: 0,
+              total_indicados: 0,
+              total_registros_erp: rawData2.length,
+              status_geral: 'SEM CONTRATO ATIVO'
+            },
+            raw_erp_data: [rec],
+          }
+        };
+      } catch (err) {
+        console.warn(`[ERP INDICADOR] Fallback API_DADOS_BASE_COMPLETA falhou: ${err.message}`);
+        return null;
+      }
+    }
+
     const erpResponse = await fetch(erpUrl, {
       method: 'GET',
       headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
@@ -2538,6 +2608,8 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
 
     if (!erpResponse.ok) {
       if (erpResponse.status === 404) {
+        const fallback = await tryFallbackApi2();
+        if (fallback) return res.json(fallback);
         return res.status(404).json({
           success: false,
           error: 'Nenhum dado encontrado para este CPF',
@@ -2558,6 +2630,8 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
     const erpData = await erpResponse.json();
 
     if (!erpData || (Array.isArray(erpData) && erpData.length === 0)) {
+      const fallback = await tryFallbackApi2();
+      if (fallback) return res.json(fallback);
       return res.status(404).json({
         success: false,
         error: 'Nenhum dado encontrado',
