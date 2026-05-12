@@ -2585,120 +2585,101 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
       };
     }
 
-    // Fallback por CPF: consulta API_DADOS_BASE_COMPLETA quando API 1 não encontra.
-    async function tryFallbackApi2() {
-      if (!cpfLimpo) return null; // Não aplica para busca por SMS/telefone
+    // Helper: faz fetch de uma URL do ERP e resolve com os dados ou rejeita se vazio/erro.
+    // Usado com Promise.any() para executar múltiplas variantes em paralelo.
+    async function erpFetch(url, isValidFn) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
       try {
-        const api2Url = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_DADOS_BASE_COMPLETA?cpf=${cpfFormatado}`;
-        console.log(`[ERP INDICADOR] API 1 não encontrou — tentando API_DADOS_BASE_COMPLETA para CPF ${cpfLimpo}`);
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
-        const api2Resp = await fetch(api2Url, {
+        const resp = await fetch(url, {
           method: 'GET',
           headers: { 'Authorization': authHeader, 'Accept': 'application/json' },
           signal: controller.signal,
-        }).finally(() => clearTimeout(timeoutId));
-
-        if (!api2Resp.ok) {
-          console.warn(`[ERP INDICADOR] API_DADOS_BASE_COMPLETA retornou ${api2Resp.status}`);
-          return null;
+        });
+        clearTimeout(timeoutId);
+        if (resp.status === 401) {
+          const err = new Error('401 Unauthorized');
+          err.is401 = true;
+          throw err;
         }
-
-        const api2Data = await api2Resp.json();
-        const rawData2 = Array.isArray(api2Data) ? api2Data : [api2Data];
-        if (!rawData2.length || !rawData2[0]) return null;
-
-        const rec = rawData2[0];
-        console.log(`[ERP INDICADOR] API_DADOS_BASE_COMPLETA encontrou dados para CPF ${cpfLimpo}`);
-        return normalizeApi2Record(rec, rawData2, cpfFormatado);
-      } catch (err) {
-        console.warn(`[ERP INDICADOR] Fallback API_DADOS_BASE_COMPLETA (CPF) falhou: ${err.message}`);
-        return null;
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        if (!isValidFn(data)) throw new Error('empty');
+        return data;
+      } catch (e) {
+        clearTimeout(timeoutId);
+        throw e;
       }
     }
 
-    // Fallback por telefone: tenta buscar na API_DADOS_BASE_COMPLETA quando API 1 não encontra por SMS.
-    // Testa parâmetros ?telefone= e ?sms= com as variantes de formato do número.
-    async function tryFallbackApi2BySms() {
-      if (!req._smsVariants) return null;
-      const API2_BASE = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_DADOS_BASE_COMPLETA';
-      const phoneVariants = req._smsVariants; // já contém as 4 variantes geradas anteriormente
-      const params = ['telefone', 'sms'];
-      for (const param of params) {
-        for (const phoneVal of phoneVariants) {
-          const tryUrl = `${API2_BASE}?${param}=${phoneVal}`;
-          try {
-            console.log(`[ERP INDICADOR] Fallback API2 por telefone: ${tryUrl}`);
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 8000);
-            const resp = await fetch(tryUrl, {
-              method: 'GET',
-              headers: { 'Authorization': authHeader, 'Accept': 'application/json' },
-              signal: controller.signal,
-            }).finally(() => clearTimeout(timeoutId));
-
-            if (!resp.ok) {
-              console.log(`[ERP INDICADOR] API2 ${tryUrl} → ${resp.status}`);
-              continue;
-            }
-            const data = await resp.json();
-            const rawData2 = Array.isArray(data) ? data : [data];
-            if (!rawData2.length || !rawData2[0] || !rawData2[0].nome) {
-              console.log(`[ERP INDICADOR] API2 ${tryUrl} → vazio`);
-              continue;
-            }
-            console.log(`[ERP INDICADOR] API2 encontrou via ${param}=${phoneVal}: ${rawData2[0].nome}`);
-            return normalizeApi2Record(rawData2[0], rawData2, rawData2[0].cpf || '');
-          } catch (err) {
-            console.log(`[ERP INDICADOR] API2 ${tryUrl} → erro: ${err.message}`);
-          }
-        }
-      }
-      return null;
-    }
-
-    // Para busca por SMS: tenta variantes de formato até encontrar (ou esgotar)
-    const urlsToTry = req._smsVariants
+    // ── FASE 1: API 1 (API_BUSCAR_CLIENTE_INDICADOR) — todas as variantes em paralelo ──
+    const api1Urls = req._smsVariants
       ? req._smsVariants.map(v => `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_BUSCAR_CLIENTE_INDICADOR?sms=${v}`)
       : [erpUrl];
 
-    let erpResponse = null;
-    let erpData = null;
-    let lastStatus = null;
+    const api1ValidFn = d => d && !(Array.isArray(d) && d.length === 0);
 
-    for (const tryUrl of urlsToTry) {
-      console.log(`[ERP INDICADOR] Tentando URL: ${tryUrl}`);
-      const resp = await fetch(tryUrl, {
-        method: 'GET',
-        headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
-      });
-      lastStatus = resp.status;
-      if (resp.status === 401) {
-        console.error('[ERP INDICADOR] Returned 401 - Token may be expired or invalid');
+    let erpData = null;
+
+    console.log(`[ERP INDICADOR] Fase 1: ${api1Urls.length} variante(s) em paralelo`);
+    try {
+      erpData = await Promise.any(api1Urls.map(url => erpFetch(url, api1ValidFn)));
+      console.log(`[ERP INDICADOR] Fase 1: sucesso`);
+    } catch (aggErr) {
+      const has401 = aggErr?.errors?.some?.(e => e.is401);
+      if (has401) {
+        console.error('[ERP INDICADOR] Token inválido (401)');
         return res.status(401).json({
           success: false,
           error: 'Token de autenticação do ERP inválido ou expirado. Verifique o ERP_AUTH_TOKEN.'
         });
       }
-      if (!resp.ok) {
-        console.log(`[ERP INDICADOR] ${tryUrl} → ${resp.status}, tentando próximo formato...`);
-        continue;
-      }
-      const data = await resp.json();
-      if (!data || (Array.isArray(data) && data.length === 0)) {
-        console.log(`[ERP INDICADOR] ${tryUrl} → vazio, tentando próximo formato...`);
-        continue;
-      }
-      erpResponse = resp;
-      erpData = data;
-      console.log(`[ERP INDICADOR] Sucesso com: ${tryUrl}`);
-      break;
+      console.log(`[ERP INDICADOR] Fase 1: todas as variantes vazias — indo para fallback`);
     }
 
+    // ── FASE 2: Fallbacks (somente se Fase 1 falhou) ──
     if (!erpData) {
-      // Tenta fallback por CPF (busca por CPF) ou por telefone (busca por SMS)
-      const fallback = await tryFallbackApi2() || await tryFallbackApi2BySms();
-      if (fallback) return res.json(fallback);
+      if (cpfLimpo) {
+        // Busca por CPF: fallback na API_DADOS_BASE_COMPLETA?cpf=
+        try {
+          const api2Url = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_DADOS_BASE_COMPLETA?cpf=${cpfFormatado}`;
+          console.log(`[ERP INDICADOR] Fase 2 (CPF): tentando API_DADOS_BASE_COMPLETA`);
+          const api2Data = await erpFetch(api2Url, d => {
+            const rows = Array.isArray(d) ? d : [d];
+            return rows.length > 0 && rows[0] && rows[0].nome;
+          });
+          const rawData2 = Array.isArray(api2Data) ? api2Data : [api2Data];
+          console.log(`[ERP INDICADOR] Fase 2 (CPF): encontrado — ${rawData2[0].nome}`);
+          return res.json(normalizeApi2Record(rawData2[0], rawData2, cpfFormatado));
+        } catch (err) {
+          console.log(`[ERP INDICADOR] Fase 2 (CPF): não encontrado — ${err.message}`);
+        }
+      } else if (req._smsVariants) {
+        // Busca por telefone: fallback na API_DADOS_BASE_COMPLETA com ?telefone= e ?sms=
+        // Variantes reordenadas: formato sem DDI primeiro (mais comum na base)
+        const { _smsVariants } = req;
+        const dddLocal = _smsVariants[_smsVariants.length - 1]; // último = sem DDI com 9 dígito
+        const sortedVariants = [
+          dddLocal,
+          ..._smsVariants.filter(v => v !== dddLocal),
+        ];
+        const API2_BASE = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_DADOS_BASE_COMPLETA';
+        const api2Urls = ['telefone', 'sms'].flatMap(p => sortedVariants.map(v => `${API2_BASE}?${p}=${v}`));
+        const api2ValidFn = d => {
+          const rows = Array.isArray(d) ? d : [d];
+          return rows.length > 0 && rows[0] && rows[0].nome;
+        };
+        console.log(`[ERP INDICADOR] Fase 2 (SMS): ${api2Urls.length} URLs em paralelo na API_DADOS_BASE_COMPLETA`);
+        try {
+          const api2Data = await Promise.any(api2Urls.map(url => erpFetch(url, api2ValidFn)));
+          const rawData2 = Array.isArray(api2Data) ? api2Data : [api2Data];
+          console.log(`[ERP INDICADOR] Fase 2 (SMS): encontrado — ${rawData2[0].nome}`);
+          return res.json(normalizeApi2Record(rawData2[0], rawData2, rawData2[0].cpf || ''));
+        } catch (err) {
+          console.log(`[ERP INDICADOR] Fase 2 (SMS): não encontrado em nenhuma variante`);
+        }
+      }
+
       return res.status(404).json({
         success: false,
         error: 'Nenhum dado encontrado',
