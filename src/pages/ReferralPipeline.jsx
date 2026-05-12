@@ -394,12 +394,13 @@ export default function ReferralPipeline() {
     const saved = localStorage.getItem('referralPipelineFilters');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return { search: '', agent: 'all', team: 'all', stage: 'all', dateFrom: '', dateTo: '', ...parsed };
       } catch (e) {
-        return { search: '', agent: 'all', team: 'all', dateFrom: '', dateTo: '' };
+        return { search: '', agent: 'all', team: 'all', stage: 'all', dateFrom: '', dateTo: '' };
       }
     }
-    return { search: '', agent: 'all', team: 'all', dateFrom: '', dateTo: '' };
+    return { search: '', agent: 'all', team: 'all', stage: 'all', dateFrom: '', dateTo: '' };
   });
 
   useEffect(() => {
@@ -407,12 +408,12 @@ export default function ReferralPipeline() {
   }, [filters]);
 
   const clearFilters = () => {
-    const defaultFilters = { search: '', agent: 'all', team: 'all', dateFrom: '', dateTo: '' };
+    const defaultFilters = { search: '', agent: 'all', team: 'all', stage: 'all', dateFrom: '', dateTo: '' };
     setFilters(defaultFilters);
     localStorage.removeItem('referralPipelineFilters');
   };
 
-  const hasActiveFilters = filters.search || filters.agent !== 'all' || filters.team !== 'all' || filters.dateFrom || filters.dateTo;
+  const hasActiveFilters = filters.search || filters.agent !== 'all' || filters.team !== 'all' || filters.stage !== 'all' || filters.dateFrom || filters.dateTo;
   const [listPage, setListPage] = useState(1);
   const [isDraggingCard, setIsDraggingCard] = useState(false);
 
@@ -740,6 +741,10 @@ export default function ReferralPipeline() {
     }
 
     if (filters.agent !== 'all' && String(referral.agentId || referral.agent_id) !== String(filters.agent)) {
+      return false;
+    }
+
+    if (filters.stage !== 'all' && String(referral.stage) !== String(filters.stage)) {
       return false;
     }
 
@@ -1072,7 +1077,7 @@ export default function ReferralPipeline() {
               Filtros
               {hasActiveFilters && (
                 <Badge variant="success" className="ml-2">
-                  {[filters.search, filters.agent !== 'all', filters.team !== 'all', filters.dateFrom, filters.dateTo].filter(Boolean).length}
+                  {[filters.search, filters.agent !== 'all', filters.team !== 'all', filters.stage !== 'all', filters.dateFrom, filters.dateTo].filter(Boolean).length}
                 </Badge>
               )}
             </Button>
@@ -1094,7 +1099,7 @@ export default function ReferralPipeline() {
             >
               <Card className="glass-card border-0 shadow-soft overflow-hidden">
                 <CardContent className="pt-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                     <div>
                       <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
                         Buscar
@@ -1139,6 +1144,23 @@ export default function ReferralPipeline() {
                           <SelectItem value="all">Todos os agentes</SelectItem>
                           {(filters.team !== 'all' ? agents.filter(a => String(a.team_id) === String(filters.team) || String(a.teamId) === String(filters.team)) : agents).map(agent => (
                             <SelectItem key={agent.id} value={String(agent.id)}>{agent.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+                        Etapa
+                      </label>
+                      <Select value={filters.stage} onValueChange={(val) => setFilters({...filters, stage: val})}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Todas as etapas" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todas as etapas</SelectItem>
+                          {STAGES.map(stage => (
+                            <SelectItem key={stage.id} value={stage.id}>{stage.label}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
