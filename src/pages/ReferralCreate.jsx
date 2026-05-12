@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { buscarIndicadorERP, buscarHistoricoIndicacoes } from "@/api/erpService";
+import { buscarIndicadorERP, buscarIndicadorPorTelefoneERP, buscarHistoricoIndicacoes } from "@/api/erpService";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Search, UserPlus, Loader2, CheckCircle, Gift } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { ArrowLeft, Search, UserPlus, Loader2, CheckCircle, Gift, Phone } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { useToast } from "@/components/ui/use-toast";
@@ -40,13 +41,24 @@ const formatCPF = (value) => {
   return value;
 };
 
+// Formata telefone BR como (00) 00000-0000 ou (00) 0000-0000
+const formatPhone = (value) => {
+  const v = value.replace(/\D/g, '').slice(0, 11);
+  if (v.length <= 2) return v;
+  if (v.length <= 6) return `(${v.slice(0, 2)}) ${v.slice(2)}`;
+  if (v.length <= 10) return `(${v.slice(0, 2)}) ${v.slice(2, 6)}-${v.slice(6)}`;
+  return `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`;
+};
+
 export default function ReferralCreate() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   
   // Estado da busca do indicador
+  const [searchMode, setSearchMode] = useState("cpf"); // 'cpf' | 'phone'
   const [referrerCPF, setReferrerCPF] = useState("");
+  const [referrerPhone, setReferrerPhone] = useState("");
   const [searchingReferrer, setSearchingReferrer] = useState(false);
   const [referrerData, setReferrerData] = useState(null);
   const [referrerLevel, setReferrerLevel] = useState(1);
@@ -95,72 +107,68 @@ export default function ReferralCreate() {
     mutationFn: (data) => base44.entities.Referral.create(data),
   });
 
-  const handleSearchReferrer = async () => {
-    if (!referrerCPF || referrerCPF.replace(/\D/g, '').length < 11) {
-      toast({ title: "Erro", description: "Digite um CPF válido", variant: "destructive" });
+  // Processa a resposta do ERP (mesmo payload para busca por CPF ou por telefone)
+  const processIndicadorResponse = async (response) => {
+    if (!response.success) {
+      if (response.noContract) {
+        toast({ title: "Sem contrato ativo", description: "Este cliente não possui contrato ativo no ERP", variant: "destructive" });
+        return;
+      }
+      if (response.notFound) {
+        toast({ title: "Erro", description: "Não encontrado no ERP", variant: "destructive" });
+      } else {
+        toast({ title: "Erro", description: response.error || "Erro ao buscar dados no ERP", variant: "destructive" });
+      }
       return;
     }
 
-    setSearchingReferrer(true);
-    setReferrerData(null);
-    setReferrerPix("");
-    
-    try {
-      console.log('Buscando cliente indicador no ERP...');
-      
-      const cpfClean = referrerCPF.replace(/\D/g, '');
-      
-      const response = await buscarIndicadorERP(cpfClean);
+    const erpData = response.data;
+    console.log('Dados recebidos:', erpData);
 
-      console.log('Resposta do ERP:', response);
+    const rawRecord = erpData.raw_erp_data?.[0] || {};
+    const cpfFromErp = (erpData.contact?.document || rawRecord.cpf || '').replace(/\D/g, '');
 
-      if (!response.success) {
-        if (response.noContract) {
-          toast({ title: "CPF sem contrato ativo", description: "Este cliente não possui contrato ativo no ERP", variant: "destructive" });
-          setSearchingReferrer(false);
-          return;
-        }
-        
-        if (response.notFound) {
-          toast({ title: "Erro", description: "CPF não encontrado no ERP", variant: "destructive" });
-        } else {
-          toast({ title: "Erro", description: response.error || "Erro ao buscar dados no ERP", variant: "destructive" });
-        }
-        setSearchingReferrer(false);
-        return;
-      }
+    const indicadorData = {
+      nome: rawRecord.titular || rawRecord.nome_dependente || erpData.contact?.name || '',
+      cpf: erpData.contact?.document || rawRecord.cpf || '',
+      telefone: rawRecord.cel || erpData.contact?.phones?.[0] || '',
+      email: rawRecord.e_mail || erpData.contact?.emails?.[0] || '',
+      endereco: erpData.contact?.address ?
+        `${erpData.contact.address.logradouro}, ${erpData.contact.address.numero}${erpData.contact.address.complemento ? ' - ' + erpData.contact.address.complemento : ''} - ${erpData.contact.address.bairro} - ${erpData.contact.address.cidade}` : '',
+      contrato: rawRecord.id || erpData.contracts?.[0]?.numero_contrato_erp || '',
+      dataNascimento: erpData.contact?.birth_date || rawRecord.data_nascimento || '',
+      statusPagamento: rawRecord.status_pagamento || erpData.financial?.status_geral || '',
+      totalContratos: erpData.financial?.total_contratos || 0,
+      erp_raw: erpData,
+    };
 
-      const erpData = response.data;
-      console.log('Dados recebidos:', erpData);
+    // Sincroniza o CPF para uso no submit, PIX e demais fluxos
+    if (cpfFromErp) {
+      setReferrerCPF(formatCPF(cpfFromErp));
+    }
 
-      // Pegar dados do primeiro registro raw do ERP
-      const rawRecord = erpData.raw_erp_data?.[0] || {};
-      
-      const indicadorData = {
-        nome: rawRecord.titular || rawRecord.nome_dependente || erpData.contact?.name || '',
-        cpf: erpData.contact?.document || rawRecord.cpf || '',
-        telefone: rawRecord.cel || erpData.contact?.phones?.[0] || '',
-        email: rawRecord.e_mail || erpData.contact?.emails?.[0] || '',
-        endereco: erpData.contact?.address ? 
-          `${erpData.contact.address.logradouro}, ${erpData.contact.address.numero}${erpData.contact.address.complemento ? ' - ' + erpData.contact.address.complemento : ''} - ${erpData.contact.address.bairro} - ${erpData.contact.address.cidade}` : '',
-        contrato: rawRecord.id || erpData.contracts?.[0]?.numero_contrato_erp || '',
-        dataNascimento: erpData.contact?.birth_date || rawRecord.data_nascimento || '',
-        statusPagamento: rawRecord.status_pagamento || erpData.financial?.status_geral || '',
-        totalContratos: erpData.financial?.total_contratos || 0,
-        erp_raw: erpData
-      };
-
-      const previousReferrals = await buscarHistoricoIndicacoes(cpfClean);
-
-      const totalConversions = previousReferrals.length;
-      const { level, value: commissionValueForToast } = getCommissionFromConversions(totalConversions);
-
-      setReferrerConversions(totalConversions);
-      setReferrerLevel(level);
-      setReferrerData(indicadorData);
-
+    let totalConversions = 0;
+    let level = 1;
+    let commissionValueForToast = 0;
+    if (cpfFromErp) {
       try {
-        const pixRes = await fetch(`/api/functions/indicadores-pix/${cpfClean}`, {
+        const previousReferrals = await buscarHistoricoIndicacoes(cpfFromErp);
+        totalConversions = previousReferrals.length;
+        const lv = getCommissionFromConversions(totalConversions);
+        level = lv.level;
+        commissionValueForToast = lv.value;
+      } catch (histErr) {
+        console.log('[HIST] Erro ao buscar histórico (não crítico):', histErr.message);
+      }
+    }
+
+    setReferrerConversions(totalConversions);
+    setReferrerLevel(level);
+    setReferrerData(indicadorData);
+
+    if (cpfFromErp) {
+      try {
+        const pixRes = await fetch(`/api/functions/indicadores-pix/${cpfFromErp}`, {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken')}` }
         });
         if (pixRes.ok) {
@@ -170,12 +178,60 @@ export default function ReferralCreate() {
       } catch (pixErr) {
         console.log('[PIX] Erro ao buscar PIX (não crítico):', pixErr.message);
       }
+    }
 
-      toast({ title: "Sucesso", description: `Cliente encontrado: ${indicadorData.nome} — Nível ${level} - Comissão: R$ ${commissionValueForToast},00 (${totalConversions} ${totalConversions !== 1 ? 'indicações convertidas' : 'indicação convertida'})` });
+    toast({ title: "Sucesso", description: `Cliente encontrado: ${indicadorData.nome} — Nível ${level} - Comissão: R$ ${commissionValueForToast},00 (${totalConversions} ${totalConversions !== 1 ? 'indicações convertidas' : 'indicação convertida'})` });
+  };
 
+  const handleSearchByPhone = async () => {
+    const phoneClean = referrerPhone.replace(/\D/g, '');
+    if (phoneClean.length < 10 || phoneClean.length > 11) {
+      toast({ title: "Erro", description: "Digite um telefone válido (DDD + número, 10 ou 11 dígitos)", variant: "destructive" });
+      return;
+    }
+
+    setSearchingReferrer(true);
+    setReferrerData(null);
+    setReferrerPix("");
+
+    try {
+      console.log('Buscando indicador no ERP por telefone...');
+      const response = await buscarIndicadorPorTelefoneERP(phoneClean);
+      console.log('Resposta do ERP (telefone):', response);
+      await processIndicadorResponse(response);
+    } catch (error) {
+      console.error('Erro ao buscar por telefone:', error);
+      if (error.status === 404 || error.data?.notFound) {
+        toast({ title: "Não encontrado", description: "Nenhum cliente indicador com este telefone no ERP", variant: "destructive" });
+      } else if (error.status === 401) {
+        toast({ title: "Token do ERP inválido ou expirado", description: "Entre em contato com o administrador para atualizar o token", variant: "destructive" });
+      } else {
+        toast({ title: "Erro", description: "Erro ao buscar por telefone: " + (error.message || 'Erro desconhecido'), variant: "destructive" });
+      }
+    }
+
+    setSearchingReferrer(false);
+  };
+
+  const handleSearchReferrer = async () => {
+    if (!referrerCPF || referrerCPF.replace(/\D/g, '').length < 11) {
+      toast({ title: "Erro", description: "Digite um CPF válido", variant: "destructive" });
+      return;
+    }
+
+    setSearchingReferrer(true);
+    setReferrerData(null);
+    setReferrerPix("");
+
+    try {
+      console.log('Buscando cliente indicador no ERP...');
+      const cpfClean = referrerCPF.replace(/\D/g, '');
+      const response = await buscarIndicadorERP(cpfClean);
+      console.log('Resposta do ERP:', response);
+      await processIndicadorResponse(response);
     } catch (error) {
       console.error('Erro ao buscar cliente:', error);
-      
+
       if (error.status === 404 || error.data?.notFound) {
         if (error.data?.noContract) {
           toast({ title: "CPF sem contrato ativo", description: "Este cliente não possui contrato ativo no ERP", variant: "destructive" });
@@ -345,32 +401,72 @@ export default function ReferralCreate() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <Label className="text-purple-900">CPF do Cliente (Quem está indicando)</Label>
-                  <div className="flex gap-2 mt-2">
-                    <Input
-                      value={referrerCPF}
-                      onChange={(e) => setReferrerCPF(formatCPF(e.target.value))}
-                      placeholder="000.000.000-00"
-                      className="bg-white"
-                      maxLength={14}
-                    />
-                    <Button
-                      onClick={handleSearchReferrer}
-                      disabled={searchingReferrer || referrerCPF.replace(/\D/g, '').length < 11}
-                      className="bg-purple-600 hover:bg-purple-700"
-                    >
-                      {searchingReferrer ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Search className="w-4 h-4" />
-                      )}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-purple-700 mt-1">
-                    Digite o CPF do cliente para buscar no ERP Bom Pastor
-                  </p>
-                </div>
+                <Tabs value={searchMode} onValueChange={setSearchMode}>
+                  <TabsList className="grid grid-cols-2 w-full bg-purple-100">
+                    <TabsTrigger value="cpf" className="data-[state=active]:bg-white">
+                      <Search className="w-4 h-4 mr-2" /> CPF
+                    </TabsTrigger>
+                    <TabsTrigger value="phone" className="data-[state=active]:bg-white">
+                      <Phone className="w-4 h-4 mr-2" /> Telefone
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="cpf" className="mt-4">
+                    <Label className="text-purple-900">CPF do Cliente (Quem está indicando)</Label>
+                    <div className="flex gap-2 mt-2">
+                      <Input
+                        value={referrerCPF}
+                        onChange={(e) => setReferrerCPF(formatCPF(e.target.value))}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSearchReferrer(); } }}
+                        placeholder="000.000.000-00"
+                        className="bg-white"
+                        maxLength={14}
+                      />
+                      <Button
+                        onClick={handleSearchReferrer}
+                        disabled={searchingReferrer || referrerCPF.replace(/\D/g, '').length < 11}
+                        className="bg-purple-600 hover:bg-purple-700"
+                      >
+                        {searchingReferrer ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Search className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-purple-700 mt-1">
+                      Digite o CPF do cliente para buscar no ERP Bom Pastor
+                    </p>
+                  </TabsContent>
+
+                  <TabsContent value="phone" className="mt-4">
+                    <Label className="text-purple-900">Telefone do Cliente (Quem está indicando)</Label>
+                    <div className="flex gap-2 mt-2">
+                      <Input
+                        value={referrerPhone}
+                        onChange={(e) => setReferrerPhone(formatPhone(e.target.value))}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSearchByPhone(); } }}
+                        placeholder="(11) 98545-1904"
+                        className="bg-white"
+                        maxLength={16}
+                      />
+                      <Button
+                        onClick={handleSearchByPhone}
+                        disabled={searchingReferrer || referrerPhone.replace(/\D/g, '').length < 10}
+                        className="bg-purple-600 hover:bg-purple-700"
+                      >
+                        {searchingReferrer ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Search className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-purple-700 mt-1">
+                      Digite DDD + número (com ou sem o 9). Ex: (11) 98545-1904
+                    </p>
+                  </TabsContent>
+                </Tabs>
 
                 {searchingReferrer && (
                   <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
