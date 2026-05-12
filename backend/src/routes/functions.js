@@ -2545,8 +2545,47 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
 
     const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
 
-    // Fallback: consulta API_DADOS_BASE_COMPLETA quando API 1 não encontra o CPF.
-    // Só aplicável para busca por CPF (API 2 não tem busca por telefone).
+    // Normaliza resposta da API_DADOS_BASE_COMPLETA para o formato que o frontend consome
+    function normalizeApi2Record(rec, rawData2, cpfDoc) {
+      return {
+        success: true,
+        source: 'erp_dados_base_completa',
+        synced_at: new Date().toISOString(),
+        data: {
+          contact: {
+            id: null,
+            name: rec.nome || '',
+            document: rec.cpf || cpfDoc || '',
+            birth_date: rec.data_nascimento || '',
+            phones: [rec.telefone].filter(Boolean),
+            emails: [rec.email].filter(Boolean),
+            address: {
+              logradouro: rec.logradouro || '',
+              numero: rec.numero || '',
+              complemento: '',
+              bairro: rec.bairro || '',
+              cidade: rec.cidade || '',
+              uf: '',
+              cep: ''
+            },
+            vip: false,
+            codigo_erp: null,
+          },
+          contracts: [],
+          financial: {
+            total_contratos: 0,
+            valor_total_mensal: 0,
+            contratos_ativos: 0,
+            total_indicados: 0,
+            total_registros_erp: rawData2.length,
+            status_geral: 'SEM CONTRATO ATIVO'
+          },
+          raw_erp_data: [rec],
+        }
+      };
+    }
+
+    // Fallback por CPF: consulta API_DADOS_BASE_COMPLETA quando API 1 não encontra.
     async function tryFallbackApi2() {
       if (!cpfLimpo) return null; // Não aplica para busca por SMS/telefone
       try {
@@ -2571,48 +2610,51 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
 
         const rec = rawData2[0];
         console.log(`[ERP INDICADOR] API_DADOS_BASE_COMPLETA encontrou dados para CPF ${cpfLimpo}`);
-
-        // Normaliza para o mesmo formato que o frontend consome
-        return {
-          success: true,
-          source: 'erp_dados_base_completa',
-          synced_at: new Date().toISOString(),
-          data: {
-            contact: {
-              id: null,
-              name: rec.nome || '',
-              document: rec.cpf || cpfFormatado,
-              birth_date: rec.data_nascimento || '',
-              phones: [rec.telefone].filter(Boolean),
-              emails: [rec.email].filter(Boolean),
-              address: {
-                logradouro: rec.logradouro || '',
-                numero: rec.numero || '',
-                complemento: '',
-                bairro: rec.bairro || '',
-                cidade: rec.cidade || '',
-                uf: '',
-                cep: ''
-              },
-              vip: false,
-              codigo_erp: null,
-            },
-            contracts: [],
-            financial: {
-              total_contratos: 0,
-              valor_total_mensal: 0,
-              contratos_ativos: 0,
-              total_indicados: 0,
-              total_registros_erp: rawData2.length,
-              status_geral: 'SEM CONTRATO ATIVO'
-            },
-            raw_erp_data: [rec],
-          }
-        };
+        return normalizeApi2Record(rec, rawData2, cpfFormatado);
       } catch (err) {
-        console.warn(`[ERP INDICADOR] Fallback API_DADOS_BASE_COMPLETA falhou: ${err.message}`);
+        console.warn(`[ERP INDICADOR] Fallback API_DADOS_BASE_COMPLETA (CPF) falhou: ${err.message}`);
         return null;
       }
+    }
+
+    // Fallback por telefone: tenta buscar na API_DADOS_BASE_COMPLETA quando API 1 não encontra por SMS.
+    // Testa parâmetros ?telefone= e ?sms= com as variantes de formato do número.
+    async function tryFallbackApi2BySms() {
+      if (!req._smsVariants) return null;
+      const API2_BASE = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_DADOS_BASE_COMPLETA';
+      const phoneVariants = req._smsVariants; // já contém as 4 variantes geradas anteriormente
+      const params = ['telefone', 'sms'];
+      for (const param of params) {
+        for (const phoneVal of phoneVariants) {
+          const tryUrl = `${API2_BASE}?${param}=${phoneVal}`;
+          try {
+            console.log(`[ERP INDICADOR] Fallback API2 por telefone: ${tryUrl}`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            const resp = await fetch(tryUrl, {
+              method: 'GET',
+              headers: { 'Authorization': authHeader, 'Accept': 'application/json' },
+              signal: controller.signal,
+            }).finally(() => clearTimeout(timeoutId));
+
+            if (!resp.ok) {
+              console.log(`[ERP INDICADOR] API2 ${tryUrl} → ${resp.status}`);
+              continue;
+            }
+            const data = await resp.json();
+            const rawData2 = Array.isArray(data) ? data : [data];
+            if (!rawData2.length || !rawData2[0] || !rawData2[0].nome) {
+              console.log(`[ERP INDICADOR] API2 ${tryUrl} → vazio`);
+              continue;
+            }
+            console.log(`[ERP INDICADOR] API2 encontrou via ${param}=${phoneVal}: ${rawData2[0].nome}`);
+            return normalizeApi2Record(rawData2[0], rawData2, rawData2[0].cpf || '');
+          } catch (err) {
+            console.log(`[ERP INDICADOR] API2 ${tryUrl} → erro: ${err.message}`);
+          }
+        }
+      }
+      return null;
     }
 
     // Para busca por SMS: tenta variantes de formato até encontrar (ou esgotar)
@@ -2654,7 +2696,8 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
     }
 
     if (!erpData) {
-      const fallback = await tryFallbackApi2();
+      // Tenta fallback por CPF (busca por CPF) ou por telefone (busca por SMS)
+      const fallback = await tryFallbackApi2() || await tryFallbackApi2BySms();
       if (fallback) return res.json(fallback);
       return res.status(404).json({
         success: false,
