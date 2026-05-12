@@ -2513,8 +2513,22 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
       if (smsLimpo.length < 12 || smsLimpo.length > 13) {
         return res.status(400).json({ success: false, error: 'Telefone inválido (use DDD + número)' });
       }
+      // Gera variantes para retry: com/sem DDI 55 e com/sem 9º dígito
+      const ddd = smsLimpo.slice(2, 4); // ex: '19'
+      const localNum = smsLimpo.slice(4);  // ex: '989816893' (9 dígitos) ou '89816893' (8)
+      const smsVariants = [];
+      smsVariants.push(smsLimpo); // formato principal: 5519989816893
+      if (localNum.length === 9 && localNum.startsWith('9')) {
+        // Remove o 9º dígito → formato antigo 8 dígitos
+        const sem9 = localNum.slice(1); // '89816893'
+        smsVariants.push(`55${ddd}${sem9}`); // 551989816893
+        smsVariants.push(`${ddd}${sem9}`);   // 1989816893
+      }
+      smsVariants.push(`${ddd}${localNum}`); // sem DDI: 19989816893
       erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_BUSCAR_CLIENTE_INDICADOR?sms=${smsLimpo}`;
       queryDesc = `SMS ${smsLimpo}`;
+      // Armazena variantes para o retry loop mais abaixo
+      req._smsVariants = smsVariants;
     }
 
     const erpAuthToken = process.env.ERP_AUTH_TOKEN;
@@ -2601,35 +2615,45 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
       }
     }
 
-    const erpResponse = await fetch(erpUrl, {
-      method: 'GET',
-      headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
-    });
+    // Para busca por SMS: tenta variantes de formato até encontrar (ou esgotar)
+    const urlsToTry = req._smsVariants
+      ? req._smsVariants.map(v => `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_BUSCAR_CLIENTE_INDICADOR?sms=${v}`)
+      : [erpUrl];
 
-    if (!erpResponse.ok) {
-      if (erpResponse.status === 404) {
-        const fallback = await tryFallbackApi2();
-        if (fallback) return res.json(fallback);
-        return res.status(404).json({
-          success: false,
-          error: 'Nenhum dado encontrado para este CPF',
-          notFound: true,
-          noContract: true
-        });
-      }
-      if (erpResponse.status === 401) {
+    let erpResponse = null;
+    let erpData = null;
+    let lastStatus = null;
+
+    for (const tryUrl of urlsToTry) {
+      console.log(`[ERP INDICADOR] Tentando URL: ${tryUrl}`);
+      const resp = await fetch(tryUrl, {
+        method: 'GET',
+        headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
+      });
+      lastStatus = resp.status;
+      if (resp.status === 401) {
         console.error('[ERP INDICADOR] Returned 401 - Token may be expired or invalid');
         return res.status(401).json({
           success: false,
           error: 'Token de autenticação do ERP inválido ou expirado. Verifique o ERP_AUTH_TOKEN.'
         });
       }
-      throw new Error(`ERP returned status ${erpResponse.status}`);
+      if (!resp.ok) {
+        console.log(`[ERP INDICADOR] ${tryUrl} → ${resp.status}, tentando próximo formato...`);
+        continue;
+      }
+      const data = await resp.json();
+      if (!data || (Array.isArray(data) && data.length === 0)) {
+        console.log(`[ERP INDICADOR] ${tryUrl} → vazio, tentando próximo formato...`);
+        continue;
+      }
+      erpResponse = resp;
+      erpData = data;
+      console.log(`[ERP INDICADOR] Sucesso com: ${tryUrl}`);
+      break;
     }
 
-    const erpData = await erpResponse.json();
-
-    if (!erpData || (Array.isArray(erpData) && erpData.length === 0)) {
+    if (!erpData) {
       const fallback = await tryFallbackApi2();
       if (fallback) return res.json(fallback);
       return res.status(404).json({
