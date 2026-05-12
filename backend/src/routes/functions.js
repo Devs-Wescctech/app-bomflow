@@ -4952,6 +4952,8 @@ function generateCommissionPDF(data) {
     doc.on('data', c => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
+    let _pdfPageCount = 1;
+    doc.on('pageAdded', () => { _pdfPageCount++; console.log(`[PDF] pageAdded — total pages now: ${_pdfPageCount} | doc.y=${doc.y}`); });
 
     const darkBg = [30, 41, 59];
     const amberAccent = [245, 158, 11];
