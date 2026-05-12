@@ -4947,7 +4947,7 @@ function generateCommissionPDF(data) {
     const periodoFim = formatDateBR(cycle.end);
     const geradoEm = formatDateTimeBR(new Date());
 
-    const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 40, bufferPages: true });
+    const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 40, autoFirstPage: true });
     const chunks = [];
     doc.on('data', c => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -4990,7 +4990,7 @@ function generateCommissionPDF(data) {
       let cx = 44;
       doc.fontSize(7).fill(textDark);
       columns.forEach(col => {
-        doc.text(col.label.toUpperCase(), cx, startY + 6, { width: col.w, align: col.align });
+        doc.text(col.label.toUpperCase(), cx, startY + 6, { width: col.w, align: col.align, lineBreak: false });
         cx += col.w;
       });
       return startY + HEADER_HEIGHT;
@@ -5001,7 +5001,7 @@ function generateCommissionPDF(data) {
       let cx = 44;
       doc.fontSize(8).fill(textDark);
       columns.forEach((col, i) => {
-        doc.text(values[i] || '-', cx, startY + 4, { width: col.w, align: col.align, height: ROW_HEIGHT - 4, lineBreak: true, ellipsis: true });
+        doc.text(values[i] || '-', cx, startY + 4, { width: col.w, align: col.align, lineBreak: false, ellipsis: true });
         cx += col.w;
       });
       return startY + ROW_HEIGHT;
