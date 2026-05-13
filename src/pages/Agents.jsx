@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Edit, Trash2, UserCheck, UserX, Activity, Upload, Loader2, MessageSquare, Copy, Check, ExternalLink, MoreVertical, Clock, Users, Building2, Layers, Settings, ShieldX, KeyRound, Eye, EyeOff } from "lucide-react";
+import { Plus, Edit, Trash2, UserCheck, UserX, Activity, Upload, Loader2, MessageSquare, Copy, Check, ExternalLink, MoreVertical, Clock, Users, Building2, Layers, Settings, ShieldX, KeyRound, Eye, EyeOff, Search, X } from "lucide-react";
 import { canManageAgents } from "@/components/utils/permissions.jsx";
 import {
   Dialog,
@@ -220,6 +220,11 @@ export default function Agents() {
   const [selectedAgentForReset, setSelectedAgentForReset] = useState(null);
   const [newPassword, setNewPassword] = useState("");
   const [resettingPassword, setResettingPassword] = useState(false);
+
+  const [agentSearchName, setAgentSearchName] = useState("");
+  const [agentFilterType, setAgentFilterType] = useState("all");
+  const [agentFilterActive, setAgentFilterActive] = useState("all");
+  const [agentFilterTeam, setAgentFilterTeam] = useState("all");
 
   const [formData, setFormData] = useState({
     name: "",
@@ -814,6 +819,27 @@ export default function Agents() {
     return AGENT_TYPE_CONFIG[type] || AGENT_TYPE_CONFIG.support;
   };
 
+  const filteredAgents = agents.filter(agent => {
+    const matchesName = !agentSearchName || agent.name?.toLowerCase().includes(agentSearchName.toLowerCase());
+    const matchesType = agentFilterType === "all" || agent.agentType === agentFilterType;
+    const matchesActive = agentFilterActive === "all"
+      ? true
+      : agentFilterActive === "active"
+      ? agent.active !== false
+      : agent.active === false;
+    const matchesTeam = agentFilterTeam === "all" || agent.teamId === agentFilterTeam;
+    return matchesName && matchesType && matchesActive && matchesTeam;
+  });
+
+  const hasAgentFilters = agentSearchName || agentFilterType !== "all" || agentFilterActive !== "all" || agentFilterTeam !== "all";
+
+  const clearAgentFilters = () => {
+    setAgentSearchName("");
+    setAgentFilterType("all");
+    setAgentFilterActive("all");
+    setAgentFilterTeam("all");
+  };
+
   if (!hasPermission) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50 dark:bg-gray-950">
@@ -862,8 +888,12 @@ export default function Agents() {
         </TabsList>
 
         <TabsContent value="agents" className="mt-6">
-          <div className="flex justify-between items-center mb-6">
-            <p className="text-sm text-gray-500">{agents.length} agente(s) cadastrado(s)</p>
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-sm text-gray-500">
+              {filteredAgents.length !== agents.length
+                ? `${filteredAgents.length} de ${agents.length} agente(s)`
+                : `${agents.length} agente(s) cadastrado(s)`}
+            </p>
             <Button 
               onClick={() => {
                 resetForm();
@@ -876,8 +906,58 @@ export default function Agents() {
             </Button>
           </div>
 
+          <div className="flex flex-wrap gap-2 mb-4">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <Input
+                placeholder="Buscar por nome..."
+                value={agentSearchName}
+                onChange={e => setAgentSearchName(e.target.value)}
+                className="pl-8 h-9 text-sm"
+              />
+            </div>
+            <Select value={agentFilterType} onValueChange={setAgentFilterType}>
+              <SelectTrigger className="w-[170px] h-9 text-sm">
+                <SelectValue placeholder="Tipo de agente" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os tipos</SelectItem>
+                {agentTypes.map(t => (
+                  <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={agentFilterActive} onValueChange={setAgentFilterActive}>
+              <SelectTrigger className="w-[140px] h-9 text-sm">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="active">Ativos</SelectItem>
+                <SelectItem value="inactive">Inativos</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={agentFilterTeam} onValueChange={setAgentFilterTeam}>
+              <SelectTrigger className="w-[160px] h-9 text-sm">
+                <SelectValue placeholder="Time" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os times</SelectItem>
+                {teams.map(t => (
+                  <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {hasAgentFilters && (
+              <Button variant="ghost" size="sm" onClick={clearAgentFilters} className="h-9 px-2 text-gray-500 hover:text-gray-900">
+                <X className="w-4 h-4 mr-1" />
+                Limpar
+              </Button>
+            )}
+          </div>
+
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {agents.map(agent => {
+            {filteredAgents.map(agent => {
               const typeBadge = getAgentTypeBadge(agent.agentType);
               
               return (
