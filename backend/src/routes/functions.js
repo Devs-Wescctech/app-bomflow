@@ -4952,8 +4952,6 @@ function generateCommissionPDF(data) {
     doc.on('data', c => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
-    let _pdfPageCount = 1;
-    doc.on('pageAdded', () => { _pdfPageCount++; console.log(`[PDF] pageAdded — total pages now: ${_pdfPageCount} | doc.y=${doc.y}`); });
 
     const darkBg = [30, 41, 59];
     const amberAccent = [245, 158, 11];
@@ -5051,7 +5049,7 @@ function generateCommissionPDF(data) {
     }
 
     if (hasPending) {
-      if (y > doc.page.height - 100) { console.log(`[PDF] PENDING_START addPage, y=${y}`); doc.addPage(); y = 40; }
+      if (y > doc.page.height - 100) { doc.addPage(); y = 40; }
 
       doc.roundedRect(40, y, doc.page.width - 80, 24, 4).fill([255, 251, 235]);
       doc.fontSize(9).fill([146, 64, 14]).text('Existem comissões pendentes de pagamento de ciclos anteriores', 52, y + 7, { width: doc.page.width - 104 });
@@ -5079,9 +5077,8 @@ function generateCommissionPDF(data) {
         return { ...g, total: unitVal * g.count, nivel: g.count >= 13 ? 'Nível 3' : g.count >= 4 ? 'Nível 2' : 'Nível 1' };
       });
 
-      console.log(`[PDF] pdfPendingGrouped rows: ${pdfPendingGrouped.length} | page.height=${doc.page.height} | threshold=${doc.page.height - 60}`);
       pdfPendingGrouped.forEach((g, pIdx) => {
-        if (y > doc.page.height - 60) { console.log(`[PDF] LOOP addPage at pIdx=${pIdx}, y=${y}`); doc.addPage(); y = 40; y = drawTableHeader(cols1, y); }
+        if (y > doc.page.height - 60) { doc.addPage(); y = 40; y = drawTableHeader(cols1, y); }
         const bg = pIdx % 2 === 1 ? [255, 251, 235] : null;
         const pixDisplay = g.pix || 'PIX não informado';
         y = drawTableRow(cols1, [
@@ -5100,7 +5097,7 @@ function generateCommissionPDF(data) {
       y += 30;
     }
 
-    if (y > doc.page.height - 70) { console.log(`[PDF] FOOTER addPage, y=${y}`); doc.addPage(); y = 40; }
+    if (y > doc.page.height - 70) { doc.addPage(); y = 40; }
     doc.rect(40, y, doc.page.width - 80, 58).fill(darkBg);
     doc.fontSize(9).fill([148, 163, 184]).text('Bom Pastor — Bom Flow CRM', 40, y + 6, { align: 'center', width: doc.page.width - 80 });
     doc.fontSize(8).fill([100, 116, 139]).text(`Relatório gerado automaticamente em ${geradoEm}`, 40, y + 18, { align: 'center', width: doc.page.width - 80 });
@@ -5294,6 +5291,39 @@ router.post('/commission-report/test', authMiddleware, loadAgentMiddleware, requ
   } catch (error) {
     console.error('[Commission Email] Test error:', error.message);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/indicador-historico/:cpf', authMiddleware, async (req, res) => {
+  try {
+    const cpf = req.params.cpf.replace(/\D/g, '');
+    if (!cpf) return res.status(400).json({ error: 'CPF obrigatório' });
+
+    // Conta conversões na tabela referrals (status='convertido')
+    const referralsResult = await query(
+      `SELECT COUNT(*) as total FROM referrals
+       WHERE REGEXP_REPLACE(COALESCE(referrer_cpf,''), '[^0-9]', '', 'g') = $1
+         AND status = 'convertido'`,
+      [cpf]
+    );
+    const fromReferrals = parseInt(referralsResult.rows[0]?.total || 0);
+
+    // Conta registros em commission_payment_control (fonte autoritativa de comissões pagas/elegíveis)
+    const cpcResult = await query(
+      `SELECT COUNT(*) as total FROM commission_payment_control
+       WHERE REGEXP_REPLACE(COALESCE(cpf_indicador,''), '[^0-9]', '', 'g') = $1
+         AND status_pagamento NOT IN ('reativacao')`,
+      [cpf]
+    );
+    const fromCpc = parseInt(cpcResult.rows[0]?.total || 0);
+
+    // Usa o maior valor entre as duas fontes
+    const totalConversions = Math.max(fromReferrals, fromCpc);
+
+    res.json({ cpf, totalConversions, fromReferrals, fromCpc });
+  } catch (error) {
+    console.error('[indicador-historico]', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

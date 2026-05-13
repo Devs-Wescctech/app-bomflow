@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { buscarIndicadorERP, buscarIndicadorPorTelefoneERP, buscarHistoricoIndicacoes } from "@/api/erpService";
+import { buscarIndicadorERP, buscarIndicadorPorTelefoneERP, buscarHistoricoIndicacoes, buscarConversoesPorCpf } from "@/api/erpService";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -154,13 +154,23 @@ export default function ReferralCreate() {
     let commissionValueForToast = 0;
     if (cpfFromErp) {
       try {
-        const previousReferrals = await buscarHistoricoIndicacoes(cpfFromErp);
-        totalConversions = previousReferrals.length;
+        // Busca conversões combinando referrals + commission_payment_control (fonte mais completa)
+        const conversoes = await buscarConversoesPorCpf(cpfFromErp);
+        totalConversions = conversoes.totalConversions || 0;
         const lv = getCommissionFromConversions(totalConversions);
         level = lv.level;
         commissionValueForToast = lv.value;
       } catch (histErr) {
-        console.log('[HIST] Erro ao buscar histórico (não crítico):', histErr.message);
+        // Fallback para referrals apenas
+        try {
+          const previousReferrals = await buscarHistoricoIndicacoes(cpfFromErp);
+          totalConversions = previousReferrals.length;
+          const lv = getCommissionFromConversions(totalConversions);
+          level = lv.level;
+          commissionValueForToast = lv.value;
+        } catch (_) {
+          console.log('[HIST] Erro ao buscar histórico (não crítico):', histErr.message);
+        }
       }
     }
 

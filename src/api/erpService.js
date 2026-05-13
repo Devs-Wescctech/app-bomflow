@@ -139,3 +139,17 @@ export async function buscarHistoricoIndicacoes(cpf) {
   
   return response.json();
 }
+
+export async function buscarConversoesPorCpf(cpf) {
+  const cpfLimpo = cpf.replace(/\D/g, '');
+
+  const response = await fetch(`${API_BASE}/functions/indicador-historico/${cpfLimpo}`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    return { totalConversions: 0, fromReferrals: 0, fromCpc: 0 };
+  }
+
+  return response.json();
+}
