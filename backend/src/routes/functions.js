@@ -9,6 +9,7 @@ import { loadAgentMiddleware, requirePermission, requireRole, requireSubmenuAcce
 import { assignTicket, distributeUnassignedTickets, DISTRIBUTION_ALGORITHMS } from '../services/ticketDistribution.js';
 import { checkAllSLAWarnings, checkSLABreach, recordFirstResponse, recordStatusChange } from '../services/slaService.js';
 import { runAllAutomations, runAutomationsForLead } from '../services/leadAutomation.js';
+import { checkAndExecuteLeadUpsellAutomations } from '../services/automationService.js';
 import { generateProposalPDF } from '../services/pdfService.js';
 import { sendWhatsAppMessage, sendDocument, sendTextMessage } from '../services/whatsappService.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -148,6 +149,7 @@ router.post('/run-lead-automations', authMiddleware, loadAgentMiddleware, requir
     }
     
     const result = await runAllAutomations();
+    checkAndExecuteLeadUpsellAutomations().catch(e => console.error('[Upsell] automation check error:', e.message));
     res.json(result);
   } catch (error) {
     console.error('Error running automations:', error);
@@ -2843,6 +2845,22 @@ router.post('/generate-proposal', authMiddleware, async (req, res) => {
       `UPDATE ${tableName} SET proposal_url = $1 WHERE id = $2`,
       [pdfResult.publicUrl, lead_id]
     );
+
+    if (lead_type === 'upsell') {
+      await query(
+        `INSERT INTO activities_upsell (lead_id, type, title, description, assigned_to, completed)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [lead_id, 'note', 'Proposta gerada', `Proposta PDF gerada para ${lead.name || 'cliente'}`, lead.agent_id || null, true]
+      ).catch(e => console.error('[Proposal] activity log error:', e.message));
+    } else if (lead_type !== 'referral') {
+      const activityCol = lead_type === 'pj' ? 'lead_pj_id' : 'lead_id';
+      const actTable = lead_type === 'pj' ? 'activities_pj' : 'activities';
+      await query(
+        `INSERT INTO ${actTable} (${activityCol}, type, title, description, assigned_to, completed)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [lead_id, 'note', 'Proposta gerada', `Proposta PDF gerada para ${lead.name || 'cliente'}`, lead.agent_id || null, true]
+      ).catch(e => console.error('[Proposal] activity log error:', e.message));
+    }
     
     res.json({ 
       success: true, 

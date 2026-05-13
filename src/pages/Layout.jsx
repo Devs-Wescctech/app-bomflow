@@ -841,7 +841,7 @@ function LayoutContent({ children, currentPageName }) {
   }, [location.pathname, isPublicPage, lastSalesModule]);
 
   const filteredMenuModules = user?.role === 'admin'
-    ? menuModules.filter(m => !m.salesOnly)
+    ? filterMenuItems({ agent_type: 'admin' }, menuModules)
     : currentAgent
       ? filterMenuItems(currentAgent, menuModules)
       : [];

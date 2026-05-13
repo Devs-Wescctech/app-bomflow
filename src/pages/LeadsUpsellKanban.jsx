@@ -402,6 +402,7 @@ function SortableLeadCard({ lead, stage, pendingTasksCount, agentData, navigate,
                     e.stopPropagation();
                     const nowIso = new Date().toISOString();
                     if (stage.id === 'fechado_ganho') {
+                      if (!confirm('Confirma a conclusão desta venda?\n\nEste lead sairá do pipeline de vendas.')) return;
                       updateLeadMutation.mutate({
                         id: lead.id,
                         data: {
@@ -415,6 +416,7 @@ function SortableLeadCard({ lead, stage, pendingTasksCount, agentData, navigate,
                         onSuccess: () => toast.success('Venda concluída com sucesso!'),
                       });
                     } else {
+                      if (!confirm('Confirma que este lead foi perdido?')) return;
                       updateLeadMutation.mutate({
                         id: lead.id,
                         data: {
@@ -1118,7 +1120,16 @@ export default function LeadsUpsellKanban() {
           )}
         </div>
 
-        <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl">
+        <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl space-y-2">
+          <Button
+            onClick={(e) => { e.stopPropagation(); navigate(`${createPageUrl("LeadUpsellDetail")}?id=${leadId}`, { state: { tab: 'tarefas' } }); }}
+            variant="outline"
+            size="sm"
+            className="w-full text-amber-700 border-amber-200 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950"
+          >
+            <CheckCircle2 className="w-3 h-3 mr-2" />
+            Ver Tarefas
+          </Button>
           <Button
             onClick={(e) => { e.stopPropagation(); navigate(`${createPageUrl("LeadUpsellDetail")}?id=${leadId}`, { state: { tab: 'activities' } }); }}
             variant="outline"
