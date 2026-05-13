@@ -221,6 +221,9 @@ export default function ReferralDetail() {
       setHasChanges(false);
       setEditedData({});
     },
+    onError: (error) => {
+      toast.error('Erro ao salvar indicação: ' + (error?.message || 'Tente novamente'));
+    },
   });
 
   const createActivityMutation = useMutation({

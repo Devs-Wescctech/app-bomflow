@@ -517,6 +517,7 @@ CREATE TABLE IF NOT EXISTS referrals (
     signature_autentique_id VARCHAR(255),
     signature_link TEXT,
     signature_status VARCHAR(50) DEFAULT 'none',
+    last_contact_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -1274,6 +1275,9 @@ END $$;
 
 -- Expand status_pagamento to fit 'pendente_conciliacao'
 ALTER TABLE commission_payment_control ALTER COLUMN status_pagamento TYPE VARCHAR(30);
+
+-- Add last_contact_at to referrals (indicacoes module)
+ALTER TABLE referrals ADD COLUMN IF NOT EXISTS last_contact_at TIMESTAMP;
 
 -- WhatsApp number validation cache (WHU /wa-number-check)
 CREATE TABLE IF NOT EXISTS whatsapp_number_validations (
