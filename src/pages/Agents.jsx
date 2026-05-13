@@ -234,6 +234,7 @@ export default function Agents() {
     password: "",
     agentType: "support",
     teamId: "",
+    supervisorId: "",
     workUnit: "",
     erpAgentId: "",
     queueIds: [],
@@ -509,6 +510,7 @@ export default function Agents() {
       password: "",
       agentType: "support",
       teamId: "",
+      supervisorId: "",
       workUnit: "",
       erpAgentId: "",
       queueIds: [],
@@ -621,6 +623,7 @@ export default function Agents() {
       password: "",
       agentType: agent.agentType || "support",
       teamId: agent.teamId || "",
+      supervisorId: agent.supervisorId || "",
       workUnit: agent.workUnit || "",
       erpAgentId: agent.erpAgentId != null ? String(agent.erpAgentId) : "",
       queueIds: agent.queueIds || [],
@@ -731,6 +734,7 @@ export default function Agents() {
     const dataToSend = { 
       ...formData,
       erpAgentId: formData.erpAgentId ? Number(formData.erpAgentId) : null,
+      supervisorId: formData.supervisorId && formData.supervisorId !== "none" ? formData.supervisorId : null,
       permissions: normalizePermissions(formData.permissions)
     };
     
@@ -775,6 +779,19 @@ export default function Agents() {
   const getTeamName = (teamId) => {
     const team = teams.find(t => t.id === teamId);
     return team?.name || '-';
+  };
+
+  const getSupervisorName = (supervisorId) => {
+    const supervisor = agents.find(a => a.id === supervisorId);
+    return supervisor?.name || null;
+  };
+
+  const SUPERVISOR_TYPES = ['sales_supervisor', 'indicacoes_supervisor', 'admin'];
+
+  const getSupervisorsForTeam = (teamId) => {
+    const byTeam = agents.filter(a => SUPERVISOR_TYPES.includes(a.agentType) && a.teamId === teamId);
+    if (byTeam.length > 0) return byTeam;
+    return agents.filter(a => SUPERVISOR_TYPES.includes(a.agentType));
   };
 
   const getQueueNames = (queueIds) => {
@@ -1033,6 +1050,12 @@ export default function Agents() {
                           <Users className="w-4 h-4 text-gray-400" />
                           <span className="text-gray-600 dark:text-gray-400">{getTeamName(agent.teamId)}</span>
                         </div>
+                        {agent.supervisorId && getSupervisorName(agent.supervisorId) && (
+                          <div className="flex items-center gap-2">
+                            <UserCheck className="w-4 h-4 text-gray-400" />
+                            <span className="text-gray-600 dark:text-gray-400 text-xs">{getSupervisorName(agent.supervisorId)}</span>
+                          </div>
+                        )}
                         {agent.workUnit && (
                           <div className="flex items-center gap-2">
                             <Building2 className="w-4 h-4 text-gray-400" />
@@ -1614,7 +1637,7 @@ export default function Agents() {
 
               <div>
                 <Label className="text-gray-900 dark:text-gray-100">Time *</Label>
-                <Select value={formData.teamId} onValueChange={(val) => setFormData({...formData, teamId: val})}>
+                <Select value={formData.teamId} onValueChange={(val) => setFormData({...formData, teamId: val, supervisorId: ""})}>
                   <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
                     <SelectValue placeholder="Selecione o time" />
                   </SelectTrigger>
@@ -1624,6 +1647,31 @@ export default function Agents() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div>
+                <Label className="text-gray-900 dark:text-gray-100">Supervisor</Label>
+                <Select
+                  value={formData.supervisorId}
+                  onValueChange={(val) => setFormData({...formData, supervisorId: val})}
+                  disabled={!formData.teamId}
+                >
+                  <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                    <SelectValue placeholder={formData.teamId ? "Selecione o supervisor" : "Selecione um time primeiro"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem supervisor</SelectItem>
+                    {getSupervisorsForTeam(formData.teamId).map(sup => (
+                      <SelectItem key={sup.id} value={sup.id}>{sup.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {formData.teamId && getSupervisorsForTeam(formData.teamId).length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">Nenhum supervisor encontrado para este time.</p>
+                )}
+                {formData.teamId && agents.filter(a => SUPERVISOR_TYPES.includes(a.agentType) && a.teamId === formData.teamId).length === 0 && agents.filter(a => SUPERVISOR_TYPES.includes(a.agentType)).length > 0 && (
+                  <p className="text-xs text-blue-500 mt-1">Exibindo todos os supervisores (nenhum vinculado a este time).</p>
+                )}
               </div>
 
               <div>

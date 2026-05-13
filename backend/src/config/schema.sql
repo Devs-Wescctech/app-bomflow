@@ -1279,6 +1279,9 @@ ALTER TABLE commission_payment_control ALTER COLUMN status_pagamento TYPE VARCHA
 -- Add last_contact_at to referrals (indicacoes module)
 ALTER TABLE referrals ADD COLUMN IF NOT EXISTS last_contact_at TIMESTAMP;
 
+-- Add supervisor relationship to agents
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS supervisor_id UUID REFERENCES agents(id);
+
 -- WhatsApp number validation cache (WHU /wa-number-check)
 CREATE TABLE IF NOT EXISTS whatsapp_number_validations (
   phone VARCHAR(20) PRIMARY KEY,
