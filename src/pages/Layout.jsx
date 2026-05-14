@@ -99,7 +99,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import NotificationBell from "@/components/ui/notification-bell";
-import { filterMenuItems } from "@/components/utils/permissions";
+import { filterMenuItems, isAdminUser } from "@/components/utils/permissions";
 
 const PUBLIC_PAGES = [
   'Login', 'login', 'PortalHome', 'portal-home', 'PortalLogin',
@@ -840,8 +840,8 @@ function LayoutContent({ children, currentPageName }) {
     }
   }, [location.pathname, isPublicPage, lastSalesModule]);
 
-  const filteredMenuModules = user?.role === 'admin'
-    ? filterMenuItems({ agent_type: 'admin' }, menuModules)
+  const filteredMenuModules = isAdminUser(user, currentAgent)
+    ? filterMenuItems({ agent_type: 'admin', ...(currentAgent || {}) }, menuModules)
     : currentAgent
       ? filterMenuItems(currentAgent, menuModules)
       : [];

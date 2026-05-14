@@ -38,6 +38,16 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -365,24 +375,28 @@ function SortableLeadCard({ lead, stage, pendingTasksCount, agentData, navigate,
                     className="w-full text-xs font-medium border-gray-300 dark:border-gray-700"
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (!confirm('Retomar este lead?\n\nEle voltará para o pipeline ativo (etapa Qualificado).')) return;
-                      updateLeadMutation.mutate({
-                        id: lead.id,
-                        data: {
-                          concluded: false,
-                          concluded_at: null,
-                          concluded_by: null,
-                          converted_at: null,
-                          lost: false,
-                          lost_at: null,
-                          lost_by: null,
-                          lost_reason: null,
-                          stage: 'qualificado',
-                          reopened_at: new Date().toISOString(),
-                          reopened_by: userEmail || 'Sistema',
-                        },
-                      }, {
-                        onSuccess: () => toast.success('Lead retomado!'),
+                      setConfirmDialog({
+                        open: true,
+                        title: 'Retomar Lead',
+                        message: 'Retomar este lead? Ele voltará para o pipeline ativo (etapa Qualificado).',
+                        onConfirm: () => updateLeadMutation.mutate({
+                          id: lead.id,
+                          data: {
+                            concluded: false,
+                            concluded_at: null,
+                            concluded_by: null,
+                            converted_at: null,
+                            lost: false,
+                            lost_at: null,
+                            lost_by: null,
+                            lost_reason: null,
+                            stage: 'qualificado',
+                            reopened_at: new Date().toISOString(),
+                            reopened_by: userEmail || 'Sistema',
+                          },
+                        }, {
+                          onSuccess: () => toast.success('Lead retomado!'),
+                        }),
                       });
                     }}
                   >
@@ -402,31 +416,39 @@ function SortableLeadCard({ lead, stage, pendingTasksCount, agentData, navigate,
                     e.stopPropagation();
                     const nowIso = new Date().toISOString();
                     if (stage.id === 'fechado_ganho') {
-                      if (!confirm('Confirma a conclusão desta venda?\n\nEste lead sairá do pipeline de vendas.')) return;
-                      updateLeadMutation.mutate({
-                        id: lead.id,
-                        data: {
-                          concluded: true,
-                          concluded_at: nowIso,
-                          concluded_by: userEmail || 'Sistema',
-                          converted_at: nowIso,
-                          stage: 'fechado_ganho',
-                        },
-                      }, {
-                        onSuccess: () => toast.success('Venda concluída com sucesso!'),
+                      setConfirmDialog({
+                        open: true,
+                        title: 'Confirmar Venda Concluída',
+                        message: 'Confirma a conclusão desta venda? Este lead sairá do pipeline de vendas.',
+                        onConfirm: () => updateLeadMutation.mutate({
+                          id: lead.id,
+                          data: {
+                            concluded: true,
+                            concluded_at: nowIso,
+                            concluded_by: userEmail || 'Sistema',
+                            converted_at: nowIso,
+                            stage: 'fechado_ganho',
+                          },
+                        }, {
+                          onSuccess: () => toast.success('Venda concluída com sucesso!'),
+                        }),
                       });
                     } else {
-                      if (!confirm('Confirma que este lead foi perdido?')) return;
-                      updateLeadMutation.mutate({
-                        id: lead.id,
-                        data: {
-                          lost: true,
-                          lost_at: nowIso,
-                          lost_by: userEmail || 'Sistema',
-                          stage: 'fechado_perdido',
-                        },
-                      }, {
-                        onSuccess: () => toast.success('Lead marcado como perdido.'),
+                      setConfirmDialog({
+                        open: true,
+                        title: 'Confirmar Lead Perdido',
+                        message: 'Confirma que este lead foi perdido?',
+                        onConfirm: () => updateLeadMutation.mutate({
+                          id: lead.id,
+                          data: {
+                            lost: true,
+                            lost_at: nowIso,
+                            lost_by: userEmail || 'Sistema',
+                            stage: 'fechado_perdido',
+                          },
+                        }, {
+                          onSuccess: () => toast.success('Lead marcado como perdido.'),
+                        }),
                       });
                     }
                   }}
@@ -500,6 +522,7 @@ export default function LeadsUpsellKanban() {
   const queryClient = useQueryClient();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', message: '', onConfirm: null });
   const [viewMode, setViewMode] = useState('kanban');
   const [filters, setFilters] = useState(() => {
     const saved = localStorage.getItem('leadsKanbanFilters');
@@ -1703,6 +1726,28 @@ export default function LeadsUpsellKanban() {
             </motion.div>
           );
         })()}
+
+        <AlertDialog open={confirmDialog.open} onOpenChange={(open) => !open && setConfirmDialog(prev => ({ ...prev, open: false }))}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{confirmDialog.title}</AlertDialogTitle>
+              <AlertDialogDescription>{confirmDialog.message}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setConfirmDialog(prev => ({ ...prev, open: false }))}>
+                Cancelar
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  confirmDialog.onConfirm?.();
+                  setConfirmDialog(prev => ({ ...prev, open: false }));
+                }}
+              >
+                Confirmar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
           <DialogContent className="max-w-2xl glass-card border-0">

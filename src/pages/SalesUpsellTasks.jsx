@@ -146,7 +146,7 @@ export default function SalesUpsellTasks() {
   });
 
   const currentAgent = user?.agent || agents.find(a => a.userEmail === user?.email || a.email === user?.email);
-  const privileged = isUpsellPrivileged(user, currentAgent);
+  const privileged = isUpsellPrivileged(user, currentAgent) || isUpsellPrivileged(user, user?.agent);
 
   const { data: allActivities = [], isLoading: loadingActivities } = useQuery({
     queryKey: ['activitiesUpsell'],

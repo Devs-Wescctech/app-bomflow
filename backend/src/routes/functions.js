@@ -145,6 +145,7 @@ router.post('/run-lead-automations', authMiddleware, loadAgentMiddleware, requir
     
     if (lead_id) {
       const result = await runAutomationsForLead(lead_id);
+      checkAndExecuteLeadUpsellAutomations().catch(e => console.error('[Upsell] per-lead automation error:', e.message));
       return res.json(result);
     }
     
