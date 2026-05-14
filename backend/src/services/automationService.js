@@ -927,6 +927,54 @@ export async function executeStageChangeAutomation(lead, fromStage, toStage, lea
   }
 }
 
+export async function syncPerspectivaNegociosFromERP() {
+  try {
+    const erpAuthToken = process.env.ERP_AUTH_TOKEN;
+    if (!erpAuthToken) {
+      console.error('[PerspectivaNegócios] ERP_AUTH_TOKEN não configurado.');
+      return;
+    }
+    const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
+    const url = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_PERSPECTIVA_NEGOCIOS';
+    console.log('[PerspectivaNegócios] Iniciando sincronização com ERP...');
+    const response = await fetch(url, {
+      headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' }
+    });
+    if (!response.ok) {
+      console.error(`[PerspectivaNegócios] ERP retornou status ${response.status}`);
+      return;
+    }
+    const data = await response.json();
+    const records = Array.isArray(data) ? data : [data];
+    if (records.length === 0) {
+      console.log('[PerspectivaNegócios] Nenhum registro retornado pelo ERP.');
+      return;
+    }
+    await query('TRUNCATE TABLE erp_perspectivas_negocios RESTART IDENTITY');
+    for (const rec of records) {
+      await query(
+        `INSERT INTO erp_perspectivas_negocios
+          (perspectiva, nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_titulo, sit_perspectiva, observacoes, sincronizado_em)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())`,
+        [
+          rec.perspectiva   || null,
+          rec.nome_indicador || null,
+          rec.cpf_indicador  || null,
+          rec.nome_indicado  || null,
+          rec.cpf_indicado   || null,
+          rec.nome_vendedor  || null,
+          rec.sit_titulo     || null,
+          rec.sit_perspectiva|| null,
+          rec.observacoes    || null
+        ]
+      );
+    }
+    console.log(`[PerspectivaNegócios] Sincronização concluída — ${records.length} registros importados.`);
+  } catch (error) {
+    console.error('[PerspectivaNegócios] Erro na sincronização:', error.message);
+  }
+}
+
 export async function runAllAutomations() {
   console.log('[Automations] Running all automation checks...');
   try {
@@ -936,6 +984,7 @@ export async function runAllAutomations() {
     await checkAndExecuteReferralAutomations();
     await checkAndExecuteReferralChannelAutomations();
     await checkAndExecuteUpsellChannelAutomations();
+    await syncPerspectivaNegociosFromERP();
     console.log('[Automations] Automation checks completed.');
   } catch (error) {
     console.error('[Automations] Error running automations:', error);

@@ -5487,4 +5487,45 @@ router.put('/portal/indicadores-pix/:cpf', async (req, res) => {
   }
 });
 
+// =====================
+// ERP PERSPECTIVA NEGOCIOS
+// =====================
+router.get('/perspectivas-negocios', authMiddleware, async (req, res) => {
+  try {
+    const { sit_perspectiva, cpf_indicador, nome_vendedor, search } = req.query;
+    let where = 'WHERE 1=1';
+    const params = [];
+    let idx = 1;
+
+    if (sit_perspectiva) {
+      where += ` AND sit_perspectiva = $${idx++}`;
+      params.push(sit_perspectiva);
+    }
+    if (cpf_indicador) {
+      where += ` AND cpf_indicador = $${idx++}`;
+      params.push(cpf_indicador);
+    }
+    if (nome_vendedor) {
+      where += ` AND nome_vendedor ILIKE $${idx++}`;
+      params.push(`%${nome_vendedor}%`);
+    }
+    if (search) {
+      where += ` AND (nome_indicado ILIKE $${idx} OR nome_indicador ILIKE $${idx} OR cpf_indicado ILIKE $${idx} OR cpf_indicador ILIKE $${idx})`;
+      params.push(`%${search}%`);
+      idx++;
+    }
+
+    const { rows } = await query(
+      `SELECT * FROM erp_perspectivas_negocios ${where} ORDER BY id DESC LIMIT 10000`,
+      params
+    );
+
+    const sinc = rows.length > 0 ? rows[0].sincronizado_em : null;
+    res.json({ success: true, data: rows, total: rows.length, sincronizado_em: sinc });
+  } catch (error) {
+    console.error('[PerspectivaNegócios] Erro ao buscar dados:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;

@@ -1583,3 +1583,20 @@ CREATE TABLE IF NOT EXISTS upsell_channel_automations (
 -- Functional index para acelerar busca por telefone do indicador (digits-only)
 CREATE INDEX IF NOT EXISTS idx_referrals_referrer_phone_digits
 ON referrals (REGEXP_REPLACE(COALESCE(referrer_phone, ''), '\D', '', 'g'));
+
+-- =====================
+-- ERP PERSPECTIVA NEGOCIOS (sincronização com API externa)
+-- =====================
+CREATE TABLE IF NOT EXISTS erp_perspectivas_negocios (
+    id               SERIAL PRIMARY KEY,
+    perspectiva      INTEGER,
+    nome_indicador   VARCHAR(255),
+    cpf_indicador    VARCHAR(20),
+    nome_indicado    VARCHAR(255),
+    cpf_indicado     VARCHAR(20),
+    nome_vendedor    VARCHAR(255),
+    sit_titulo       VARCHAR(100),
+    sit_perspectiva  VARCHAR(100),
+    observacoes      TEXT,
+    sincronizado_em  TIMESTAMP DEFAULT NOW()
+);
