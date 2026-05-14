@@ -1675,7 +1675,34 @@ router.put('/referrals/:id', authMiddleware, async (req, res) => {
     if (data.agent_id && data.agent_id !== oldReferral.agent_id) {
       await notifyReferralAssigned(referral, data.agent_id);
     }
-    
+
+    // Quando lead é marcado como Convertido, registra na tabela de perspectivas
+    if (data.stage === 'Convertido' && oldReferral.stage !== 'Convertido') {
+      try {
+        let nomeVendedor = null;
+        const agentId = referral.agent_id || oldReferral.agent_id;
+        if (agentId) {
+          const agentResult = await query('SELECT name FROM agents WHERE id = $1', [agentId]);
+          if (agentResult.rows.length > 0) nomeVendedor = agentResult.rows[0].name;
+        }
+        await query(
+          `INSERT INTO erp_perspectivas_negocios
+            (nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_perspectiva, origem, sincronizado_em)
+           VALUES ($1,$2,$3,$4,$5,'NEGOCIO FECHADO','crm',NOW())`,
+          [
+            referral.referrer_name || null,
+            referral.referrer_cpf  || null,
+            referral.referred_name || null,
+            referral.referred_cpf  || null,
+            nomeVendedor
+          ]
+        );
+        console.log(`[PerspectivaNegócios] Lead convertido registrado: ${referral.referred_name}`);
+      } catch (perspErr) {
+        console.error('[PerspectivaNegócios] Erro ao registrar lead convertido:', perspErr.message);
+      }
+    }
+
     res.json(convertKeysToCamel(referral));
   } catch (error) {
     console.error('Error updating referral:', error);

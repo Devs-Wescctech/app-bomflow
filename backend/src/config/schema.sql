@@ -1598,5 +1598,7 @@ CREATE TABLE IF NOT EXISTS erp_perspectivas_negocios (
     sit_titulo       VARCHAR(100),
     sit_perspectiva  VARCHAR(100),
     observacoes      TEXT,
+    origem           VARCHAR(10) DEFAULT 'erp',
     sincronizado_em  TIMESTAMP DEFAULT NOW()
 );
+ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS origem VARCHAR(10) DEFAULT 'erp';
