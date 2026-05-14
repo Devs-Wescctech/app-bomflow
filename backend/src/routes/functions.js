@@ -2657,14 +2657,42 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
     );
 
     const allUrls = api1Urls.length + api2Urls.length;
-    console.log(`[ERP INDICADOR] Lançando ${allUrls} URLs em paralelo (${api1Urls.length} API1 + ${api2Urls.length} API2)`);
+    console.log(`[ERP INDICADOR] Lançando ${allUrls} URLs em paralelo (${api1Urls.length} API1 + ${api2Urls.length} API2) — API1 tem prioridade`);
+
+    // Dispara API1 e API2 simultaneamente, mas API1 tem prioridade:
+    // só usa API2 se API1 falhar ou retornar vazio (para não perder dados de contrato).
+    const api1Race = api2Urls.length > 0
+      ? Promise.any(api1Promises).catch(() => null)
+      : Promise.any(api1Promises); // se não há API2, deixa rejeitar normalmente
+
+    const api2Race = api2Urls.length > 0
+      ? Promise.any(api2Promises).catch(() => null)
+      : Promise.resolve(null);
 
     let winner;
+    let api1Result = null;
+    let api2Result = null;
+
     try {
-      winner = await Promise.any([...api1Promises, ...api2Promises]);
-    } catch (aggErr) {
-      // Todas falharam
-      const has401 = aggErr?.errors?.some?.(e => e.is401);
+      // Aguarda API1 (a que tem dados de contrato)
+      api1Result = await api1Race;
+    } catch (_) {
+      api1Result = null;
+    }
+
+    if (!api1Result) {
+      // API1 não retornou dados — aguarda API2 (que pode já estar pronta)
+      try {
+        api2Result = await api2Race;
+      } catch (_) {
+        api2Result = null;
+      }
+    }
+
+    if (!api1Result && !api2Result) {
+      // Verifica se alguma falhou com 401
+      const allErrors = await Promise.allSettled([...api1Promises, ...api2Promises]);
+      const has401 = allErrors.some(r => r.reason?.is401);
       if (has401) {
         console.error('[ERP INDICADOR] Token inválido (401)');
         return res.status(401).json({
@@ -2676,15 +2704,21 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
       return res.status(404).json({ success: false, error: 'Nenhum dado encontrado', notFound: true, noContract: true });
     }
 
-    console.log(`[ERP INDICADOR] Vencedor: ${winner.src.toUpperCase()} — ${winner.url}`);
+    if (api1Result) {
+      winner = api1Result;
+      console.log(`[ERP INDICADOR] Usando API1 — ${winner.url}`);
+    } else {
+      winner = api2Result;
+      console.log(`[ERP INDICADOR] API1 vazia — usando API2 fallback — ${winner.url}`);
+    }
 
-    // Se ganhou API 2 → normaliza e retorna imediatamente
+    // Se veio de API2 → normaliza e retorna
     if (winner.src === 'api2') {
       const rawData2 = Array.isArray(winner.data) ? winner.data : [winner.data];
       return res.json(normalizeApi2Record(rawData2[0], rawData2, rawData2[0].cpf || cpfFormatado || ''));
     }
 
-    // Se ganhou API 1 → continua processamento normal abaixo
+    // Se veio de API1 → continua processamento normal abaixo
     let erpData = winner.data;
 
     const rawData = Array.isArray(erpData) ? erpData : [erpData];
