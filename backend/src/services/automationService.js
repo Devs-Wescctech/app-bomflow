@@ -119,7 +119,25 @@ export async function checkAndExecuteReferralAutomations() {
   }
 }
 
+function isWithinReferralDispatchWindow() {
+  // Horário de Brasília (UTC-3)
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  const day  = now.getDay(); // 0=Dom, 1=Seg, ..., 5=Sex, 6=Sab
+  const hour = now.getHours();
+  const isWeekend = day === 0 || day === 6;
+  if (isWeekend) {
+    // Sábado e domingo: 10h–17h
+    return hour >= 10 && hour < 17;
+  }
+  // Segunda a sexta: 09h–21h
+  return hour >= 9 && hour < 21;
+}
+
 export async function checkAndExecuteReferralChannelAutomations() {
+  if (!isWithinReferralDispatchWindow()) {
+    console.log('[ChannelAutomation] Fora da janela de disparo — nenhuma mensagem enviada.');
+    return;
+  }
   try {
     const automationsResult = await query(`
       SELECT * FROM referral_channel_automations 
