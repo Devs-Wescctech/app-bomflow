@@ -1019,12 +1019,13 @@ export async function checkValidacaoPagamento() {
     const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
 
     // Busca registros com cpf_indicado preenchido e ainda não liquidados
+    // IS DISTINCT FROM garante que NULL também é incluído (NULL != 'Liquidado' = NULL em SQL)
     const pendentes = await query(`
       SELECT DISTINCT cpf_indicado
       FROM erp_perspectivas_negocios
       WHERE cpf_indicado IS NOT NULL
         AND cpf_indicado != ''
-        AND sit_titulo != 'Liquidado'
+        AND sit_titulo IS DISTINCT FROM 'Liquidado'
     `);
 
     if (pendentes.rows.length === 0) {
