@@ -970,6 +970,33 @@ export async function syncPerspectivaNegociosFromERP() {
       );
     }
     console.log(`[PerspectivaNegócios] Sincronização concluída — ${records.length} registros importados.`);
+
+    // Backfill: importa leads fechado_ganho do CRM que ainda não estão na tabela
+    const backfillResult = await query(`
+      INSERT INTO erp_perspectivas_negocios
+        (nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_perspectiva, origem, sincronizado_em)
+      SELECT
+        r.referrer_name,
+        r.referrer_cpf,
+        r.referred_name,
+        r.referred_cpf,
+        a.name,
+        'NEGOCIO FECHADO',
+        'crm',
+        NOW()
+      FROM referrals r
+      LEFT JOIN agents a ON a.id = r.agent_id
+      WHERE r.stage = 'fechado_ganho'
+        AND NOT EXISTS (
+          SELECT 1 FROM erp_perspectivas_negocios p
+          WHERE p.origem = 'crm'
+            AND p.nome_indicado IS NOT DISTINCT FROM r.referred_name
+            AND p.cpf_indicador IS NOT DISTINCT FROM r.referrer_cpf
+        )
+    `);
+    if (backfillResult.rowCount > 0) {
+      console.log(`[PerspectivaNegócios] Backfill CRM: ${backfillResult.rowCount} lead(s) fechado_ganho importados.`);
+    }
   } catch (error) {
     console.error('[PerspectivaNegócios] Erro na sincronização:', error.message);
   }
