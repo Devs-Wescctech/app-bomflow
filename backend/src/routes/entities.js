@@ -1676,8 +1676,8 @@ router.put('/referrals/:id', authMiddleware, async (req, res) => {
       await notifyReferralAssigned(referral, data.agent_id);
     }
 
-    // Quando lead é marcado como Convertido, registra na tabela de perspectivas
-    if (data.stage === 'Convertido' && oldReferral.stage !== 'Convertido') {
+    // Quando lead é marcado como fechado_ganho, registra na tabela de perspectivas
+    if (data.stage === 'fechado_ganho' && oldReferral.stage !== 'fechado_ganho') {
       try {
         let nomeVendedor = null;
         const agentId = referral.agent_id || oldReferral.agent_id;
