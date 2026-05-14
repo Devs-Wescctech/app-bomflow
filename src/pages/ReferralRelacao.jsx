@@ -36,8 +36,8 @@ function formatCPF(cpf) {
 
 export default function ReferralRelacao() {
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState({ cpfIndicador: '', telefoneIndicador: '', nomeIndicado: '', vendedorId: '' });
-  const [appliedFilters, setAppliedFilters] = useState({ cpfIndicador: '', telefoneIndicador: '', nomeIndicado: '', vendedorId: '' });
+  const [filters, setFilters] = useState({ cpfIndicador: '', telefoneIndicador: '', telefoneIndicado: '', nomeIndicado: '', vendedorId: '' });
+  const [appliedFilters, setAppliedFilters] = useState({ cpfIndicador: '', telefoneIndicador: '', telefoneIndicado: '', nomeIndicado: '', vendedorId: '' });
   const [page, setPage] = useState(1);
   const [editItem, setEditItem] = useState(null);
   const [editForm, setEditForm] = useState({});
@@ -54,6 +54,7 @@ export default function ReferralRelacao() {
     params.set('limit', limit);
     if (appliedFilters.cpfIndicador) params.set('cpfIndicador', appliedFilters.cpfIndicador);
     if (appliedFilters.telefoneIndicador) params.set('telefoneIndicador', appliedFilters.telefoneIndicador);
+    if (appliedFilters.telefoneIndicado) params.set('telefoneIndicado', appliedFilters.telefoneIndicado);
     if (appliedFilters.nomeIndicado) params.set('nomeIndicado', appliedFilters.nomeIndicado);
     if (appliedFilters.vendedorId) params.set('vendedorId', appliedFilters.vendedorId);
     return params.toString();
@@ -291,7 +292,7 @@ export default function ReferralRelacao() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className={`grid grid-cols-1 md:grid-cols-2 ${isPrivileged ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-4 items-end`}>
+          <div className={`grid grid-cols-1 md:grid-cols-2 ${isPrivileged ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-4 items-end`}>
             <div>
               <Label className="text-xs text-gray-600">CPF Indicador</Label>
               <Input
@@ -309,6 +310,17 @@ export default function ReferralRelacao() {
                 inputMode="tel"
                 value={filters.telefoneIndicador}
                 onChange={e => setFilters({ ...filters, telefoneIndicador: e.target.value })}
+                className="mt-1"
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-gray-600">Telefone Indicado</Label>
+              <Input
+                placeholder="(00) 00000-0000"
+                inputMode="tel"
+                value={filters.telefoneIndicado}
+                onChange={e => setFilters({ ...filters, telefoneIndicado: e.target.value })}
                 className="mt-1"
                 onKeyDown={e => e.key === 'Enter' && handleSearch()}
               />

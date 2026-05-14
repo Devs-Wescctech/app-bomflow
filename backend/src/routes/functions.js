@@ -352,7 +352,7 @@ router.get('/lead-generator-options', authMiddleware, async (req, res) => {
 
 router.get('/referrals-relacao', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('ReferralRelacao'), async (req, res) => {
   try {
-    const { cpfIndicador, telefoneIndicador, nomeIndicado, vendedorId, page = 1, limit = 50 } = req.query;
+    const { cpfIndicador, telefoneIndicador, telefoneIndicado, nomeIndicado, vendedorId, page = 1, limit = 50 } = req.query;
     const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
 
     let whereClause = 'WHERE 1=1';
@@ -391,6 +391,17 @@ router.get('/referrals-relacao', authMiddleware, loadAgentMiddleware, requireSub
       if (telDigitsLocal.length >= 4) {
         whereClause += ` AND REGEXP_REPLACE(COALESCE(r.referrer_phone, ''), '\\D', '', 'g') LIKE $${paramIndex}`;
         params.push(`%${telDigitsLocal}%`);
+        paramIndex++;
+      }
+    }
+    if (telefoneIndicado) {
+      let telDigitsIndicado = telefoneIndicado.replace(/\D/g, '');
+      if (telDigitsIndicado.length >= 12 && telDigitsIndicado.startsWith('55')) {
+        telDigitsIndicado = telDigitsIndicado.slice(2);
+      }
+      if (telDigitsIndicado.length >= 4) {
+        whereClause += ` AND REGEXP_REPLACE(COALESCE(r.referred_phone, ''), '\\D', '', 'g') LIKE $${paramIndex}`;
+        params.push(`%${telDigitsIndicado}%`);
         paramIndex++;
       }
     }
