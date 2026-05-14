@@ -1602,3 +1602,4 @@ CREATE TABLE IF NOT EXISTS erp_perspectivas_negocios (
     sincronizado_em  TIMESTAMP DEFAULT NOW()
 );
 ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS origem VARCHAR(10) DEFAULT 'erp';
+ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS data_pagamento DATE;

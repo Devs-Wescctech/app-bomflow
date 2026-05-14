@@ -1002,6 +1002,77 @@ export async function syncPerspectivaNegociosFromERP() {
   }
 }
 
+function formatCpf(cpf) {
+  if (!cpf) return null;
+  const digits = cpf.replace(/\D/g, '');
+  if (digits.length !== 11) return cpf; // retorna como está se não for 11 dígitos
+  return `${digits.slice(0,3)}.${digits.slice(3,6)}.${digits.slice(6,9)}-${digits.slice(9)}`;
+}
+
+export async function checkValidacaoPagamento() {
+  try {
+    const erpAuthToken = process.env.ERP_AUTH_TOKEN;
+    if (!erpAuthToken) {
+      console.error('[ValidacaoPagamento] ERP_AUTH_TOKEN não configurado.');
+      return;
+    }
+    const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
+
+    // Busca registros com cpf_indicado preenchido e ainda não liquidados
+    const pendentes = await query(`
+      SELECT DISTINCT cpf_indicado
+      FROM erp_perspectivas_negocios
+      WHERE cpf_indicado IS NOT NULL
+        AND cpf_indicado != ''
+        AND sit_titulo != 'Liquidado'
+    `);
+
+    if (pendentes.rows.length === 0) {
+      console.log('[ValidacaoPagamento] Nenhum CPF pendente de validação.');
+      return;
+    }
+
+    console.log(`[ValidacaoPagamento] Verificando ${pendentes.rows.length} CPF(s)...`);
+    let liquidados = 0;
+
+    for (const row of pendentes.rows) {
+      const cpfFormatado = formatCpf(row.cpf_indicado);
+      if (!cpfFormatado) continue;
+
+      try {
+        const url = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_VALIDACAO_PAGAMENTO?cpf=${encodeURIComponent(cpfFormatado)}`;
+        const response = await fetch(url, { headers: { 'Authorization': authHeader } });
+
+        if (!response.ok) {
+          console.warn(`[ValidacaoPagamento] CPF ${cpfFormatado}: status ${response.status}`);
+          continue;
+        }
+
+        const data = await response.json();
+        const pagamentos = Array.isArray(data) ? data : [];
+
+        if (pagamentos.length > 0) {
+          const dataPagamento = pagamentos[0].data_pagamento || null;
+          await query(`
+            UPDATE erp_perspectivas_negocios
+            SET sit_titulo = 'Liquidado', data_pagamento = $1
+            WHERE cpf_indicado = $2
+              AND sit_titulo != 'Liquidado'
+          `, [dataPagamento, row.cpf_indicado]);
+          console.log(`[ValidacaoPagamento] CPF ${cpfFormatado} liquidado em ${dataPagamento}`);
+          liquidados++;
+        }
+      } catch (cpfErr) {
+        console.warn(`[ValidacaoPagamento] Erro ao verificar CPF ${cpfFormatado}:`, cpfErr.message);
+      }
+    }
+
+    console.log(`[ValidacaoPagamento] Concluído — ${liquidados} de ${pendentes.rows.length} CPF(s) liquidados.`);
+  } catch (error) {
+    console.error('[ValidacaoPagamento] Erro geral:', error.message);
+  }
+}
+
 export async function runAllAutomations() {
   console.log('[Automations] Running all automation checks...');
   try {
@@ -1012,6 +1083,7 @@ export async function runAllAutomations() {
     await checkAndExecuteReferralChannelAutomations();
     await checkAndExecuteUpsellChannelAutomations();
     await syncPerspectivaNegociosFromERP();
+    await checkValidacaoPagamento();
     console.log('[Automations] Automation checks completed.');
   } catch (error) {
     console.error('[Automations] Error running automations:', error);
