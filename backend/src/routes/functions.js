@@ -5853,6 +5853,8 @@ router.get('/commission-perspectiva/control', authMiddleware, loadAgentMiddlewar
         where += ` AND status_pagamento = $${idx++}`;
         params.push(status);
       }
+    } else {
+      where += ` AND (status_pagamento IS NULL OR status_pagamento != 'pendente_conciliacao')`;
     }
     if (lote_id && lote_id !== 'all') { where += ` AND lote_pagamento_id = $${idx++}`; params.push(parseInt(lote_id)); }
     if (data_inicio) { where += ` AND data_pagamento >= $${idx++}`; params.push(data_inicio); }
