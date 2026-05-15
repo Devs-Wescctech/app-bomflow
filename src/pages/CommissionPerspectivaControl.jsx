@@ -437,7 +437,7 @@ export default function CommissionPerspectivaControl() {
                           <div className="text-xs text-gray-500">{r.cpf_indicado || '-'}</div>
                         </td>
                         <td className="py-2 px-3 font-mono text-xs">
-                          {r.perspectiva_id || '-'}
+                          {r.perspectiva || '-'}
                         </td>
                         <td className="py-2 px-3 font-mono text-xs">{r.contrato || '-'}</td>
                         <td className="py-2 px-3">

@@ -5541,47 +5541,19 @@ async function runPerspectivaBatch() {
   try {
     const cycle = getWeeklyCycleDates();
 
-    const liquidadoResult = await query(
-      `SELECT * FROM erp_perspectivas_negocios WHERE sit_titulo = 'Liquidado' AND perspectiva IS NOT NULL`
+    // Mark new Liquidado records (not yet processed) as elegivel directly in the source table
+    const newResult = await query(
+      `UPDATE erp_perspectivas_negocios SET status_pagamento = 'elegivel'
+       WHERE sit_titulo = 'Liquidado' AND perspectiva IS NOT NULL AND status_pagamento IS NULL
+       RETURNING id`
     );
-    const allLiquidado = liquidadoResult.rows;
+    const newCount = newResult.rowCount;
+    console.log(`[Perspectiva Batch] ${newCount} novos registros marcados como elegível`);
 
-    const existingResult = await query('SELECT perspectiva_id FROM commission_perspectiva_control WHERE perspectiva_id IS NOT NULL');
-    const existingIds = new Set(existingResult.rows.map(r => r.perspectiva_id));
-
-    let newCount = 0;
-    for (const rec of allLiquidado) {
-      const perspId = rec.perspectiva;
-      if (!perspId || existingIds.has(perspId)) continue;
-      existingIds.add(perspId);
-
-      await query(
-        `INSERT INTO commission_perspectiva_control
-         (perspectiva_id, cpf_indicador, nome_indicador, cpf_indicado, nome_indicado, nome_vendedor,
-          data_pagamento, data_vencimento, valor_titulo, contrato, status_pagamento, periodo_pagamento)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'elegivel',$11)
-         ON CONFLICT (perspectiva_id) DO NOTHING`,
-        [
-          perspId,
-          rec.cpf_indicador  || null,
-          rec.nome_indicador || null,
-          rec.cpf_indicado   || null,
-          rec.nome_indicado  || null,
-          rec.nome_vendedor  || null,
-          rec.data_pagamento || null,
-          rec.data_vencimento|| null,
-          rec.valor_titulo   != null ? parseFloat(rec.valor_titulo) : null,
-          rec.contrato       || null,
-          cycle.label,
-        ]
-      );
-      newCount++;
-    }
-
-    console.log(`[Perspectiva Batch] ${newCount} novas comissões registradas`);
-
+    // Get all elegivel records without a batch assignment
     const elegiveisResult = await query(
-      "SELECT * FROM commission_perspectiva_control WHERE status_pagamento = 'elegivel' AND lote_pagamento_id IS NULL"
+      `SELECT * FROM erp_perspectivas_negocios
+       WHERE sit_titulo = 'Liquidado' AND status_pagamento = 'elegivel' AND lote_pagamento_id IS NULL`
     );
     const elegiveis = elegiveisResult.rows;
 
@@ -5612,9 +5584,10 @@ async function runPerspectivaBatch() {
     );
     const batchId = batchResult.rows[0].id;
 
+    // Link records to the new batch in the source table
     const ids = elegiveis.map(e => e.id);
     await query(
-      `UPDATE commission_perspectiva_control SET lote_pagamento_id = $1 WHERE id = ANY($2)`,
+      `UPDATE erp_perspectivas_negocios SET lote_pagamento_id = $1 WHERE id = ANY($2)`,
       [batchId, ids]
     );
 
@@ -5660,12 +5633,16 @@ async function getPerspectivaReportData() {
   let controlResult;
   if (currentBatchId) {
     controlResult = await query(
-      "SELECT * FROM commission_perspectiva_control WHERE lote_pagamento_id = $1 AND status_pagamento NOT IN ('reativacao','pendente_conciliacao') ORDER BY nome_indicador, created_at",
+      `SELECT * FROM erp_perspectivas_negocios
+       WHERE sit_titulo = 'Liquidado' AND lote_pagamento_id = $1 AND status_pagamento NOT IN ('reativacao','pendente_conciliacao')
+       ORDER BY nome_indicador, sincronizado_em`,
       [currentBatchId]
     );
   } else {
     controlResult = await query(
-      "SELECT * FROM commission_perspectiva_control WHERE status_pagamento = 'elegivel' AND lote_pagamento_id IS NULL ORDER BY nome_indicador, created_at"
+      `SELECT * FROM erp_perspectivas_negocios
+       WHERE sit_titulo = 'Liquidado' AND (status_pagamento = 'elegivel' OR status_pagamento IS NULL) AND lote_pagamento_id IS NULL
+       ORDER BY nome_indicador, sincronizado_em`
     );
   }
   const records = controlResult.rows;
@@ -5717,11 +5694,12 @@ async function getPerspectivaReportData() {
   const currentRecordIds = new Set(records.map(r => r.id));
 
   const pendingResult = await query(
-    `SELECT cpc.*, cpb.periodo_inicio, cpb.periodo_fim
-     FROM commission_perspectiva_control cpc
-     LEFT JOIN commission_perspectiva_batches cpb ON cpc.lote_pagamento_id = cpb.id
-     WHERE cpc.status_pagamento NOT IN ('pago','reativacao','pendente_conciliacao')
-     ORDER BY cpb.periodo_inicio, cpc.nome_indicador, cpc.created_at`
+    `SELECT epn.*, cpb.periodo_inicio, cpb.periodo_fim
+     FROM erp_perspectivas_negocios epn
+     LEFT JOIN commission_perspectiva_batches cpb ON epn.lote_pagamento_id = cpb.id
+     WHERE epn.sit_titulo = 'Liquidado'
+       AND (epn.status_pagamento NOT IN ('pago','reativacao','pendente_conciliacao') OR epn.status_pagamento IS NULL)
+     ORDER BY cpb.periodo_inicio, epn.nome_indicador, epn.sincronizado_em`
   );
 
   const batchGroups = {};
@@ -5845,9 +5823,9 @@ router.get('/commission-perspectiva/batches', authMiddleware, loadAgentMiddlewar
         batch.valor_total = snap.rows.reduce((s, r) => s + parseFloat(r.valor_comissao), 0);
         batch.total_indicadores = snap.rows.length;
       } else {
-        const ctrl = await query('SELECT cpf_indicador, nome_indicador FROM commission_perspectiva_control WHERE lote_pagamento_id = $1', [batch.id]);
+        const src = await query('SELECT cpf_indicador, nome_indicador FROM erp_perspectivas_negocios WHERE lote_pagamento_id = $1', [batch.id]);
         const imap = {};
-        for (const r of ctrl.rows) {
+        for (const r of src.rows) {
           const k = r.cpf_indicador || r.nome_indicador || 'unknown';
           imap[k] = (imap[k] || 0) + 1;
         }
@@ -5864,14 +5842,22 @@ router.get('/commission-perspectiva/batches', authMiddleware, loadAgentMiddlewar
 router.get('/commission-perspectiva/control', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
   try {
     const { status, lote_id, data_inicio, data_fim } = req.query;
-    let where = 'WHERE 1=1';
+    let where = `WHERE sit_titulo = 'Liquidado'`;
     const params = [];
     let idx = 1;
-    if (status && status !== 'all') { where += ` AND status_pagamento = $${idx++}`; params.push(status); }
+    if (status && status !== 'all') {
+      if (status === 'elegivel') {
+        where += ` AND (status_pagamento = $${idx++} OR status_pagamento IS NULL)`;
+        params.push('elegivel');
+      } else {
+        where += ` AND status_pagamento = $${idx++}`;
+        params.push(status);
+      }
+    }
     if (lote_id && lote_id !== 'all') { where += ` AND lote_pagamento_id = $${idx++}`; params.push(parseInt(lote_id)); }
     if (data_inicio) { where += ` AND data_pagamento >= $${idx++}`; params.push(data_inicio); }
     if (data_fim) { where += ` AND data_pagamento <= $${idx++}`; params.push(data_fim); }
-    const result = await query(`SELECT * FROM commission_perspectiva_control ${where} ORDER BY nome_indicador, created_at DESC LIMIT 10000`, params);
+    const result = await query(`SELECT * FROM erp_perspectivas_negocios ${where} ORDER BY nome_indicador, sincronizado_em DESC LIMIT 10000`, params);
     res.json({ success: true, records: result.rows, total: result.rowCount });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -5880,7 +5866,10 @@ router.get('/commission-perspectiva/control', authMiddleware, loadAgentMiddlewar
 
 router.get('/commission-perspectiva/summary', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
   try {
-    const byStatus = await query('SELECT status_pagamento, COUNT(*) as total FROM commission_perspectiva_control GROUP BY status_pagamento');
+    const byStatus = await query(
+      `SELECT COALESCE(status_pagamento, 'elegivel') as status_pagamento, COUNT(*) as total
+       FROM erp_perspectivas_negocios WHERE sit_titulo = 'Liquidado' GROUP BY COALESCE(status_pagamento, 'elegivel')`
+    );
     const batchAbertos = await query("SELECT COUNT(*) as total FROM commission_perspectiva_batches WHERE status = 'aberto'");
     const batchPagos = await query("SELECT COUNT(*) as total FROM commission_perspectiva_batches WHERE status = 'pago'");
     res.json({
@@ -5898,7 +5887,7 @@ router.put('/commission-perspectiva/confirm/:id', authMiddleware, loadAgentMiddl
     const { id } = req.params;
     const userEmail = req.user?.email || req.user?.userEmail || 'admin';
     const result = await query(
-      `UPDATE commission_perspectiva_control SET status_pagamento = 'pago', data_confirmacao_pagamento = NOW(), usuario_confirmacao = $1 WHERE id = $2 RETURNING *`,
+      `UPDATE erp_perspectivas_negocios SET status_pagamento = 'pago', data_confirmacao_pagamento = NOW(), usuario_confirmacao = $1 WHERE id = $2 RETURNING *`,
       [userEmail, parseInt(id)]
     );
     if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Registro não encontrado' });
@@ -5913,7 +5902,7 @@ router.put('/commission-perspectiva/pendente-conciliacao/:id', authMiddleware, l
     const { id } = req.params;
     const userEmail = req.user?.email || req.user?.userEmail || 'admin';
     const result = await query(
-      `UPDATE commission_perspectiva_control SET status_pagamento = 'pendente_conciliacao', usuario_confirmacao = $1 WHERE id = $2 RETURNING *`,
+      `UPDATE erp_perspectivas_negocios SET status_pagamento = 'pendente_conciliacao', usuario_confirmacao = $1 WHERE id = $2 RETURNING *`,
       [userEmail, parseInt(id)]
     );
     if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Registro não encontrado' });
@@ -5927,7 +5916,7 @@ router.put('/commission-perspectiva/restore-elegivel/:id', authMiddleware, loadA
   try {
     const { id } = req.params;
     const result = await query(
-      `UPDATE commission_perspectiva_control SET status_pagamento = 'elegivel' WHERE id = $1 AND status_pagamento = 'pendente_conciliacao' RETURNING *`,
+      `UPDATE erp_perspectivas_negocios SET status_pagamento = 'elegivel' WHERE id = $1 AND status_pagamento = 'pendente_conciliacao' RETURNING *`,
       [parseInt(id)]
     );
     if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Registro não encontrado' });
@@ -5942,7 +5931,7 @@ router.put('/commission-perspectiva/reativacao/:id', authMiddleware, loadAgentMi
     const { id } = req.params;
     const userEmail = req.user?.email || req.user?.userEmail || 'admin';
     const result = await query(
-      `UPDATE commission_perspectiva_control SET status_pagamento = 'reativacao', usuario_confirmacao = $1 WHERE id = $2 AND status_pagamento != 'pago' RETURNING *`,
+      `UPDATE erp_perspectivas_negocios SET status_pagamento = 'reativacao', usuario_confirmacao = $1 WHERE id = $2 AND status_pagamento != 'pago' RETURNING *`,
       [userEmail, parseInt(id)]
     );
     if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Registro não encontrado ou já pago' });
@@ -5957,7 +5946,7 @@ router.put('/commission-perspectiva/confirm-batch/:batchId', authMiddleware, loa
     const { batchId } = req.params;
     const userEmail = req.user?.email || req.user?.userEmail || 'admin';
     const updateResult = await query(
-      `UPDATE commission_perspectiva_control SET status_pagamento = 'pago', data_confirmacao_pagamento = NOW(), usuario_confirmacao = $1
+      `UPDATE erp_perspectivas_negocios SET status_pagamento = 'pago', data_confirmacao_pagamento = NOW(), usuario_confirmacao = $1
        WHERE lote_pagamento_id = $2 AND status_pagamento = 'elegivel'`,
       [userEmail, parseInt(batchId)]
     );

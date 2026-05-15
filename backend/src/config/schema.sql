@@ -1606,6 +1606,9 @@ ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS data_pagamento DA
 ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS contrato VARCHAR(255);
 ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS valor_titulo DECIMAL(15,2);
 ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS data_vencimento DATE;
+ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS status_pagamento VARCHAR(50) DEFAULT NULL;
+ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS data_confirmacao_pagamento TIMESTAMP;
+ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS usuario_confirmacao VARCHAR(255);
 
 CREATE TABLE IF NOT EXISTS commission_perspectiva_batches (
     id                 SERIAL PRIMARY KEY,
@@ -1616,6 +1619,8 @@ CREATE TABLE IF NOT EXISTS commission_perspectiva_batches (
     status             VARCHAR(50) DEFAULT 'aberto',
     created_at         TIMESTAMP DEFAULT NOW()
 );
+
+ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS lote_pagamento_id INTEGER REFERENCES commission_perspectiva_batches(id);
 
 CREATE TABLE IF NOT EXISTS commission_perspectiva_control (
     id                            SERIAL PRIMARY KEY,
