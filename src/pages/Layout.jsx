@@ -840,11 +840,7 @@ function LayoutContent({ children, currentPageName }) {
     }
   }, [location.pathname, isPublicPage, lastSalesModule]);
 
-  const filteredMenuModules = isAdminUser(user, currentAgent)
-    ? filterMenuItems({ agent_type: 'admin', ...(currentAgent || {}) }, menuModules)
-    : currentAgent
-      ? filterMenuItems(currentAgent, menuModules)
-      : [];
+  const filteredMenuModules = filterMenuItems(currentAgent, menuModules, user);
 
   if (isPublicPage) {
     return (
