@@ -1054,14 +1054,20 @@ export async function checkValidacaoPagamento() {
 
         if (pagamentos.length > 0) {
           const dataPagamento = pagamentos[0].data_pagamento || null;
-          await query(`
+          // IS DISTINCT FROM garante que NULL != 'Liquidado' é tratado corretamente
+          const result = await query(`
             UPDATE erp_perspectivas_negocios
             SET sit_titulo = 'Liquidado', data_pagamento = $1
             WHERE cpf_indicado = $2
-              AND sit_titulo != 'Liquidado'
+              AND sit_titulo IS DISTINCT FROM 'Liquidado'
           `, [dataPagamento, row.cpf_indicado]);
-          console.log(`[ValidacaoPagamento] CPF ${cpfFormatado} liquidado em ${dataPagamento}`);
-          liquidados++;
+          const rowsAffected = result.rowCount ?? 0;
+          if (rowsAffected > 0) {
+            console.log(`[ValidacaoPagamento] CPF ${cpfFormatado} liquidado em ${dataPagamento} (${rowsAffected} registro(s) atualizado(s))`);
+            liquidados++;
+          } else {
+            console.warn(`[ValidacaoPagamento] CPF ${cpfFormatado}: API retornou pagamento mas 0 registros foram atualizados na tabela`);
+          }
         }
       } catch (cpfErr) {
         console.warn(`[ValidacaoPagamento] Erro ao verificar CPF ${cpfFormatado}:`, cpfErr.message);
