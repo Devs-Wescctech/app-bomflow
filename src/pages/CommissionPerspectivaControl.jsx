@@ -437,8 +437,8 @@ export default function CommissionPerspectivaControl() {
                         </td>
                         <td className="py-2 px-3 text-xs">{safeFormatDate(r.data_pagamento)}</td>
                         <td className="py-2 px-3">
-                          <Badge className={STATUS_COLORS[r.status_pagamento] || 'bg-gray-100'}>
-                            {STATUS_LABELS[r.status_pagamento] || r.status_pagamento}
+                          <Badge className={STATUS_COLORS[r.status_pagamento || 'elegivel'] || 'bg-gray-100'}>
+                            {STATUS_LABELS[r.status_pagamento || 'elegivel'] || r.status_pagamento}
                           </Badge>
                         </td>
                         <td className="py-2 px-3">
