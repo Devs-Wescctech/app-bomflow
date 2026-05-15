@@ -1606,7 +1606,8 @@ ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS data_pagamento DA
 ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS contrato VARCHAR(255);
 ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS valor_titulo DECIMAL(15,2);
 ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS data_vencimento DATE;
-ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS status_pagamento VARCHAR(50) DEFAULT NULL;
+ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS status_pagamento VARCHAR(50) DEFAULT 'elegivel';
+UPDATE erp_perspectivas_negocios SET status_pagamento = 'elegivel' WHERE status_pagamento IS NULL;
 ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS data_confirmacao_pagamento TIMESTAMP;
 ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS usuario_confirmacao VARCHAR(255);
 

@@ -445,7 +445,7 @@ export default function CommissionPerspectivaControl() {
                           {r.lote_pagamento_id ? `#${r.lote_pagamento_id}` : '-'}
                         </td>
                         <td className="py-2 px-3">
-                          {r.status_pagamento === 'elegivel' && (
+                          {(!r.status_pagamento || r.status_pagamento === 'elegivel') && (
                             <div className="flex gap-1 flex-wrap">
                               <Button
                                 size="sm"
