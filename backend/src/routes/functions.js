@@ -144,8 +144,12 @@ router.post('/run-lead-automations', authMiddleware, loadAgentMiddleware, requir
     const { lead_id } = req.body;
     
     if (lead_id) {
+      const upsellCheck = await query('SELECT id FROM leads_upsell WHERE id = $1', [lead_id]).catch(() => ({ rows: [] }));
+      if (upsellCheck.rows.length > 0) {
+        await checkAndExecuteLeadUpsellAutomations();
+        return res.json({ success: true, leadType: 'upsell', triggered: 0, skipped: 0, message: 'Automações Upsell verificadas para o lead' });
+      }
       const result = await runAutomationsForLead(lead_id);
-      checkAndExecuteLeadUpsellAutomations().catch(e => console.error('[Upsell] per-lead automation error:', e.message));
       return res.json(result);
     }
     

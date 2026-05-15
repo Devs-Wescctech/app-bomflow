@@ -51,7 +51,7 @@ export default function SalesUpsellWonReport() {
     queryFn: () => base44.auth.me(),
   });
 
-  const currentAgent = user?.agent;
+  const currentAgent = user?.agent || allAgents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
   const isAdmin = isUpsellPrivileged(user, currentAgent);
   const hasPermission = !!user;

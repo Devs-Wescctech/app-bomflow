@@ -842,9 +842,9 @@ function LayoutContent({ children, currentPageName }) {
   }, [location.pathname, isPublicPage, lastSalesModule]);
 
   const filteredMenuModules = isAdminUser(user, currentAgent)
-    ? filterMenuItems({ ...(currentAgent || {}), agent_type: 'admin' }, menuModules)
+    ? filterMenuItems({ ...(currentAgent || {}), agent_type: 'admin' }, menuModules, user)
     : currentAgent
-      ? filterMenuItems(currentAgent, menuModules)
+      ? filterMenuItems(currentAgent, menuModules, user)
       : [];
 
   if (isPublicPage) {

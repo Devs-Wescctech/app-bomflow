@@ -306,12 +306,12 @@ export function isUpsellPrivileged(user, agent) {
   return false;
 }
 
-export function filterMenuItems(agent, menuItems) {
+export function filterMenuItems(agent, menuItems, user = null) {
   const agentType = agent?.agent_type || agent?.agentType;
   if (!agent || !agentType) return [];
   
   const isSupervisor = isSupervisorType(agentType);
-  const isAdmin = agentType === 'admin';
+  const isAdmin = agentType === 'admin' || user?.role === 'admin';
   const isSalesAgentOnly = agentType === 'sales';
   
   // Get allowed submenus from agent type config (loaded from database)

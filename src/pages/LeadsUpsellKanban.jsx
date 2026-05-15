@@ -245,7 +245,7 @@ function DroppableColumn({ id, stage, children, overId, activeId }) {
   );
 }
 
-function SortableLeadCard({ lead, stage, pendingTasksCount, agentData, navigate, formatCurrency, formatDate, updateLeadMutation, TasksPopover, userEmail }) {
+function SortableLeadCard({ lead, stage, pendingTasksCount, agentData, navigate, formatCurrency, formatDate, updateLeadMutation, TasksPopover, userEmail, setConfirmDialog }) {
   const {
     attributes,
     listeners,
@@ -1511,6 +1511,7 @@ export default function LeadsUpsellKanban() {
                                 updateLeadMutation={updateLeadMutation}
                                 TasksPopover={TasksPopover}
                                 userEmail={user?.email}
+                                setConfirmDialog={setConfirmDialog}
                               />
                             );
                           })}
