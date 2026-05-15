@@ -954,8 +954,8 @@ export async function syncPerspectivaNegociosFromERP() {
     for (const rec of records) {
       await query(
         `INSERT INTO erp_perspectivas_negocios
-          (perspectiva, nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_titulo, sit_perspectiva, observacoes, origem, sincronizado_em)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'erp',NOW())`,
+          (perspectiva, nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_titulo, sit_perspectiva, observacoes, origem, sincronizado_em, data_pagamento)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'erp',NOW(),$10)`,
         [
           rec.perspectiva    || null,
           rec.nome_indicador || null,
@@ -965,7 +965,8 @@ export async function syncPerspectivaNegociosFromERP() {
           rec.nome_vendedor  || null,
           rec.sit_titulo     || null,
           rec.sit_perspectiva|| null,
-          rec.observacoes    || null
+          rec.observacoes    || null,
+          rec.data_pagamento || null,
         ]
       );
     }
@@ -1018,14 +1019,16 @@ export async function checkValidacaoPagamento() {
     }
     const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
 
-    // Busca registros com cpf_indicado preenchido e ainda não liquidados
-    // IS DISTINCT FROM garante que NULL também é incluído (NULL != 'Liquidado' = NULL em SQL)
+    // Busca CPFs pendentes: não liquidados OU liquidados mas sem data_pagamento
     const pendentes = await query(`
       SELECT DISTINCT cpf_indicado
       FROM erp_perspectivas_negocios
       WHERE cpf_indicado IS NOT NULL
         AND cpf_indicado != ''
-        AND sit_titulo IS DISTINCT FROM 'Liquidado'
+        AND (
+          sit_titulo IS DISTINCT FROM 'Liquidado'
+          OR (sit_titulo = 'Liquidado' AND data_pagamento IS NULL)
+        )
     `);
 
     if (pendentes.rows.length === 0) {
