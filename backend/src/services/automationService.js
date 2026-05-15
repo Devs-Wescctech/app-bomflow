@@ -1076,19 +1076,25 @@ export async function checkValidacaoPagamento() {
 
 export async function runAllAutomations() {
   console.log('[Automations] Running all automation checks...');
-  try {
-    await checkAndExecuteLeadAutomations();
-    await checkAndExecuteLeadPJAutomations();
-    await checkAndExecuteLeadUpsellAutomations();
-    await checkAndExecuteReferralAutomations();
-    await checkAndExecuteReferralChannelAutomations();
-    await checkAndExecuteUpsellChannelAutomations();
-    await syncPerspectivaNegociosFromERP();
-    await checkValidacaoPagamento();
-    console.log('[Automations] Automation checks completed.');
-  } catch (error) {
-    console.error('[Automations] Error running automations:', error);
+  // Cada passo isolado: falha em um não bloqueia os demais (especialmente o sync ERP).
+  const steps = [
+    ['checkAndExecuteLeadAutomations', checkAndExecuteLeadAutomations],
+    ['checkAndExecuteLeadPJAutomations', checkAndExecuteLeadPJAutomations],
+    ['checkAndExecuteLeadUpsellAutomations', checkAndExecuteLeadUpsellAutomations],
+    ['checkAndExecuteReferralAutomations', checkAndExecuteReferralAutomations],
+    ['checkAndExecuteReferralChannelAutomations', checkAndExecuteReferralChannelAutomations],
+    ['checkAndExecuteUpsellChannelAutomations', checkAndExecuteUpsellChannelAutomations],
+    ['syncPerspectivaNegociosFromERP', syncPerspectivaNegociosFromERP],
+    ['checkValidacaoPagamento', checkValidacaoPagamento],
+  ];
+  for (const [name, fn] of steps) {
+    try {
+      await fn();
+    } catch (error) {
+      console.error(`[Automations] Step "${name}" failed:`, error?.message || error);
+    }
   }
+  console.log('[Automations] Automation checks completed.');
 }
 
 export async function getAutomationLogs(filters = {}) {
