@@ -235,10 +235,6 @@ export default function CommissionPerspectivaControl() {
               <DollarSign className="w-6 h-6 text-emerald-600" />
               Comissões ERP (Perspectivas Liquidadas)
             </h1>
-            <p className="text-sm text-gray-500">
-              Fonte: <span className="font-medium text-emerald-700">erp_perspectivas_negocios</span> — sit_titulo = Liquidado |
-              Ciclo semanal: Quarta 00:00 → Terça 23:59
-            </p>
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -416,7 +412,6 @@ export default function CommissionPerspectivaControl() {
                     <tr className="border-b text-left">
                       <th className="py-2 px-3">Indicador</th>
                       <th className="py-2 px-3">Indicado</th>
-                      <th className="py-2 px-3">Perspectiva</th>
                       <th className="py-2 px-3">Contrato</th>
                       <th className="py-2 px-3">Valor Título</th>
                       <th className="py-2 px-3">Data Pagamento</th>
@@ -435,9 +430,6 @@ export default function CommissionPerspectivaControl() {
                         <td className="py-2 px-3">
                           <div>{r.nome_indicado || '-'}</div>
                           <div className="text-xs text-gray-500">{r.cpf_indicado || '-'}</div>
-                        </td>
-                        <td className="py-2 px-3 font-mono text-xs">
-                          {r.perspectiva || '-'}
                         </td>
                         <td className="py-2 px-3 font-mono text-xs">{r.contrato || '-'}</td>
                         <td className="py-2 px-3">
