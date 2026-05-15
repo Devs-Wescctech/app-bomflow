@@ -354,8 +354,10 @@ export function filterMenuItems(agent, menuItems, user = null) {
         // If allowedSubmenus is configured in ADM, it has PRIORITY over hardcoded flags
         // This allows admin to explicitly grant access to any submenu
         if (hasSubmenuRestrictions) {
+          // If item has an explicit requiredSubmenu key, use that for lookup instead of URL-derived key
+          const lookupKey = subItem.requiredSubmenu || submenuKey;
           // If item is explicitly allowed in ADM, show it regardless of other flags
-          if (allowedSubmenus.includes(submenuKey)) {
+          if (allowedSubmenus.includes(lookupKey)) {
             // Config items still require special permissions even if in allowedSubmenus
             if (item.id === 'config') {
               if (subItem.title === 'Agentes') {
@@ -365,7 +367,7 @@ export function filterMenuItems(agent, menuItems, user = null) {
             }
             return true;
           }
-          // If allowedSubmenus is set but item is not in the list, hide it
+          // If allowedSubmenus is set but item is not in the list (neither by requiredSubmenu nor URL key), hide it
           return false;
         }
         

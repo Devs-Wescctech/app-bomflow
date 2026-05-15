@@ -117,6 +117,7 @@ const MENU_MODULES = [
       { id: "ReferralCommissions", title: "Comissões" },
       { id: "ReferralWonReport", title: "Rel. de Convertidos" },
       { id: "CommissionPaymentControl", title: "Ctrl. Pagamento" },
+      { id: "CommissionPerspectivaControl", title: "Comissões ERP" },
       { id: "CommissionReconciliation", title: "Reconciliação" },
       { id: "ReferralRelacao", title: "Relação Indicações" },
       { id: "ReferralChannelAutomations", title: "Automações por Canal" },
