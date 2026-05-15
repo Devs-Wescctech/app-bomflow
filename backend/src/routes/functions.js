@@ -141,27 +141,9 @@ router.post('/record-first-response', authMiddleware, loadAgentMiddleware, async
 
 router.post('/run-lead-automations', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
   try {
-    const { lead_id, lead_type } = req.body;
+    const { lead_id } = req.body;
     
     if (lead_id) {
-      // Detecta o tipo do lead (explícito via body ou auto-detectado pela tabela onde existe)
-      let resolvedType = lead_type;
-      if (!resolvedType) {
-        const upsellCheck = await query('SELECT 1 FROM leads_upsell WHERE id = $1 LIMIT 1', [lead_id]);
-        if (upsellCheck.rows.length > 0) {
-          resolvedType = 'upsell';
-        } else {
-          const leadCheck = await query('SELECT 1 FROM leads WHERE id = $1 LIMIT 1', [lead_id]);
-          if (leadCheck.rows.length > 0) resolvedType = 'lead';
-        }
-      }
-
-      if (resolvedType === 'upsell') {
-        // Para leads de upsell, dispara apenas o motor de upsell (leadAutomation.js não conhece leads_upsell)
-        await checkAndExecuteLeadUpsellAutomations();
-        return res.json({ leadId: lead_id, leadType: 'upsell', triggered: true });
-      }
-
       const result = await runAutomationsForLead(lead_id);
       checkAndExecuteLeadUpsellAutomations().catch(e => console.error('[Upsell] per-lead automation error:', e.message));
       return res.json(result);

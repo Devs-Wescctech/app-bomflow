@@ -306,18 +306,16 @@ export function isUpsellPrivileged(user, agent) {
   return false;
 }
 
-export function filterMenuItems(agent, menuItems, user = null) {
+export function filterMenuItems(agent, menuItems) {
   const agentType = agent?.agent_type || agent?.agentType;
-  // Admin via JWT (user.role === 'admin') deve ver tudo, mesmo sem agent ou com agent não-admin
-  const jwtAdmin = user?.role === 'admin';
-  if (!jwtAdmin && (!agent || !agentType)) return [];
+  if (!agent || !agentType) return [];
   
-  const isSupervisor = isSupervisorType(agentType) || user?.role === 'supervisor';
-  const isAdmin = agentType === 'admin' || jwtAdmin;
+  const isSupervisor = isSupervisorType(agentType);
+  const isAdmin = agentType === 'admin';
   const isSalesAgentOnly = agentType === 'sales';
   
   // Get allowed submenus from agent type config (loaded from database)
-  const allowedSubmenus = agent?.allowedSubmenus || [];
+  const allowedSubmenus = agent.allowedSubmenus || [];
   const hasSubmenuRestrictions = allowedSubmenus.length > 0;
   
   return menuItems
