@@ -154,7 +154,7 @@ export default function ReferralCreate() {
     let commissionValueForToast = 0;
     if (cpfFromErp) {
       try {
-        // Busca conversões combinando referrals + commission_payment_control (fonte mais completa)
+        // Busca comissões válidas em erp_perspectivas_negocios (sit_titulo='Liquidado')
         const conversoes = await buscarConversoesPorCpf(cpfFromErp);
         totalConversions = conversoes.totalConversions || 0;
         const lv = getCommissionFromConversions(totalConversions);
@@ -192,7 +192,7 @@ export default function ReferralCreate() {
       }
     }
 
-    toast({ title: "Sucesso", description: `Cliente encontrado: ${indicadorData.nome} — Nível ${level} - Comissão: R$ ${commissionValueForToast},00 (${totalConversions} ${totalConversions !== 1 ? 'indicações convertidas' : 'indicação convertida'})` });
+    toast({ title: "Sucesso", description: `Cliente encontrado: ${indicadorData.nome} — Nível ${level} - Comissão: R$ ${commissionValueForToast},00 (${totalConversions} ${totalConversions !== 1 ? 'comissões Liquidadas (ERP)' : 'comissão Liquidada (ERP)'})` });
   };
 
   const handleSearchByPhone = async () => {
@@ -538,7 +538,7 @@ export default function ReferralCreate() {
                             {getLevelDescription(referrerLevel, referrerIsCorretor === true).badge}
                           </Badge>
                           <span className="text-sm text-gray-600">
-                            {referrerConversions} {referrerConversions !== 1 ? 'indicações convertidas' : 'indicação convertida'}
+                            {referrerConversions} {referrerConversions !== 1 ? 'comissões Liquidadas (ERP)' : 'comissão Liquidada (ERP)'}
                           </span>
                         </div>
                         <p className="text-xs text-gray-500 mt-1">

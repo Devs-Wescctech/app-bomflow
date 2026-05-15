@@ -5363,7 +5363,16 @@ router.get('/indicador-historico/:cpf', authMiddleware, async (req, res) => {
     const cpf = req.params.cpf.replace(/\D/g, '');
     if (!cpf) return res.status(400).json({ error: 'CPF obrigatório' });
 
-    // Conta conversões na tabela referrals (status='convertido')
+    // Fonte principal: erp_perspectivas_negocios — comissões com sit_titulo = 'Liquidado'
+    const perspResult = await query(
+      `SELECT COUNT(*) as total FROM erp_perspectivas_negocios
+       WHERE REGEXP_REPLACE(COALESCE(cpf_indicador,''), '[^0-9]', '', 'g') = $1
+         AND sit_titulo = 'Liquidado'`,
+      [cpf]
+    );
+    const fromPerspectivas = parseInt(perspResult.rows[0]?.total || 0);
+
+    // Fallback: referrals convertidos (caso ainda não haja dados sincronizados no ERP)
     const referralsResult = await query(
       `SELECT COUNT(*) as total FROM referrals
        WHERE REGEXP_REPLACE(COALESCE(referrer_cpf,''), '[^0-9]', '', 'g') = $1
@@ -5372,19 +5381,10 @@ router.get('/indicador-historico/:cpf', authMiddleware, async (req, res) => {
     );
     const fromReferrals = parseInt(referralsResult.rows[0]?.total || 0);
 
-    // Conta registros em commission_payment_control (fonte autoritativa de comissões pagas/elegíveis)
-    const cpcResult = await query(
-      `SELECT COUNT(*) as total FROM commission_payment_control
-       WHERE REGEXP_REPLACE(COALESCE(cpf_indicador,''), '[^0-9]', '', 'g') = $1
-         AND status_pagamento NOT IN ('reativacao')`,
-      [cpf]
-    );
-    const fromCpc = parseInt(cpcResult.rows[0]?.total || 0);
+    // erp_perspectivas_negocios é a fonte autoritativa; fallback para referrals se não houver dados ERP
+    const totalConversions = fromPerspectivas > 0 ? fromPerspectivas : fromReferrals;
 
-    // Usa o maior valor entre as duas fontes
-    const totalConversions = Math.max(fromReferrals, fromCpc);
-
-    res.json({ cpf, totalConversions, fromReferrals, fromCpc });
+    res.json({ cpf, totalConversions, fromPerspectivas, fromReferrals });
   } catch (error) {
     console.error('[indicador-historico]', error);
     res.status(500).json({ error: error.message });
