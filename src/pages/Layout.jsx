@@ -260,6 +260,7 @@ const menuModules = [
       { title: "Rel. de Reativações", url: createPageUrl("ReferralReactivationReport"), icon: FileBarChart, requiredSubmenu: "ReferralReactivationReport" },
       { title: "Comissões", url: createPageUrl("ReferralCommissions"), icon: DollarSign, supervisorOnly: true },
       { title: "Ctrl. Pagamento", url: createPageUrl("CommissionPaymentControl"), icon: FileCheck, requiredSubmenu: "CommissionPaymentControl" },
+      { title: "Comissões ERP", url: createPageUrl("CommissionPerspectivaControl"), icon: FileCheck, requiredSubmenu: "CommissionPaymentControl" },
       { title: "Reconciliação", url: createPageUrl("CommissionReconciliation"), icon: Shield, requiredSubmenu: "CommissionReconciliation" },
       { title: "Relação Indicações", url: createPageUrl("ReferralRelacao"), icon: List, requiredSubmenu: "ReferralRelacao" },
       { title: "Automações por Canal", url: createPageUrl("ReferralChannelAutomations"), icon: Activity, supervisorOnly: true },

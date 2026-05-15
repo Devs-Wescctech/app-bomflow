@@ -954,19 +954,22 @@ export async function syncPerspectivaNegociosFromERP() {
     for (const rec of records) {
       await query(
         `INSERT INTO erp_perspectivas_negocios
-          (perspectiva, nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_titulo, sit_perspectiva, observacoes, origem, sincronizado_em, data_pagamento)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'erp',NOW(),$10)`,
+          (perspectiva, nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_titulo, sit_perspectiva, observacoes, origem, sincronizado_em, data_pagamento, contrato, valor_titulo, data_vencimento)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'erp',NOW(),$10,$11,$12,$13)`,
         [
-          rec.perspectiva    || null,
-          rec.nome_indicador || null,
-          rec.cpf_indicador  || null,
-          rec.nome_indicado  || null,
-          rec.cpf_indicado   || null,
-          rec.nome_vendedor  || null,
-          rec.sit_titulo     || null,
-          rec.sit_perspectiva|| null,
-          rec.observacoes    || null,
-          rec.data_pagamento || null,
+          rec.perspectiva     || null,
+          rec.nome_indicador  || null,
+          rec.cpf_indicador   || null,
+          rec.nome_indicado   || null,
+          rec.cpf_indicado    || null,
+          rec.nome_vendedor   || null,
+          rec.sit_titulo      || null,
+          rec.sit_perspectiva || null,
+          rec.observacoes     || null,
+          rec.data_pagamento  || null,
+          rec.contrato        || null,
+          rec.valor_titulo    != null ? parseFloat(rec.valor_titulo) : null,
+          rec.data_vencimento || null,
         ]
       );
     }

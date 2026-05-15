@@ -129,6 +129,7 @@ import ReferralRelacao from "./ReferralRelacao";
 
 import CommissionReconciliation from "./CommissionReconciliation";
 import CommissionPaymentControl from "./CommissionPaymentControl";
+import CommissionPerspectivaControl from "./CommissionPerspectivaControl";
 
 import ReferralAutomations from "./ReferralAutomations";
 
@@ -585,6 +586,7 @@ function PagesContent() {
                 <Route path="/ReferralRelacao" element={<ReferralRelacao />} />
                 <Route path="/CommissionReconciliation" element={<CommissionReconciliation />} />
                 <Route path="/CommissionPaymentControl" element={<CommissionPaymentControl />} />
+                <Route path="/CommissionPerspectivaControl" element={<CommissionPerspectivaControl />} />
                 
                 <Route path="/ReferralAutomations" element={<ReferralAutomations />} />
                 

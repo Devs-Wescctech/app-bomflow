@@ -5528,4 +5528,483 @@ router.get('/perspectivas-negocios', authMiddleware, async (req, res) => {
   }
 });
 
+// ============================================================
+// COMMISSION PERSPECTIVA MODULE (fonte: erp_perspectivas_negocios)
+// ============================================================
+
+async function runPerspectivaBatch() {
+  console.log('[Perspectiva Batch] Iniciando geração de lote a partir de erp_perspectivas_negocios...');
+  try {
+    const cycle = getWeeklyCycleDates();
+
+    const liquidadoResult = await query(
+      `SELECT * FROM erp_perspectivas_negocios WHERE sit_titulo = 'Liquidado' AND perspectiva IS NOT NULL`
+    );
+    const allLiquidado = liquidadoResult.rows;
+
+    const existingResult = await query('SELECT perspectiva_id FROM commission_perspectiva_control WHERE perspectiva_id IS NOT NULL');
+    const existingIds = new Set(existingResult.rows.map(r => r.perspectiva_id));
+
+    let newCount = 0;
+    for (const rec of allLiquidado) {
+      const perspId = rec.perspectiva;
+      if (!perspId || existingIds.has(perspId)) continue;
+      existingIds.add(perspId);
+
+      await query(
+        `INSERT INTO commission_perspectiva_control
+         (perspectiva_id, cpf_indicador, nome_indicador, cpf_indicado, nome_indicado, nome_vendedor,
+          data_pagamento, data_vencimento, valor_titulo, contrato, status_pagamento, periodo_pagamento)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'elegivel',$11)
+         ON CONFLICT (perspectiva_id) DO NOTHING`,
+        [
+          perspId,
+          rec.cpf_indicador  || null,
+          rec.nome_indicador || null,
+          rec.cpf_indicado   || null,
+          rec.nome_indicado  || null,
+          rec.nome_vendedor  || null,
+          rec.data_pagamento || null,
+          rec.data_vencimento|| null,
+          rec.valor_titulo   != null ? parseFloat(rec.valor_titulo) : null,
+          rec.contrato       || null,
+          cycle.label,
+        ]
+      );
+      newCount++;
+    }
+
+    console.log(`[Perspectiva Batch] ${newCount} novas comissões registradas`);
+
+    const elegiveisResult = await query(
+      "SELECT * FROM commission_perspectiva_control WHERE status_pagamento = 'elegivel' AND lote_pagamento_id IS NULL"
+    );
+    const elegiveis = elegiveisResult.rows;
+
+    if (elegiveis.length === 0) {
+      console.log('[Perspectiva Batch] Nenhuma comissão elegível para gerar lote');
+      return { success: true, newCommissions: newCount, batchId: null, message: 'Nenhuma comissão elegível para o lote' };
+    }
+
+    const indicatorMap = {};
+    for (const e of elegiveis) {
+      const key = e.cpf_indicador || e.nome_indicador || 'unknown';
+      if (!indicatorMap[key]) {
+        indicatorMap[key] = { nome: e.nome_indicador, cpf: e.cpf_indicador, count: 0, total: 0 };
+      }
+      indicatorMap[key].count += 1;
+    }
+    for (const ind of Object.values(indicatorMap)) {
+      ind.total = getCommissionByTier(ind.count);
+    }
+
+    const totalIndicadores = Object.keys(indicatorMap).length;
+    const valorTotal = Object.values(indicatorMap).reduce((s, i) => s + i.total, 0);
+
+    const batchResult = await query(
+      `INSERT INTO commission_perspectiva_batches (periodo_inicio, periodo_fim, total_indicadores, valor_total, status)
+       VALUES ($1,$2,$3,$4,'aberto') RETURNING id`,
+      [cycle.start, cycle.end, totalIndicadores, valorTotal]
+    );
+    const batchId = batchResult.rows[0].id;
+
+    const ids = elegiveis.map(e => e.id);
+    await query(
+      `UPDATE commission_perspectiva_control SET lote_pagamento_id = $1 WHERE id = ANY($2)`,
+      [batchId, ids]
+    );
+
+    const existingSnapshot = await query(
+      'SELECT id FROM commission_perspectiva_snapshot WHERE cycle_start = $1 AND cycle_end = $2 LIMIT 1',
+      [cycle.start, cycle.end]
+    );
+    if (existingSnapshot.rows.length === 0) {
+      for (const ind of Object.values(indicatorMap)) {
+        const nivel = ind.count >= 13 ? 3 : ind.count >= 4 ? 2 : 1;
+        await query(
+          `INSERT INTO commission_perspectiva_snapshot
+           (cycle_start, cycle_end, batch_id, cpf_indicador, nome_indicador, total_conversoes, nivel_comissao, valor_comissao)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [cycle.start, cycle.end, batchId, ind.cpf, ind.nome, ind.count, nivel, ind.total]
+        );
+      }
+      console.log(`[Perspectiva Batch] Snapshot salvo: ${totalIndicadores} indicadores`);
+    }
+
+    console.log(`[Perspectiva Batch] Lote #${batchId} criado: ${totalIndicadores} indicadores, R$ ${valorTotal.toFixed(2)}`);
+    return { success: true, newCommissions: newCount, batchId, totalIndicadores, valorTotal, cycle: cycle.label, indicators: Object.values(indicatorMap) };
+  } catch (error) {
+    console.error('[Perspectiva Batch] Erro:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+async function getPerspectivaReportData() {
+  const cycle = getWeeklyCycleDates();
+
+  const snapshotResult = await query(
+    'SELECT * FROM commission_perspectiva_snapshot WHERE cycle_start = $1 AND cycle_end = $2 ORDER BY nome_indicador',
+    [cycle.start, cycle.end]
+  );
+
+  const batchResult = await query(
+    `SELECT id FROM commission_perspectiva_batches WHERE periodo_inicio = $1 AND periodo_fim = $2 ORDER BY id DESC LIMIT 1`,
+    [cycle.start, cycle.end]
+  );
+  const currentBatchId = batchResult.rows[0]?.id;
+
+  let controlResult;
+  if (currentBatchId) {
+    controlResult = await query(
+      "SELECT * FROM commission_perspectiva_control WHERE lote_pagamento_id = $1 AND status_pagamento NOT IN ('reativacao','pendente_conciliacao') ORDER BY nome_indicador, created_at",
+      [currentBatchId]
+    );
+  } else {
+    controlResult = await query(
+      "SELECT * FROM commission_perspectiva_control WHERE status_pagamento = 'elegivel' AND lote_pagamento_id IS NULL ORDER BY nome_indicador, created_at"
+    );
+  }
+  const records = controlResult.rows;
+
+  let indicatorMap = {};
+
+  if (snapshotResult.rows.length > 0) {
+    for (const s of snapshotResult.rows) {
+      const key = s.cpf_indicador || s.nome_indicador || 'unknown';
+      indicatorMap[key] = {
+        nome: s.nome_indicador || '-',
+        cpf: s.cpf_indicador || '-',
+        cel: '-',
+        count: parseInt(s.total_conversoes),
+        total: parseFloat(s.valor_comissao),
+        details: records.filter(r => (r.cpf_indicador || r.nome_indicador || 'unknown') === key)
+      };
+    }
+  } else {
+    for (const r of records) {
+      const key = r.cpf_indicador || r.nome_indicador || 'unknown';
+      if (!indicatorMap[key]) {
+        indicatorMap[key] = { nome: r.nome_indicador || '-', cpf: r.cpf_indicador || '-', cel: '-', count: 0, total: 0, details: [] };
+      }
+      indicatorMap[key].count += 1;
+      indicatorMap[key].details.push(r);
+    }
+    for (const ind of Object.values(indicatorMap)) {
+      ind.total = getCommissionByTier(ind.count);
+    }
+  }
+
+  const allCpfsNormalized = [...new Set(
+    Object.values(indicatorMap).map(i => i.cpf).filter(c => c && c !== '-').map(c => String(c).replace(/\D/g, '')).filter(Boolean)
+  )];
+  let pixMap = {};
+  if (allCpfsNormalized.length > 0) {
+    const pixResult = await query(`SELECT cpf_indicador, chave_pix FROM indicadores_pix WHERE cpf_indicador = ANY($1)`, [allCpfsNormalized]);
+    for (const row of pixResult.rows) pixMap[row.cpf_indicador] = row.chave_pix;
+  }
+  for (const ind of Object.values(indicatorMap)) {
+    const cpfClean = ind.cpf ? String(ind.cpf).replace(/\D/g, '') : '';
+    ind.pix = pixMap[cpfClean] || null;
+  }
+
+  const totalIndicadores = Object.keys(indicatorMap).length;
+  const totalIndicacoes = records.length;
+  const valorTotal = Object.values(indicatorMap).reduce((s, i) => s + i.total, 0);
+  const currentRecordIds = new Set(records.map(r => r.id));
+
+  const pendingResult = await query(
+    `SELECT cpc.*, cpb.periodo_inicio, cpb.periodo_fim
+     FROM commission_perspectiva_control cpc
+     LEFT JOIN commission_perspectiva_batches cpb ON cpc.lote_pagamento_id = cpb.id
+     WHERE cpc.status_pagamento NOT IN ('pago','reativacao','pendente_conciliacao')
+     ORDER BY cpb.periodo_inicio, cpc.nome_indicador, cpc.created_at`
+  );
+
+  const batchGroups = {};
+  for (const r of pendingResult.rows) {
+    if (currentBatchId && r.lote_pagamento_id === currentBatchId) continue;
+    if (!currentBatchId && currentRecordIds.has(r.id)) continue;
+    const batchKey = r.lote_pagamento_id || 'unbatched';
+    const indicatorKey = r.cpf_indicador || r.nome_indicador || 'unknown';
+    const groupKey = `${batchKey}::${indicatorKey}`;
+    if (!batchGroups[groupKey]) {
+      batchGroups[groupKey] = {
+        nome: r.nome_indicador || '-', cpf: r.cpf_indicador || '-', cel: '-',
+        periodo: r.periodo_inicio && r.periodo_fim ? `${formatDateBR(r.periodo_inicio)} - ${formatDateBR(r.periodo_fim)}` : '-',
+        batchId: r.lote_pagamento_id, count: 0
+      };
+    }
+    batchGroups[groupKey].count += 1;
+  }
+
+  const pendingCpfsNorm = [...new Set(
+    Object.values(batchGroups).map(g => g.cpf).filter(c => c && c !== '-').map(c => String(c).replace(/\D/g, '')).filter(Boolean)
+  )];
+  const missingCpfs = pendingCpfsNorm.filter(c => !pixMap[c]);
+  if (missingCpfs.length > 0) {
+    const extraPix = await query(`SELECT cpf_indicador, chave_pix FROM indicadores_pix WHERE cpf_indicador = ANY($1)`, [missingCpfs]);
+    for (const row of extraPix.rows) pixMap[row.cpf_indicador] = row.chave_pix;
+  }
+
+  const pendingList = [];
+  let pendingTotal = 0;
+  for (const entry of Object.values(batchGroups)) {
+    const cpfClean = entry.cpf ? String(entry.cpf).replace(/\D/g, '') : '';
+    entry.pix = pixMap[cpfClean] || null;
+    entry.total = getCommissionByTier(entry.count);
+    pendingTotal += entry.total;
+    pendingList.push(entry);
+  }
+  const hasPending = pendingList.length > 0;
+
+  const pendingRecords = [];
+  for (const r of pendingResult.rows) {
+    if (currentBatchId && r.lote_pagamento_id === currentBatchId) continue;
+    if (!currentBatchId && currentRecordIds.has(r.id)) continue;
+    const batchKey = r.lote_pagamento_id || 'unbatched';
+    const indicatorKey = r.cpf_indicador || r.nome_indicador || 'unknown';
+    const groupKey = `${batchKey}::${indicatorKey}`;
+    const group = batchGroups[groupKey];
+    const cpfClean = r.cpf_indicador ? String(r.cpf_indicador).replace(/\D/g, '') : '';
+    pendingRecords.push({
+      ...r,
+      _indicatorCount: group ? group.count : 0,
+      _pix: pixMap[cpfClean] || null,
+      _periodo: r.periodo_inicio && r.periodo_fim ? `${formatDateBR(r.periodo_inicio)} - ${formatDateBR(r.periodo_fim)}` : '-'
+    });
+  }
+
+  return {
+    cycle, indicators: indicatorMap, totalIndicadores, totalIndicacoes, valorTotal, records,
+    pending: pendingList, pendingRecords, pendingTotal, hasPending, cycleEmpty: totalIndicadores === 0
+  };
+}
+
+async function sendPerspectivaReport(options = {}) {
+  const { tipo_envio = 'automatico', usuario_envio = 'system' } = options;
+  const settings = await getEmailSettings();
+  if (!settings || !settings.smtp_password) {
+    console.log('[Perspectiva Email] SMTP não configurado, ignorando.');
+    return { success: false, skipped: true, message: 'SMTP não configurado' };
+  }
+  const recipients = (settings.email_to || '').split(',').map(e => e.trim()).filter(Boolean);
+  if (recipients.length === 0) return { success: false, skipped: true, message: 'Nenhum destinatário configurado' };
+
+  const reportData = await getPerspectivaReportData();
+
+  if (reportData.cycleEmpty && tipo_envio === 'automatico') {
+    console.log('[Perspectiva Email] Ciclo sem comissões, pulando envio automático.');
+    return { success: true, skipped: true, message: 'Ciclo sem comissões' };
+  }
+
+  const html = buildCommissionEmailHtml(reportData);
+  const pdfBuffer = await generateCommissionPDF(reportData);
+  const dateStr = new Date().toISOString().split('T')[0];
+  const pdfFilename = `relatorio_comissoes_erp_${dateStr}.pdf`;
+
+  const transporter = nodemailer.createTransport({
+    host: settings.smtp_server, port: settings.smtp_port, secure: true,
+    auth: { user: settings.smtp_user, pass: settings.smtp_password },
+    tls: { rejectUnauthorized: false }
+  });
+
+  await transporter.sendMail({
+    from: settings.email_from || settings.smtp_user,
+    to: recipients.join(', '),
+    subject: `Relatório Semanal de Comissões (ERP) — ${reportData.cycle.label}`,
+    html,
+    attachments: [{ filename: pdfFilename, content: pdfBuffer, contentType: 'application/pdf' }]
+  });
+
+  console.log(`[Perspectiva Email] Enviado para ${recipients.join(', ')} | Indicadores: ${reportData.totalIndicadores} | Valor: R$ ${reportData.valorTotal?.toFixed(2)}`);
+  return { success: true, totalIndicadores: reportData.totalIndicadores, valorTotal: reportData.valorTotal };
+}
+
+// --- Endpoints Perspectiva ---
+
+router.post('/commission-perspectiva/run-batch', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const result = await runPerspectivaBatch();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/commission-perspectiva/batches', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM commission_perspectiva_batches ORDER BY created_at DESC LIMIT 50');
+    const batches = result.rows;
+    for (const batch of batches) {
+      const snap = await query('SELECT * FROM commission_perspectiva_snapshot WHERE batch_id = $1', [batch.id]);
+      if (snap.rows.length > 0) {
+        batch.valor_total = snap.rows.reduce((s, r) => s + parseFloat(r.valor_comissao), 0);
+        batch.total_indicadores = snap.rows.length;
+      } else {
+        const ctrl = await query('SELECT cpf_indicador, nome_indicador FROM commission_perspectiva_control WHERE lote_pagamento_id = $1', [batch.id]);
+        const imap = {};
+        for (const r of ctrl.rows) {
+          const k = r.cpf_indicador || r.nome_indicador || 'unknown';
+          imap[k] = (imap[k] || 0) + 1;
+        }
+        batch.valor_total = Object.values(imap).reduce((s, c) => s + getCommissionByTier(c), 0);
+        batch.total_indicadores = Object.keys(imap).length;
+      }
+    }
+    res.json({ success: true, batches });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/commission-perspectiva/control', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const { status, lote_id, data_inicio, data_fim } = req.query;
+    let where = 'WHERE 1=1';
+    const params = [];
+    let idx = 1;
+    if (status && status !== 'all') { where += ` AND status_pagamento = $${idx++}`; params.push(status); }
+    if (lote_id && lote_id !== 'all') { where += ` AND lote_pagamento_id = $${idx++}`; params.push(parseInt(lote_id)); }
+    if (data_inicio) { where += ` AND data_pagamento >= $${idx++}`; params.push(data_inicio); }
+    if (data_fim) { where += ` AND data_pagamento <= $${idx++}`; params.push(data_fim); }
+    const result = await query(`SELECT * FROM commission_perspectiva_control ${where} ORDER BY nome_indicador, created_at DESC LIMIT 10000`, params);
+    res.json({ success: true, records: result.rows, total: result.rowCount });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/commission-perspectiva/summary', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const byStatus = await query('SELECT status_pagamento, COUNT(*) as total FROM commission_perspectiva_control GROUP BY status_pagamento');
+    const batchAbertos = await query("SELECT COUNT(*) as total FROM commission_perspectiva_batches WHERE status = 'aberto'");
+    const batchPagos = await query("SELECT COUNT(*) as total FROM commission_perspectiva_batches WHERE status = 'pago'");
+    res.json({
+      success: true,
+      byStatus: byStatus.rows,
+      batches: { abertos: parseInt(batchAbertos.rows[0]?.total || 0), pagos: parseInt(batchPagos.rows[0]?.total || 0) }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.put('/commission-perspectiva/confirm/:id', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userEmail = req.user?.email || req.user?.userEmail || 'admin';
+    const result = await query(
+      `UPDATE commission_perspectiva_control SET status_pagamento = 'pago', data_confirmacao_pagamento = NOW(), usuario_confirmacao = $1 WHERE id = $2 RETURNING *`,
+      [userEmail, parseInt(id)]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Registro não encontrado' });
+    res.json({ success: true, record: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.put('/commission-perspectiva/pendente-conciliacao/:id', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userEmail = req.user?.email || req.user?.userEmail || 'admin';
+    const result = await query(
+      `UPDATE commission_perspectiva_control SET status_pagamento = 'pendente_conciliacao', usuario_confirmacao = $1 WHERE id = $2 RETURNING *`,
+      [userEmail, parseInt(id)]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Registro não encontrado' });
+    res.json({ success: true, record: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.put('/commission-perspectiva/restore-elegivel/:id', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await query(
+      `UPDATE commission_perspectiva_control SET status_pagamento = 'elegivel' WHERE id = $1 AND status_pagamento = 'pendente_conciliacao' RETURNING *`,
+      [parseInt(id)]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Registro não encontrado' });
+    res.json({ success: true, record: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.put('/commission-perspectiva/reativacao/:id', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userEmail = req.user?.email || req.user?.userEmail || 'admin';
+    const result = await query(
+      `UPDATE commission_perspectiva_control SET status_pagamento = 'reativacao', usuario_confirmacao = $1 WHERE id = $2 AND status_pagamento != 'pago' RETURNING *`,
+      [userEmail, parseInt(id)]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Registro não encontrado ou já pago' });
+    res.json({ success: true, record: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.put('/commission-perspectiva/confirm-batch/:batchId', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const userEmail = req.user?.email || req.user?.userEmail || 'admin';
+    const updateResult = await query(
+      `UPDATE commission_perspectiva_control SET status_pagamento = 'pago', data_confirmacao_pagamento = NOW(), usuario_confirmacao = $1
+       WHERE lote_pagamento_id = $2 AND status_pagamento = 'elegivel'`,
+      [userEmail, parseInt(batchId)]
+    );
+    await query(`UPDATE commission_perspectiva_batches SET status = 'pago' WHERE id = $1`, [parseInt(batchId)]);
+    res.json({ success: true, updatedCount: updateResult.rowCount });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/commission-perspectiva/report/send', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+  try {
+    const userEmail = req.user?.email || req.user?.userEmail || 'admin';
+    const result = await sendPerspectivaReport({ tipo_envio: 'manual', usuario_envio: userEmail });
+    res.json(result);
+  } catch (error) {
+    console.error('[Perspectiva Email] Erro no envio manual:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/commission-perspectiva/report/test', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
+  try {
+    const settings = await getEmailSettings();
+    if (!settings || !settings.smtp_password) {
+      return res.status(400).json({ success: false, error: 'Configurações SMTP não encontradas ou senha não definida.' });
+    }
+    const transporter = nodemailer.createTransport({
+      host: settings.smtp_server, port: settings.smtp_port, secure: true,
+      auth: { user: settings.smtp_user, pass: settings.smtp_password },
+      tls: { rejectUnauthorized: false }
+    });
+    const recipients = (settings.email_to || '').split(',').map(e => e.trim()).filter(Boolean);
+    if (recipients.length === 0) return res.status(400).json({ success: false, error: 'Nenhum destinatário configurado' });
+    const reportData = await getPerspectivaReportData();
+    const html = buildCommissionEmailHtml(reportData);
+    const pdfBuffer = await generateCommissionPDF(reportData);
+    await transporter.sendMail({
+      from: settings.email_from || settings.smtp_user,
+      to: recipients.join(', '),
+      subject: `[TESTE] Relatório Semanal de Comissões (ERP)`,
+      html,
+      attachments: [{ filename: 'relatorio_comissoes_erp_teste.pdf', content: pdfBuffer, contentType: 'application/pdf' }]
+    });
+    res.json({ success: true, message: `Email de teste enviado para ${recipients.join(', ')}` });
+  } catch (error) {
+    console.error('[Perspectiva Email] Erro no teste:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+export { runPerspectivaBatch, sendPerspectivaReport };
+
 export default router;

@@ -1603,3 +1603,49 @@ CREATE TABLE IF NOT EXISTS erp_perspectivas_negocios (
 );
 ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS origem VARCHAR(10) DEFAULT 'erp';
 ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS data_pagamento DATE;
+ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS contrato VARCHAR(255);
+ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS valor_titulo DECIMAL(15,2);
+ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS data_vencimento DATE;
+
+CREATE TABLE IF NOT EXISTS commission_perspectiva_batches (
+    id                 SERIAL PRIMARY KEY,
+    periodo_inicio     DATE,
+    periodo_fim        DATE,
+    total_indicadores  INTEGER DEFAULT 0,
+    valor_total        DECIMAL(15,2) DEFAULT 0,
+    status             VARCHAR(50) DEFAULT 'aberto',
+    created_at         TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS commission_perspectiva_control (
+    id                            SERIAL PRIMARY KEY,
+    perspectiva_id                INTEGER UNIQUE,
+    cpf_indicador                 VARCHAR(20),
+    nome_indicador                VARCHAR(255),
+    cpf_indicado                  VARCHAR(20),
+    nome_indicado                 VARCHAR(255),
+    nome_vendedor                 VARCHAR(255),
+    data_pagamento                DATE,
+    data_vencimento               DATE,
+    valor_titulo                  DECIMAL(15,2),
+    contrato                      VARCHAR(255),
+    status_pagamento              VARCHAR(50) DEFAULT 'elegivel',
+    lote_pagamento_id             INTEGER REFERENCES commission_perspectiva_batches(id),
+    periodo_pagamento             VARCHAR(100),
+    data_confirmacao_pagamento    TIMESTAMP,
+    usuario_confirmacao           VARCHAR(255),
+    created_at                    TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS commission_perspectiva_snapshot (
+    id                SERIAL PRIMARY KEY,
+    cycle_start       DATE,
+    cycle_end         DATE,
+    batch_id          INTEGER REFERENCES commission_perspectiva_batches(id),
+    cpf_indicador     VARCHAR(20),
+    nome_indicador    VARCHAR(255),
+    total_conversoes  INTEGER DEFAULT 0,
+    nivel_comissao    INTEGER DEFAULT 0,
+    valor_comissao    DECIMAL(15,2) DEFAULT 0,
+    created_at        TIMESTAMP DEFAULT NOW()
+);

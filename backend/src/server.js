@@ -13,7 +13,7 @@ import whatsappRoutes from './routes/whatsapp.js';
 import bomAutoRoutes from './routes/bomAuto.js';
 import { runAllAutomations } from './services/automationService.js';
 import cron from 'node-cron';
-import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport } from './routes/functions.js';
+import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport, runPerspectivaBatch, sendPerspectivaReport } from './routes/functions.js';
 import { recoverStuckQueues } from './services/whatsappQueueService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -177,20 +177,31 @@ initDatabase()
     });
     console.log('[Commission Batch] Cron agendado: quartas-feiras às 05:00.');
 
-    cron.schedule('0 8 * * 3', async () => {
-      console.log('[Commission Email] Iniciando envio automático de relatório semanal...');
+    cron.schedule('30 5 * * 3', async () => {
+      console.log('[Perspectiva Batch] Iniciando geração de lote ERP (quarta-feira)...');
       try {
-        const result = await sendCommissionReport({ tipo_envio: 'automatico', usuario_envio: 'system' });
-        if (result.skipped) {
-          console.log(`[Commission Email] Envio pulado: ${result.message}`);
-        } else {
-          console.log(`[Commission Email] Relatório enviado. Indicadores: ${result.totalIndicadores}, Valor: R$ ${result.valorTotal?.toFixed(2)}`);
-        }
+        const result = await runPerspectivaBatch();
+        console.log(`[Perspectiva Batch] Lote gerado. Novas comissões: ${result.newCommissions || 0}, Lote: ${result.batchId || 'N/A'}`);
       } catch (error) {
-        console.error('[Commission Email] Erro no envio automático:', error.message);
+        console.error('[Perspectiva Batch] Erro na geração de lote:', error.message);
       }
     });
-    console.log('[Commission Email] Cron agendado: quartas-feiras às 08:00.');
+    console.log('[Perspectiva Batch] Cron agendado: quartas-feiras às 05:30.');
+
+    cron.schedule('0 8 * * 3', async () => {
+      console.log('[Perspectiva Email] Iniciando envio automático de relatório semanal (ERP)...');
+      try {
+        const result = await sendPerspectivaReport({ tipo_envio: 'automatico', usuario_envio: 'system' });
+        if (result.skipped) {
+          console.log(`[Perspectiva Email] Envio pulado: ${result.message}`);
+        } else {
+          console.log(`[Perspectiva Email] Relatório enviado. Indicadores: ${result.totalIndicadores}, Valor: R$ ${result.valorTotal?.toFixed(2)}`);
+        }
+      } catch (error) {
+        console.error('[Perspectiva Email] Erro no envio automático:', error.message);
+      }
+    });
+    console.log('[Perspectiva Email] Cron agendado: quartas-feiras às 08:00 (ERP).');
 
     try {
       await recoverStuckQueues();
