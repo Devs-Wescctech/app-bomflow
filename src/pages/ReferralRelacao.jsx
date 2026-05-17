@@ -292,7 +292,7 @@ export default function ReferralRelacao() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className={`grid grid-cols-1 md:grid-cols-2 ${isPrivileged ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-4 items-end`}>
+          <div className={`grid grid-cols-1 md:grid-cols-2 ${isPrivileged ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-3 items-end`}>
             <div>
               <Label className="text-xs text-gray-600">CPF Indicador</Label>
               <Input
