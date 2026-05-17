@@ -5630,18 +5630,24 @@ async function getPerspectivaReportData() {
   );
   const currentBatchId = batchResult.rows[0]?.id;
 
+  const EXCLUDED_CPFS = ['184.709.318-30', '323.684.408-60'];
   let controlResult;
   if (currentBatchId) {
     controlResult = await query(
       `SELECT * FROM erp_perspectivas_negocios
-       WHERE sit_titulo = 'Liquidado' AND lote_pagamento_id = $1 AND status_pagamento NOT IN ('reativacao','pendente_conciliacao')
+       WHERE sit_titulo = 'Liquidado' AND lote_pagamento_id = $1
+         AND status_pagamento NOT IN ('reativacao','pendente_conciliacao')
+         AND cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')
        ORDER BY nome_indicador, sincronizado_em`,
       [currentBatchId]
     );
   } else {
     controlResult = await query(
       `SELECT * FROM erp_perspectivas_negocios
-       WHERE sit_titulo = 'Liquidado' AND (status_pagamento = 'elegivel' OR status_pagamento IS NULL) AND lote_pagamento_id IS NULL
+       WHERE sit_titulo = 'Liquidado'
+         AND (status_pagamento = 'elegivel' OR status_pagamento IS NULL)
+         AND lote_pagamento_id IS NULL
+         AND cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')
        ORDER BY nome_indicador, sincronizado_em`
     );
   }
@@ -5699,6 +5705,7 @@ async function getPerspectivaReportData() {
      LEFT JOIN commission_perspectiva_batches cpb ON epn.lote_pagamento_id = cpb.id
      WHERE epn.sit_titulo = 'Liquidado'
        AND (epn.status_pagamento NOT IN ('pago','reativacao','pendente_conciliacao') OR epn.status_pagamento IS NULL)
+       AND epn.cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')
      ORDER BY cpb.periodo_inicio, epn.nome_indicador, epn.sincronizado_em`
   );
 
