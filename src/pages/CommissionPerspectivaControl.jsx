@@ -412,8 +412,6 @@ export default function CommissionPerspectivaControl() {
                     <tr className="border-b text-left">
                       <th className="py-2 px-3">Indicador</th>
                       <th className="py-2 px-3">Indicado</th>
-                      <th className="py-2 px-3">Contrato</th>
-                      <th className="py-2 px-3">Valor Título</th>
                       <th className="py-2 px-3">Data Pagamento</th>
                       <th className="py-2 px-3">Status</th>
                       <th className="py-2 px-3">Lote</th>
@@ -430,10 +428,6 @@ export default function CommissionPerspectivaControl() {
                         <td className="py-2 px-3">
                           <div>{r.nome_indicado || '-'}</div>
                           <div className="text-xs text-gray-500">{r.cpf_indicado || '-'}</div>
-                        </td>
-                        <td className="py-2 px-3 font-mono text-xs">{r.contrato || '-'}</td>
-                        <td className="py-2 px-3">
-                          {r.valor_titulo ? `R$ ${parseFloat(r.valor_titulo).toFixed(2)}` : '-'}
                         </td>
                         <td className="py-2 px-3 text-xs">{safeFormatDate(r.data_pagamento)}</td>
                         <td className="py-2 px-3">
