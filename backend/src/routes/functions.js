@@ -5870,7 +5870,9 @@ router.get('/commission-perspectiva/summary', authMiddleware, loadAgentMiddlewar
   try {
     const byStatus = await query(
       `SELECT COALESCE(status_pagamento, 'elegivel') as status_pagamento, COUNT(*) as total
-       FROM erp_perspectivas_negocios WHERE sit_titulo = 'Liquidado' GROUP BY COALESCE(status_pagamento, 'elegivel')`
+       FROM erp_perspectivas_negocios
+       WHERE sit_titulo = 'Liquidado' AND cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')
+       GROUP BY COALESCE(status_pagamento, 'elegivel')`
     );
     const batchAbertos = await query("SELECT COUNT(*) as total FROM commission_perspectiva_batches WHERE status = 'aberto'");
     const batchPagos = await query("SELECT COUNT(*) as total FROM commission_perspectiva_batches WHERE status = 'pago'");
