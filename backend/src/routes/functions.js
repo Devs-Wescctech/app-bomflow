@@ -5842,7 +5842,7 @@ router.get('/commission-perspectiva/batches', authMiddleware, loadAgentMiddlewar
 router.get('/commission-perspectiva/control', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
   try {
     const { status, lote_id, data_inicio, data_fim } = req.query;
-    let where = `WHERE sit_titulo = 'Liquidado'`;
+    let where = `WHERE sit_titulo = 'Liquidado' AND cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')`;
     const params = [];
     let idx = 1;
     if (status && status !== 'all') {
