@@ -950,12 +950,31 @@ export async function syncPerspectivaNegociosFromERP() {
       console.log('[PerspectivaNegócios] Nenhum registro retornado pelo ERP.');
       return;
     }
-    await query(`DELETE FROM erp_perspectivas_negocios WHERE origem = 'erp'`);
+    // Remove apenas registros sem perspectiva (sem ID ERP) para evitar duplicatas
+    // Registros com perspectiva são preservados via UPSERT para não apagar confirmações de pagamento
+    await query(`DELETE FROM erp_perspectivas_negocios WHERE origem = 'erp' AND perspectiva IS NULL`);
+    let upserted = 0;
     for (const rec of records) {
       await query(
         `INSERT INTO erp_perspectivas_negocios
           (perspectiva, nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_titulo, sit_perspectiva, observacoes, origem, sincronizado_em, data_pagamento, contrato, valor_titulo, data_vencimento, status_pagamento)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'erp',NOW(),$10,$11,$12,$13,'elegivel')`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'erp',NOW(),$10,$11,$12,$13,'elegivel')
+         ON CONFLICT (perspectiva) WHERE perspectiva IS NOT NULL
+         DO UPDATE SET
+           nome_indicador  = EXCLUDED.nome_indicador,
+           cpf_indicador   = EXCLUDED.cpf_indicador,
+           nome_indicado   = EXCLUDED.nome_indicado,
+           cpf_indicado    = EXCLUDED.cpf_indicado,
+           nome_vendedor   = EXCLUDED.nome_vendedor,
+           sit_titulo      = EXCLUDED.sit_titulo,
+           sit_perspectiva = EXCLUDED.sit_perspectiva,
+           observacoes     = EXCLUDED.observacoes,
+           sincronizado_em = NOW(),
+           data_pagamento  = EXCLUDED.data_pagamento,
+           contrato        = EXCLUDED.contrato,
+           valor_titulo    = EXCLUDED.valor_titulo,
+           data_vencimento = EXCLUDED.data_vencimento,
+           status_pagamento = COALESCE(erp_perspectivas_negocios.status_pagamento, 'elegivel')`,
         [
           rec.perspectiva     || null,
           rec.nome_indicador  || null,
@@ -972,8 +991,9 @@ export async function syncPerspectivaNegociosFromERP() {
           rec.data_vencimento || null,
         ]
       );
+      upserted++;
     }
-    console.log(`[PerspectivaNegócios] Sincronização concluída — ${records.length} registros importados.`);
+    console.log(`[PerspectivaNegócios] Sincronização concluída — ${upserted} registros importados/atualizados (confirmações de pagamento preservadas).`);
 
     // Backfill: importa leads fechado_ganho do CRM que ainda não estão na tabela
     const backfillResult = await query(`
