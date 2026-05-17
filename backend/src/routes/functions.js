@@ -5620,7 +5620,10 @@ async function getPerspectivaReportData() {
   const cycle = getWeeklyCycleDates();
 
   const snapshotResult = await query(
-    'SELECT * FROM commission_perspectiva_snapshot WHERE cycle_start = $1 AND cycle_end = $2 ORDER BY nome_indicador',
+    `SELECT * FROM commission_perspectiva_snapshot
+     WHERE cycle_start = $1 AND cycle_end = $2
+       AND cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')
+     ORDER BY nome_indicador`,
     [cycle.start, cycle.end]
   );
 
