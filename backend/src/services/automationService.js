@@ -1021,6 +1021,23 @@ export async function syncPerspectivaNegociosFromERP() {
     if (backfillResult.rowCount > 0) {
       console.log(`[PerspectivaNegócios] Backfill CRM: ${backfillResult.rowCount} lead(s) fechado_ganho importados.`);
     }
+
+    // Backfill UPDATE: preenche cpf_indicado em linhas CRM que foram inseridas
+    // sem CPF e cujo lead agora tem referred_cpf preenchido
+    const cpfUpdateResult = await query(`
+      UPDATE erp_perspectivas_negocios p
+      SET cpf_indicado = r.referred_cpf, sincronizado_em = NOW()
+      FROM referrals r
+      WHERE p.origem = 'crm'
+        AND p.cpf_indicado IS NULL
+        AND r.referred_cpf IS NOT NULL AND r.referred_cpf != ''
+        AND r.stage = 'fechado_ganho'
+        AND p.nome_indicado IS NOT DISTINCT FROM r.referred_name
+        AND p.cpf_indicador IS NOT DISTINCT FROM r.referrer_cpf
+    `);
+    if (cpfUpdateResult.rowCount > 0) {
+      console.log(`[PerspectivaNegócios] Backfill CPF: ${cpfUpdateResult.rowCount} cpf_indicado(s) preenchido(s) em linhas CRM existentes.`);
+    }
   } catch (error) {
     console.error('[PerspectivaNegócios] Erro na sincronização:', error.message);
   }

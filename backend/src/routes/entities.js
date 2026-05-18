@@ -1703,6 +1703,31 @@ router.put('/referrals/:id', authMiddleware, async (req, res) => {
       }
     }
 
+    // Quando o CPF do indicado é preenchido em um lead já fechado_ganho,
+    // atualiza imediatamente a linha CRM correspondente em erp_perspectivas_negocios
+    if (
+      referral.stage === 'fechado_ganho' &&
+      data.referred_cpf &&
+      data.referred_cpf !== (oldReferral.referred_cpf || '')
+    ) {
+      try {
+        const cpfResult = await query(
+          `UPDATE erp_perspectivas_negocios
+           SET cpf_indicado = $1, sincronizado_em = NOW()
+           WHERE origem = 'crm'
+             AND cpf_indicado IS NULL
+             AND nome_indicado IS NOT DISTINCT FROM $2
+             AND cpf_indicador IS NOT DISTINCT FROM $3`,
+          [data.referred_cpf, referral.referred_name, referral.referrer_cpf]
+        );
+        if (cpfResult.rowCount > 0) {
+          console.log(`[PerspectivaNegócios] CPF indicado atualizado em tempo real: ${data.referred_cpf} (lead: ${referral.referred_name})`);
+        }
+      } catch (perspErr) {
+        console.error('[PerspectivaNegócios] Erro ao atualizar cpf_indicado:', perspErr.message);
+      }
+    }
+
     res.json(convertKeysToCamel(referral));
   } catch (error) {
     console.error('Error updating referral:', error);
