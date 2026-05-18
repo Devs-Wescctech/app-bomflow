@@ -2280,13 +2280,35 @@ router.post('/get-customer-from-erp-reactivation', authMiddleware, async (req, r
     // O endpoint API_CPF_REATIVACAO ignora o parâmetro ?cpf= e devolve
     // a base inteira. Filtramos aqui pelo documento (com e sem máscara).
     const records = Array.isArray(erpData) ? erpData : [erpData];
-    const record = records.find((r) => {
-      const doc = String(r?.documento || r?.cpf || '').replace(/\D/g, '');
-      return doc === cpfLimpo;
-    });
+
+    // Extrai o valor do campo CPF/documento de um registro ERP, independente do nome do campo
+    const extractDoc = (r) => {
+      const val =
+        r?.documento ??
+        r?.cpf ??
+        r?.CPF ??
+        r?.cpf_cliente ??
+        r?.documento_cliente ??
+        r?.nr_cpf ??
+        r?.cpf_cnpj ??
+        r?.nrCpf ??
+        r?.documentoCliente ??
+        r?.nr_documento ??
+        null;
+      return val ? String(val).replace(/\D/g, '') : '';
+    };
+
+    const record = records.find((r) => extractDoc(r) === cpfLimpo);
 
     if (!record) {
-      console.log(`[ERP Reativação] CPF ${cpfLimpo} não encontrado em ${records.length} registros retornados pelo ERP`);
+      // Log diagnóstico: mostra campos do primeiro registro para auxiliar depuração
+      if (records.length > 0) {
+        const sampleKeys = Object.keys(records[0]).join(', ');
+        const sampleDoc = extractDoc(records[0]);
+        console.log(`[ERP Reativação] CPF ${cpfLimpo} não encontrado em ${records.length} registros. Campos do 1º registro: [${sampleKeys}]. Valor do campo doc no 1º: "${sampleDoc}"`);
+      } else {
+        console.log(`[ERP Reativação] CPF ${cpfLimpo} — ERP retornou 0 registros.`);
+      }
       return res.status(404).json({
         success: false,
         error: 'Nenhum cliente encontrado para este CPF',
