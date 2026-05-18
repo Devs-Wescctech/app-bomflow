@@ -928,74 +928,82 @@ export async function executeStageChangeAutomation(lead, fromStage, toStage, lea
 }
 
 export async function syncPerspectivaNegociosFromERP() {
+  // Parte 1: Sincronização com ERP — isolada para não bloquear o backfill CRM
   try {
     const erpAuthToken = process.env.ERP_AUTH_TOKEN;
     if (!erpAuthToken) {
       console.error('[PerspectivaNegócios] ERP_AUTH_TOKEN não configurado.');
-      return;
+    } else {
+      const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
+      const url = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_PERSPECTIVA_NEGOCIOS';
+      console.log('[PerspectivaNegócios] Iniciando sincronização com ERP...');
+      const response = await fetch(url, {
+        headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' }
+      });
+      if (!response.ok) {
+        console.error(`[PerspectivaNegócios] ERP retornou status ${response.status}`);
+      } else {
+        const data = await response.json();
+        const records = Array.isArray(data) ? data : [data];
+        if (records.length === 0) {
+          console.log('[PerspectivaNegócios] Nenhum registro retornado pelo ERP.');
+        } else {
+          await query(`DELETE FROM erp_perspectivas_negocios WHERE origem = 'erp' AND perspectiva IS NULL`);
+          let upserted = 0;
+          for (const rec of records) {
+            try {
+              await query(
+                `INSERT INTO erp_perspectivas_negocios
+                  (perspectiva, nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_titulo, sit_perspectiva, observacoes, origem, sincronizado_em, data_pagamento, contrato, valor_titulo, data_vencimento, status_pagamento)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'erp',NOW(),$10,$11,$12,$13,'elegivel')
+                 ON CONFLICT (perspectiva) WHERE perspectiva IS NOT NULL
+                 DO UPDATE SET
+                   nome_indicador  = EXCLUDED.nome_indicador,
+                   cpf_indicador   = EXCLUDED.cpf_indicador,
+                   nome_indicado   = EXCLUDED.nome_indicado,
+                   cpf_indicado    = EXCLUDED.cpf_indicado,
+                   nome_vendedor   = EXCLUDED.nome_vendedor,
+                   sit_titulo      = EXCLUDED.sit_titulo,
+                   sit_perspectiva = EXCLUDED.sit_perspectiva,
+                   observacoes     = EXCLUDED.observacoes,
+                   sincronizado_em = NOW(),
+                   data_pagamento  = EXCLUDED.data_pagamento,
+                   contrato        = EXCLUDED.contrato,
+                   valor_titulo    = EXCLUDED.valor_titulo,
+                   data_vencimento = EXCLUDED.data_vencimento,
+                   status_pagamento = COALESCE(erp_perspectivas_negocios.status_pagamento, 'elegivel')`,
+                [
+                  rec.perspectiva     || null,
+                  rec.nome_indicador  || null,
+                  rec.cpf_indicador   || null,
+                  rec.nome_indicado   || null,
+                  rec.cpf_indicado    || null,
+                  rec.nome_vendedor   || null,
+                  rec.sit_titulo      || null,
+                  rec.sit_perspectiva || null,
+                  rec.observacoes     || null,
+                  rec.data_pagamento  || null,
+                  rec.contrato        || null,
+                  rec.valor_titulo    != null ? parseFloat(rec.valor_titulo) : null,
+                  rec.data_vencimento || null,
+                ]
+              );
+              upserted++;
+            } catch (recErr) {
+              console.warn(`[PerspectivaNegócios] Erro ao upsert perspectiva ${rec.perspectiva}: ${recErr.message}`);
+            }
+          }
+          console.log(`[PerspectivaNegócios] Sincronização ERP concluída — ${upserted} registros importados/atualizados.`);
+        }
+      }
     }
-    const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
-    const url = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_PERSPECTIVA_NEGOCIOS';
-    console.log('[PerspectivaNegócios] Iniciando sincronização com ERP...');
-    const response = await fetch(url, {
-      headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' }
-    });
-    if (!response.ok) {
-      console.error(`[PerspectivaNegócios] ERP retornou status ${response.status}`);
-      return;
-    }
-    const data = await response.json();
-    const records = Array.isArray(data) ? data : [data];
-    if (records.length === 0) {
-      console.log('[PerspectivaNegócios] Nenhum registro retornado pelo ERP.');
-      return;
-    }
-    // Remove apenas registros sem perspectiva (sem ID ERP) para evitar duplicatas
-    // Registros com perspectiva são preservados via UPSERT para não apagar confirmações de pagamento
-    await query(`DELETE FROM erp_perspectivas_negocios WHERE origem = 'erp' AND perspectiva IS NULL`);
-    let upserted = 0;
-    for (const rec of records) {
-      await query(
-        `INSERT INTO erp_perspectivas_negocios
-          (perspectiva, nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_titulo, sit_perspectiva, observacoes, origem, sincronizado_em, data_pagamento, contrato, valor_titulo, data_vencimento, status_pagamento)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'erp',NOW(),$10,$11,$12,$13,'elegivel')
-         ON CONFLICT (perspectiva) WHERE perspectiva IS NOT NULL
-         DO UPDATE SET
-           nome_indicador  = EXCLUDED.nome_indicador,
-           cpf_indicador   = EXCLUDED.cpf_indicador,
-           nome_indicado   = EXCLUDED.nome_indicado,
-           cpf_indicado    = EXCLUDED.cpf_indicado,
-           nome_vendedor   = EXCLUDED.nome_vendedor,
-           sit_titulo      = EXCLUDED.sit_titulo,
-           sit_perspectiva = EXCLUDED.sit_perspectiva,
-           observacoes     = EXCLUDED.observacoes,
-           sincronizado_em = NOW(),
-           data_pagamento  = EXCLUDED.data_pagamento,
-           contrato        = EXCLUDED.contrato,
-           valor_titulo    = EXCLUDED.valor_titulo,
-           data_vencimento = EXCLUDED.data_vencimento,
-           status_pagamento = COALESCE(erp_perspectivas_negocios.status_pagamento, 'elegivel')`,
-        [
-          rec.perspectiva     || null,
-          rec.nome_indicador  || null,
-          rec.cpf_indicador   || null,
-          rec.nome_indicado   || null,
-          rec.cpf_indicado    || null,
-          rec.nome_vendedor   || null,
-          rec.sit_titulo      || null,
-          rec.sit_perspectiva || null,
-          rec.observacoes     || null,
-          rec.data_pagamento  || null,
-          rec.contrato        || null,
-          rec.valor_titulo    != null ? parseFloat(rec.valor_titulo) : null,
-          rec.data_vencimento || null,
-        ]
-      );
-      upserted++;
-    }
-    console.log(`[PerspectivaNegócios] Sincronização concluída — ${upserted} registros importados/atualizados (confirmações de pagamento preservadas).`);
+  } catch (error) {
+    console.error('[PerspectivaNegócios] Erro na sincronização ERP:', error.message);
+  }
 
-    // Backfill: importa leads fechado_ganho do CRM que ainda não estão na tabela
+  // Parte 2: Backfill CRM — sempre executa, independente do resultado do ERP
+  try {
+    // INSERT: leads fechado_ganho que ainda não têm linha em perspectivas
     const backfillResult = await query(`
       INSERT INTO erp_perspectivas_negocios
         (nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_perspectiva, origem, sincronizado_em)
@@ -1022,8 +1030,8 @@ export async function syncPerspectivaNegociosFromERP() {
       console.log(`[PerspectivaNegócios] Backfill CRM: ${backfillResult.rowCount} lead(s) fechado_ganho importados.`);
     }
 
-    // Backfill UPDATE: preenche cpf_indicado em linhas CRM que foram inseridas
-    // sem CPF e cujo lead agora tem referred_cpf preenchido
+    // UPDATE: preenche cpf_indicado em linhas CRM inseridas sem CPF
+    // quando o vendedor adicionou o referred_cpf depois da conversão
     const cpfUpdateResult = await query(`
       UPDATE erp_perspectivas_negocios p
       SET cpf_indicado = r.referred_cpf, sincronizado_em = NOW()
@@ -1039,7 +1047,7 @@ export async function syncPerspectivaNegociosFromERP() {
       console.log(`[PerspectivaNegócios] Backfill CPF: ${cpfUpdateResult.rowCount} cpf_indicado(s) preenchido(s) em linhas CRM existentes.`);
     }
   } catch (error) {
-    console.error('[PerspectivaNegócios] Erro na sincronização:', error.message);
+    console.error('[PerspectivaNegócios] Erro no backfill CRM:', error.message);
   }
 }
 

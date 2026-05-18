@@ -1623,6 +1623,13 @@ CREATE TABLE IF NOT EXISTS commission_perspectiva_batches (
 
 ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS lote_pagamento_id INTEGER REFERENCES commission_perspectiva_batches(id);
 
+-- Remove duplicatas de perspectiva antes de criar o índice único
+DELETE FROM erp_perspectivas_negocios a
+USING erp_perspectivas_negocios b
+WHERE a.perspectiva IS NOT NULL
+  AND a.perspectiva = b.perspectiva
+  AND a.id < b.id;
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_perspectivas_perspectiva
   ON erp_perspectivas_negocios (perspectiva)
   WHERE perspectiva IS NOT NULL;
