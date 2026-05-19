@@ -4848,6 +4848,8 @@ function buildCommissionEmailHtml(data) {
   const periodoInicio = formatDateBR(cycle.start);
   const periodoFim = formatDateBR(cycle.end);
   const geradoEm = formatDateTimeBR(new Date());
+  const emailTitle = data.reportTitle || 'RELATÓRIO SEMANAL DE COMISSÕES DE INDICAÇÃO';
+  const periodoLabel = data.periodoLabel || `Período: ${periodoInicio} - ${periodoFim}`;
 
   const thStyle = 'padding: 10px 12px; border: 1px solid #cbd5e1; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;';
   const tdStyle = 'padding: 8px 12px; border: 1px solid #e2e8f0; font-size: 13px;';
@@ -4862,7 +4864,7 @@ function buildCommissionEmailHtml(data) {
   <!-- Header -->
   <div style="background: #1e293b; padding: 30px 40px; text-align: center;">
     <div style="font-size: 14px; color: #94a3b8; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 8px;">Bom Pastor</div>
-    <h1 style="margin: 0; font-size: 22px; color: #ffffff; font-weight: 700;">RELATÓRIO SEMANAL DE COMISSÕES DE INDICAÇÃO</h1>
+    <h1 style="margin: 0; font-size: 22px; color: #ffffff; font-weight: 700;">${emailTitle}</h1>
     <div style="font-size: 13px; color: #64748b; margin-top: 6px;">Bom Flow CRM</div>
     <div style="height: 3px; background: linear-gradient(90deg, #f59e0b, #d97706); margin-top: 16px; border-radius: 2px;"></div>
   </div>
@@ -4871,7 +4873,7 @@ function buildCommissionEmailHtml(data) {
   <div style="padding: 24px 40px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;">
     <table style="width: 100%; font-size: 13px; color: #475569;">
       <tr>
-        <td style="padding: 4px 0;"><strong>Período:</strong> ${periodoInicio} - ${periodoFim}</td>
+        <td style="padding: 4px 0;"><strong>${periodoLabel}</strong></td>
         <td style="padding: 4px 0; text-align: right;"><strong>Gerado em:</strong> ${geradoEm}</td>
       </tr>
       <tr>
@@ -5036,6 +5038,8 @@ function generateCommissionPDF(data) {
     const periodoInicio = formatDateBR(cycle.start);
     const periodoFim = formatDateBR(cycle.end);
     const geradoEm = formatDateTimeBR(new Date());
+    const reportTitle = data.reportTitle || 'RELATÓRIO SEMANAL DE COMISSÕES DE INDICAÇÃO';
+    const periodoLabel = data.periodoLabel || `Período: ${periodoInicio} - ${periodoFim}`;
 
     const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 40, autoFirstPage: true });
     const chunks = [];
@@ -5051,13 +5055,13 @@ function generateCommissionPDF(data) {
 
     doc.rect(0, 0, doc.page.width, 80).fill(darkBg);
     doc.fontSize(10).fill([148, 163, 184]).text('BOM PASTOR', 40, 20, { align: 'center', characterSpacing: 3 });
-    doc.fontSize(16).fill([255, 255, 255]).text('RELATÓRIO SEMANAL DE COMISSÕES DE INDICAÇÃO', 40, 38, { align: 'center' });
+    doc.fontSize(16).fill([255, 255, 255]).text(reportTitle, 40, 38, { align: 'center' });
     doc.fontSize(9).fill([100, 116, 139]).text('Bom Flow CRM', 40, 60, { align: 'center' });
     doc.rect(40, 78, doc.page.width - 80, 3).fill(amberAccent);
 
     let y = 95;
     doc.fontSize(9).fill(textLight);
-    doc.text(`Período: ${periodoInicio} - ${periodoFim}`, 40, y);
+    doc.text(periodoLabel, 40, y);
     doc.text(`Gerado em: ${geradoEm}`, 40, y, { align: 'right', width: doc.page.width - 80 });
     y += 14;
     doc.text('Sistema: Bom Flow CRM', 40, y);
@@ -5639,106 +5643,56 @@ async function runPerspectivaBatch() {
 }
 
 async function getPerspectivaReportData() {
-  const cycle = getWeeklyCycleDates();
+  const today = new Date();
+  const cycle = {
+    start: today,
+    end: today,
+    label: today.toISOString().split('T')[0]
+  };
 
-  // CPFs excluídos em formato normalizado (só dígitos) para comparação robusta independente de formatação no BD
-  const EXCLUDED_CPF_DIGITS = "('18470931830','32368440860')";
-  const CPF_EXCL_SQL = `REGEXP_REPLACE(COALESCE(cpf_indicador,''), '[^0-9]', '', 'g') NOT IN ${EXCLUDED_CPF_DIGITS}`;
+  const CPF_EXCL_SQL = `REGEXP_REPLACE(COALESCE(cpf_indicador,''), '[^0-9]', '', 'g') NOT IN ('18470931830','32368440860')`;
 
-  const snapshotResult = await query(
-    `SELECT * FROM commission_perspectiva_snapshot
-     WHERE cycle_start = $1 AND cycle_end = $2
-       AND REGEXP_REPLACE(COALESCE(cpf_indicador,''), '[^0-9]', '', 'g') NOT IN ('18470931830','32368440860')
-     ORDER BY nome_indicador`,
-    [cycle.start, cycle.end]
-  );
-
-  const batchResult = await query(
-    `SELECT id FROM commission_perspectiva_batches WHERE periodo_inicio = $1 AND periodo_fim = $2 ORDER BY id DESC LIMIT 1`,
-    [cycle.start, cycle.end]
-  );
-  const currentBatchId = batchResult.rows[0]?.id;
-
-  // ── DIAGNÓSTICO: ver todos os registros Liquidados para entender o que existe no BD
-  const diagResult = await query(
-    `SELECT id, nome_indicador, cpf_indicador, status_pagamento, sit_titulo, data_pagamento,
-            lote_pagamento_id, sincronizado_em,
-            REGEXP_REPLACE(COALESCE(cpf_indicador,''), '[^0-9]', '', 'g') AS cpf_digits
-     FROM erp_perspectivas_negocios
+  // Busca TODOS os registros elegíveis — igual ao que a tela CommissionPerspectivaControl exibe
+  const controlResult = await query(
+    `SELECT * FROM erp_perspectivas_negocios
      WHERE sit_titulo = 'Liquidado'
-     ORDER BY sincronizado_em DESC LIMIT 30`
+       AND status_pagamento = 'elegivel'
+       AND ${CPF_EXCL_SQL}
+     ORDER BY nome_indicador NULLS LAST, sincronizado_em`
   );
-  console.log('[PerspReport DIAG] Total Liquidados no BD:', diagResult.rowCount);
-  for (const r of diagResult.rows) {
-    console.log(`  id=${r.id} nome=${r.nome_indicador} cpf=${r.cpf_indicador} cpf_digits=${r.cpf_digits} status=${r.status_pagamento} data_pag=${r.data_pagamento} lote=${r.lote_pagamento_id} sync=${r.sincronizado_em?.toISOString?.()?.slice(0,10)}`);
-  }
-  console.log('[PerspReport DIAG] cycle.start:', cycle.start, 'cycle.end:', cycle.end, 'currentBatchId:', currentBatchId);
-
-  let controlResult;
-  if (currentBatchId) {
-    // Lote exato para o ciclo: usa apenas registros elegíveis deste lote
-    controlResult = await query(
-      `SELECT * FROM erp_perspectivas_negocios
-       WHERE sit_titulo = 'Liquidado'
-         AND lote_pagamento_id = $1
-         AND status_pagamento = 'elegivel'
-         AND ${CPF_EXCL_SQL}
-       ORDER BY nome_indicador, sincronizado_em`,
-      [currentBatchId]
-    );
-  } else {
-    // Sem lote para o ciclo atual: registros elegíveis cuja data_pagamento cai no ciclo
-    // ou, se data_pagamento é NULL, que foram sincronizados no ciclo e ainda não têm lote
-    controlResult = await query(
-      `SELECT * FROM erp_perspectivas_negocios
-       WHERE sit_titulo = 'Liquidado'
-         AND status_pagamento = 'elegivel'
-         AND (
-           (data_pagamento >= $1 AND data_pagamento <= $2)
-           OR (data_pagamento IS NULL AND lote_pagamento_id IS NULL AND sincronizado_em >= $1)
-         )
-         AND ${CPF_EXCL_SQL}
-       ORDER BY nome_indicador, sincronizado_em`,
-      [cycle.start, cycle.end]
-    );
-  }
-  console.log('[PerspReport DIAG] controlResult (ciclo atual):', controlResult.rowCount, 'registros');
   const records = controlResult.rows;
 
-  let indicatorMap = {};
-
-  if (snapshotResult.rows.length > 0) {
-    for (const s of snapshotResult.rows) {
-      const key = s.cpf_indicador || s.nome_indicador || 'unknown';
+  // Agrupa por indicador (cpf_indicador preferencial, senão nome, senão 'unknown')
+  const indicatorMap = {};
+  for (const r of records) {
+    const key = r.cpf_indicador || r.nome_indicador || 'unknown';
+    if (!indicatorMap[key]) {
       indicatorMap[key] = {
-        nome: s.nome_indicador || '-',
-        cpf: s.cpf_indicador || '-',
+        nome: r.nome_indicador || '-',
+        cpf: r.cpf_indicador || '-',
         cel: '-',
-        count: parseInt(s.total_conversoes),
-        total: parseFloat(s.valor_comissao),
-        details: records.filter(r => (r.cpf_indicador || r.nome_indicador || 'unknown') === key)
+        count: 0,
+        total: 0,
+        details: []
       };
     }
-  } else {
-    for (const r of records) {
-      const key = r.cpf_indicador || r.nome_indicador || 'unknown';
-      if (!indicatorMap[key]) {
-        indicatorMap[key] = { nome: r.nome_indicador || '-', cpf: r.cpf_indicador || '-', cel: '-', count: 0, total: 0, details: [] };
-      }
-      indicatorMap[key].count += 1;
-      indicatorMap[key].details.push(r);
-    }
-    for (const ind of Object.values(indicatorMap)) {
-      ind.total = getCommissionByTier(ind.count);
-    }
+    indicatorMap[key].count += 1;
+    indicatorMap[key].details.push(r);
+  }
+  for (const ind of Object.values(indicatorMap)) {
+    ind.total = getCommissionByTier(ind.count);
   }
 
+  // Busca chaves PIX para os indicadores com CPF
   const allCpfsNormalized = [...new Set(
     Object.values(indicatorMap).map(i => i.cpf).filter(c => c && c !== '-').map(c => String(c).replace(/\D/g, '')).filter(Boolean)
   )];
   let pixMap = {};
   if (allCpfsNormalized.length > 0) {
-    const pixResult = await query(`SELECT cpf_indicador, chave_pix FROM indicadores_pix WHERE cpf_indicador = ANY($1)`, [allCpfsNormalized]);
+    const pixResult = await query(
+      `SELECT cpf_indicador, chave_pix FROM indicadores_pix WHERE cpf_indicador = ANY($1)`,
+      [allCpfsNormalized]
+    );
     for (const row of pixResult.rows) pixMap[row.cpf_indicador] = row.chave_pix;
   }
   for (const ind of Object.values(indicatorMap)) {
@@ -5749,75 +5703,23 @@ async function getPerspectivaReportData() {
   const totalIndicadores = Object.keys(indicatorMap).length;
   const totalIndicacoes = records.length;
   const valorTotal = Object.values(indicatorMap).reduce((s, i) => s + i.total, 0);
-  const currentRecordIds = new Set(records.map(r => r.id));
 
-  const pendingResult = await query(
-    `SELECT epn.*, cpb.periodo_inicio, cpb.periodo_fim
-     FROM erp_perspectivas_negocios epn
-     LEFT JOIN commission_perspectiva_batches cpb ON epn.lote_pagamento_id = cpb.id
-     WHERE epn.sit_titulo = 'Liquidado'
-       AND epn.status_pagamento = 'elegivel'
-       AND REGEXP_REPLACE(COALESCE(epn.cpf_indicador,''), '[^0-9]', '', 'g') NOT IN ('18470931830','32368440860')
-     ORDER BY cpb.periodo_inicio, epn.nome_indicador, epn.sincronizado_em`
-  );
-
-  const batchGroups = {};
-  for (const r of pendingResult.rows) {
-    if (currentBatchId && r.lote_pagamento_id === currentBatchId) continue;
-    if (!currentBatchId && currentRecordIds.has(r.id)) continue;
-    const batchKey = r.lote_pagamento_id || 'unbatched';
-    const indicatorKey = r.cpf_indicador || r.nome_indicador || 'unknown';
-    const groupKey = `${batchKey}::${indicatorKey}`;
-    if (!batchGroups[groupKey]) {
-      batchGroups[groupKey] = {
-        nome: r.nome_indicador || '-', cpf: r.cpf_indicador || '-', cel: '-',
-        periodo: r.periodo_inicio && r.periodo_fim ? `${formatDateBR(r.periodo_inicio)} - ${formatDateBR(r.periodo_fim)}` : '-',
-        batchId: r.lote_pagamento_id, count: 0
-      };
-    }
-    batchGroups[groupKey].count += 1;
-  }
-
-  const pendingCpfsNorm = [...new Set(
-    Object.values(batchGroups).map(g => g.cpf).filter(c => c && c !== '-').map(c => String(c).replace(/\D/g, '')).filter(Boolean)
-  )];
-  const missingCpfs = pendingCpfsNorm.filter(c => !pixMap[c]);
-  if (missingCpfs.length > 0) {
-    const extraPix = await query(`SELECT cpf_indicador, chave_pix FROM indicadores_pix WHERE cpf_indicador = ANY($1)`, [missingCpfs]);
-    for (const row of extraPix.rows) pixMap[row.cpf_indicador] = row.chave_pix;
-  }
-
-  const pendingList = [];
-  let pendingTotal = 0;
-  for (const entry of Object.values(batchGroups)) {
-    const cpfClean = entry.cpf ? String(entry.cpf).replace(/\D/g, '') : '';
-    entry.pix = pixMap[cpfClean] || null;
-    entry.total = getCommissionByTier(entry.count);
-    pendingTotal += entry.total;
-    pendingList.push(entry);
-  }
-  const hasPending = pendingList.length > 0;
-
-  const pendingRecords = [];
-  for (const r of pendingResult.rows) {
-    if (currentBatchId && r.lote_pagamento_id === currentBatchId) continue;
-    if (!currentBatchId && currentRecordIds.has(r.id)) continue;
-    const batchKey = r.lote_pagamento_id || 'unbatched';
-    const indicatorKey = r.cpf_indicador || r.nome_indicador || 'unknown';
-    const groupKey = `${batchKey}::${indicatorKey}`;
-    const group = batchGroups[groupKey];
-    const cpfClean = r.cpf_indicador ? String(r.cpf_indicador).replace(/\D/g, '') : '';
-    pendingRecords.push({
-      ...r,
-      _indicatorCount: group ? group.count : 0,
-      _pix: pixMap[cpfClean] || null,
-      _periodo: r.periodo_inicio && r.periodo_fim ? `${formatDateBR(r.periodo_inicio)} - ${formatDateBR(r.periodo_fim)}` : '-'
-    });
-  }
+  console.log(`[Perspectiva Report] Elegíveis: ${totalIndicacoes} registros | ${totalIndicadores} indicadores | R$ ${valorTotal.toFixed(2)}`);
 
   return {
-    cycle, indicators: indicatorMap, totalIndicadores, totalIndicacoes, valorTotal, records,
-    pending: pendingList, pendingRecords, pendingTotal, hasPending, cycleEmpty: totalIndicadores === 0
+    cycle,
+    reportTitle: 'RELATÓRIO DE PERSPECTIVAS LIQUIDADAS ELEGÍVEIS',
+    periodoLabel: `Posição em: ${formatDateBR(today)}`,
+    indicators: indicatorMap,
+    totalIndicadores,
+    totalIndicacoes,
+    valorTotal,
+    records,
+    pending: [],
+    pendingRecords: [],
+    pendingTotal: 0,
+    hasPending: false,
+    cycleEmpty: totalIndicadores === 0
   };
 }
 
@@ -5852,7 +5754,7 @@ async function sendPerspectivaReport(options = {}) {
   await transporter.sendMail({
     from: settings.email_from || settings.smtp_user,
     to: recipients.join(', '),
-    subject: `Relatório Semanal de Comissões (ERP) — ${reportData.cycle.label}`,
+    subject: `Relatório de Perspectivas Liquidadas Elegíveis — ${reportData.cycle.label}`,
     html,
     attachments: [{ filename: pdfFilename, content: pdfBuffer, contentType: 'application/pdf' }]
   });
@@ -6050,7 +5952,7 @@ router.post('/commission-perspectiva/report/test', authMiddleware, loadAgentMidd
     await transporter.sendMail({
       from: settings.email_from || settings.smtp_user,
       to: recipients.join(', '),
-      subject: `[TESTE] Relatório Semanal de Comissões (ERP)`,
+      subject: `[TESTE] Relatório de Perspectivas Liquidadas Elegíveis`,
       html,
       attachments: [{ filename: 'relatorio_comissoes_erp_teste.pdf', content: pdfBuffer, contentType: 'application/pdf' }]
     });
