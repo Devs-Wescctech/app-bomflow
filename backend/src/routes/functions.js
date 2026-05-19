@@ -5650,15 +5650,13 @@ async function getPerspectivaReportData() {
     label: today.toISOString().split('T')[0]
   };
 
-  const CPF_EXCL_SQL = `REGEXP_REPLACE(COALESCE(cpf_indicador,''), '[^0-9]', '', 'g') NOT IN ('18470931830','32368440860')`;
-
-  // Busca TODOS os registros elegíveis — igual ao que a tela CommissionPerspectivaControl exibe
+  // Mesma query usada pelo endpoint /commission-perspectiva/control (o que a tela exibe)
   const controlResult = await query(
     `SELECT * FROM erp_perspectivas_negocios
      WHERE sit_titulo = 'Liquidado'
-       AND status_pagamento = 'elegivel'
-       AND ${CPF_EXCL_SQL}
-     ORDER BY nome_indicador NULLS LAST, sincronizado_em`
+       AND cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')
+       AND (status_pagamento IS NULL OR status_pagamento = 'elegivel')
+     ORDER BY nome_indicador NULLS LAST, data_pagamento ASC`
   );
   const records = controlResult.rows;
 
