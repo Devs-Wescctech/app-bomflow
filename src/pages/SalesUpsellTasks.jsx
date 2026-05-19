@@ -469,7 +469,7 @@ export default function SalesUpsellTasks() {
         </motion.div>
       </div>
 
-      {privileged && novoLeads.length > 0 && (
+      {privileged && (
         <Card className="border-0 shadow-lg border-l-4 border-l-violet-500">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold text-violet-700 dark:text-violet-400 flex items-center gap-2">
@@ -481,38 +481,44 @@ export default function SalesUpsellTasks() {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
-            <div className="divide-y divide-gray-100 dark:divide-gray-800">
-              {novoLeads.map(lead => {
-                const hasTask = tasks.some(t => String(t.leadId) === String(lead.id));
-                return (
-                  <div key={lead.id} className="py-3 flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
-                        <User className="w-4 h-4 text-violet-600 dark:text-violet-400" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{lead.name}</p>
-                        {lead.phone && (
-                          <p className="text-sm text-gray-500 dark:text-gray-400">{lead.phone}</p>
+            {novoLeads.length > 0 ? (
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                {novoLeads.map(lead => {
+                  const hasTask = tasks.some(t => String(t.leadId) === String(lead.id));
+                  return (
+                    <div key={lead.id} className="py-3 flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
+                          <User className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{lead.name}</p>
+                          {lead.phone && (
+                            <p className="text-sm text-gray-500 dark:text-gray-400">{lead.phone}</p>
+                          )}
+                        </div>
+                        {hasTask && (
+                          <Badge variant="outline" className="text-xs text-green-600 border-green-300 shrink-0">
+                            Com tarefa
+                          </Badge>
                         )}
                       </div>
-                      {hasTask && (
-                        <Badge variant="outline" className="text-xs text-green-600 border-green-300 shrink-0">
-                          Com tarefa
-                        </Badge>
-                      )}
+                      <Link
+                        to={`${createPageUrl("LeadUpsellDetail")}?id=${lead.id}`}
+                        className="flex items-center gap-1 text-sm text-violet-600 dark:text-violet-400 hover:underline shrink-0"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        Abrir
+                      </Link>
                     </div>
-                    <Link
-                      to={`${createPageUrl("LeadUpsellDetail")}?id=${lead.id}`}
-                      className="flex items-center gap-1 text-sm text-violet-600 dark:text-violet-400 hover:underline shrink-0"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      Abrir
-                    </Link>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 dark:text-gray-400 py-2">
+                Nenhum novo lead sem tarefa no momento.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
