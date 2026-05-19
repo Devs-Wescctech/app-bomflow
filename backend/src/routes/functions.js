@@ -5834,7 +5834,15 @@ router.get('/commission-perspectiva/control', authMiddleware, loadAgentMiddlewar
     if (lote_id && lote_id !== 'all') { where += ` AND lote_pagamento_id = $${idx++}`; params.push(parseInt(lote_id)); }
     if (data_inicio) { where += ` AND data_pagamento >= $${idx++}`; params.push(data_inicio); }
     if (data_fim) { where += ` AND data_pagamento <= $${idx++}`; params.push(data_fim); }
-    const result = await query(`SELECT * FROM erp_perspectivas_negocios ${where} ORDER BY data_pagamento ASC, nome_indicador LIMIT 10000`, params);
+    const result = await query(
+      `SELECT e.*,
+         (SELECT COUNT(*) FROM erp_perspectivas_negocios e2
+          WHERE e2.cpf_indicador = e.cpf_indicador
+            AND e2.sit_titulo = 'Liquidado'
+            AND e2.status_pagamento = 'pago') AS historico_pago_count
+       FROM erp_perspectivas_negocios e ${where} ORDER BY e.data_pagamento ASC, e.nome_indicador LIMIT 10000`,
+      params
+    );
     res.json({ success: true, records: result.rows, total: result.rowCount });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

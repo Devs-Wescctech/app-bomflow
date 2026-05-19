@@ -604,7 +604,11 @@ export default function CommissionPerspectivaControl() {
                   </thead>
                   <tbody>
                     {Object.entries(groupedByIndicator).map(([key, data]) => {
-                      const { level, value } = getCommissionFromConversions(data.items.length);
+                      const historicoPago = parseInt(data.items[0]?.historico_pago_count || 0);
+                      const totalCumulative = data.items.length + historicoPago;
+                      const level = totalCumulative >= 13 ? 3 : totalCumulative >= 4 ? 2 : 1;
+                      const unitValue = level === 3 ? 200 : level === 2 ? 150 : 100;
+                      const value = unitValue * data.items.length;
                       const nivelLabel = level === 3 ? '3 (13+)' : level === 2 ? '2 (4-12)' : '1 (1-3)';
                       return (
                         <tr key={key} className="border-b hover:bg-gray-50">
