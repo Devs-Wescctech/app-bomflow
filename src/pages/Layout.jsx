@@ -258,8 +258,6 @@ const menuModules = [
       { title: "Relatórios", url: createPageUrl("ReferralReports"), icon: FileBarChart, supervisorOnly: true },
       { title: "Rel. de Convertidos", url: createPageUrl("ReferralWonReport"), icon: Trophy },
       { title: "Rel. de Reativações", url: createPageUrl("ReferralReactivationReport"), icon: FileBarChart, requiredSubmenu: "ReferralReactivationReport" },
-      { title: "Comissões", url: createPageUrl("ReferralCommissions"), icon: DollarSign, supervisorOnly: true },
-      { title: "Ctrl. Pagamento", url: createPageUrl("CommissionPaymentControl"), icon: FileCheck, requiredSubmenu: "CommissionPaymentControl" },
       { title: "Comissões ERP", url: createPageUrl("CommissionPerspectivaControl"), icon: FileCheck, requiredSubmenu: "CommissionPaymentControl" },
       { title: "Reconciliação", url: createPageUrl("CommissionReconciliation"), icon: Shield, requiredSubmenu: "CommissionReconciliation" },
       { title: "Relação Indicações", url: createPageUrl("ReferralRelacao"), icon: List, requiredSubmenu: "ReferralRelacao" },
