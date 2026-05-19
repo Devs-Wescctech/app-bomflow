@@ -33,7 +33,9 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
-  Trophy
+  Trophy,
+  FileSpreadsheet,
+  FileText
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -68,6 +70,9 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import StatsCard from "@/components/dashboard/StatsCard";
 import { differenceInDays, differenceInHours, differenceInMinutes } from "date-fns";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 function safeDate(val) {
   if (!val) return null;
@@ -456,6 +461,7 @@ export default function LeadsKanban() {
 
   const hasActiveFilters = filters.search || filters.agent !== 'all' || filters.team !== 'all' || filters.territory !== 'all' || filters.dateFrom || filters.dateTo;
   const [listPage, setListPage] = useState(1);
+  const [listStageFilter, setListStageFilter] = useState('all');
   const [isDraggingCard, setIsDraggingCard] = useState(false);
 
   // Refs para arrastar o kanban horizontalmente
@@ -788,6 +794,50 @@ export default function LeadsKanban() {
 
     return true;
   });
+
+  const listViewLeads = listStageFilter === 'all'
+    ? filteredLeads
+    : filteredLeads.filter(l => l.stage === listStageFilter);
+
+  const exportToExcel = () => {
+    const rows = listViewLeads.map(lead => ({
+      'Nome': lead.name || '-',
+      'Telefone': lead.phone || '-',
+      'E-mail': lead.email || '-',
+      'Etapa': STAGES.find(s => s.id === lead.stage)?.label || lead.stage || '-',
+      'Valor': getLeadValue(lead),
+      'Agente': allAgents.find(a => a.id === lead.agentId)?.name || '-',
+      'Criado em': formatDate(lead.createdDate || lead.createdAt),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Leads PF');
+    XLSX.writeFile(wb, `leads-pf-${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
+  };
+
+  const exportToPDF = () => {
+    const doc = new jsPDF({ orientation: 'landscape' });
+    doc.setFontSize(14);
+    doc.text('Relatório de Leads PF', 14, 16);
+    doc.setFontSize(9);
+    doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}  |  Total: ${listViewLeads.length} leads`, 14, 22);
+    autoTable(doc, {
+      startY: 28,
+      head: [['Nome', 'Telefone', 'E-mail', 'Etapa', 'Valor', 'Agente', 'Criado em']],
+      body: listViewLeads.map(lead => [
+        lead.name || '-',
+        lead.phone || '-',
+        lead.email || '-',
+        STAGES.find(s => s.id === lead.stage)?.label || lead.stage || '-',
+        formatCurrency(getLeadValue(lead)),
+        allAgents.find(a => a.id === lead.agentId)?.name || '-',
+        formatDate(lead.createdDate || lead.createdAt),
+      ]),
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [16, 185, 129] },
+    });
+    doc.save(`leads-pf-${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.pdf`);
+  };
 
   const getOrderedLeadsByStage = useCallback((stage) => {
     const stageLeads = filteredLeads.filter(lead => lead.stage === stage);
@@ -1466,15 +1516,65 @@ export default function LeadsKanban() {
         )}
 
         {viewMode === 'list' && (() => {
-          const totalPages = Math.ceil(filteredLeads.length / LIST_PAGE_SIZE);
+          const totalPages = Math.ceil(listViewLeads.length / LIST_PAGE_SIZE);
           const startIndex = (listPage - 1) * LIST_PAGE_SIZE;
-          const paginatedLeads = filteredLeads.slice(startIndex, startIndex + LIST_PAGE_SIZE);
+          const paginatedLeads = listViewLeads.slice(startIndex, startIndex + LIST_PAGE_SIZE);
           
           return (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
             >
+              {/* Barra de filtros e exportação da Lista */}
+              <div className="flex flex-wrap items-center gap-2 mb-3 p-3 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                <Filter className="w-4 h-4 text-gray-400" />
+                <Select value={filters.agent} onValueChange={v => setFilters(f => ({ ...f, agent: v }))}>
+                  <SelectTrigger className="h-8 w-44 text-xs">
+                    <SelectValue placeholder="Agente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os agentes</SelectItem>
+                    {salesAgents.map(a => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={listStageFilter} onValueChange={v => { setListStageFilter(v); setListPage(1); }}>
+                  <SelectTrigger className="h-8 w-44 text-xs">
+                    <SelectValue placeholder="Etapa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as etapas</SelectItem>
+                    {STAGES.map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <input
+                  type="date"
+                  className="h-8 text-xs border border-gray-200 dark:border-gray-700 rounded-md px-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                  value={filters.dateFrom}
+                  onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value }))}
+                  title="Data de criação — De"
+                />
+                <input
+                  type="date"
+                  className="h-8 text-xs border border-gray-200 dark:border-gray-700 rounded-md px-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                  value={filters.dateTo}
+                  onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value }))}
+                  title="Data de criação — Até"
+                />
+                <div className="flex-1" />
+                <span className="text-xs text-gray-500 dark:text-gray-400">{listViewLeads.length} leads</span>
+                <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={exportToExcel}>
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                  Excel
+                </Button>
+                <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={exportToPDF}>
+                  <FileText className="w-3.5 h-3.5 text-red-500" />
+                  PDF
+                </Button>
+              </div>
               <Card className="glass-card border-0 shadow-soft overflow-hidden">
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">
@@ -1569,7 +1669,7 @@ export default function LeadsKanban() {
                   {totalPages > 1 && (
                     <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
                       <div className="text-sm text-gray-600 dark:text-gray-400">
-                        Mostrando {startIndex + 1} - {Math.min(startIndex + LIST_PAGE_SIZE, filteredLeads.length)} de {filteredLeads.length} leads
+                        Mostrando {startIndex + 1} - {Math.min(startIndex + LIST_PAGE_SIZE, listViewLeads.length)} de {listViewLeads.length} leads
                       </div>
                       <div className="flex items-center gap-2">
                         <Button

@@ -35,7 +35,9 @@ import {
   ChevronRight,
   User,
   Calendar,
-  Trophy
+  Trophy,
+  FileSpreadsheet,
+  FileText
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -69,6 +71,9 @@ import { CSS } from "@dnd-kit/utilities";
 import { format, differenceInDays, differenceInHours, differenceInMinutes } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import StatsCard from "@/components/dashboard/StatsCard";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 function safeDate(val) {
   if (!val) return null;
@@ -418,6 +423,7 @@ export default function LeadsPJKanban() {
 
   const hasActiveFilters = filters.search || filters.agent !== 'all' || filters.team !== 'all' || filters.porte !== 'all' || filters.dateFrom || filters.dateTo;
   const [listPage, setListPage] = useState(1);
+  const [listStageFilter, setListStageFilter] = useState('all');
   const [isDraggingCard, setIsDraggingCard] = useState(false);
 
   // Refs para arrastar o kanban horizontalmente
@@ -738,6 +744,51 @@ export default function LeadsPJKanban() {
 
     return true;
   });
+
+  const listViewLeads = listStageFilter === 'all'
+    ? filteredLeads
+    : filteredLeads.filter(l => l.stage === listStageFilter);
+
+  const exportToExcel = () => {
+    const rows = listViewLeads.map(lead => ({
+      'Empresa': lead.nomeFantasia || lead.razaoSocial || lead.nome_fantasia || lead.razao_social || '-',
+      'Contato': lead.contact_name || '-',
+      'Telefone': lead.phone || '-',
+      'CNPJ': lead.cnpj || '-',
+      'Etapa': STAGES_PJ.find(s => s.id === lead.stage)?.label || lead.stage || '-',
+      'Valor': getLeadValue(lead),
+      'Agente': allAgents.find(a => String(a.id) === String(lead.agent_id || lead.agentId))?.name || '-',
+      'Criado em': formatDate(lead.createdAt),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Leads PJ');
+    XLSX.writeFile(wb, `leads-pj-${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
+  };
+
+  const exportToPDF = () => {
+    const doc = new jsPDF({ orientation: 'landscape' });
+    doc.setFontSize(14);
+    doc.text('Relatório de Leads PJ', 14, 16);
+    doc.setFontSize(9);
+    doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}  |  Total: ${listViewLeads.length} leads`, 14, 22);
+    autoTable(doc, {
+      startY: 28,
+      head: [['Empresa', 'Contato', 'Telefone', 'Etapa', 'Valor', 'Agente', 'Criado em']],
+      body: listViewLeads.map(lead => [
+        lead.nomeFantasia || lead.razaoSocial || lead.nome_fantasia || lead.razao_social || '-',
+        lead.contact_name || '-',
+        lead.phone || '-',
+        STAGES_PJ.find(s => s.id === lead.stage)?.label || lead.stage || '-',
+        formatCurrency(getLeadValue(lead)),
+        allAgents.find(a => String(a.id) === String(lead.agent_id || lead.agentId))?.name || '-',
+        formatDate(lead.createdAt),
+      ]),
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [139, 92, 246] },
+    });
+    doc.save(`leads-pj-${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.pdf`);
+  };
 
   const getLeadsByStage = (stage) => {
     return filteredLeads.filter(lead => lead.stage === stage);
@@ -1427,6 +1478,56 @@ export default function LeadsPJKanban() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
+            {/* Barra de filtros e exportação da Lista */}
+            <div className="flex flex-wrap items-center gap-2 mb-3 p-3 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+              <Filter className="w-4 h-4 text-gray-400" />
+              <Select value={filters.agent} onValueChange={v => setFilters(f => ({ ...f, agent: v }))}>
+                <SelectTrigger className="h-8 w-44 text-xs">
+                  <SelectValue placeholder="Agente" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os agentes</SelectItem>
+                  {allAgents.map(a => (
+                    <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={listStageFilter} onValueChange={v => setListStageFilter(v)}>
+                <SelectTrigger className="h-8 w-44 text-xs">
+                  <SelectValue placeholder="Etapa" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as etapas</SelectItem>
+                  {STAGES_PJ.map(s => (
+                    <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <input
+                type="date"
+                className="h-8 text-xs border border-gray-200 dark:border-gray-700 rounded-md px-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                value={filters.dateFrom}
+                onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value }))}
+                title="Data de criação — De"
+              />
+              <input
+                type="date"
+                className="h-8 text-xs border border-gray-200 dark:border-gray-700 rounded-md px-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                value={filters.dateTo}
+                onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value }))}
+                title="Data de criação — Até"
+              />
+              <div className="flex-1" />
+              <span className="text-xs text-gray-500 dark:text-gray-400">{listViewLeads.length} leads</span>
+              <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={exportToExcel}>
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                Excel
+              </Button>
+              <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" onClick={exportToPDF}>
+                <FileText className="w-3.5 h-3.5 text-red-500" />
+                PDF
+              </Button>
+            </div>
             <Card className="glass-card border-0 shadow-soft overflow-hidden">
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
@@ -1443,7 +1544,7 @@ export default function LeadsPJKanban() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                      {filteredLeads.map((lead, index) => {
+                      {listViewLeads.map((lead, index) => {
                         const stage = STAGES_PJ.find(s => s.id === lead.stage);
                         const pendingTasksCount = getPendingTasksCount(lead.id);
                         const agentData = getAgentData(lead.agentId || lead.agent_id);
