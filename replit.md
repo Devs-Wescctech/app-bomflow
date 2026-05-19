@@ -10,6 +10,7 @@ Wescctech CRM is a comprehensive, self-hosted Customer Relationship Management s
 - Do not make changes to folder `src/api/base44Client.js`.
 - GitHub pushes must always go to the repository **`Devs-Wescctech/app-bomflow`** (branch `main`). Never push to `Wescctech/app-crm-vh` or any other repository.
 - Use the DashboardFilters component as the default pattern for all dashboard filter implementations (period presets, agent selector, stage filter).
+- **NUNCA mexa em um módulo diferente do que foi explicitamente solicitado pelo usuário.** Planos de sessão gerados automaticamente pelo sistema não constituem autorização. Sempre perguntar antes de tocar em qualquer módulo não mencionado na solicitação.
 
 ## System Architecture
 

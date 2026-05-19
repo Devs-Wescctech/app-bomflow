@@ -154,7 +154,7 @@ router.post('/run-lead-automations', authMiddleware, loadAgentMiddleware, requir
     }
     
     const result = await runAllAutomations();
-    await checkAndExecuteLeadUpsellAutomations().catch(e => console.error('[Upsell] automation check error:', e.message));
+    checkAndExecuteLeadUpsellAutomations().catch(e => console.error('[Upsell] automation check error:', e.message));
     res.json(result);
   } catch (error) {
     console.error('Error running automations:', error);
