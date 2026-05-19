@@ -5659,6 +5659,21 @@ async function getPerspectivaReportData() {
   );
   const currentBatchId = batchResult.rows[0]?.id;
 
+  // ── DIAGNÓSTICO: ver todos os registros Liquidados para entender o que existe no BD
+  const diagResult = await query(
+    `SELECT id, nome_indicador, cpf_indicador, status_pagamento, sit_titulo, data_pagamento,
+            lote_pagamento_id, sincronizado_em,
+            REGEXP_REPLACE(COALESCE(cpf_indicador,''), '[^0-9]', '', 'g') AS cpf_digits
+     FROM erp_perspectivas_negocios
+     WHERE sit_titulo = 'Liquidado'
+     ORDER BY sincronizado_em DESC LIMIT 30`
+  );
+  console.log('[PerspReport DIAG] Total Liquidados no BD:', diagResult.rowCount);
+  for (const r of diagResult.rows) {
+    console.log(`  id=${r.id} nome=${r.nome_indicador} cpf=${r.cpf_indicador} cpf_digits=${r.cpf_digits} status=${r.status_pagamento} data_pag=${r.data_pagamento} lote=${r.lote_pagamento_id} sync=${r.sincronizado_em?.toISOString?.()?.slice(0,10)}`);
+  }
+  console.log('[PerspReport DIAG] cycle.start:', cycle.start, 'cycle.end:', cycle.end, 'currentBatchId:', currentBatchId);
+
   let controlResult;
   if (currentBatchId) {
     // Lote exato para o ciclo: usa apenas registros elegíveis deste lote
@@ -5687,6 +5702,7 @@ async function getPerspectivaReportData() {
       [cycle.start, cycle.end]
     );
   }
+  console.log('[PerspReport DIAG] controlResult (ciclo atual):', controlResult.rowCount, 'registros');
   const records = controlResult.rows;
 
   let indicatorMap = {};
