@@ -5593,12 +5593,29 @@ async function runPerspectivaBatch() {
     for (const e of elegiveis) {
       const key = e.cpf_indicador || e.nome_indicador || 'unknown';
       if (!indicatorMap[key]) {
-        indicatorMap[key] = { nome: e.nome_indicador, cpf: e.cpf_indicador, count: 0, total: 0 };
+        indicatorMap[key] = { nome: e.nome_indicador, cpf: e.cpf_indicador, count: 0, total: 0, totalCumulative: 0 };
       }
       indicatorMap[key].count += 1;
     }
+    // Enrich each indicator with historical paid count to determine correct tier
     for (const ind of Object.values(indicatorMap)) {
-      ind.total = getCommissionByTier(ind.count);
+      let historicoPago = 0;
+      if (ind.cpf) {
+        const histResult = await query(
+          `SELECT COUNT(*) AS total FROM erp_perspectivas_negocios
+           WHERE cpf_indicador = $1 AND sit_titulo = 'Liquidado' AND status_pagamento = 'pago'`,
+          [ind.cpf]
+        );
+        historicoPago = parseInt(histResult.rows[0].total) || 0;
+      }
+      // Cumulative = already paid (historical) + new eligible in this batch
+      ind.totalCumulative = ind.count + historicoPago;
+      // Unit value is determined by cumulative total; pay only for new conversions
+      let unitValue;
+      if (ind.totalCumulative >= 13) unitValue = 200;
+      else if (ind.totalCumulative >= 4) unitValue = 150;
+      else unitValue = 100;
+      ind.total = unitValue * ind.count;
     }
 
     const totalIndicadores = Object.keys(indicatorMap).length;
@@ -5624,7 +5641,7 @@ async function runPerspectivaBatch() {
     );
     if (existingSnapshot.rows.length === 0) {
       for (const ind of Object.values(indicatorMap)) {
-        const nivel = ind.count >= 13 ? 3 : ind.count >= 4 ? 2 : 1;
+        const nivel = ind.totalCumulative >= 13 ? 3 : ind.totalCumulative >= 4 ? 2 : 1;
         await query(
           `INSERT INTO commission_perspectiva_snapshot
            (cycle_start, cycle_end, batch_id, cpf_indicador, nome_indicador, total_conversoes, nivel_comissao, valor_comissao)
