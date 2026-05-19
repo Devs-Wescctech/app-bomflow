@@ -5708,8 +5708,6 @@ async function getPerspectivaReportData() {
 
   return {
     cycle,
-    reportTitle: 'RELATÓRIO DE PERSPECTIVAS LIQUIDADAS ELEGÍVEIS',
-    periodoLabel: `Posição em: ${formatDateBR(today)}`,
     indicators: indicatorMap,
     totalIndicadores,
     totalIndicacoes,
