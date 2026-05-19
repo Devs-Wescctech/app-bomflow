@@ -6,3 +6,9 @@ id = "RE5iRH7fD8Xcn7JNeXqjV"
 uri = "file://exports/proposta-comercial-crm-bom-flow.pdf"
 type = "pdf"
 title = "Proposta Comercial — CRM Bom Flow (PDF revisado)"
+
+[[outputs]]
+id = "n_tXX5fT3udvRfqx8RLTF"
+uri = "file://analise-bom-pastor.pdf"
+type = "pdf"
+title = "Análise de Viabilidade — App Bom Pastor"
