@@ -5667,13 +5667,16 @@ async function getPerspectivaReportData() {
       [currentBatchId]
     );
   } else {
+    // Sem lote para o ciclo atual: usa data_pagamento para identificar registros do ciclo
+    // Isso garante que registros de lotes de outros períodos não contaminem o ciclo atual
     controlResult = await query(
       `SELECT * FROM erp_perspectivas_negocios
        WHERE sit_titulo = 'Liquidado'
-         AND (status_pagamento = 'elegivel' OR status_pagamento IS NULL)
-         AND lote_pagamento_id IS NULL
+         AND data_pagamento >= $1 AND data_pagamento <= $2
+         AND status_pagamento NOT IN ('reativacao','pendente_conciliacao')
          AND cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')
-       ORDER BY nome_indicador, sincronizado_em`
+       ORDER BY nome_indicador, sincronizado_em`,
+      [cycle.start, cycle.end]
     );
   }
   const records = controlResult.rows;
