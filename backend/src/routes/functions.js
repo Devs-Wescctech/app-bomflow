@@ -5641,10 +5641,14 @@ async function runPerspectivaBatch() {
 async function getPerspectivaReportData() {
   const cycle = getWeeklyCycleDates();
 
+  // CPFs excluídos em formato normalizado (só dígitos) para comparação robusta independente de formatação no BD
+  const EXCLUDED_CPF_DIGITS = "('18470931830','32368440860')";
+  const CPF_EXCL_SQL = `REGEXP_REPLACE(COALESCE(cpf_indicador,''), '[^0-9]', '', 'g') NOT IN ${EXCLUDED_CPF_DIGITS}`;
+
   const snapshotResult = await query(
     `SELECT * FROM commission_perspectiva_snapshot
      WHERE cycle_start = $1 AND cycle_end = $2
-       AND cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')
+       AND REGEXP_REPLACE(COALESCE(cpf_indicador,''), '[^0-9]', '', 'g') NOT IN ('18470931830','32368440860')
      ORDER BY nome_indicador`,
     [cycle.start, cycle.end]
   );
@@ -5655,26 +5659,30 @@ async function getPerspectivaReportData() {
   );
   const currentBatchId = batchResult.rows[0]?.id;
 
-  const EXCLUDED_CPFS = ['184.709.318-30', '323.684.408-60'];
   let controlResult;
   if (currentBatchId) {
+    // Lote exato para o ciclo: usa apenas registros elegíveis deste lote
     controlResult = await query(
       `SELECT * FROM erp_perspectivas_negocios
-       WHERE sit_titulo = 'Liquidado' AND lote_pagamento_id = $1
-         AND status_pagamento NOT IN ('reativacao','pendente_conciliacao')
-         AND cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')
+       WHERE sit_titulo = 'Liquidado'
+         AND lote_pagamento_id = $1
+         AND status_pagamento = 'elegivel'
+         AND ${CPF_EXCL_SQL}
        ORDER BY nome_indicador, sincronizado_em`,
       [currentBatchId]
     );
   } else {
-    // Sem lote para o ciclo atual: usa data_pagamento para identificar registros do ciclo
-    // Isso garante que registros de lotes de outros períodos não contaminem o ciclo atual
+    // Sem lote para o ciclo atual: registros elegíveis cuja data_pagamento cai no ciclo
+    // ou, se data_pagamento é NULL, que foram sincronizados no ciclo e ainda não têm lote
     controlResult = await query(
       `SELECT * FROM erp_perspectivas_negocios
        WHERE sit_titulo = 'Liquidado'
-         AND data_pagamento >= $1 AND data_pagamento <= $2
-         AND status_pagamento NOT IN ('reativacao','pendente_conciliacao')
-         AND cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')
+         AND status_pagamento = 'elegivel'
+         AND (
+           (data_pagamento >= $1 AND data_pagamento <= $2)
+           OR (data_pagamento IS NULL AND lote_pagamento_id IS NULL AND sincronizado_em >= $1)
+         )
+         AND ${CPF_EXCL_SQL}
        ORDER BY nome_indicador, sincronizado_em`,
       [cycle.start, cycle.end]
     );
@@ -5732,8 +5740,8 @@ async function getPerspectivaReportData() {
      FROM erp_perspectivas_negocios epn
      LEFT JOIN commission_perspectiva_batches cpb ON epn.lote_pagamento_id = cpb.id
      WHERE epn.sit_titulo = 'Liquidado'
-       AND (epn.status_pagamento NOT IN ('pago','reativacao','pendente_conciliacao') OR epn.status_pagamento IS NULL)
-       AND epn.cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')
+       AND epn.status_pagamento = 'elegivel'
+       AND REGEXP_REPLACE(COALESCE(epn.cpf_indicador,''), '[^0-9]', '', 'g') NOT IN ('18470931830','32368440860')
      ORDER BY cpb.periodo_inicio, epn.nome_indicador, epn.sincronizado_em`
   );
 
