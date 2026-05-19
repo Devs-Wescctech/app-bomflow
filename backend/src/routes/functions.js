@@ -895,6 +895,7 @@ router.get('/lead-generator-log-estruturado', authMiddleware, async (req, res) =
     }
 
     const countResult = await query(`SELECT COUNT(*)::int as total FROM gerador_leads_log_estruturado ${whereClause}`, params);
+    const total = countResult.rows[0].total;
 
     const dataResult = await query(
       `SELECT ${LOG_SAFE_COLUMNS} FROM gerador_leads_log_estruturado ${whereClause} ORDER BY disparado_em DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
