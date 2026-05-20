@@ -4933,7 +4933,8 @@ function buildCommissionEmailHtml(data) {
 
     Object.values(indicators).forEach((ind, idx) => {
       const bg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
-      const nivel = (ind.count || 0) >= 13 ? 'Nível 3' : (ind.count || 0) >= 4 ? 'Nível 2' : (ind.count || 0) >= 1 ? 'Nível 1' : '-';
+      const nivelNum = ind.nivel || ((ind.count || 0) >= 13 ? 3 : (ind.count || 0) >= 4 ? 2 : 1);
+      const nivel = nivelNum === 3 ? 'Nível 3' : nivelNum === 2 ? 'Nível 2' : (ind.count || 0) >= 1 ? 'Nível 1' : '-';
       const pixDisplay = ind.pix ? escapeHtml(ind.pix) : 'PIX não informado';
       html += `
         <tr style="background: ${bg};">
@@ -5132,7 +5133,8 @@ function generateCommissionPDF(data) {
       Object.values(indicators).forEach((ind, idx) => {
         if (y > doc.page.height - 60) { doc.addPage(); y = 40; y = drawTableHeader(cols1, y); }
         const bg = idx % 2 === 1 ? [248, 250, 252] : null;
-        const nivel = (ind.count || 0) >= 13 ? 'Nível 3' : (ind.count || 0) >= 4 ? 'Nível 2' : (ind.count || 0) >= 1 ? 'Nível 1' : '-';
+        const nivelNum = ind.nivel || ((ind.count || 0) >= 13 ? 3 : (ind.count || 0) >= 4 ? 2 : 1);
+        const nivel = nivelNum === 3 ? 'Nível 3' : nivelNum === 2 ? 'Nível 2' : (ind.count || 0) >= 1 ? 'Nível 1' : '-';
         const pixDisplay = ind.pix || 'PIX não informado';
         y = drawTableRow(cols1, [ind.nome || '-', formatCPF(ind.cpf), pixDisplay, String(ind.count || 0), nivel, formatCurrency(ind.total || 0)], y, bg);
       });
@@ -5695,8 +5697,21 @@ async function getPerspectivaReportData() {
     indicatorMap[key].count += 1;
     indicatorMap[key].details.push(r);
   }
+  // Enrich with historical paid count to determine correct tier per indicator
   for (const ind of Object.values(indicatorMap)) {
-    ind.total = getCommissionByTier(ind.count);
+    let historicoPago = 0;
+    if (ind.cpf && ind.cpf !== '-') {
+      const histResult = await query(
+        `SELECT COUNT(*) AS total FROM erp_perspectivas_negocios
+         WHERE cpf_indicador = $1 AND sit_titulo = 'Liquidado' AND status_pagamento = 'pago'`,
+        [ind.cpf]
+      );
+      historicoPago = parseInt(histResult.rows[0].total) || 0;
+    }
+    const totalCumulative = ind.count + historicoPago;
+    ind.nivel = totalCumulative >= 13 ? 3 : totalCumulative >= 4 ? 2 : 1;
+    const unitValue = ind.nivel === 3 ? 200 : ind.nivel === 2 ? 150 : 100;
+    ind.total = unitValue * ind.count;
   }
 
   // Busca chaves PIX para os indicadores com CPF
