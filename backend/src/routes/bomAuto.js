@@ -107,6 +107,30 @@ router.get('/consulta', authMiddleware, async (req, res) => {
     if (sfUpper === 'I' || sfUpper.includes('INADIMPLENTE')) situacao_financeira = 'INADIMPLENTE';
     else if (sfUpper === 'A' || sfUpper.includes('ADIMPLENTE') || sfUpper.includes('EM DIA')) situacao_financeira = 'ADIMPLENTE';
 
+    let is_funcionario = false;
+    if (documento) {
+      try {
+        const cpfDigits = documento.replace(/\D/g, '');
+        const cpfFormatado = cpfDigits.length === 11
+          ? `${cpfDigits.slice(0,3)}.${cpfDigits.slice(3,6)}.${cpfDigits.slice(6,9)}-${cpfDigits.slice(9)}`
+          : cpfDigits;
+        const funcUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_FUNCIONARIOS_BP?documento=${encodeURIComponent(cpfFormatado)}`;
+        const funcResponse = await fetch(funcUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${erpToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (funcResponse.ok) {
+          const funcData = await funcResponse.json();
+          is_funcionario = Array.isArray(funcData) && funcData.length > 0;
+        }
+      } catch (funcErr) {
+        console.warn('[BomAuto] Falha ao consultar API_FUNCIONARIOS_BP:', funcErr.message);
+      }
+    }
+
     const normalized = {
       contratante: first.contratante || '',
       documento: first.documento || '',
@@ -117,6 +141,7 @@ router.get('/consulta', authMiddleware, async (req, res) => {
       contrato_id: first.contrato_id || '',
       contratos_servicos: first.contrato_servicos || first.contratos_servicos || '',
       veiculos,
+      is_funcionario,
     };
 
     res.json(normalized);

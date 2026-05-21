@@ -130,18 +130,22 @@ export default function BomAutoConsulta() {
 
   function checkEligibility(data, utilizacoesCount) {
     const reasons = [];
+    const isFuncionario = data.is_funcionario === true;
     const contrato = (data.situacao_contrato || data.data?.situacao_contrato || '').toLowerCase();
     const financeira = (data.situacao_financeira || data.data?.situacao_financeira || '').toLowerCase();
     const veiculos = Array.isArray(data.veiculos) ? data.veiculos : (data.data?.veiculos || []);
 
-    const isAtivo = contrato.includes('ativo') && !contrato.includes('inativo');
-    if (!isAtivo) {
-      reasons.push(`Contrato não está ativo (${(data.situacao_contrato || data.data?.situacao_contrato || 'N/A').toUpperCase()})`);
+    if (!isFuncionario) {
+      const isAtivo = contrato.includes('ativo') && !contrato.includes('inativo');
+      if (!isAtivo) {
+        reasons.push(`Contrato não está ativo (${(data.situacao_contrato || data.data?.situacao_contrato || 'N/A').toUpperCase()})`);
+      }
+      const isAdimplente = (financeira.includes('adimplente') && !financeira.includes('inadimplente')) || financeira.includes('em dia');
+      if (!isAdimplente) {
+        reasons.push(`Situação financeira não está adimplente (${(data.situacao_financeira || data.data?.situacao_financeira || 'N/A').toUpperCase()})`);
+      }
     }
-    const isAdimplente = (financeira.includes('adimplente') && !financeira.includes('inadimplente')) || financeira.includes('em dia');
-    if (!isAdimplente) {
-      reasons.push(`Situação financeira não está adimplente (${(data.situacao_financeira || data.data?.situacao_financeira || 'N/A').toUpperCase()})`);
-    }
+
     if (veiculos.length > 3) {
       reasons.push(`Número de veículos (${veiculos.length}) excede o limite de 3`);
     }
@@ -149,7 +153,7 @@ export default function BomAutoConsulta() {
       reasons.push(`Utilizações no ano (${utilizacoesCount}) excede o limite de 3`);
     }
 
-    return { eligible: reasons.length === 0, reasons };
+    return { eligible: reasons.length === 0, reasons, isFuncionario };
   }
 
   async function handleSearch(e) {
@@ -428,7 +432,15 @@ export default function BomAutoConsulta() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Nome</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{clientNome}</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                  {clientNome}
+                  {clientData?.is_funcionario && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-blue-100 text-blue-700 border border-blue-300 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-700">
+                      <Shield className="w-3 h-3" />
+                      Funcionário BP
+                    </span>
+                  )}
+                </p>
               </div>
               <div className="space-y-1">
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">CPF</p>
@@ -445,7 +457,15 @@ export default function BomAutoConsulta() {
               )}
             </div>
 
+            {clientData?.is_funcionario && (
+              <div className="mt-3 flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 dark:bg-blue-950/30 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs">
+                <Shield className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span><strong>Funcionário Bom Pastor:</strong> as regras de situação de contrato e financeira não se aplicam. Apenas o limite de veículos e utilizações anuais são verificados.</span>
+              </div>
+            )}
+
             {(() => {
+              const isFuncionario = clientData?.is_funcionario === true;
               const isContratoAtivo = clientContrato.toLowerCase().includes('ativo') && !clientContrato.toLowerCase().includes('cancelado') && !clientContrato.toLowerCase().includes('inativo');
               const isAdimplente = clientFinanceira.toLowerCase().includes('adimplente') && !clientFinanceira.toLowerCase().includes('inadimplente');
               const utilizacoesCount = utilizacoes?.count ?? 0;
@@ -454,37 +474,47 @@ export default function BomAutoConsulta() {
               return (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
                   <div className={`relative overflow-hidden rounded-xl border p-4 shadow-sm ${
-                    isContratoAtivo
-                      ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
-                      : 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800'
+                    isFuncionario
+                      ? 'bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800'
+                      : isContratoAtivo
+                        ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
+                        : 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800'
                   }`}>
                     <div className={`absolute top-0 right-0 w-16 h-16 rounded-bl-full opacity-10 ${
-                      isContratoAtivo ? 'bg-emerald-500' : 'bg-red-500'
+                      isFuncionario ? 'bg-blue-500' : isContratoAtivo ? 'bg-emerald-500' : 'bg-red-500'
                     }`} />
                     <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-2">Status do Plano</p>
                     <div className="flex items-center gap-2">
-                      <span className={`w-2.5 h-2.5 rounded-full ${isContratoAtivo ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-                      <span className={`text-sm font-bold ${isContratoAtivo ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
+                      <span className={`w-2.5 h-2.5 rounded-full ${isFuncionario ? 'bg-blue-500' : isContratoAtivo ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                      <span className={`text-sm font-bold ${isFuncionario ? 'text-blue-700 dark:text-blue-300' : isContratoAtivo ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
                         {clientContrato.toUpperCase()}
                       </span>
                     </div>
+                    {isFuncionario && (
+                      <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-1.5 font-medium">Dispensado (funcionário)</p>
+                    )}
                   </div>
 
                   <div className={`relative overflow-hidden rounded-xl border p-4 shadow-sm ${
-                    isAdimplente
-                      ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
-                      : 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800'
+                    isFuncionario
+                      ? 'bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800'
+                      : isAdimplente
+                        ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
+                        : 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800'
                   }`}>
                     <div className={`absolute top-0 right-0 w-16 h-16 rounded-bl-full opacity-10 ${
-                      isAdimplente ? 'bg-emerald-500' : 'bg-red-500'
+                      isFuncionario ? 'bg-blue-500' : isAdimplente ? 'bg-emerald-500' : 'bg-red-500'
                     }`} />
                     <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-2">Situação Financeira</p>
                     <div className="flex items-center gap-2">
-                      <span className={`w-2.5 h-2.5 rounded-full ${isAdimplente ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-                      <span className={`text-sm font-bold ${isAdimplente ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
+                      <span className={`w-2.5 h-2.5 rounded-full ${isFuncionario ? 'bg-blue-500' : isAdimplente ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                      <span className={`text-sm font-bold ${isFuncionario ? 'text-blue-700 dark:text-blue-300' : isAdimplente ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
                         {clientFinanceira.toUpperCase()}
                       </span>
                     </div>
+                    {isFuncionario && (
+                      <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-1.5 font-medium">Dispensado (funcionário)</p>
+                    )}
                   </div>
 
                   {utilizacoes !== null && (
