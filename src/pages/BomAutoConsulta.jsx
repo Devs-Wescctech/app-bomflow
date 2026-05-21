@@ -496,24 +496,22 @@ export default function BomAutoConsulta() {
                   </div>
 
                   <div className={`relative overflow-hidden rounded-xl border p-4 shadow-sm ${
-                    isFuncionario
-                      ? 'bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800'
-                      : isAdimplente
-                        ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
-                        : 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800'
+                    isFuncionario || isAdimplente
+                      ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800'
+                      : 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800'
                   }`}>
                     <div className={`absolute top-0 right-0 w-16 h-16 rounded-bl-full opacity-10 ${
-                      isFuncionario ? 'bg-blue-500' : isAdimplente ? 'bg-emerald-500' : 'bg-red-500'
+                      isFuncionario || isAdimplente ? 'bg-emerald-500' : 'bg-red-500'
                     }`} />
                     <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-2">Situação Financeira</p>
                     <div className="flex items-center gap-2">
-                      <span className={`w-2.5 h-2.5 rounded-full ${isFuncionario ? 'bg-blue-500' : isAdimplente ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-                      <span className={`text-sm font-bold ${isFuncionario ? 'text-blue-700 dark:text-blue-300' : isAdimplente ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
-                        {clientFinanceira.toUpperCase()}
+                      <span className={`w-2.5 h-2.5 rounded-full ${isFuncionario || isAdimplente ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                      <span className={`text-sm font-bold ${isFuncionario || isAdimplente ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
+                        {isFuncionario ? 'ADIMPLENTE' : clientFinanceira.toUpperCase()}
                       </span>
                     </div>
                     {isFuncionario && (
-                      <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-1.5 font-medium">Dispensado (funcionário)</p>
+                      <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1.5 font-medium">Dispensado (funcionário)</p>
                     )}
                   </div>
 
