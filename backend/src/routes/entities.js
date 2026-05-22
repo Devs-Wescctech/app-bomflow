@@ -458,6 +458,26 @@ for (const [route, options] of Object.entries(entities)) {
       }
       return crud.update(req, res);
     });
+  } else if (route === 'teams') {
+    router.put(`/${route}/:id`, authMiddleware, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const body = req.body;
+        const supervisorEmails = body.supervisorEmails || body.supervisor_emails || null;
+        const name = body.name;
+        const description = body.description || null;
+        const active = body.active !== undefined ? body.active : true;
+        const result = await query(
+          `UPDATE teams SET name = $1, description = $2, active = $3, supervisor_emails = $4::text[], updated_at = NOW() WHERE id = $5 RETURNING *`,
+          [name, description, active, supervisorEmails, id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ message: 'Not found' });
+        res.json(convertKeysToCamel(result.rows[0]));
+      } catch (error) {
+        console.error('Error updating team:', error);
+        res.status(500).json({ message: error.message });
+      }
+    });
   } else {
     router.put(`/${route}/:id`, authMiddleware, crud.update);
   }
