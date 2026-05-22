@@ -789,11 +789,10 @@ export default function Agents() {
 
   const isSupervisorAgent = (a) => isSupervisorType(a.agentType) || a.agentType === 'admin';
 
-  const getSupervisorsForTeam = (teamId) => {
-    const sortByName = (arr) => [...arr].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
-    const byTeam = agents.filter(a => isSupervisorAgent(a) && a.teamId === teamId);
-    if (byTeam.length > 0) return sortByName(byTeam);
-    return sortByName(agents.filter(a => isSupervisorAgent(a)));
+  const getSupervisorsForTeam = (_teamId) => {
+    return [...agents]
+      .filter(a => isSupervisorAgent(a))
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
   };
 
   const getQueueNames = (queueIds) => {
