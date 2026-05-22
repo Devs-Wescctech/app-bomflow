@@ -61,6 +61,12 @@ function formatDateTime(dateStr) {
   });
 }
 
+function formatDate(dateStr) {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 const TIPOS_SERVICO = [
   "Chaveiro",
   "Guincho",
@@ -511,7 +517,11 @@ export default function BomAutoConsulta() {
 
     y += 4;
     setF('normal', 7.5);
-    doc.text(`Data: ${dh}`, margin, y);
+    const dataRegistro = atendimentoFinalizado
+      ? new Date(atendimentoFinalizado.data_hora || atendimentoFinalizado.created_at)
+          .toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : '';
+    doc.text(`Data: ${dataRegistro}`, margin, y);
 
     // Coluna direita (assinaturas)
     let sigY = bottomStartY;
@@ -519,9 +529,6 @@ export default function BomAutoConsulta() {
     doc.text('Assinaturas:', rightColX, sigY);
     sigY += 7;
     setF('normal', 7.5);
-    doc.text('Assinante:', rightColX, sigY);
-    ln(rightColX, sigY + 1, rightColX + rightColW, sigY + 1);
-    sigY += 9;
     doc.text('Contratante:', rightColX, sigY);
     ln(rightColX, sigY + 1, rightColX + rightColW, sigY + 1);
     sigY += 9;
@@ -1314,8 +1321,8 @@ export default function BomAutoConsulta() {
               {/* Seção de assinaturas (visual) */}
               <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                 <p className="text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-3">Assinaturas</p>
-                <div className="grid grid-cols-3 gap-4">
-                  {['Assinante', 'Contratante', 'Atendente'].map(sig => (
+                <div className="grid grid-cols-2 gap-4">
+                  {['Contratante', 'Atendente'].map(sig => (
                     <div key={sig} className="space-y-1">
                       <div className="h-12 border-b-2 border-gray-300 dark:border-gray-600" />
                       <p className="text-[10px] text-center text-gray-500 dark:text-gray-400 uppercase tracking-wider">{sig}</p>
@@ -1329,7 +1336,7 @@ export default function BomAutoConsulta() {
                 <div>
                   <p className="text-[10px] uppercase tracking-widest text-gray-500 dark:text-gray-400">Data do Registro</p>
                   <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                    {formatDateTime(atendimentoFinalizado?.data_hora || atendimentoFinalizado?.created_at)}
+                    {formatDate(atendimentoFinalizado?.data_hora || atendimentoFinalizado?.created_at)}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
