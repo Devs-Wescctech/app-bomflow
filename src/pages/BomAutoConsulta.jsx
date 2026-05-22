@@ -1448,7 +1448,7 @@ export default function BomAutoConsulta() {
                     </Button>
                   )}
                   <Button
-                    onClick={exportTermoPDF}
+                    onClick={() => exportTermoPDF()}
                     disabled={!termoSalvo}
                     className="bg-red-600 hover:bg-red-700 text-white gap-2 disabled:opacity-40"
                   >
