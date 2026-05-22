@@ -372,14 +372,41 @@ export default function BomAutoConsulta() {
     const contentW = pageW - margin * 2;
     let y = margin;
 
-    const ln = (x1, y1, x2, y2, color = [0,0,0]) => {
-      doc.setDrawColor(...color);
-      doc.line(x1, y1, x2, y2);
+    // ── Paleta ────────────────────────────────────────
+    const C = {
+      black:    [30, 30, 30],
+      darkGray: [60, 60, 60],
+      midGray:  [110, 110, 110],
+      lightGray:[180, 180, 180],
+      hairline: [210, 210, 210],
+      white:    [255, 255, 255],
+      brand:    [30, 30, 30],
     };
-    const setF = (style, size) => { doc.setFontSize(size); doc.setFont('helvetica', style); };
 
-    doc.setDrawColor(0);
-    doc.setLineWidth(0.3);
+    // ── Helpers ───────────────────────────────────────
+    const setF = (style, size) => { doc.setFontSize(size); doc.setFont('helvetica', style); };
+    const setTC = (rgb) => doc.setTextColor(...rgb);
+    const setDC = (rgb) => doc.setDrawColor(...rgb);
+    const setFC = (rgb) => doc.setFillColor(...rgb);
+    const hRule = (yPos, color = C.hairline, lw = 0.25) => {
+      doc.setLineWidth(lw);
+      setDC(color);
+      doc.line(margin, yPos, pageW - margin, yPos);
+    };
+
+    // helper: label cinza pequeno + valor escuro na linha seguinte
+    const labelValue = (label, value, lx, yPos, maxW) => {
+      setF('normal', 6.5);
+      setTC(C.midGray);
+      doc.text(label, lx, yPos);
+      setF('bold', 8.5);
+      setTC(C.black);
+      const lines = doc.splitTextToSize(value || '—', maxW || contentW);
+      doc.text(lines, lx, yPos + 4);
+      return lines.length;
+    };
+
+    doc.setLineWidth(0.25);
 
     // ── CABEÇALHO (imagem oficial) ────────────────────
     try {
@@ -393,173 +420,207 @@ export default function BomAutoConsulta() {
       const imgProps = doc.getImageProperties(b64);
       const headerH = (contentW * imgProps.height) / imgProps.width;
       doc.addImage(b64, 'PNG', margin, y, contentW, headerH);
-      y += headerH + 4;
+      y += headerH + 3;
     } catch {
-      // fallback textual caso a imagem falhe
-      setF('bold', 14);
-      doc.text('BOM AUTO', margin, y + 10);
-      setF('normal', 7);
-      doc.text('0800 940 3227', pageW - margin, y + 10, { align: 'right' });
-      doc.setFillColor(25, 25, 25);
-      doc.rect(margin, y + 14, contentW, 9, 'F');
-      doc.setTextColor(255, 255, 255);
-      setF('bold', 9);
-      doc.text('AUTORIZAÇÃO DE SERVIÇOS DE ASSESSORIA VEICULAR', pageW / 2, y + 20, { align: 'center' });
-      doc.setTextColor(0, 0, 0);
-      y += 28;
+      setFC(C.brand);
+      doc.rect(margin, y, contentW, 12, 'F');
+      setTC(C.white);
+      setF('bold', 10);
+      doc.text('BOM AUTO — AUTORIZAÇÃO DE SERVIÇOS', pageW / 2, y + 8, { align: 'center' });
+      setTC(C.black);
+      y += 16;
     }
 
-    doc.setTextColor(0, 0, 0);
+    // ── N° DO PROCESSO (canto superior direito) ───────
+    const procBoxW = 58;
+    const procBoxH = 10;
+    const procBoxX = pageW - margin - procBoxW;
+    setDC(C.lightGray);
+    doc.setLineWidth(0.3);
+    doc.rect(procBoxX, y - 1, procBoxW, procBoxH);
+    setF('normal', 6);
+    setTC(C.midGray);
+    doc.text('N° do Processo:', procBoxX + 2, y + 3.5);
+    setF('bold', 8);
+    setTC(C.black);
+    doc.text(at?.protocolo || '', procBoxX + procBoxW - 2, y + 3.5, { align: 'right' });
 
-    // ── N° DO PROCESSO ────────────────────────────────
-    doc.rect(pageW - margin - 62, y - 5, 62, 8);
-    setF('normal', 7);
-    doc.text('N° do Processo:', pageW - margin - 60, y);
-    setF('bold', 9);
-    doc.text(at?.protocolo || '', pageW - margin - 2, y, { align: 'right' });
+    y += procBoxH + 3;
+    hRule(y);
+    y += 5;
 
-    y += 9;
-
-    // ── LINHA HELPER ─────────────────────────────────
-    const field = (label, value, lx, rx, yPos) => {
-      setF('normal', 7.5);
-      doc.text(label, lx, yPos);
-      const labelW = doc.getTextWidth(label) + 2;
-      setF('bold', 8);
-      doc.text(value || '', lx + labelW, yPos);
-      ln(lx + labelW - 1, yPos + 1, rx, yPos + 1);
-    };
+    // ── BLOCO DE CABEÇALHO — campos duplos ───────────
+    const halfW = (contentW - 6) / 2;
 
     // Empresa Contratada
-    field('Empresa Contratada:', 'Bom Auto', margin, margin + contentW * 0.5, y);
-    y += 7;
+    labelValue('Empresa Contratada', 'Bom Auto', margin, y, halfW);
+    y += 10;
+    hRule(y, C.hairline);
+    y += 4;
 
     // Atendente | Data e Hora
-    const midX = margin + contentW * 0.55;
-    field('Atendente Resp.:', at?.usuario || '', margin, midX, y);
+    labelValue('Atendente Responsável', at?.usuario || '', margin, y, halfW);
     const dh = at ? formatDateTime(at.data_hora || at.created_at) : '';
-    field('Data e Hora:', dh, midX + 3, pageW - margin, y);
-    y += 7;
+    labelValue('Data e Hora do Atendimento', dh, margin + halfW + 6, y, halfW);
+    y += 10;
+    hRule(y, C.hairline);
+    y += 4;
 
-    // Fone
+    // Fone | Contrato
     const tel = at?.telefone_contato
       ? at.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3')
       : '';
-    field('Fone para Contato do Condutor:', tel, margin, pageW - margin, y);
-    y += 7;
+    labelValue('Fone para Contato do Condutor', tel, margin, y, halfW);
+    labelValue('Número do Contrato', at?.contratos_servicos || '', margin + halfW + 6, y, halfW);
+    y += 10;
+    hRule(y, C.hairline);
+    y += 4;
 
-    // N° do Contrato
-    field('Número do Contrato:', at?.contratos_servicos || '', margin, pageW - margin, y);
-    y += 7;
-
-    // Nome do Titular
+    // Nome Titular
     const nomeCliente = cli?.contratante || cli?.data?.contratante || at?.nome_cliente || '';
-    field('Nome do Titular:', nomeCliente, margin, pageW - margin, y);
-    y += 7;
+    labelValue('Nome do Titular', nomeCliente, margin, y, contentW);
+    y += 10;
+    hRule(y, C.hairline);
+    y += 4;
 
-    // Veículo Modelo
-    field('Veículo Modelo:', at?.descricao_veiculo || '', margin, pageW - margin, y);
-    y += 7;
+    // Veículo
+    labelValue('Veículo Modelo', at?.descricao_veiculo || '', margin, y, contentW);
+    y += 10;
+    hRule(y, C.hairline);
+    y += 4;
 
     // Local / Cidade
-    field('Local / Cidade onde se encontra o Veículo:', td.local || '', margin, margin + contentW * 0.65, y);
-    setF('normal', 7.5);
-    doc.text('Residência [ ]', margin + contentW * 0.67, y);
-    doc.text('Oficina [ ]', margin + contentW * 0.84, y);
-    y += 7;
+    const localW = contentW * 0.60;
+    labelValue('Local / Cidade onde se encontra o Veículo', td.local || '', margin, y, localW);
+    setF('normal', 7);
+    setTC(C.midGray);
+    doc.text('Residência [ ]    Oficina [ ]', margin + localW + 4, y + 4);
+    y += 10;
+    hRule(y, C.hairline);
+    y += 4;
 
     // Rua
-    field('Rua / Av. / Rod. / Ponto de Referência:', td.rua || '', margin, pageW - margin, y);
+    labelValue('Rua / Av. / Rod. / Ponto de Referência', td.rua || '', margin, y, contentW);
     y += 10;
 
-    // ── SEPARADOR ─────────────────────────────────────
-    ln(margin, y, pageW - margin, y);
-    y += 5;
+    // ── SEPARADOR SEÇÃO ───────────────────────────────
+    hRule(y, C.darkGray, 0.5);
+    y += 4;
 
     // ── DADOS ADICIONAIS ──────────────────────────────
-    setF('bold', 8);
+    setF('bold', 7);
+    setTC(C.midGray);
     doc.text('DADOS ADICIONAIS', margin, y);
+    y += 5;
+
+    const docCliente = cli?.documento || cli?.data?.documento || at?.documento_cliente || '';
+    const addRow = (label, value, lx, valX, yPos) => {
+      setF('normal', 6.5);
+      setTC(C.midGray);
+      doc.text(label + ':', lx, yPos);
+      setF('bold', 8);
+      setTC(C.black);
+      doc.text(value || '—', valX, yPos);
+    };
+
+    // 2 colunas por linha
+    addRow('Documento', docCliente, margin, margin + 22, y);
+    addRow('Placa', at?.placa || '', margin + halfW + 6, margin + halfW + 22, y);
+    y += 6;
+    hRule(y, C.hairline);
+    y += 4;
+
+    addRow('Tipo de Serviço', at?.tipo_servico || '', margin, margin + 28, y);
+    addRow('Protocolo', at?.protocolo || '', margin + halfW + 6, margin + halfW + 22, y);
     y += 6;
 
-    const addF = (label, value) => {
-      setF('normal', 7.5);
-      doc.text(`${label}:`, margin, y);
-      setF('bold', 8);
-      doc.text(value || '-', margin + 32, y);
-      ln(margin + 30, y + 1, pageW - margin, y + 1, [180,180,180]);
-      y += 6;
-    };
-    addF('Documento', cli?.documento || cli?.data?.documento || at?.documento_cliente || '');
-    addF('Placa', at?.placa || '');
-    addF('Tipo de Serviço', at?.tipo_servico || '');
-    addF('Protocolo', at?.protocolo || '');
-
     if (at?.observacoes) {
-      setF('normal', 7.5);
+      hRule(y, C.hairline);
+      y += 4;
+      setF('normal', 6.5);
+      setTC(C.midGray);
       doc.text('Observações:', margin, y);
-      setF('bold', 8);
-      const obsLines = doc.splitTextToSize(at.observacoes, contentW - 34);
-      doc.text(obsLines, margin + 32, y);
-      y += obsLines.length * 5 + 2;
+      setF('normal', 8);
+      setTC(C.black);
+      const obsLines = doc.splitTextToSize(at.observacoes, contentW - 24);
+      doc.text(obsLines, margin + 22, y);
+      y += obsLines.length * 5;
     }
 
     y += 3;
-    ln(margin, y, pageW - margin, y);
-    y += 8;
+    hRule(y, C.darkGray, 0.5);
+    y += 6;
 
-    // ── SEÇÃO INFERIOR ────────────────────────────────
-    const leftColW = contentW * 0.54;
-    const rightColX = margin + leftColW + 6;
-    const rightColW = contentW * 0.44;
+    // ── SEÇÃO INFERIOR: esquerda + assinaturas ────────
+    const leftColW = contentW * 0.52;
+    const rightColX = margin + leftColW + 8;
+    const rightColW = contentW - leftColW - 8;
     const bottomStartY = y;
 
-    // Coluna esquerda
-    setF('normal', 7.5);
-    doc.text('Valores Combinados:', margin, y);
-    ln(margin, y + 2, margin + leftColW, y + 2);
-    if (td.valores) {
-      setF('bold', 8);
-      doc.text(td.valores, margin, y + 1);
-    }
+    // Coluna esquerda — Valores Combinados
+    setF('normal', 6.5);
+    setTC(C.midGray);
+    doc.text('Valores Combinados', margin, y);
+    y += 4;
+    setF('bold', 9);
+    setTC(C.black);
+    doc.text(td.valores || '—', margin, y);
+    hRule(y + 2, C.hairline);
     y += 8;
 
-    setF('normal', 7.5);
-    doc.text('Descrição do Produto Contratado:', margin, y);
-    y += 5;
+    // Descrição
+    setF('normal', 6.5);
+    setTC(C.midGray);
+    doc.text('Descrição do Produto Contratado', margin, y);
+    y += 4;
     if (td.descricao) {
       const descLines = doc.splitTextToSize(td.descricao, leftColW);
-      setF('bold', 8);
+      setF('bold', 8.5);
+      setTC(C.black);
       doc.text(descLines, margin, y);
-      y += descLines.length * 5;
+      y += descLines.length * 5 + 2;
     } else {
-      ln(margin, y, margin + leftColW, y); y += 5;
-      ln(margin, y, margin + leftColW, y); y += 5;
-      ln(margin, y, margin + leftColW, y); y += 5;
+      hRule(y + 1, C.hairline); y += 6;
+      hRule(y + 1, C.hairline); y += 6;
     }
 
     y += 4;
-    setF('normal', 7.5);
+    setF('normal', 7);
+    setTC(C.midGray);
     const dataRegistro = at
       ? new Date(at.data_hora || at.created_at)
           .toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
       : '';
-    doc.text(`Data: ${dataRegistro}`, margin, y);
+    doc.text(`Data: `, margin, y);
+    setTC(C.black);
+    setF('bold', 8);
+    doc.text(dataRegistro, margin + 10, y);
 
     // Coluna direita (assinaturas)
     let sigY = bottomStartY;
-    setF('bold', 8);
-    doc.text('Assinaturas:', rightColX, sigY);
+    setF('bold', 7);
+    setTC(C.midGray);
+    doc.text('ASSINATURAS', rightColX, sigY);
     sigY += 7;
-    setF('normal', 7.5);
-    doc.text('Contratante:', rightColX, sigY);
-    ln(rightColX, sigY + 1, rightColX + rightColW, sigY + 1);
-    sigY += 9;
-    doc.text('Atendente:', rightColX, sigY);
-    ln(rightColX, sigY + 1, rightColX + rightColW, sigY + 1);
 
-    // Borda externa
-    doc.setLineWidth(0.5);
-    doc.rect(margin - 2, margin - 2, contentW + 4, Math.max(y, sigY) - margin + 8);
+    const sigLine = (label) => {
+      setF('normal', 6.5);
+      setTC(C.midGray);
+      doc.text(label, rightColX, sigY);
+      sigY += 3;
+      setDC(C.darkGray);
+      doc.setLineWidth(0.4);
+      doc.line(rightColX, sigY, rightColX + rightColW, sigY);
+      sigY += 9;
+    };
+    sigLine('Contratante');
+    sigLine('Atendente');
+
+    // Borda externa suave
+    setDC(C.lightGray);
+    doc.setLineWidth(0.4);
+    const totalH = Math.max(y, sigY) - (margin - 2) + 6;
+    doc.rect(margin - 2, margin - 2, contentW + 4, totalH);
 
     doc.save(`autorizacao-${at?.protocolo || 'servico'}.pdf`);
   }
