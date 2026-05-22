@@ -206,7 +206,7 @@ export default function Agents() {
   
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
-  const [teamFormData, setTeamFormData] = useState({ name: "", description: "", supervisorEmail: "", active: true });
+  const [teamFormData, setTeamFormData] = useState({ name: "", description: "", supervisorEmails: [], active: true });
   
   const [queueDialogOpen, setQueueDialogOpen] = useState(false);
   const [editingQueue, setEditingQueue] = useState(null);
@@ -537,7 +537,7 @@ export default function Agents() {
   };
 
   const resetTeamForm = () => {
-    setTeamFormData({ name: "", description: "", supervisorEmail: "", active: true });
+    setTeamFormData({ name: "", description: "", supervisorEmails: [], active: true });
     setEditingTeam(null);
   };
 
@@ -663,7 +663,9 @@ export default function Agents() {
     setTeamFormData({
       name: team.name || "",
       description: team.description || "",
-      supervisorEmail: team.supervisorEmail || "",
+      supervisorEmails: team.supervisorEmails && team.supervisorEmails.length > 0
+        ? team.supervisorEmails
+        : (team.supervisorEmail ? [team.supervisorEmail] : []),
       active: team.active !== undefined ? team.active : true,
     });
     setTeamDialogOpen(true);
@@ -1147,9 +1149,17 @@ export default function Agents() {
                         </div>
                         <div>
                           <CardTitle className="text-base font-semibold text-gray-900 dark:text-gray-100">{team.name}</CardTitle>
-                          {team.supervisorEmail && (
-                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[150px]">{team.supervisorEmail}</p>
-                          )}
+                          {(() => {
+                            const emails = team.supervisorEmails && team.supervisorEmails.length > 0
+                              ? team.supervisorEmails
+                              : (team.supervisorEmail ? [team.supervisorEmail] : []);
+                            if (emails.length === 0) return null;
+                            const names = emails.map(email => {
+                              const ag = agents?.find(a => a.email === email);
+                              return ag ? ag.name : email;
+                            }).join(', ');
+                            return <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[180px]">{names}</p>;
+                          })()}
                         </div>
                       </div>
                       
@@ -2106,28 +2116,55 @@ export default function Agents() {
             </div>
 
             <div className="space-y-2">
-              <Label className="text-gray-900 dark:text-gray-100 font-medium">Supervisor</Label>
-              <Select 
-                value={teamFormData.supervisorEmail} 
-                onValueChange={(val) => setTeamFormData({...teamFormData, supervisorEmail: val})}
-              >
-                <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 h-11">
-                  <SelectValue placeholder="Selecione o supervisor do time" />
-                </SelectTrigger>
-                <SelectContent>
-                  {agents?.filter(a => isSupervisorType(a.agentType) || a.agentType === 'admin').sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR')).map(agent => (
-                    <SelectItem key={agent.id} value={agent.email}>
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-xs font-medium text-blue-600 dark:text-blue-400">
+              <Label className="text-gray-900 dark:text-gray-100 font-medium">Supervisores</Label>
+              <div className="border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 max-h-48 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">
+                {agents?.filter(a => isSupervisorType(a.agentType) || a.agentType === 'admin')
+                  .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'))
+                  .map(agent => {
+                    const checked = (teamFormData.supervisorEmails || []).includes(agent.email);
+                    return (
+                      <label
+                        key={agent.id}
+                        className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 select-none"
+                      >
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          checked={checked}
+                          onChange={() => {
+                            const current = teamFormData.supervisorEmails || [];
+                            const next = checked
+                              ? current.filter(e => e !== agent.email)
+                              : [...current, agent.email];
+                            setTeamFormData({ ...teamFormData, supervisorEmails: next });
+                          }}
+                        />
+                        <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-xs font-medium text-blue-600 dark:text-blue-400 shrink-0">
                           {agent.name?.charAt(0).toUpperCase()}
                         </div>
-                        {agent.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-gray-500">O supervisor tem acesso aos relatórios e métricas do time</p>
+                        <span className="text-sm text-gray-800 dark:text-gray-200">{agent.name}</span>
+                        <span className="text-xs text-gray-400 ml-auto">{agent.email}</span>
+                      </label>
+                    );
+                  })
+                }
+                {agents?.filter(a => isSupervisorType(a.agentType) || a.agentType === 'admin').length === 0 && (
+                  <p className="text-sm text-gray-400 px-3 py-3">Nenhum supervisor disponível</p>
+                )}
+              </div>
+              {(teamFormData.supervisorEmails || []).length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {(teamFormData.supervisorEmails || []).map(email => {
+                    const ag = agents?.find(a => a.email === email);
+                    return (
+                      <span key={email} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900 text-xs text-blue-700 dark:text-blue-300">
+                        {ag ? ag.name : email}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              <p className="text-xs text-gray-500">Supervisores têm acesso aos relatórios e métricas do time</p>
             </div>
 
             {editingTeam && (

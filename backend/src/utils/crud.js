@@ -21,7 +21,7 @@ function snakeToCamel(str) {
 }
 
 const JSONB_FIELDS = ['stage_history', 'photos', 'metadata', 'history', 'address_components', 'permissions', 'capacity', 'working_hours', 'settings', 'options', 'config', 'data', 'features', 'terms', 'variables', 'trigger_config', 'action_config', 'action_result'];
-const POSTGRES_ARRAY_FIELDS = ['queue_ids', 'skills', 'modules', 'territories', 'tags', 'categories', 'allowed_submenus'];
+const POSTGRES_ARRAY_FIELDS = ['queue_ids', 'skills', 'modules', 'territories', 'tags', 'categories', 'allowed_submenus', 'supervisor_emails'];
 
 function convertKeysToSnake(obj) {
   if (obj === null || typeof obj !== 'object') return obj;
