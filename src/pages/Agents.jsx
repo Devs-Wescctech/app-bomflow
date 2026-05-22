@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Edit, Trash2, UserCheck, UserX, Activity, Upload, Loader2, MessageSquare, Copy, Check, ExternalLink, MoreVertical, Clock, Users, Building2, Layers, Settings, ShieldX, KeyRound, Eye, EyeOff, Search, X } from "lucide-react";
-import { canManageAgents } from "@/components/utils/permissions.jsx";
+import { canManageAgents, isSupervisorType } from "@/components/utils/permissions.jsx";
 import {
   Dialog,
   DialogContent,
@@ -787,12 +787,12 @@ export default function Agents() {
     return supervisor?.name || null;
   };
 
-  const SUPERVISOR_TYPES = ['sales_supervisor', 'indicacoes_supervisor', 'admin'];
+  const isSupervisorAgent = (a) => isSupervisorType(a.agentType) || a.agentType === 'admin';
 
   const getSupervisorsForTeam = (teamId) => {
-    const byTeam = agents.filter(a => SUPERVISOR_TYPES.includes(a.agentType) && a.teamId === teamId);
+    const byTeam = agents.filter(a => isSupervisorAgent(a) && a.teamId === teamId);
     if (byTeam.length > 0) return byTeam;
-    return agents.filter(a => SUPERVISOR_TYPES.includes(a.agentType));
+    return agents.filter(a => isSupervisorAgent(a));
   };
 
   const getQueueNames = (queueIds) => {
@@ -1670,7 +1670,7 @@ export default function Agents() {
                 {formData.teamId && getSupervisorsForTeam(formData.teamId).length === 0 && (
                   <p className="text-xs text-amber-600 mt-1">Nenhum supervisor encontrado para este time.</p>
                 )}
-                {formData.teamId && agents.filter(a => SUPERVISOR_TYPES.includes(a.agentType) && a.teamId === formData.teamId).length === 0 && agents.filter(a => SUPERVISOR_TYPES.includes(a.agentType)).length > 0 && (
+                {formData.teamId && agents.filter(a => isSupervisorAgent(a) && a.teamId === formData.teamId).length === 0 && agents.filter(a => isSupervisorAgent(a)).length > 0 && (
                   <p className="text-xs text-blue-500 mt-1">Exibindo todos os supervisores (nenhum vinculado a este time).</p>
                 )}
               </div>
@@ -2115,7 +2115,7 @@ export default function Agents() {
                   <SelectValue placeholder="Selecione o supervisor do time" />
                 </SelectTrigger>
                 <SelectContent>
-                  {agents?.filter(a => a.agentType === 'supervisor' || a.agentType === 'sales_supervisor' || a.agentType === 'admin').map(agent => (
+                  {agents?.filter(a => isSupervisorType(a.agentType) || a.agentType === 'admin').map(agent => (
                     <SelectItem key={agent.id} value={agent.email}>
                       <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-xs font-medium text-blue-600 dark:text-blue-400">
