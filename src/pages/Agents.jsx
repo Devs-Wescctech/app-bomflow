@@ -1629,10 +1629,10 @@ export default function Agents() {
                     <SelectValue placeholder="Selecione o nível" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="specialist">Especialista</SelectItem>
                     <SelectItem value="junior">Junior</SelectItem>
                     <SelectItem value="pleno">Pleno</SelectItem>
                     <SelectItem value="senior">Senior</SelectItem>
-                    <SelectItem value="specialist">Especialista</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
