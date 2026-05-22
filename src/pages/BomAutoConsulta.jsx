@@ -11,7 +11,7 @@ import {
   Car, Search, CheckCircle, XCircle, AlertTriangle,
   Loader2, User, Wrench, FileText, Phone, Hash,
   ClipboardCheck, Calendar, Shield,
-  Copy, RefreshCw, Clock
+  Copy, RefreshCw, Clock, Download, Save
 } from "lucide-react";
 
 const API_BASE = '/api';
@@ -105,6 +105,12 @@ export default function BomAutoConsulta() {
   const [telefoneContato, setTelefoneContato] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [atendimentoFinalizado, setAtendimentoFinalizado] = useState(null);
+
+  const [termoLocal, setTermoLocal] = useState('');
+  const [termoRua, setTermoRua] = useState('');
+  const [termoValoresCombinados, setTermoValoresCombinados] = useState('');
+  const [termoDescricaoProduto, setTermoDescricaoProduto] = useState('');
+  const [termoSalvo, setTermoSalvo] = useState(false);
 
   useEffect(() => {
     async function fetchUser() {
@@ -318,6 +324,215 @@ export default function BomAutoConsulta() {
     setTelefoneContato('');
     setAtendimentoFinalizado(null);
     setError('');
+    setTermoLocal('');
+    setTermoRua('');
+    setTermoValoresCombinados('');
+    setTermoDescricaoProduto('');
+    setTermoSalvo(false);
+  }
+
+  function handleSalvarTermo() {
+    setTermoSalvo(true);
+    toast({ title: "Dados salvos com sucesso!", description: "O botão para exportar o PDF foi habilitado." });
+  }
+
+  async function exportTermoPDF() {
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+    const pageW = 210;
+    const margin = 14;
+    const contentW = pageW - margin * 2;
+    let y = margin;
+
+    const ln = (x1, y1, x2, y2, color = [0,0,0]) => {
+      doc.setDrawColor(...color);
+      doc.line(x1, y1, x2, y2);
+    };
+    const setF = (style, size) => { doc.setFontSize(size); doc.setFont('helvetica', style); };
+
+    doc.setDrawColor(0);
+    doc.setLineWidth(0.3);
+
+    // ── LOGO BOX ──────────────────────────────────────
+    doc.setFillColor(10, 10, 10);
+    doc.rect(margin, y, 32, 20, 'F');
+    doc.setTextColor(255, 255, 255);
+    setF('bold', 7);
+    doc.text('BP', margin + 3, y + 7);
+    setF('bold', 11);
+    doc.text('BOM', margin + 3, y + 13);
+    doc.text('AUTO', margin + 3, y + 19);
+
+    doc.setTextColor(0, 0, 0);
+    setF('normal', 7);
+    doc.text('Centro de atendimento', pageW - margin, y + 6, { align: 'right' });
+    doc.text('e Emergência 24 horas', pageW - margin, y + 10, { align: 'right' });
+    setF('bold', 14);
+    doc.text('0800 940 3227', pageW - margin, y + 18, { align: 'right' });
+
+    y += 24;
+
+    // ── TÍTULO ────────────────────────────────────────
+    doc.setFillColor(25, 25, 25);
+    doc.rect(margin, y, contentW, 9, 'F');
+    doc.setTextColor(255, 255, 255);
+    setF('bold', 9);
+    doc.text('AUTORIZAÇÃO DE SERVIÇOS DE ASSESSORIA VEICULAR', pageW / 2, y + 6, { align: 'center' });
+
+    y += 13;
+    doc.setTextColor(0, 0, 0);
+
+    // ── N° DO PROCESSO ────────────────────────────────
+    doc.rect(pageW - margin - 62, y - 5, 62, 8);
+    setF('normal', 7);
+    doc.text('N° do Processo:', pageW - margin - 60, y);
+    setF('bold', 9);
+    doc.text(atendimentoFinalizado?.protocolo || '', pageW - margin - 2, y, { align: 'right' });
+
+    y += 9;
+
+    // ── LINHA HELPER ─────────────────────────────────
+    const field = (label, value, lx, rx, yPos) => {
+      setF('normal', 7.5);
+      doc.text(label, lx, yPos);
+      const labelW = doc.getTextWidth(label) + 2;
+      setF('bold', 8);
+      doc.text(value || '', lx + labelW, yPos);
+      ln(lx + labelW - 1, yPos + 1, rx, yPos + 1);
+    };
+
+    // Empresa Contratada
+    field('Empresa Contratada:', 'Bom Auto', margin, margin + contentW * 0.5, y);
+    y += 7;
+
+    // Atendente | Data e Hora
+    const midX = margin + contentW * 0.55;
+    field('Atendente Resp.:', atendimentoFinalizado?.usuario || '', margin, midX, y);
+    const dh = atendimentoFinalizado ? formatDateTime(atendimentoFinalizado.data_hora || atendimentoFinalizado.created_at) : '';
+    field('Data e Hora:', dh, midX + 3, pageW - margin, y);
+    y += 7;
+
+    // Fone
+    const tel = atendimentoFinalizado?.telefone_contato
+      ? atendimentoFinalizado.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3')
+      : '';
+    field('Fone para Contato do Condutor:', tel, margin, pageW - margin, y);
+    y += 7;
+
+    // N° do Contrato
+    field('Número do Contrato:', atendimentoFinalizado?.contratos_servicos || '', margin, pageW - margin, y);
+    y += 7;
+
+    // Nome do Titular
+    const nomeCliente = clientData?.contratante || clientData?.data?.contratante || '';
+    field('Nome do Titular:', nomeCliente, margin, pageW - margin, y);
+    y += 7;
+
+    // Veículo Modelo
+    field('Veículo Modelo:', atendimentoFinalizado?.descricao_veiculo || '', margin, pageW - margin, y);
+    y += 7;
+
+    // Local / Cidade
+    field('Local / Cidade onde se encontra o Veículo:', termoLocal, margin, margin + contentW * 0.65, y);
+    setF('normal', 7.5);
+    doc.text('Residência [ ]', margin + contentW * 0.67, y);
+    doc.text('Oficina [ ]', margin + contentW * 0.84, y);
+    y += 7;
+
+    // Rua
+    field('Rua / Av. / Rod. / Ponto de Referência:', termoRua, margin, pageW - margin, y);
+    y += 10;
+
+    // ── SEPARADOR ─────────────────────────────────────
+    ln(margin, y, pageW - margin, y);
+    y += 5;
+
+    // ── DADOS ADICIONAIS ──────────────────────────────
+    setF('bold', 8);
+    doc.text('DADOS ADICIONAIS', margin, y);
+    y += 6;
+
+    const addF = (label, value) => {
+      setF('normal', 7.5);
+      doc.text(`${label}:`, margin, y);
+      setF('bold', 8);
+      doc.text(value || '-', margin + 32, y);
+      ln(margin + 30, y + 1, pageW - margin, y + 1, [180,180,180]);
+      y += 6;
+    };
+    addF('Documento', clientData?.documento || clientData?.data?.documento || '');
+    addF('Placa', atendimentoFinalizado?.placa || '');
+    addF('Tipo de Serviço', atendimentoFinalizado?.tipo_servico || '');
+    addF('Protocolo', atendimentoFinalizado?.protocolo || '');
+
+    if (atendimentoFinalizado?.observacoes) {
+      setF('normal', 7.5);
+      doc.text('Observações:', margin, y);
+      setF('bold', 8);
+      const obsLines = doc.splitTextToSize(atendimentoFinalizado.observacoes, contentW - 34);
+      doc.text(obsLines, margin + 32, y);
+      y += obsLines.length * 5 + 2;
+    }
+
+    y += 3;
+    ln(margin, y, pageW - margin, y);
+    y += 8;
+
+    // ── SEÇÃO INFERIOR ────────────────────────────────
+    const leftColW = contentW * 0.54;
+    const rightColX = margin + leftColW + 6;
+    const rightColW = contentW * 0.44;
+    const bottomStartY = y;
+
+    // Coluna esquerda
+    setF('normal', 7.5);
+    doc.text('Valores Combinados:', margin, y);
+    ln(margin, y + 2, margin + leftColW, y + 2);
+    if (termoValoresCombinados) {
+      setF('bold', 8);
+      doc.text(termoValoresCombinados, margin, y + 1);
+    }
+    y += 8;
+
+    setF('normal', 7.5);
+    doc.text('Descrição do Produto Contratado:', margin, y);
+    y += 5;
+    if (termoDescricaoProduto) {
+      const descLines = doc.splitTextToSize(termoDescricaoProduto, leftColW);
+      setF('bold', 8);
+      doc.text(descLines, margin, y);
+      y += descLines.length * 5;
+    } else {
+      ln(margin, y, margin + leftColW, y); y += 5;
+      ln(margin, y, margin + leftColW, y); y += 5;
+      ln(margin, y, margin + leftColW, y); y += 5;
+    }
+
+    y += 4;
+    setF('normal', 7.5);
+    doc.text(`Data: ${dh}`, margin, y);
+
+    // Coluna direita (assinaturas)
+    let sigY = bottomStartY;
+    setF('bold', 8);
+    doc.text('Assinaturas:', rightColX, sigY);
+    sigY += 7;
+    setF('normal', 7.5);
+    doc.text('Assinante:', rightColX, sigY);
+    ln(rightColX, sigY + 1, rightColX + rightColW, sigY + 1);
+    sigY += 9;
+    doc.text('Contratante:', rightColX, sigY);
+    ln(rightColX, sigY + 1, rightColX + rightColW, sigY + 1);
+    sigY += 9;
+    doc.text('Atendente:', rightColX, sigY);
+    ln(rightColX, sigY + 1, rightColX + rightColW, sigY + 1);
+
+    // Borda externa
+    doc.setLineWidth(0.5);
+    doc.rect(margin - 2, margin - 2, contentW + 4, Math.max(y, sigY) - margin + 8);
+
+    doc.save(`autorizacao-${atendimentoFinalizado?.protocolo || 'servico'}.pdf`);
   }
 
   function buildCommunicationMessage() {
@@ -983,6 +1198,167 @@ export default function BomAutoConsulta() {
               </div>
             </CardContent>
           </Card>
+
+          {/* ── TERMO DE AUTORIZAÇÃO ─────────────────────── */}
+          <Card className="border-gray-300 dark:border-gray-600 shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-gray-700 to-gray-900 shadow-lg">
+                  <FileText className="w-5 h-5 text-white" />
+                </div>
+                Autorização de Serviços de Assessoria Veicular
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+
+              {/* Cabeçalho do documento */}
+              <div className="border border-gray-300 dark:border-gray-600 rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between bg-gray-900 dark:bg-black px-5 py-3">
+                  <div>
+                    <p className="text-white font-black text-xs tracking-widest">BP</p>
+                    <p className="text-white font-black text-base leading-tight">BOM AUTO</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-gray-300 text-[10px]">Centro de atendimento e Emergência 24 horas</p>
+                    <p className="text-white font-bold text-lg tracking-wider">0800 940 3227</p>
+                  </div>
+                </div>
+                <div className="bg-gray-800 py-2 text-center">
+                  <p className="text-white font-bold text-sm tracking-widest uppercase">Autorização de Serviços de Assessoria Veicular</p>
+                </div>
+              </div>
+
+              {/* N° do Processo */}
+              <div className="flex justify-end">
+                <div className="border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 min-w-[200px]">
+                  <p className="text-[10px] uppercase tracking-widest text-gray-500 dark:text-gray-400">N° do Processo</p>
+                  <p className="font-mono font-bold text-gray-900 dark:text-gray-100 text-base">{atendimentoFinalizado?.protocolo || '-'}</p>
+                </div>
+              </div>
+
+              {/* Campos preenchidos automaticamente */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 border-t border-gray-200 dark:border-gray-700 pt-4">
+                {[
+                  { label: 'Empresa Contratada', value: 'Bom Auto' },
+                  { label: 'Atendente Resp.', value: atendimentoFinalizado?.usuario || '-' },
+                  { label: 'Data e Hora', value: formatDateTime(atendimentoFinalizado?.data_hora || atendimentoFinalizado?.created_at) },
+                  { label: 'Fone para Contato do Condutor', value: atendimentoFinalizado?.telefone_contato ? atendimentoFinalizado.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : '-' },
+                  { label: 'Número do Contrato', value: atendimentoFinalizado?.contratos_servicos || '-' },
+                  { label: 'Nome do Titular', value: clientData?.contratante || clientData?.data?.contratante || '-' },
+                  { label: 'Veículo Modelo', value: atendimentoFinalizado?.descricao_veiculo || '-' },
+                  { label: 'Documento', value: clientData?.documento || clientData?.data?.documento || '-' },
+                  { label: 'Placa', value: atendimentoFinalizado?.placa || '-' },
+                  { label: 'Tipo de Serviço', value: atendimentoFinalizado?.tipo_servico || '-' },
+                  { label: 'Protocolo', value: atendimentoFinalizado?.protocolo || '-' },
+                ].map(({ label, value }) => (
+                  <div key={label} className="space-y-0.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-1">{value}</p>
+                  </div>
+                ))}
+                {atendimentoFinalizado?.observacoes && (
+                  <div className="sm:col-span-2 space-y-0.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Observações</p>
+                    <p className="text-sm text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-1">{atendimentoFinalizado.observacoes}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Campos editáveis pelo atendente */}
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-4">
+                <p className="text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">Campos a preencher</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-600 dark:text-gray-400">Local / Cidade onde se encontra o Veículo</Label>
+                    <Input
+                      value={termoLocal}
+                      onChange={e => setTermoLocal(e.target.value)}
+                      placeholder="Ex: Residência / Oficina — cidade"
+                      disabled={termoSalvo}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-600 dark:text-gray-400">Rua / Av. / Rod. / Ponto de Referência</Label>
+                    <Input
+                      value={termoRua}
+                      onChange={e => setTermoRua(e.target.value)}
+                      placeholder="Ex: Rodovia Engenheiro João Tosello, próximo ao nível"
+                      disabled={termoSalvo}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-600 dark:text-gray-400">Valores Combinados</Label>
+                    <Input
+                      value={termoValoresCombinados}
+                      onChange={e => setTermoValoresCombinados(e.target.value)}
+                      placeholder="Ex: R$ 0,00 — incluso no plano"
+                      disabled={termoSalvo}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-600 dark:text-gray-400">Descrição do Produto Contratado</Label>
+                    <Textarea
+                      value={termoDescricaoProduto}
+                      onChange={e => setTermoDescricaoProduto(e.target.value)}
+                      placeholder="Descreva o produto/serviço contratado..."
+                      rows={3}
+                      disabled={termoSalvo}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Seção de assinaturas (visual) */}
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                <p className="text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-3">Assinaturas</p>
+                <div className="grid grid-cols-3 gap-4">
+                  {['Assinante', 'Contratante', 'Atendente'].map(sig => (
+                    <div key={sig} className="space-y-1">
+                      <div className="h-12 border-b-2 border-gray-300 dark:border-gray-600" />
+                      <p className="text-[10px] text-center text-gray-500 dark:text-gray-400 uppercase tracking-wider">{sig}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Data e botões */}
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-gray-500 dark:text-gray-400">Data do Registro</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    {formatDateTime(atendimentoFinalizado?.data_hora || atendimentoFinalizado?.created_at)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {termoSalvo && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded-lg border border-emerald-300 dark:border-emerald-700 text-xs font-semibold">
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      Dados salvos com sucesso
+                    </div>
+                  )}
+                  {!termoSalvo && (
+                    <Button onClick={handleSalvarTermo} className="bg-gray-800 hover:bg-gray-900 text-white gap-2">
+                      <Save className="w-4 h-4" />
+                      Salvar
+                    </Button>
+                  )}
+                  <Button
+                    onClick={exportTermoPDF}
+                    disabled={!termoSalvo}
+                    className="bg-red-600 hover:bg-red-700 text-white gap-2 disabled:opacity-40"
+                  >
+                    <Download className="w-4 h-4" />
+                    Exportar PDF
+                  </Button>
+                </div>
+              </div>
+
+            </CardContent>
+          </Card>
+          {/* ── /TERMO DE AUTORIZAÇÃO ─────────────────────── */}
 
           <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/30">
             <CardHeader>
