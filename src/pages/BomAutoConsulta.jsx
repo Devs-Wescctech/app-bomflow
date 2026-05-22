@@ -360,33 +360,34 @@ export default function BomAutoConsulta() {
     doc.setDrawColor(0);
     doc.setLineWidth(0.3);
 
-    // ── LOGO BOX ──────────────────────────────────────
-    doc.setFillColor(10, 10, 10);
-    doc.rect(margin, y, 32, 20, 'F');
-    doc.setTextColor(255, 255, 255);
-    setF('bold', 7);
-    doc.text('BP', margin + 3, y + 7);
-    setF('bold', 11);
-    doc.text('BOM', margin + 3, y + 13);
-    doc.text('AUTO', margin + 3, y + 19);
+    // ── CABEÇALHO (imagem oficial) ────────────────────
+    try {
+      const resp = await fetch('/bom-auto-header.png');
+      const blob = await resp.blob();
+      const b64 = await new Promise(res => {
+        const reader = new FileReader();
+        reader.onload = () => res(reader.result);
+        reader.readAsDataURL(blob);
+      });
+      const imgProps = doc.getImageProperties(b64);
+      const headerH = (contentW * imgProps.height) / imgProps.width;
+      doc.addImage(b64, 'PNG', margin, y, contentW, headerH);
+      y += headerH + 4;
+    } catch {
+      // fallback textual caso a imagem falhe
+      setF('bold', 14);
+      doc.text('BOM AUTO', margin, y + 10);
+      setF('normal', 7);
+      doc.text('0800 940 3227', pageW - margin, y + 10, { align: 'right' });
+      doc.setFillColor(25, 25, 25);
+      doc.rect(margin, y + 14, contentW, 9, 'F');
+      doc.setTextColor(255, 255, 255);
+      setF('bold', 9);
+      doc.text('AUTORIZAÇÃO DE SERVIÇOS DE ASSESSORIA VEICULAR', pageW / 2, y + 20, { align: 'center' });
+      doc.setTextColor(0, 0, 0);
+      y += 28;
+    }
 
-    doc.setTextColor(0, 0, 0);
-    setF('normal', 7);
-    doc.text('Centro de atendimento', pageW - margin, y + 6, { align: 'right' });
-    doc.text('e Emergência 24 horas', pageW - margin, y + 10, { align: 'right' });
-    setF('bold', 14);
-    doc.text('0800 940 3227', pageW - margin, y + 18, { align: 'right' });
-
-    y += 24;
-
-    // ── TÍTULO ────────────────────────────────────────
-    doc.setFillColor(25, 25, 25);
-    doc.rect(margin, y, contentW, 9, 'F');
-    doc.setTextColor(255, 255, 255);
-    setF('bold', 9);
-    doc.text('AUTORIZAÇÃO DE SERVIÇOS DE ASSESSORIA VEICULAR', pageW / 2, y + 6, { align: 'center' });
-
-    y += 13;
     doc.setTextColor(0, 0, 0);
 
     // ── N° DO PROCESSO ────────────────────────────────
@@ -1219,21 +1220,11 @@ export default function BomAutoConsulta() {
             <CardContent className="space-y-5">
 
               {/* Cabeçalho do documento */}
-              <div className="border border-gray-300 dark:border-gray-600 rounded-xl overflow-hidden">
-                <div className="flex items-center justify-between bg-gray-900 dark:bg-black px-5 py-3">
-                  <div>
-                    <p className="text-white font-black text-xs tracking-widest">BP</p>
-                    <p className="text-white font-black text-base leading-tight">BOM AUTO</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-gray-300 text-[10px]">Centro de atendimento e Emergência 24 horas</p>
-                    <p className="text-white font-bold text-lg tracking-wider">0800 940 3227</p>
-                  </div>
-                </div>
-                <div className="bg-gray-800 py-2 text-center">
-                  <p className="text-white font-bold text-sm tracking-widest uppercase">Autorização de Serviços de Assessoria Veicular</p>
-                </div>
-              </div>
+              <img
+                src="/bom-auto-header.png"
+                alt="Bom Auto — Autorização de Serviços de Assessoria Veicular"
+                className="w-full rounded-xl border border-gray-200 dark:border-gray-700"
+              />
 
               {/* N° do Processo */}
               <div className="flex justify-end">
