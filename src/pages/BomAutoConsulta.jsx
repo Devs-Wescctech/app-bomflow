@@ -119,9 +119,6 @@ export default function BomAutoConsulta() {
   const [termoDescricaoProduto, setTermoDescricaoProduto] = useState('');
   const [termoSalvo, setTermoSalvo] = useState(false);
   const [termoModalAt, setTermoModalAt] = useState(null);
-  const [termoModalForm, setTermoModalForm] = useState({ local: '', rua: '', valores: '', descricao: '' });
-  const [termoModalSaving, setTermoModalSaving] = useState(false);
-  const [termoModalSalvo, setTermoModalSalvo] = useState(false);
 
   useEffect(() => {
     async function fetchUser() {
@@ -340,51 +337,6 @@ export default function BomAutoConsulta() {
     setTermoValoresCombinados('');
     setTermoDescricaoProduto('');
     setTermoSalvo(false);
-  }
-
-  useEffect(() => {
-    if (termoModalAt) {
-      setTermoModalForm({
-        local: termoModalAt.termo_local || '',
-        rua: termoModalAt.termo_rua || '',
-        valores: termoModalAt.termo_valores_combinados || '',
-        descricao: termoModalAt.termo_descricao_produto || '',
-      });
-      setTermoModalSalvo(!!(termoModalAt.termo_local || termoModalAt.termo_rua || termoModalAt.termo_valores_combinados || termoModalAt.termo_descricao_produto));
-    }
-  }, [termoModalAt]);
-
-  async function handleSalvarTermoModal() {
-    if (!termoModalAt?.id) return;
-    setTermoModalSaving(true);
-    try {
-      const resp = await fetch(`${API_BASE}/bom-auto/atendimentos/${termoModalAt.id}/termo`, {
-        method: 'PATCH',
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          termo_local: termoModalForm.local,
-          termo_rua: termoModalForm.rua,
-          termo_valores_combinados: termoModalForm.valores,
-          termo_descricao_produto: termoModalForm.descricao,
-        }),
-      });
-      if (!resp.ok) throw new Error('Falha ao salvar');
-      const updated = await resp.json();
-      setTermoModalAt(updated);
-      setTermoModalSalvo(true);
-      setUtilizacoes(prev => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          atendimentos: prev.atendimentos.map(a => a.id === updated.id ? { ...a, ...updated } : a),
-        };
-      });
-      toast({ title: "Autorização salva!", description: "Os dados foram gravados com sucesso." });
-    } catch {
-      toast({ title: "Erro ao salvar", description: "Tente novamente.", variant: "destructive" });
-    } finally {
-      setTermoModalSaving(false);
-    }
   }
 
   async function handleSalvarTermo() {
@@ -975,31 +927,27 @@ export default function BomAutoConsulta() {
                             )}
                           </div>
 
-                          {/* Autorização de Serviços — sempre visível */}
-                          <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2">
-                              <FileText className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400 flex-shrink-0" />
-                              <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">Autorização de Serviços</span>
-                              {(at.termo_local || at.termo_rua || at.termo_valores_combinados || at.termo_descricao_produto) ? (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 uppercase tracking-wider">
-                                  Preenchida
+                          {/* Autorização de Serviços — somente quando há dados */}
+                          {(at.termo_local || at.termo_rua || at.termo_valores_combinados || at.termo_descricao_produto) && (
+                            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2">
+                                <FileText className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400 flex-shrink-0" />
+                                <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">Autorização de Serviços preenchida</span>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 uppercase tracking-wider">
+                                  Disponível
                                 </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 uppercase tracking-wider">
-                                  Pendente
-                                </span>
-                              )}
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-1.5 text-xs h-7 border-gray-300 dark:border-gray-600"
+                                onClick={() => setTermoModalAt(at)}
+                              >
+                                <FileText className="w-3 h-3" />
+                                Visualizar
+                              </Button>
                             </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1.5 text-xs h-7 border-gray-300 dark:border-gray-600"
-                              onClick={() => setTermoModalAt(at)}
-                            >
-                              <FileText className="w-3 h-3" />
-                              {(at.termo_local || at.termo_rua || at.termo_valores_combinados || at.termo_descricao_produto) ? 'Visualizar / Editar' : 'Preencher'}
-                            </Button>
-                          </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1542,46 +1490,19 @@ export default function BomAutoConsulta() {
                 )}
               </div>
 
-              {/* Campos editáveis do Termo */}
-              <div className="border-t border-gray-200 dark:border-gray-700 pt-3 space-y-3">
-                <p className="text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">Campos da Autorização</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-600 dark:text-gray-400">Local / Cidade onde se encontra o Veículo</Label>
-                    <Input
-                      value={termoModalForm.local}
-                      onChange={e => setTermoModalForm(f => ({ ...f, local: e.target.value }))}
-                      placeholder="Ex: Residência / Oficina — cidade"
-                    />
+              {/* Campos do Termo — somente leitura */}
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                {[
+                  { label: 'Local / Cidade', value: termoModalAt.termo_local },
+                  { label: 'Rua / Av. / Rod. / Ponto de Referência', value: termoModalAt.termo_rua },
+                  { label: 'Valores Combinados', value: termoModalAt.termo_valores_combinados },
+                  { label: 'Descrição do Produto Contratado', value: termoModalAt.termo_descricao_produto },
+                ].map(({ label, value }) => (
+                  <div key={label} className="space-y-0.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-1">{value || '-'}</p>
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-600 dark:text-gray-400">Rua / Av. / Rod. / Ponto de Referência</Label>
-                    <Input
-                      value={termoModalForm.rua}
-                      onChange={e => setTermoModalForm(f => ({ ...f, rua: e.target.value }))}
-                      placeholder="Ex: Rodovia Engenheiro João Tosello, km 12"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-600 dark:text-gray-400">Valores Combinados</Label>
-                    <Input
-                      value={termoModalForm.valores}
-                      onChange={e => setTermoModalForm(f => ({ ...f, valores: e.target.value }))}
-                      placeholder="Ex: R$ 0,00 — incluso no plano"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-gray-600 dark:text-gray-400">Descrição do Produto Contratado</Label>
-                    <Textarea
-                      value={termoModalForm.descricao}
-                      onChange={e => setTermoModalForm(f => ({ ...f, descricao: e.target.value }))}
-                      placeholder="Descreva o produto/serviço contratado..."
-                      rows={3}
-                    />
-                  </div>
-                </div>
+                ))}
               </div>
 
               {/* Assinaturas */}
@@ -1597,38 +1518,26 @@ export default function BomAutoConsulta() {
                 </div>
               </div>
 
-              {/* Data + Salvar + PDF */}
-              <div className="border-t border-gray-200 dark:border-gray-700 pt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              {/* Data + Exportar PDF */}
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-3 flex items-center justify-between">
                 <div>
                   <p className="text-[10px] uppercase tracking-widest text-gray-500 dark:text-gray-400">Data do Registro</p>
                   <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                     {formatDate(termoModalAt.data_hora || termoModalAt.created_at)}
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
-                  {termoModalSalvo && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded-lg border border-emerald-300 dark:border-emerald-700 text-xs font-semibold">
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      Salvo
-                    </div>
-                  )}
-                  <Button
-                    onClick={handleSalvarTermoModal}
-                    disabled={termoModalSaving}
-                    className="bg-gray-800 hover:bg-gray-900 text-white gap-2"
-                  >
-                    {termoModalSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    {termoModalSaving ? 'Salvando...' : 'Salvar'}
-                  </Button>
-                  <Button
-                    onClick={() => exportTermoPDF(termoModalAt, null, termoModalForm)}
-                    disabled={!termoModalSalvo}
-                    className="bg-red-600 hover:bg-red-700 text-white gap-2 disabled:opacity-40"
-                  >
-                    <Download className="w-4 h-4" />
-                    Exportar PDF
-                  </Button>
-                </div>
+                <Button
+                  onClick={() => exportTermoPDF(termoModalAt, null, {
+                    local: termoModalAt.termo_local,
+                    rua: termoModalAt.termo_rua,
+                    valores: termoModalAt.termo_valores_combinados,
+                    descricao: termoModalAt.termo_descricao_produto,
+                  })}
+                  className="bg-red-600 hover:bg-red-700 text-white gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Exportar PDF
+                </Button>
               </div>
 
             </div>
