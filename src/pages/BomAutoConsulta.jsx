@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -117,6 +118,7 @@ export default function BomAutoConsulta() {
   const [termoValoresCombinados, setTermoValoresCombinados] = useState('');
   const [termoDescricaoProduto, setTermoDescricaoProduto] = useState('');
   const [termoSalvo, setTermoSalvo] = useState(false);
+  const [termoModalAt, setTermoModalAt] = useState(null);
 
   useEffect(() => {
     async function fetchUser() {
@@ -337,12 +339,31 @@ export default function BomAutoConsulta() {
     setTermoSalvo(false);
   }
 
-  function handleSalvarTermo() {
-    setTermoSalvo(true);
-    toast({ title: "Dados salvos com sucesso!", description: "O botão para exportar o PDF foi habilitado." });
+  async function handleSalvarTermo() {
+    if (!atendimentoFinalizado?.id) return;
+    try {
+      const resp = await fetch(`${API_BASE}/bom-auto/atendimentos/${atendimentoFinalizado.id}/termo`, {
+        method: 'PATCH',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          termo_local: termoLocal,
+          termo_rua: termoRua,
+          termo_valores_combinados: termoValoresCombinados,
+          termo_descricao_produto: termoDescricaoProduto,
+        }),
+      });
+      if (!resp.ok) throw new Error('Falha ao salvar');
+      setTermoSalvo(true);
+      toast({ title: "Autorização salva com sucesso!", description: "O botão para exportar o PDF foi habilitado." });
+    } catch {
+      toast({ title: "Erro ao salvar", description: "Tente novamente.", variant: "destructive" });
+    }
   }
 
-  async function exportTermoPDF() {
+  async function exportTermoPDF(atData, clienteData, termoData) {
+    const at = atData || atendimentoFinalizado;
+    const cli = clienteData || clientData;
+    const td = termoData || { local: termoLocal, rua: termoRua, valores: termoValoresCombinados, descricao: termoDescricaoProduto };
     const { jsPDF } = await import('jspdf');
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
@@ -395,7 +416,7 @@ export default function BomAutoConsulta() {
     setF('normal', 7);
     doc.text('N° do Processo:', pageW - margin - 60, y);
     setF('bold', 9);
-    doc.text(atendimentoFinalizado?.protocolo || '', pageW - margin - 2, y, { align: 'right' });
+    doc.text(at?.protocolo || '', pageW - margin - 2, y, { align: 'right' });
 
     y += 9;
 
@@ -415,40 +436,40 @@ export default function BomAutoConsulta() {
 
     // Atendente | Data e Hora
     const midX = margin + contentW * 0.55;
-    field('Atendente Resp.:', atendimentoFinalizado?.usuario || '', margin, midX, y);
-    const dh = atendimentoFinalizado ? formatDateTime(atendimentoFinalizado.data_hora || atendimentoFinalizado.created_at) : '';
+    field('Atendente Resp.:', at?.usuario || '', margin, midX, y);
+    const dh = at ? formatDateTime(at.data_hora || at.created_at) : '';
     field('Data e Hora:', dh, midX + 3, pageW - margin, y);
     y += 7;
 
     // Fone
-    const tel = atendimentoFinalizado?.telefone_contato
-      ? atendimentoFinalizado.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3')
+    const tel = at?.telefone_contato
+      ? at.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3')
       : '';
     field('Fone para Contato do Condutor:', tel, margin, pageW - margin, y);
     y += 7;
 
     // N° do Contrato
-    field('Número do Contrato:', atendimentoFinalizado?.contratos_servicos || '', margin, pageW - margin, y);
+    field('Número do Contrato:', at?.contratos_servicos || '', margin, pageW - margin, y);
     y += 7;
 
     // Nome do Titular
-    const nomeCliente = clientData?.contratante || clientData?.data?.contratante || '';
+    const nomeCliente = cli?.contratante || cli?.data?.contratante || at?.nome_cliente || '';
     field('Nome do Titular:', nomeCliente, margin, pageW - margin, y);
     y += 7;
 
     // Veículo Modelo
-    field('Veículo Modelo:', atendimentoFinalizado?.descricao_veiculo || '', margin, pageW - margin, y);
+    field('Veículo Modelo:', at?.descricao_veiculo || '', margin, pageW - margin, y);
     y += 7;
 
     // Local / Cidade
-    field('Local / Cidade onde se encontra o Veículo:', termoLocal, margin, margin + contentW * 0.65, y);
+    field('Local / Cidade onde se encontra o Veículo:', td.local || '', margin, margin + contentW * 0.65, y);
     setF('normal', 7.5);
     doc.text('Residência [ ]', margin + contentW * 0.67, y);
     doc.text('Oficina [ ]', margin + contentW * 0.84, y);
     y += 7;
 
     // Rua
-    field('Rua / Av. / Rod. / Ponto de Referência:', termoRua, margin, pageW - margin, y);
+    field('Rua / Av. / Rod. / Ponto de Referência:', td.rua || '', margin, pageW - margin, y);
     y += 10;
 
     // ── SEPARADOR ─────────────────────────────────────
@@ -468,16 +489,16 @@ export default function BomAutoConsulta() {
       ln(margin + 30, y + 1, pageW - margin, y + 1, [180,180,180]);
       y += 6;
     };
-    addF('Documento', clientData?.documento || clientData?.data?.documento || '');
-    addF('Placa', atendimentoFinalizado?.placa || '');
-    addF('Tipo de Serviço', atendimentoFinalizado?.tipo_servico || '');
-    addF('Protocolo', atendimentoFinalizado?.protocolo || '');
+    addF('Documento', cli?.documento || cli?.data?.documento || at?.documento_cliente || '');
+    addF('Placa', at?.placa || '');
+    addF('Tipo de Serviço', at?.tipo_servico || '');
+    addF('Protocolo', at?.protocolo || '');
 
-    if (atendimentoFinalizado?.observacoes) {
+    if (at?.observacoes) {
       setF('normal', 7.5);
       doc.text('Observações:', margin, y);
       setF('bold', 8);
-      const obsLines = doc.splitTextToSize(atendimentoFinalizado.observacoes, contentW - 34);
+      const obsLines = doc.splitTextToSize(at.observacoes, contentW - 34);
       doc.text(obsLines, margin + 32, y);
       y += obsLines.length * 5 + 2;
     }
@@ -496,17 +517,17 @@ export default function BomAutoConsulta() {
     setF('normal', 7.5);
     doc.text('Valores Combinados:', margin, y);
     ln(margin, y + 2, margin + leftColW, y + 2);
-    if (termoValoresCombinados) {
+    if (td.valores) {
       setF('bold', 8);
-      doc.text(termoValoresCombinados, margin, y + 1);
+      doc.text(td.valores, margin, y + 1);
     }
     y += 8;
 
     setF('normal', 7.5);
     doc.text('Descrição do Produto Contratado:', margin, y);
     y += 5;
-    if (termoDescricaoProduto) {
-      const descLines = doc.splitTextToSize(termoDescricaoProduto, leftColW);
+    if (td.descricao) {
+      const descLines = doc.splitTextToSize(td.descricao, leftColW);
       setF('bold', 8);
       doc.text(descLines, margin, y);
       y += descLines.length * 5;
@@ -518,8 +539,8 @@ export default function BomAutoConsulta() {
 
     y += 4;
     setF('normal', 7.5);
-    const dataRegistro = atendimentoFinalizado
-      ? new Date(atendimentoFinalizado.data_hora || atendimentoFinalizado.created_at)
+    const dataRegistro = at
+      ? new Date(at.data_hora || at.created_at)
           .toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
       : '';
     doc.text(`Data: ${dataRegistro}`, margin, y);
@@ -540,7 +561,7 @@ export default function BomAutoConsulta() {
     doc.setLineWidth(0.5);
     doc.rect(margin - 2, margin - 2, contentW + 4, Math.max(y, sigY) - margin + 8);
 
-    doc.save(`autorizacao-${atendimentoFinalizado?.protocolo || 'servico'}.pdf`);
+    doc.save(`autorizacao-${at?.protocolo || 'servico'}.pdf`);
   }
 
   function buildCommunicationMessage() {
@@ -905,6 +926,28 @@ export default function BomAutoConsulta() {
                               </div>
                             )}
                           </div>
+
+                          {/* Autorização de Serviços */}
+                          {(at.termo_local || at.termo_rua || at.termo_valores_combinados || at.termo_descricao_produto) && (
+                            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2">
+                                <FileText className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400 flex-shrink-0" />
+                                <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">Autorização de Serviços preenchida</span>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 uppercase tracking-wider">
+                                  Disponível
+                                </span>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-1.5 text-xs h-7 border-gray-300 dark:border-gray-600"
+                                onClick={() => setTermoModalAt(at)}
+                              >
+                                <FileText className="w-3 h-3" />
+                                Visualizar
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1390,6 +1433,123 @@ export default function BomAutoConsulta() {
           </div>
         </div>
       )}
+
+      {/* ── MODAL: Visualizar Autorização Histórica ───── */}
+      <Dialog open={!!termoModalAt} onOpenChange={open => { if (!open) setTermoModalAt(null); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Autorização de Serviços — {termoModalAt?.protocolo}
+            </DialogTitle>
+          </DialogHeader>
+
+          {termoModalAt && (
+            <div className="space-y-4 pt-1">
+
+              {/* Cabeçalho */}
+              <img
+                src="/bom-auto-header.png"
+                alt="Bom Auto"
+                className="w-full rounded-xl border border-gray-200 dark:border-gray-700"
+              />
+
+              {/* N° do Processo */}
+              <div className="flex justify-end">
+                <div className="border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 min-w-[180px]">
+                  <p className="text-[10px] uppercase tracking-widest text-gray-500 dark:text-gray-400">N° do Processo</p>
+                  <p className="font-mono font-bold text-gray-900 dark:text-gray-100">{termoModalAt.protocolo || '-'}</p>
+                </div>
+              </div>
+
+              {/* Campos automáticos */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 border-t border-gray-200 dark:border-gray-700 pt-3">
+                {[
+                  { label: 'Empresa Contratada', value: 'Bom Auto' },
+                  { label: 'Atendente Resp.', value: termoModalAt.usuario },
+                  { label: 'Data e Hora', value: formatDateTime(termoModalAt.data_hora || termoModalAt.created_at) },
+                  { label: 'Fone para Contato', value: termoModalAt.telefone_contato ? termoModalAt.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : '-' },
+                  { label: 'Número do Contrato', value: termoModalAt.contratos_servicos },
+                  { label: 'Nome do Titular', value: termoModalAt.nome_cliente },
+                  { label: 'Veículo Modelo', value: termoModalAt.descricao_veiculo },
+                  { label: 'Documento', value: termoModalAt.documento_cliente },
+                  { label: 'Placa', value: termoModalAt.placa },
+                  { label: 'Tipo de Serviço', value: termoModalAt.tipo_servico },
+                  { label: 'Protocolo', value: termoModalAt.protocolo },
+                ].map(({ label, value }) => (
+                  <div key={label} className="space-y-0.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-1">{value || '-'}</p>
+                  </div>
+                ))}
+                {termoModalAt.observacoes && (
+                  <div className="sm:col-span-2 space-y-0.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Observações</p>
+                    <p className="text-sm text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-1">{termoModalAt.observacoes}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Campos do Termo */}
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                {[
+                  { label: 'Local / Cidade', value: termoModalAt.termo_local },
+                  { label: 'Rua / Av. / Rod. / Ponto de Referência', value: termoModalAt.termo_rua },
+                  { label: 'Valores Combinados', value: termoModalAt.termo_valores_combinados },
+                  { label: 'Descrição do Produto Contratado', value: termoModalAt.termo_descricao_produto },
+                ].map(({ label, value }) => (
+                  <div key={label} className="space-y-0.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-1">{value || '-'}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Assinaturas */}
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-3">
+                <p className="text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-3">Assinaturas</p>
+                <div className="grid grid-cols-2 gap-4">
+                  {['Contratante', 'Atendente'].map(sig => (
+                    <div key={sig} className="space-y-1">
+                      <div className="h-10 border-b-2 border-gray-300 dark:border-gray-600" />
+                      <p className="text-[10px] text-center text-gray-500 dark:text-gray-400 uppercase tracking-wider">{sig}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Data e botão PDF */}
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-3 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-gray-500 dark:text-gray-400">Data do Registro</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    {formatDate(termoModalAt.data_hora || termoModalAt.created_at)}
+                  </p>
+                </div>
+                <Button
+                  onClick={() => exportTermoPDF(
+                    termoModalAt,
+                    null,
+                    {
+                      local: termoModalAt.termo_local,
+                      rua: termoModalAt.termo_rua,
+                      valores: termoModalAt.termo_valores_combinados,
+                      descricao: termoModalAt.termo_descricao_produto,
+                    }
+                  )}
+                  className="bg-red-600 hover:bg-red-700 text-white gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Exportar PDF
+                </Button>
+              </div>
+
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      {/* ── /MODAL ────────────────────────────────────── */}
+
     </div>
   );
 }

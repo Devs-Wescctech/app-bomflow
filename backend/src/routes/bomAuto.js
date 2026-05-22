@@ -411,6 +411,39 @@ router.put('/atendimentos/:id', authMiddleware, async (req, res) => {
   }
 });
 
+router.patch('/atendimentos/:id/termo', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { termo_local, termo_rua, termo_valores_combinados, termo_descricao_produto } = req.body;
+
+    const result = await query(
+      `UPDATE bom_auto_atendimentos
+          SET termo_local = $1,
+              termo_rua = $2,
+              termo_valores_combinados = $3,
+              termo_descricao_produto = $4
+        WHERE id = $5
+    RETURNING *`,
+      [
+        termo_local || null,
+        termo_rua || null,
+        termo_valores_combinados || null,
+        termo_descricao_produto || null,
+        id,
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Atendimento não encontrado.' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error saving bom-auto termo:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.get('/atendimentos/:id/historico', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
