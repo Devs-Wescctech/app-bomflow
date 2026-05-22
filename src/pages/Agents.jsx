@@ -2143,7 +2143,6 @@ export default function Agents() {
                           {agent.name?.charAt(0).toUpperCase()}
                         </div>
                         <span className="text-sm text-gray-800 dark:text-gray-200">{agent.name}</span>
-                        <span className="text-xs text-gray-400 ml-auto">{agent.email}</span>
                       </label>
                     );
                   })

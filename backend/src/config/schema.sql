@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS teams (
     name VARCHAR(255) NOT NULL UNIQUE,
     description TEXT,
     supervisor_email VARCHAR(255),
+    supervisor_emails TEXT[],
     active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
@@ -1666,3 +1667,5 @@ CREATE TABLE IF NOT EXISTS commission_perspectiva_snapshot (
     valor_comissao    DECIMAL(15,2) DEFAULT 0,
     created_at        TIMESTAMP DEFAULT NOW()
 );
+
+ALTER TABLE teams ADD COLUMN IF NOT EXISTS supervisor_emails TEXT[];
