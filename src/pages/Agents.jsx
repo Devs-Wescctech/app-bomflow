@@ -790,9 +790,10 @@ export default function Agents() {
   const isSupervisorAgent = (a) => isSupervisorType(a.agentType) || a.agentType === 'admin';
 
   const getSupervisorsForTeam = (teamId) => {
+    const sortByName = (arr) => [...arr].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
     const byTeam = agents.filter(a => isSupervisorAgent(a) && a.teamId === teamId);
-    if (byTeam.length > 0) return byTeam;
-    return agents.filter(a => isSupervisorAgent(a));
+    if (byTeam.length > 0) return sortByName(byTeam);
+    return sortByName(agents.filter(a => isSupervisorAgent(a)));
   };
 
   const getQueueNames = (queueIds) => {
@@ -1614,7 +1615,7 @@ export default function Agents() {
                     <SelectValue placeholder="Selecione o tipo" />
                   </SelectTrigger>
                   <SelectContent>
-                    {agentTypes.filter(t => t.active).map((type) => (
+                    {agentTypes.filter(t => t.active).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR')).map((type) => (
                       <SelectItem key={type.key} value={type.key}>{type.label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -1643,7 +1644,7 @@ export default function Agents() {
                     <SelectValue placeholder="Selecione o time" />
                   </SelectTrigger>
                   <SelectContent>
-                    {teams.map(team => (
+                    {[...teams].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR')).map(team => (
                       <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
                     ))}
                   </SelectContent>
@@ -2115,7 +2116,7 @@ export default function Agents() {
                   <SelectValue placeholder="Selecione o supervisor do time" />
                 </SelectTrigger>
                 <SelectContent>
-                  {agents?.filter(a => isSupervisorType(a.agentType) || a.agentType === 'admin').map(agent => (
+                  {agents?.filter(a => isSupervisorType(a.agentType) || a.agentType === 'admin').sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR')).map(agent => (
                     <SelectItem key={agent.id} value={agent.email}>
                       <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-xs font-medium text-blue-600 dark:text-blue-400">
