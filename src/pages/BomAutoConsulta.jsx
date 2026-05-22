@@ -607,11 +607,11 @@ export default function BomAutoConsulta() {
       setF('normal', 6.5);
       setTC(C.midGray);
       doc.text(label, rightColX, sigY);
-      sigY += 3;
+      sigY += 8;
       setDC(C.darkGray);
       doc.setLineWidth(0.4);
       doc.line(rightColX, sigY, rightColX + rightColW, sigY);
-      sigY += 9;
+      sigY += 12;
     };
     sigLine('Contratante');
     sigLine('Atendente');
