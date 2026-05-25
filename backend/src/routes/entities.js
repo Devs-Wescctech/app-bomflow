@@ -30,6 +30,7 @@ pool.query(`
   ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS dependent_cpf VARCHAR(20);
   ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS erp_id BIGINT;
   ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS erp_city_id INTEGER;
+  ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS dependents JSONB DEFAULT '[]'::jsonb;
 `).then(() => console.log('[Migration] leads_upsell ERP columns OK'))
   .catch(e => console.error('[Migration] leads_upsell ERP columns error:', e.message));
 

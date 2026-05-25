@@ -49,8 +49,8 @@ export default function NewLeadUpsell() {
   const [step, setStep] = useState("lookup");
   const [cpfInput, setCpfInput] = useState("");
   const [lookingUp, setLookingUp] = useState(false);
-  const [erpContracts, setErpContracts] = useState([]);
-  const [selectedContractIdx, setSelectedContractIdx] = useState(0);
+  const [erpContractGroups, setErpContractGroups] = useState([]);
+  const [selectedGroupIdx, setSelectedGroupIdx] = useState(0);
   const [fromErp, setFromErp] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -65,6 +65,7 @@ export default function NewLeadUpsell() {
     contract_status: "",
     dependent_name: "",
     dependent_cpf: "",
+    dependents: [],
     erp_id: "",
     erp_city_id: "",
     value: "",
@@ -280,29 +281,44 @@ export default function NewLeadUpsell() {
     );
   };
 
-  const fillFromErpRecord = (record) => {
+  const groupByContract = (records) => {
+    const map = {};
+    records.forEach(r => {
+      const key = r.contrato != null ? String(r.contrato) : "__none__";
+      if (!map[key]) map[key] = [];
+      map[key].push(r);
+    });
+    return Object.values(map);
+  };
+
+  const fillFromGroup = (group) => {
+    const primary = group[0];
+    const deps = group
+      .filter(r => r.nome_dependente)
+      .map(r => ({ name: r.nome_dependente || "", cpf: r.cpf_dependente || "" }));
     setFormData((prev) => ({
       ...prev,
-      cpf: record.cpf || prev.cpf,
-      name: record.nome_titular || "",
-      birth_date: record.data_titular ? record.data_titular.substring(0, 10) : "",
-      phone: record.telefone || "",
-      phone_2: record.telefone_2 || "",
-      street: record.rua || "",
-      number: record.numero || "",
-      complement: record.complemento || "",
-      neighborhood: record.bairro || "",
-      cep: record.cep || "",
-      contract_number: record.contrato ? String(record.contrato) : "",
-      contract_status: record.situacao_contrato || "",
-      interest: record.descricao || "",
-      dependent_name: record.nome_dependente || "",
-      dependent_cpf: record.cpf_dependente || "",
-      erp_id: record.id ? String(record.id) : "",
-      erp_city_id: record.cidade_id ? String(record.cidade_id) : "",
+      cpf: primary.cpf || prev.cpf,
+      name: primary.nome_titular || "",
+      birth_date: primary.data_titular ? primary.data_titular.substring(0, 10) : "",
+      phone: primary.telefone || "",
+      phone_2: primary.telefone_2 || "",
+      street: primary.rua || "",
+      number: primary.numero || "",
+      complement: primary.complemento || "",
+      neighborhood: primary.bairro || "",
+      cep: primary.cep || "",
+      contract_number: primary.contrato ? String(primary.contrato) : "",
+      contract_status: primary.situacao_contrato || "",
+      interest: primary.descricao || "",
+      dependent_name: deps[0]?.name || "",
+      dependent_cpf: deps[0]?.cpf || "",
+      dependents: deps,
+      erp_id: primary.id ? String(primary.id) : "",
+      erp_city_id: primary.cidade_id ? String(primary.cidade_id) : "",
     }));
-    if (record.cep) {
-      const cepClean = record.cep.replace(/\D/g, "");
+    if (primary.cep) {
+      const cepClean = primary.cep.replace(/\D/g, "");
       if (cepClean.length === 8) searchAddressByCep(cepClean);
     }
   };
@@ -321,13 +337,14 @@ export default function NewLeadUpsell() {
       });
       if (!response.ok) throw new Error("Erro ao consultar ERP");
       const records = await response.json();
-      setErpContracts(records);
-      setSelectedContractIdx(0);
+      const groups = groupByContract(records);
+      setErpContractGroups(groups);
+      setSelectedGroupIdx(0);
 
-      if (records.length > 0) {
+      if (groups.length > 0) {
         setFromErp(true);
-        fillFromErpRecord(records[0]);
-        toast.success(`Cliente encontrado: ${records[0].nome_titular}`);
+        fillFromGroup(groups[0]);
+        toast.success(`Cliente encontrado: ${groups[0][0].nome_titular}`);
       } else {
         setFromErp(false);
         setFormData((prev) => ({ ...prev, cpf: cpfFormatted }));
@@ -342,8 +359,8 @@ export default function NewLeadUpsell() {
   };
 
   const handleContractSelect = (idx) => {
-    setSelectedContractIdx(idx);
-    fillFromErpRecord(erpContracts[idx]);
+    setSelectedGroupIdx(idx);
+    fillFromGroup(erpContractGroups[idx]);
   };
 
   const handleSubmit = async (e) => {
@@ -475,44 +492,53 @@ export default function NewLeadUpsell() {
         <form onSubmit={handleSubmit}>
           <div className="space-y-6">
 
-            {fromErp && erpContracts.length > 1 && (
+            {fromErp && erpContractGroups.length > 1 && (
               <Card className="border-violet-200 bg-violet-50 dark:bg-violet-950/20 dark:border-violet-800">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm text-violet-700 dark:text-violet-400 flex items-center gap-2">
                     <AlertCircle className="w-4 h-4" />
-                    {erpContracts.length} contratos encontrados para este CPF — selecione um:
+                    {erpContractGroups.length} contratos diferentes encontrados — selecione um:
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-0">
                   <div className="grid gap-2">
-                    {erpContracts.map((c, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => handleContractSelect(idx)}
-                        className={`text-left p-3 rounded-lg border transition-all ${
-                          selectedContractIdx === idx
-                            ? "border-violet-500 bg-violet-100 dark:bg-violet-900/40"
-                            : "border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700 hover:border-violet-300"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
-                            Contrato #{c.contrato}
-                          </span>
-                          <Badge
-                            className={`text-xs ${
-                              c.situacao_contrato === "A"
-                                ? "bg-green-100 text-green-700"
-                                : "bg-red-100 text-red-700"
-                            }`}
-                          >
-                            {formatContractStatus(c.situacao_contrato)}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">{c.descricao}</p>
-                      </button>
-                    ))}
+                    {erpContractGroups.map((group, idx) => {
+                      const c = group[0];
+                      const depCount = group.filter(r => r.nome_dependente).length;
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => handleContractSelect(idx)}
+                          className={`text-left p-3 rounded-lg border transition-all ${
+                            selectedGroupIdx === idx
+                              ? "border-violet-500 bg-violet-100 dark:bg-violet-900/40"
+                              : "border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700 hover:border-violet-300"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                              Contrato #{c.contrato}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <Badge
+                                className={`text-xs ${
+                                  c.situacao_contrato === "A"
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-red-100 text-red-700"
+                                }`}
+                              >
+                                {formatContractStatus(c.situacao_contrato)}
+                              </Badge>
+                              {depCount > 0 && (
+                                <span className="text-xs text-gray-500">{depCount} dependente(s)</span>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">{c.descricao}</p>
+                        </button>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
@@ -675,26 +701,66 @@ export default function NewLeadUpsell() {
                     />
                   </div>
 
-                  <div>
-                    <Label>Nome do Dependente</Label>
-                    <Input
-                      value={formData.dependent_name}
-                      onChange={(e) => setFormData({ ...formData, dependent_name: e.target.value })}
-                      placeholder="Nome do dependente (se houver)"
-                      className={`mt-1 ${fromErp && formData.dependent_name ? "bg-violet-50 dark:bg-violet-950/20" : ""}`}
-                    />
-                  </div>
-
-                  <div>
-                    <Label>CPF do Dependente</Label>
-                    <Input
-                      value={formData.dependent_cpf}
-                      onChange={(e) => setFormData({ ...formData, dependent_cpf: formatCPF(e.target.value) })}
-                      placeholder="000.000.000-00"
-                      maxLength={14}
-                      className={`mt-1 ${fromErp && formData.dependent_cpf ? "bg-violet-50 dark:bg-violet-950/20" : ""}`}
-                    />
-                  </div>
+                  {formData.dependents.length > 0 ? (
+                    <div className="md:col-span-2">
+                      <Label className="font-medium">Dependentes ({formData.dependents.length})</Label>
+                      <div className="space-y-2 mt-2">
+                        {formData.dependents.map((dep, idx) => (
+                          <div key={idx} className="grid md:grid-cols-2 gap-2 p-2 bg-gray-50 dark:bg-gray-800/60 rounded-md border border-gray-200 dark:border-gray-700">
+                            <div>
+                              <Label className="text-xs text-gray-500">Dependente {idx + 1}</Label>
+                              <Input
+                                value={dep.name}
+                                onChange={(e) => {
+                                  const updated = [...formData.dependents];
+                                  updated[idx] = { ...updated[idx], name: e.target.value };
+                                  setFormData({ ...formData, dependents: updated });
+                                }}
+                                placeholder="Nome do dependente"
+                                className="mt-0.5 h-8 text-sm"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs text-gray-500">CPF</Label>
+                              <Input
+                                value={dep.cpf}
+                                onChange={(e) => {
+                                  const updated = [...formData.dependents];
+                                  updated[idx] = { ...updated[idx], cpf: formatCPF(e.target.value) };
+                                  setFormData({ ...formData, dependents: updated });
+                                }}
+                                placeholder="000.000.000-00"
+                                maxLength={14}
+                                className="mt-0.5 h-8 text-sm font-mono"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <Label>Nome do Dependente</Label>
+                        <Input
+                          value={formData.dependent_name}
+                          onChange={(e) => setFormData({ ...formData, dependent_name: e.target.value })}
+                          placeholder="Nome do dependente (se houver)"
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>CPF do Dependente</Label>
+                        <Input
+                          value={formData.dependent_cpf}
+                          onChange={(e) => setFormData({ ...formData, dependent_cpf: formatCPF(e.target.value) })}
+                          placeholder="000.000.000-00"
+                          maxLength={14}
+                          className="mt-1"
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>
