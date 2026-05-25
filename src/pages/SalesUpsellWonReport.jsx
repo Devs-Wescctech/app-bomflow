@@ -51,9 +51,6 @@ export default function SalesUpsellWonReport() {
     queryFn: () => base44.auth.me(),
   });
 
-  const currentAgent = user?.agent || allAgents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
-  const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = isUpsellPrivileged(user, currentAgent);
   const hasPermission = !!user;
 
   const { data: teams = [] } = useQuery({
@@ -64,14 +61,18 @@ export default function SalesUpsellWonReport() {
   const { data: allAgents = [] } = useQuery({
     queryKey: ['agents'],
     queryFn: () => base44.entities.Agent.list(),
-    enabled: !!user && hasPermission,
+    enabled: hasPermission,
   });
 
   const { data: territories = [] } = useQuery({
     queryKey: ['territories'],
     queryFn: () => base44.entities.Territory.list(),
-    enabled: !!user && hasPermission,
+    enabled: hasPermission,
   });
+
+  const currentAgent = user?.agent || allAgents.find(a => a.email === user?.email || a.userEmail === user?.email || a.user_email === user?.email);
+  const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
+  const isAdmin = isUpsellPrivileged(user, currentAgent);
 
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ['leads-won-report', isAdmin ? 'admin' : currentAgent?.id, allAgents.length],

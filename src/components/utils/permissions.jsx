@@ -373,8 +373,9 @@ export function filterMenuItems(agent, menuItems, user = null) {
         
         // No ADM submenu restrictions - use hardcoded flag-based permissions
         
-        // supervisorOnly: only visible to supervisors and admins
-        if (subItem.supervisorOnly && !isSupervisor) {
+        // supervisorOnly: only visible to supervisors, admins, and module admins (_admin types)
+        const hasElevatedAccess = isSupervisor || isAdmin || agentType?.endsWith('_admin');
+        if (subItem.supervisorOnly && !hasElevatedAccess) {
           return false;
         }
         

@@ -145,7 +145,7 @@ export default function SalesUpsellTasks() {
     staleTime: 1000 * 60 * 2,
   });
 
-  const currentAgent = user?.agent || agents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
+  const currentAgent = user?.agent || agents.find(a => a.email === user?.email || a.userEmail === user?.email || a.user_email === user?.email);
   const privileged = isUpsellPrivileged(user, currentAgent) || isUpsellPrivileged(user, user?.agent);
 
   const { data: allActivities = [], isLoading: loadingActivities } = useQuery({

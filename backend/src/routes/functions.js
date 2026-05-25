@@ -154,11 +154,37 @@ router.post('/run-lead-automations', authMiddleware, loadAgentMiddleware, requir
     }
     
     const result = await runAllAutomations();
-    checkAndExecuteLeadUpsellAutomations().catch(e => console.error('[Upsell] automation check error:', e.message));
+    await checkAndExecuteLeadUpsellAutomations().catch(e => console.error('[Upsell] automation check error:', e.message));
     res.json(result);
   } catch (error) {
     console.error('Error running automations:', error);
     res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/erp-cadastro-pessoas', authMiddleware, async (req, res) => {
+  try {
+    const { cpf } = req.query;
+    if (!cpf) return res.status(400).json({ error: 'CPF é obrigatório' });
+    const erpToken = process.env.ERP_AUTH_TOKEN;
+    if (!erpToken) return res.status(500).json({ error: 'ERP_AUTH_TOKEN não configurado' });
+    const authHeader = erpToken.startsWith('Bearer ') ? erpToken : `Bearer ${erpToken}`;
+    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CADASTRO_PESSOAS?cpf=${encodeURIComponent(cpf)}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(erpUrl, { headers: { 'Authorization': authHeader }, signal: controller.signal });
+      clearTimeout(timeout);
+      const data = await response.json();
+      res.json(Array.isArray(data) ? data : []);
+    } catch (fetchError) {
+      clearTimeout(timeout);
+      if (fetchError.name === 'AbortError') return res.status(504).json({ error: 'Timeout ao consultar ERP' });
+      throw fetchError;
+    }
+  } catch (error) {
+    console.error('[ERP Cadastro] Error:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -2921,9 +2947,9 @@ router.post('/generate-proposal', authMiddleware, async (req, res) => {
 
     if (lead_type === 'upsell') {
       await query(
-        `INSERT INTO activities_upsell (lead_id, type, title, description, assigned_to, completed)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [lead_id, 'note', 'Proposta gerada', `Proposta PDF gerada para ${lead.name || 'cliente'}`, lead.agent_id || null, true]
+        `INSERT INTO activities_upsell (lead_id, type, title, description, assigned_to, completed, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [lead_id, 'note', 'Proposta gerada', `Proposta PDF gerada para ${lead.name || 'cliente'}`, lead.agent_id || null, true, agentId || null]
       ).catch(e => console.error('[Proposal] activity log error:', e.message));
     } else if (lead_type !== 'referral') {
       const activityCol = lead_type === 'pj' ? 'lead_pj_id' : 'lead_id';

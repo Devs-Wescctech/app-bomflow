@@ -1669,3 +1669,11 @@ CREATE TABLE IF NOT EXISTS commission_perspectiva_snapshot (
 );
 
 ALTER TABLE teams ADD COLUMN IF NOT EXISTS supervisor_emails TEXT[];
+
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS phone_2 VARCHAR(50);
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS contract_number VARCHAR(50);
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS contract_status VARCHAR(10);
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS dependent_name VARCHAR(255);
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS dependent_cpf VARCHAR(20);
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS erp_id BIGINT;
+ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS erp_city_id INTEGER;
