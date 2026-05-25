@@ -211,6 +211,7 @@ import SalesUpsellReports from "./SalesUpsellReports";
 import SalesUpsellWonReport from "./SalesUpsellWonReport";
 import SalesUpsellTasks from "./SalesUpsellTasks";
 import SalesUpsellAgenda from "./SalesUpsellAgenda";
+import UpsellLeadGenerator from "./UpsellLeadGenerator";
 import ReferralWonReport from "./ReferralWonReport";
 
 import Login from "./Login";
@@ -670,6 +671,7 @@ function PagesContent() {
                 <Route path="/SalesUpsellWonReport" element={<SalesUpsellWonReport />} />
                 <Route path="/SalesUpsellTasks" element={<SalesUpsellTasks />} />
                 <Route path="/SalesUpsellAgenda" element={<SalesUpsellAgenda />} />
+                <Route path="/UpsellLeadGenerator" element={<UpsellLeadGenerator />} />
                 <Route path="/ReferralWonReport" element={<ReferralWonReport />} />
                 
             </Routes>

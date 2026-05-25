@@ -9,7 +9,8 @@ import { loadAgentMiddleware, requirePermission, requireRole, requireSubmenuAcce
 import { assignTicket, distributeUnassignedTickets, DISTRIBUTION_ALGORITHMS } from '../services/ticketDistribution.js';
 import { checkAllSLAWarnings, checkSLABreach, recordFirstResponse, recordStatusChange } from '../services/slaService.js';
 import { runAllAutomations, runAutomationsForLead } from '../services/leadAutomation.js';
-import { checkAndExecuteLeadUpsellAutomations, checkAndExecuteUpsellChannelAutomations } from '../services/automationService.js';
+import { checkAndExecuteLeadUpsellAutomations, checkAndExecuteUpsellChannelAutomations, executeLeadCreatedAutomation, executeUpsellChannelLeadCreatedAutomation } from '../services/automationService.js';
+import { notifyLeadAssigned } from '../services/notificationService.js';
 import { generateProposalPDF } from '../services/pdfService.js';
 import { sendWhatsAppMessage, sendDocument, sendTextMessage } from '../services/whatsappService.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -190,6 +191,200 @@ router.get('/erp-cadastro-pessoas', authMiddleware, async (req, res) => {
     }
   } catch (error) {
     console.error('[ERP Cadastro] Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+let cadastroPessoasOptionsCache = { data: null, timestamp: 0 };
+const CADASTRO_PESSOAS_CACHE_TTL = 10 * 60 * 1000;
+
+router.get('/erp-cadastro-pessoas-options', authMiddleware, async (req, res) => {
+  try {
+    const forceRefresh = req.query.refresh === 'true';
+    const now = Date.now();
+    if (!forceRefresh && cadastroPessoasOptionsCache.data && (now - cadastroPessoasOptionsCache.timestamp) < CADASTRO_PESSOAS_CACHE_TTL) {
+      return res.json(cadastroPessoasOptionsCache.data);
+    }
+    const erpToken = process.env.ERP_AUTH_TOKEN;
+    if (!erpToken) return res.status(500).json({ error: 'ERP_AUTH_TOKEN não configurado' });
+    const authHeader = erpToken.startsWith('Bearer ') ? erpToken : `Bearer ${erpToken}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    try {
+      const response = await fetch(`http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CADASTRO_PESSOAS`, {
+        headers: { 'Authorization': authHeader },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      const data = await response.json();
+      const records = Array.isArray(data) ? data : [];
+      const unique = (field) => [...new Set(records.map(d => d[field]).filter(Boolean))].sort();
+      const options = { cidade: unique('cidade'), uf: unique('uf'), descricao: unique('descricao') };
+      cadastroPessoasOptionsCache = { data: options, timestamp: now };
+      return res.json(options);
+    } catch (fetchError) {
+      clearTimeout(timeout);
+      if (fetchError.name === 'AbortError') return res.status(504).json({ error: 'Timeout ao consultar ERP' });
+      throw fetchError;
+    }
+  } catch (error) {
+    console.error('[ERP Cadastro Options] Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/erp-cadastro-pessoas-batch', authMiddleware, async (req, res) => {
+  try {
+    const { cidade, uf, descricao, quantidade } = req.query;
+    const erpToken = process.env.ERP_AUTH_TOKEN;
+    if (!erpToken) return res.status(500).json({ error: 'ERP_AUTH_TOKEN não configurado' });
+    const authHeader = erpToken.startsWith('Bearer ') ? erpToken : `Bearer ${erpToken}`;
+    const params = new URLSearchParams();
+    if (cidade && cidade !== 'todos') params.set('cidade', cidade);
+    if (uf && uf !== 'todos') params.set('uf', uf);
+    if (descricao && descricao !== 'todos') params.set('descricao', descricao);
+    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CADASTRO_PESSOAS${params.toString() ? '?' + params.toString() : ''}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    try {
+      const response = await fetch(erpUrl, { headers: { 'Authorization': authHeader }, signal: controller.signal });
+      clearTimeout(timeout);
+      const data = await response.json();
+      let records = Array.isArray(data) ? data : [];
+      const limit = quantidade ? Math.min(parseInt(quantidade) || 200, 2000) : 200;
+      if (records.length > limit) records = records.slice(0, limit);
+      console.log(`[ERP Cadastro Batch] cidade=${cidade} uf=${uf} descricao=${descricao} → ${records.length} records`);
+      return res.json({ records, total: records.length });
+    } catch (fetchError) {
+      clearTimeout(timeout);
+      if (fetchError.name === 'AbortError') return res.status(504).json({ error: 'Timeout ao consultar ERP' });
+      throw fetchError;
+    }
+  } catch (error) {
+    console.error('[ERP Cadastro Batch] Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/upsell-lead-generator-import', authMiddleware, async (req, res) => {
+  try {
+    const { leads, agent_id } = req.body;
+    if (!Array.isArray(leads) || leads.length === 0) {
+      return res.status(400).json({ error: 'Lista de leads é obrigatória' });
+    }
+    if (!agent_id) {
+      return res.status(400).json({ error: 'agent_id é obrigatório' });
+    }
+    const imported = [];
+    const skipped = [];
+    const errors = [];
+    const now = new Date().toISOString();
+
+    for (const lead of leads) {
+      try {
+        const phone = (lead.telefone || lead.phone || '').replace(/\D/g, '');
+        if (phone.length >= 8) {
+          const phoneSuffix = phone.slice(-8);
+          const dupCheck = await query(
+            `SELECT 'leads_upsell' AS src, id, name FROM leads_upsell
+             WHERE REGEXP_REPLACE(COALESCE(phone,''), '[^0-9]', '', 'g') LIKE $1
+             UNION ALL
+             SELECT 'leads' AS src, id, name FROM leads
+             WHERE REGEXP_REPLACE(COALESCE(phone,''), '[^0-9]', '', 'g') LIKE $1
+             UNION ALL
+             SELECT 'leads_pj' AS src, id, name FROM leads_pj
+             WHERE REGEXP_REPLACE(COALESCE(phone,''), '[^0-9]', '', 'g') LIKE $1
+             LIMIT 1`,
+            [`%${phoneSuffix}`]
+          );
+          if (dupCheck.rows.length > 0) {
+            const dup = dupCheck.rows[0];
+            skipped.push({
+              name: lead.nome_titular || lead.name || '',
+              cpf: lead.cpf || '',
+              phone: lead.telefone || lead.phone || '',
+              phone_2: lead.telefone_2 || lead.phone_2 || '',
+              existing_lead_id: dup.src === 'leads_upsell' ? dup.id : null,
+              duplicate_source: dup.src,
+              duplicate_name: dup.name,
+            });
+            continue;
+          }
+        }
+
+        const erp_id = lead.id || lead.erp_id;
+        const erp_city_id = lead.cidade_id || lead.erp_city_id;
+        const birth_date = lead.data_titular ? lead.data_titular.substring(0, 10) : null;
+
+        const leadData = {
+          name: lead.nome_titular || lead.name || '',
+          cpf: lead.cpf || '',
+          phone: lead.telefone || lead.phone || '',
+          phone_2: lead.telefone_2 || lead.phone_2 || '',
+          birth_date: birth_date || null,
+          interest: lead.descricao || lead.interest || '',
+          contract_number: lead.contrato ? String(lead.contrato) : '',
+          contract_status: lead.situacao_contrato || lead.contract_status || '',
+          erp_id: erp_id ? parseInt(erp_id) || null : null,
+          erp_city_id: erp_city_id ? parseInt(erp_city_id) || null : null,
+          city: lead.cidade || lead.city || '',
+          state: lead.uf || lead.state || '',
+          neighborhood: lead.bairro || lead.neighborhood || '',
+          cep: lead.cep || '',
+          street: lead.rua || lead.street || '',
+          agent_id,
+          stage: 'novo',
+          source: 'gerador_leads_upsell',
+          lgpd_consent: true,
+          lgpd_consent_date: now,
+          created_at: now,
+          updated_at: now,
+          stage_history: JSON.stringify([{ stage: 'novo', previous_stage: null, changed_at: now, changed_by: 'Gerador de Leads' }]),
+        };
+
+        const entries = Object.entries(leadData).filter(([, v]) => v !== null && v !== '' && v !== undefined);
+        const cols = entries.map(([k]) => k).join(', ');
+        const placeholders = entries.map((_, i) => `$${i + 1}`).join(', ');
+        const vals = entries.map(([, v]) => v);
+
+        const result = await query(
+          `INSERT INTO leads_upsell (${cols}) VALUES (${placeholders}) RETURNING *`,
+          vals
+        );
+        const newLead = result.rows[0];
+
+        imported.push({
+          lead_id: newLead.id,
+          name: newLead.name,
+          cpf: newLead.cpf,
+          phone: newLead.phone,
+          phone_2: newLead.phone_2 || '',
+        });
+
+        notifyLeadAssigned(newLead, agent_id).catch(e => console.error('[UpsellGen] notify:', e.message));
+        executeLeadCreatedAutomation(newLead, 'lead_upsell').catch(e => console.error('[UpsellGen] automation:', e.message));
+        executeUpsellChannelLeadCreatedAutomation(newLead).catch(e => console.error('[UpsellGen] channel automation:', e.message));
+
+      } catch (err) {
+        console.error('[UpsellGen] Import error:', lead.nome_titular, err.message);
+        errors.push({ name: lead.nome_titular || lead.name || '', error: err.message });
+      }
+    }
+
+    return res.json({
+      success: true,
+      imported,
+      skipped,
+      errors,
+      summary: {
+        total: leads.length,
+        imported: imported.length,
+        skipped: skipped.length,
+        errors: errors.length,
+      },
+    });
+  } catch (error) {
+    console.error('[UpsellGen] Error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
