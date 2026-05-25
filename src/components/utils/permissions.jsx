@@ -308,6 +308,12 @@ export function isUpsellPrivileged(user, agent) {
 
 export function filterMenuItems(agent, menuItems, user = null) {
   const agentType = agent?.agent_type || agent?.agentType;
+
+  // JWT admin without an agent record: show all items
+  if (user?.role === 'admin' && !agentType) {
+    return menuItems.filter(item => !item.salesOnly);
+  }
+
   if (!agent || !agentType) return [];
   
   const isSupervisor = isSupervisorType(agentType);

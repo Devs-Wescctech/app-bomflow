@@ -9,7 +9,7 @@ import { loadAgentMiddleware, requirePermission, requireRole, requireSubmenuAcce
 import { assignTicket, distributeUnassignedTickets, DISTRIBUTION_ALGORITHMS } from '../services/ticketDistribution.js';
 import { checkAllSLAWarnings, checkSLABreach, recordFirstResponse, recordStatusChange } from '../services/slaService.js';
 import { runAllAutomations, runAutomationsForLead } from '../services/leadAutomation.js';
-import { checkAndExecuteLeadUpsellAutomations } from '../services/automationService.js';
+import { checkAndExecuteLeadUpsellAutomations, checkAndExecuteUpsellChannelAutomations } from '../services/automationService.js';
 import { generateProposalPDF } from '../services/pdfService.js';
 import { sendWhatsAppMessage, sendDocument, sendTextMessage } from '../services/whatsappService.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -146,15 +146,21 @@ router.post('/run-lead-automations', authMiddleware, loadAgentMiddleware, requir
     if (lead_id) {
       const upsellCheck = await query('SELECT id FROM leads_upsell WHERE id = $1', [lead_id]).catch(() => ({ rows: [] }));
       if (upsellCheck.rows.length > 0) {
-        await checkAndExecuteLeadUpsellAutomations();
-        return res.json({ success: true, leadType: 'upsell', triggered: 0, skipped: 0, message: 'Automações Upsell verificadas para o lead' });
+        await Promise.all([
+          checkAndExecuteLeadUpsellAutomations().catch(e => console.error('[Upsell] lead automation error:', e.message)),
+          checkAndExecuteUpsellChannelAutomations().catch(e => console.error('[Upsell] channel automation error:', e.message)),
+        ]);
+        return res.json({ success: true, leadType: 'upsell', message: 'Automações Upsell (lead + canal) verificadas' });
       }
       const result = await runAutomationsForLead(lead_id);
       return res.json(result);
     }
     
-    const result = await runAllAutomations();
-    await checkAndExecuteLeadUpsellAutomations().catch(e => console.error('[Upsell] automation check error:', e.message));
+    const [result] = await Promise.all([
+      runAllAutomations(),
+      checkAndExecuteLeadUpsellAutomations().catch(e => console.error('[Upsell] automation check error:', e.message)),
+      checkAndExecuteUpsellChannelAutomations().catch(e => console.error('[Upsell] channel automation check error:', e.message)),
+    ]);
     res.json(result);
   } catch (error) {
     console.error('Error running automations:', error);
@@ -2946,11 +2952,20 @@ router.post('/generate-proposal', authMiddleware, async (req, res) => {
     );
 
     if (lead_type === 'upsell') {
+      // Resolve the creating agent from the logged-in user
+      let createdByAgentId = agentId || null;
+      if (req.user?.email) {
+        const callerResult = await query(
+          `SELECT id FROM agents WHERE user_email = $1 OR email = $1 LIMIT 1`,
+          [req.user.email]
+        ).catch(() => ({ rows: [] }));
+        if (callerResult.rows.length > 0) createdByAgentId = callerResult.rows[0].id;
+      }
       await query(
         `INSERT INTO activities_upsell (lead_id, type, title, description, assigned_to, completed, created_by)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [lead_id, 'note', 'Proposta gerada', `Proposta PDF gerada para ${lead.name || 'cliente'}`, lead.agent_id || null, true, agentId || null]
-      ).catch(e => console.error('[Proposal] activity log error:', e.message));
+        [lead_id, 'note', 'Proposta gerada', `Proposta PDF gerada para ${lead.name || 'cliente'}`, lead.agent_id || null, true, createdByAgentId]
+      ).catch(e => console.error('[Proposal] activity_upsell log error:', e.message));
     } else if (lead_type !== 'referral') {
       const activityCol = lead_type === 'pj' ? 'lead_pj_id' : 'lead_id';
       const actTable = lead_type === 'pj' ? 'activities_pj' : 'activities';

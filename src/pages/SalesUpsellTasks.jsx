@@ -272,8 +272,11 @@ export default function SalesUpsellTasks() {
 
   const novoLeads = useMemo(() => {
     if (!privileged) return [];
-    return leads.filter(l => l.stage === 'novo' && !l.concluded);
-  }, [leads, privileged]);
+    const leadIdsWithTasks = new Set(
+      tasks.map(t => String(t.leadId || t.lead_id)).filter(Boolean)
+    );
+    return leads.filter(l => l.stage === 'novo' && !l.concluded && !leadIdsWithTasks.has(String(l.id)));
+  }, [leads, tasks, privileged]);
 
   const pendingTasks = tasks.filter(t => !t.completed);
   const completedTasks = tasks.filter(t => t.completed);
@@ -483,7 +486,6 @@ export default function SalesUpsellTasks() {
           <CardContent className="pt-0">
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {novoLeads.map(lead => {
-                const hasTask = tasks.some(t => String(t.leadId) === String(lead.id));
                 return (
                   <div key={lead.id} className="py-3 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3 min-w-0">
@@ -496,11 +498,6 @@ export default function SalesUpsellTasks() {
                           <p className="text-sm text-gray-500 dark:text-gray-400">{lead.phone}</p>
                         )}
                       </div>
-                      {hasTask && (
-                        <Badge variant="outline" className="text-xs text-green-600 border-green-300 shrink-0">
-                          Com tarefa
-                        </Badge>
-                      )}
                     </div>
                     <Link
                       to={`${createPageUrl("LeadUpsellDetail")}?id=${lead.id}`}
