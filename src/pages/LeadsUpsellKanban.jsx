@@ -525,7 +525,7 @@ export default function LeadsUpsellKanban() {
   const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', message: '', onConfirm: null });
   const [viewMode, setViewMode] = useState('kanban');
   const [filters, setFilters] = useState(() => {
-    const saved = localStorage.getItem('leadsKanbanFilters');
+    const saved = localStorage.getItem('leadsUpsellKanbanFilters');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -537,13 +537,13 @@ export default function LeadsUpsellKanban() {
   });
 
   useEffect(() => {
-    localStorage.setItem('leadsKanbanFilters', JSON.stringify(filters));
+    localStorage.setItem('leadsUpsellKanbanFilters', JSON.stringify(filters));
   }, [filters]);
 
   const clearFilters = () => {
     const defaultFilters = { search: '', agent: 'all', team: 'all', territory: 'all', dateFrom: '', dateTo: '' };
     setFilters(defaultFilters);
-    localStorage.removeItem('leadsKanbanFilters');
+    localStorage.removeItem('leadsUpsellKanbanFilters');
   };
 
   const hasActiveFilters = filters.search || filters.agent !== 'all' || filters.team !== 'all' || filters.territory !== 'all' || filters.dateFrom || filters.dateTo;
