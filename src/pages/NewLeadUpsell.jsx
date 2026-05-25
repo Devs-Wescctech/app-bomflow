@@ -316,7 +316,7 @@ export default function NewLeadUpsell() {
     setLookingUp(true);
     try {
       const token = localStorage.getItem("accessToken");
-      const response = await fetch(`/api/erp-cadastro-pessoas?cpf=${encodeURIComponent(cpfFormatted)}`, {
+      const response = await fetch(`/api/functions/erp-cadastro-pessoas?cpf=${encodeURIComponent(cpfFormatted)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error("Erro ao consultar ERP");
