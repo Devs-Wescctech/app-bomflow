@@ -395,7 +395,7 @@ export default function NewLeadUpsell() {
             </Button>
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Novo Lead Upsell</h1>
-              <p className="text-gray-500 text-sm">Consulte o CPF para buscar dados no ERP</p>
+              
             </div>
           </div>
 
@@ -403,7 +403,7 @@ export default function NewLeadUpsell() {
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2 text-violet-700 dark:text-violet-400">
                 <Database className="w-5 h-5" />
-                Consultar CPF no ERP
+                Consultar CPF
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -436,7 +436,7 @@ export default function NewLeadUpsell() {
                 ) : (
                   <>
                     <Search className="w-4 h-4 mr-2" />
-                    Consultar no ERP
+                    Consultar
                   </>
                 )}
               </Button>
