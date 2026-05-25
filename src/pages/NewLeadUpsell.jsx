@@ -470,17 +470,6 @@ export default function NewLeadUpsell() {
               <p className="text-gray-500 mt-1">Cadastre um novo lead no sistema</p>
             </div>
           </div>
-          {fromErp ? (
-            <Badge className="bg-violet-100 text-violet-700 border-violet-300 dark:bg-violet-900/30 dark:text-violet-300 gap-1 px-3 py-1.5">
-              <Database className="w-3.5 h-3.5" />
-              Dados importados do ERP
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="text-gray-500 gap-1 px-3 py-1.5">
-              <FileText className="w-3.5 h-3.5" />
-              Preenchimento manual
-            </Badge>
-          )}
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -534,15 +523,12 @@ export default function NewLeadUpsell() {
                 <CardTitle className="flex items-center gap-2">
                   <User className="w-4 h-4 text-violet-600" />
                   Dados do Cliente
-                  {fromErp && (
-                    <span className="text-xs font-normal text-violet-500 ml-1">(pré-preenchido do ERP)</span>
-                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <Label>CPF {fromErp && <span className="text-violet-500 text-xs ml-1">• ERP</span>}</Label>
+                    <Label>CPF</Label>
                     <Input
                       value={formData.cpf}
                       onChange={handleCPFChange}
@@ -553,7 +539,7 @@ export default function NewLeadUpsell() {
                   </div>
 
                   <div>
-                    <Label>Nome Completo <span className="text-red-500">*</span> {fromErp && <span className="text-violet-500 text-xs ml-1">• ERP</span>}</Label>
+                    <Label>Nome Completo <span className="text-red-500">*</span></Label>
                     <Input
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -563,7 +549,7 @@ export default function NewLeadUpsell() {
                   </div>
 
                   <div>
-                    <Label>Data de Nascimento {fromErp && <span className="text-violet-500 text-xs ml-1">• ERP</span>}</Label>
+                    <Label>Data de Nascimento</Label>
                     <Input
                       type="date"
                       value={formData.birth_date}
@@ -573,7 +559,7 @@ export default function NewLeadUpsell() {
                   </div>
 
                   <div>
-                    <Label>Telefone Principal <span className="text-red-500">*</span> {fromErp && <span className="text-violet-500 text-xs ml-1">• ERP</span>}</Label>
+                    <Label>Telefone Principal <span className="text-red-500">*</span></Label>
                     <div className="relative">
                       <Input
                         value={formData.phone}
@@ -625,7 +611,7 @@ export default function NewLeadUpsell() {
                   </div>
 
                   <div>
-                    <Label>Telefone 2 {fromErp && <span className="text-violet-500 text-xs ml-1">• ERP</span>}</Label>
+                    <Label>Telefone 2</Label>
                     <Input
                       value={formData.phone_2}
                       onChange={(e) => setFormData({ ...formData, phone_2: e.target.value })}
@@ -646,7 +632,7 @@ export default function NewLeadUpsell() {
                   </div>
 
                   <div>
-                    <Label>Nº Contrato ERP {fromErp && <span className="text-violet-500 text-xs ml-1">• ERP</span>}</Label>
+                    <Label>Nº Contrato ERP</Label>
                     <Input
                       value={formData.contract_number}
                       onChange={(e) => setFormData({ ...formData, contract_number: e.target.value })}
@@ -656,7 +642,7 @@ export default function NewLeadUpsell() {
                   </div>
 
                   <div>
-                    <Label>Situação do Contrato {fromErp && <span className="text-violet-500 text-xs ml-1">• ERP</span>}</Label>
+                    <Label>Situação do Contrato</Label>
                     <div className="flex items-center gap-2 mt-1">
                       <Input
                         value={formData.contract_status}
@@ -680,7 +666,7 @@ export default function NewLeadUpsell() {
                   </div>
 
                   <div className="md:col-span-2">
-                    <Label>Produto/Plano Atual {fromErp && <span className="text-violet-500 text-xs ml-1">• ERP</span>}</Label>
+                    <Label>Produto/Plano Atual</Label>
                     <Input
                       value={formData.interest}
                       onChange={(e) => setFormData({ ...formData, interest: e.target.value })}
@@ -690,7 +676,7 @@ export default function NewLeadUpsell() {
                   </div>
 
                   <div>
-                    <Label>Nome do Dependente {fromErp && <span className="text-violet-500 text-xs ml-1">• ERP</span>}</Label>
+                    <Label>Nome do Dependente</Label>
                     <Input
                       value={formData.dependent_name}
                       onChange={(e) => setFormData({ ...formData, dependent_name: e.target.value })}
@@ -700,7 +686,7 @@ export default function NewLeadUpsell() {
                   </div>
 
                   <div>
-                    <Label>CPF do Dependente {fromErp && <span className="text-violet-500 text-xs ml-1">• ERP</span>}</Label>
+                    <Label>CPF do Dependente</Label>
                     <Input
                       value={formData.dependent_cpf}
                       onChange={(e) => setFormData({ ...formData, dependent_cpf: formatCPF(e.target.value) })}
@@ -838,13 +824,12 @@ export default function NewLeadUpsell() {
               <CardHeader>
                 <CardTitle>
                   Endereço
-                  {fromErp && <span className="text-xs font-normal text-violet-500 ml-2">(pré-preenchido do ERP)</span>}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid md:grid-cols-3 gap-4">
                   <div className="md:col-span-2">
-                    <Label>Rua/Logradouro {fromErp && <span className="text-violet-500 text-xs ml-1">• ERP</span>}</Label>
+                    <Label>Rua/Logradouro</Label>
                     <Input
                       value={formData.street}
                       onChange={(e) => setFormData({ ...formData, street: e.target.value })}
@@ -853,7 +838,7 @@ export default function NewLeadUpsell() {
                     />
                   </div>
                   <div>
-                    <Label>Número {fromErp && <span className="text-violet-500 text-xs ml-1">• ERP</span>}</Label>
+                    <Label>Número</Label>
                     <Input
                       value={formData.number}
                       onChange={(e) => setFormData({ ...formData, number: e.target.value })}
@@ -862,7 +847,7 @@ export default function NewLeadUpsell() {
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <Label>Complemento {fromErp && <span className="text-violet-500 text-xs ml-1">• ERP</span>}</Label>
+                    <Label>Complemento</Label>
                     <Input
                       value={formData.complement}
                       onChange={(e) => setFormData({ ...formData, complement: e.target.value })}
@@ -871,7 +856,7 @@ export default function NewLeadUpsell() {
                     />
                   </div>
                   <div>
-                    <Label>CEP {fromErp && <span className="text-violet-500 text-xs ml-1">• ERP</span>}</Label>
+                    <Label>CEP</Label>
                     <div className="relative">
                       <Input
                         value={formData.cep}
@@ -889,7 +874,7 @@ export default function NewLeadUpsell() {
                     <p className="text-xs text-gray-500 mt-1">Digite o CEP para preencher cidade/estado</p>
                   </div>
                   <div>
-                    <Label>Bairro {fromErp && <span className="text-violet-500 text-xs ml-1">• ERP</span>}</Label>
+                    <Label>Bairro</Label>
                     <Input
                       value={formData.neighborhood}
                       onChange={(e) => setFormData({ ...formData, neighborhood: e.target.value })}
