@@ -17,6 +17,11 @@ import { executeLeadCreatedAutomation, executeStageChangeAutomation, executeUpse
 
 const router = Router();
 
+// Explicit migration: ensure supervisor_emails column exists in teams table
+pool.query('ALTER TABLE teams ADD COLUMN IF NOT EXISTS supervisor_emails TEXT[]')
+  .then(() => console.log('[Migration] teams.supervisor_emails OK'))
+  .catch(e => console.error('[Migration] teams.supervisor_emails error:', e.message));
+
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }
