@@ -229,24 +229,31 @@ router.get('/erp-planos', authMiddleware, async (req, res) => {
     if (!erpToken) return res.status(500).json({ error: 'ERP_AUTH_TOKEN não configurado' });
     const authHeader = erpToken.startsWith('Bearer ') ? erpToken : `Bearer ${erpToken}`;
 
-    let planos = [];
-    for (const uf of SMALL_UFS) {
-      try {
-        const records = await erpCadastroPessoasCall(authHeader, { uf });
-        const names = [...new Set(
-          records.map(r => r.descricao).filter(d => d && !d.toUpperCase().includes('DEPENDENTE'))
-        )].sort();
-        if (names.length > 0) {
-          planos = names;
-          erp_planos_cache = planos;
-          erp_planos_cache_ts = now;
-          console.log(`[ERP Planos] Cache populado via UF=${uf}: ${planos.length} planos`);
-          break;
-        }
-      } catch (e) {
-        console.warn(`[ERP Planos] UF=${uf} falhou:`, e.message);
+    // Query all small UFs in parallel and merge distinct plan names
+    const results = await Promise.allSettled(
+      SMALL_UFS.map(uf => erpCadastroPessoasCall(authHeader, { uf }))
+    );
+
+    const allDescricaos = new Set();
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') {
+        r.value.forEach(rec => {
+          if (rec.descricao && !rec.descricao.toUpperCase().includes('DEPENDENTE')) {
+            allDescricaos.add(rec.descricao.trim());
+          }
+        });
+        console.log(`[ERP Planos] UF=${SMALL_UFS[i]}: ${r.value.length} registros`);
+      } else {
+        console.warn(`[ERP Planos] UF=${SMALL_UFS[i]} falhou:`, r.reason?.message);
       }
+    });
+
+    const planos = [...allDescricaos].sort();
+    if (planos.length > 0) {
+      erp_planos_cache = planos;
+      erp_planos_cache_ts = now;
     }
+    console.log(`[ERP Planos] Cache populado: ${planos.length} planos únicos`);
     res.json({ planos });
   } catch (error) {
     console.error('[ERP Planos] Error:', error.message);
