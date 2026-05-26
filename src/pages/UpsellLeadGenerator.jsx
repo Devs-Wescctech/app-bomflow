@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +16,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import {
   Users, Search, Loader2, CheckCircle2, XCircle, AlertTriangle,
-  ArrowLeft, Filter, Database, FileDown, Phone, User, MapPin,
+  ArrowLeft, Filter, Database, FileDown, Phone, MapPin, ChevronDown, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { isUpsellPrivileged } from "@/components/utils/permissions";
@@ -51,9 +51,125 @@ function buildCSV(imported, skipped, errors) {
   return rows.map(row => row.map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
 }
 
+function MultiSelect({ options = [], selected = [], onChange, placeholder, loading, disabled }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const filtered = search.trim()
+    ? options.filter(o => o.toLowerCase().includes(search.toLowerCase()))
+    : options;
+
+  function toggle(val) {
+    if (selected.includes(val)) onChange(selected.filter(s => s !== val));
+    else onChange([...selected, val]);
+  }
+
+  function removeTag(val, e) {
+    e.stopPropagation();
+    onChange(selected.filter(s => s !== val));
+  }
+
+  const label = selected.length === 0
+    ? placeholder
+    : selected.length <= 3
+      ? selected.join(", ")
+      : `${selected.length} selecionados`;
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        disabled={disabled || loading}
+        onClick={() => setOpen(v => !v)}
+        className={`w-full flex items-center justify-between gap-2 min-h-[40px] px-3 py-2 rounded-md border text-sm text-left transition-colors
+          bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700
+          hover:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30
+          ${disabled || loading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+      >
+        <span className={`flex-1 truncate ${selected.length === 0 ? "text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>
+          {loading ? "Carregando..." : label}
+        </span>
+        {loading
+          ? <Loader2 className="w-4 h-4 text-gray-400 animate-spin flex-shrink-0" />
+          : <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+        }
+      </button>
+
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {selected.map(v => (
+            <span key={v} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 text-xs font-medium">
+              {v}
+              <button type="button" onClick={(e) => removeTag(v, e)} className="hover:text-violet-900 dark:hover:text-white">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full min-w-[200px] rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg">
+          <div className="p-2 border-b border-gray-100 dark:border-gray-800">
+            <input
+              autoFocus
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar..."
+              className="w-full text-sm px-2 py-1 rounded border border-gray-200 dark:border-gray-700 bg-transparent outline-none focus:ring-1 focus:ring-violet-400 dark:text-gray-100 placeholder-gray-400"
+            />
+          </div>
+          <div className="max-h-52 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-4">
+                {options.length === 0 ? "Nenhuma opção disponível" : "Nenhum resultado"}
+              </p>
+            ) : (
+              filtered.map(opt => (
+                <div
+                  key={opt}
+                  className="flex items-center gap-2.5 px-3 py-2 hover:bg-violet-50 dark:hover:bg-violet-900/20 cursor-pointer"
+                  onClick={() => toggle(opt)}
+                >
+                  <Checkbox
+                    checked={selected.includes(opt)}
+                    onCheckedChange={() => toggle(opt)}
+                    className="pointer-events-none"
+                  />
+                  <span className="text-sm text-gray-800 dark:text-gray-200">{opt}</span>
+                </div>
+              ))
+            )}
+          </div>
+          {selected.length > 0 && (
+            <div className="p-2 border-t border-gray-100 dark:border-gray-800">
+              <button
+                type="button"
+                onClick={() => { onChange([]); setSearch(""); }}
+                className="w-full text-xs text-gray-500 hover:text-red-500 py-1 transition-colors"
+              >
+                Limpar seleção ({selected.length})
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function UpsellLeadGenerator() {
   const [step, setStep] = useState("filters");
-  const [filters, setFilters] = useState({ cidade: "", uf: "", descricao: "", quantidade: "200" });
+  const [filters, setFilters] = useState({ cidades: [], ufs: [], descricaos: [], quantidade: "200" });
   const [records, setRecords] = useState([]);
   const [selectedKeys, setSelectedKeys] = useState(new Set());
   const [searching, setSearching] = useState(false);
@@ -68,6 +184,23 @@ export default function UpsellLeadGenerator() {
     queryFn: () => base44.entities.SalesAgent.list(),
   });
   const activeAgents = agents.filter((a) => a.active !== false);
+
+  const { data: erpOptions, isLoading: loadingOptions } = useQuery({
+    queryKey: ["erpCadastroPessoasOptions"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/functions/erp-cadastro-pessoas-options`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  const ufOptions = erpOptions?.uf || [];
+  const cidadeOptions = erpOptions?.cidade || [];
+  const descricaoOptions = erpOptions?.descricao || [];
 
   const currentAgent = user?.agent;
   const isPrivileged = isUpsellPrivileged(user, currentAgent);
@@ -84,9 +217,9 @@ export default function UpsellLeadGenerator() {
     setSearching(true);
     try {
       const params = new URLSearchParams();
-      if (filters.cidade.trim()) params.set("cidade", filters.cidade.trim());
-      if (filters.uf.trim()) params.set("uf", filters.uf.trim());
-      if (filters.descricao.trim()) params.set("descricao", filters.descricao.trim());
+      if (filters.cidades.length > 0) params.set("cidade", filters.cidades.join(","));
+      if (filters.ufs.length > 0) params.set("uf", filters.ufs.join(","));
+      if (filters.descricaos.length > 0) params.set("descricao", filters.descricaos.join(","));
       if (filters.quantidade) params.set("quantidade", filters.quantidade);
       const res = await fetch(`${API_BASE}/functions/erp-cadastro-pessoas-batch?${params.toString()}`, {
         headers: getAuthHeaders(),
@@ -117,25 +250,14 @@ export default function UpsellLeadGenerator() {
     });
   }
 
-  function selectAll() {
-    setSelectedKeys(new Set(records.map(recordKey)));
-  }
-
-  function deselectAll() {
-    setSelectedKeys(new Set());
-  }
+  function selectAll() { setSelectedKeys(new Set(records.map(recordKey))); }
+  function deselectAll() { setSelectedKeys(new Set()); }
 
   const selectedRecords = records.filter((r) => selectedKeys.has(recordKey(r)));
 
   async function handleImport() {
-    if (!agentId) {
-      toast.error("Selecione um agente responsável.");
-      return;
-    }
-    if (selectedRecords.length === 0) {
-      toast.error("Selecione ao menos um lead para importar.");
-      return;
-    }
+    if (!agentId) { toast.error("Selecione um agente responsável."); return; }
+    if (selectedRecords.length === 0) { toast.error("Selecione ao menos um lead para importar."); return; }
     setShowConfirmDialog(false);
     setImporting(true);
     setStep("importing");
@@ -180,10 +302,11 @@ export default function UpsellLeadGenerator() {
     setRecords([]);
     setSelectedKeys(new Set());
     setImportResult(null);
-    setFilters({ cidade: "", uf: "", descricao: "", quantidade: "200" });
+    setFilters({ cidades: [], ufs: [], descricaos: [], quantidade: "200" });
   }
 
   const selectedAgentName = activeAgents.find((a) => a.id === agentId)?.name;
+  const hasFilters = filters.cidades.length > 0 || filters.ufs.length > 0 || filters.descricaos.length > 0;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-4 md:p-6">
@@ -244,43 +367,61 @@ export default function UpsellLeadGenerator() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
+
                 <div className="space-y-2">
-                  <Label>Cidade</Label>
-                  <Input
-                    value={filters.cidade}
-                    onChange={(e) => setFilters((f) => ({ ...f, cidade: e.target.value }))}
-                    placeholder="Ex: São Paulo"
-                    className="bg-white dark:bg-gray-900"
+                  <Label className="font-medium text-gray-700 dark:text-gray-300">
+                    UF
+                    {filters.ufs.length > 0 && (
+                      <span className="ml-2 text-xs text-violet-600 font-normal">{filters.ufs.length} selecionado(s)</span>
+                    )}
+                  </Label>
+                  <MultiSelect
+                    options={ufOptions}
+                    selected={filters.ufs}
+                    onChange={(v) => setFilters(f => ({ ...f, ufs: v }))}
+                    placeholder="Selecione o(s) estado(s)"
+                    loading={loadingOptions}
                   />
-                  <p className="text-xs text-gray-400">Deixe em branco para todas</p>
+                  <p className="text-xs text-gray-400">Ex: SP, MG, RJ</p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>UF</Label>
-                  <Input
-                    value={filters.uf}
-                    onChange={(e) => setFilters((f) => ({ ...f, uf: e.target.value.toUpperCase().slice(0, 2) }))}
-                    placeholder="Ex: SP"
-                    maxLength={2}
-                    className="bg-white dark:bg-gray-900"
+                  <Label className="font-medium text-gray-700 dark:text-gray-300">
+                    Cidade
+                    {filters.cidades.length > 0 && (
+                      <span className="ml-2 text-xs text-violet-600 font-normal">{filters.cidades.length} selecionada(s)</span>
+                    )}
+                  </Label>
+                  <MultiSelect
+                    options={cidadeOptions}
+                    selected={filters.cidades}
+                    onChange={(v) => setFilters(f => ({ ...f, cidades: v }))}
+                    placeholder={cidadeOptions.length === 0 ? "Disponível após importações" : "Selecione a(s) cidade(s)"}
+                    loading={loadingOptions}
                   />
-                  <p className="text-xs text-gray-400">Sigla do estado</p>
+                  <p className="text-xs text-gray-400">Deixe vazio para todas</p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Produto / Plano</Label>
-                  <Input
-                    value={filters.descricao}
-                    onChange={(e) => setFilters((f) => ({ ...f, descricao: e.target.value }))}
-                    placeholder="Ex: Internet 100MB"
-                    className="bg-white dark:bg-gray-900"
+                  <Label className="font-medium text-gray-700 dark:text-gray-300">
+                    Produto / Plano
+                    {filters.descricaos.length > 0 && (
+                      <span className="ml-2 text-xs text-violet-600 font-normal">{filters.descricaos.length} selecionado(s)</span>
+                    )}
+                  </Label>
+                  <MultiSelect
+                    options={descricaoOptions}
+                    selected={filters.descricaos}
+                    onChange={(v) => setFilters(f => ({ ...f, descricaos: v }))}
+                    placeholder={descricaoOptions.length === 0 ? "Disponível após importações" : "Selecione o(s) plano(s)"}
+                    loading={loadingOptions}
                   />
-                  <p className="text-xs text-gray-400">Deixe em branco para todos</p>
+                  <p className="text-xs text-gray-400">Deixe vazio para todos</p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Quantidade máxima</Label>
+                  <Label className="font-medium text-gray-700 dark:text-gray-300">Quantidade máxima</Label>
                   <Input
                     type="number"
                     min={1}
@@ -294,15 +435,27 @@ export default function UpsellLeadGenerator() {
                 </div>
               </div>
 
+              {!hasFilters && (
+                <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  Selecione ao menos um filtro (UF, Cidade ou Produto) para evitar timeout na busca.
+                </div>
+              )}
+
               <div className="flex items-center gap-3 pt-2">
                 <Button
                   onClick={handleSearch}
-                  disabled={searching}
-                  className="bg-violet-600 hover:bg-violet-700 text-white gap-2"
+                  disabled={searching || !hasFilters}
+                  className="bg-violet-600 hover:bg-violet-700 text-white gap-2 disabled:opacity-50"
                 >
                   {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
                   {searching ? "Buscando..." : "Buscar Leads"}
                 </Button>
+                {hasFilters && (
+                  <Button variant="ghost" size="sm" onClick={() => setFilters(f => ({ ...f, cidades: [], ufs: [], descricaos: [] }))}>
+                    Limpar filtros
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -511,103 +664,83 @@ export default function UpsellLeadGenerator() {
                             <AlertTriangle className="w-3 h-3" /> Duplicata
                           </Badge>
                         </td>
-                        <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{r.name}</td>
+                        <td className="px-3 py-2.5 font-medium text-gray-900 dark:text-gray-100">{r.name}</td>
                         <td className="px-3 py-2.5 font-mono text-xs text-gray-600 dark:text-gray-400">{r.cpf || "-"}</td>
-                        <td className="px-3 py-2.5 text-gray-500">{r.phone || "-"}</td>
-                        <td className="px-3 py-2.5 text-gray-500">{r.phone_2 || "-"}</td>
-                        <td className="px-3 py-2.5 font-mono text-xs text-gray-400">
-                          {r.existing_lead_id ? (
-                            <span title={`Já existe em: ${r.duplicate_source}`}>{r.existing_lead_id}</span>
-                          ) : (
-                            <span className="text-gray-400">—</span>
-                          )}
-                        </td>
+                        <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{r.phone || "-"}</td>
+                        <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{r.phone_2 || "-"}</td>
+                        <td className="px-3 py-2.5 font-mono text-xs text-gray-400">{r.existing_lead_id || "-"}</td>
                       </tr>
                     ))}
                     {importResult.errors.map((r, i) => (
                       <tr key={"err" + i} className="bg-red-50/30 dark:bg-red-900/5">
                         <td className="px-3 py-2.5">
-                          <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 gap-1 text-xs">
+                          <Badge className="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-300 gap-1 text-xs">
                             <XCircle className="w-3 h-3" /> Erro
                           </Badge>
                         </td>
-                        <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">{r.name}</td>
-                        <td className="px-3 py-2.5 text-xs text-red-500 dark:text-red-400" colSpan={4}>{r.error}</td>
+                        <td className="px-3 py-2.5 font-medium text-gray-900 dark:text-gray-100" colSpan={4}>{r.name}</td>
+                        <td className="px-3 py-2.5 text-xs text-red-500">{r.error}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </Card>
+
+            <div className="flex justify-center">
+              <Button variant="outline" onClick={resetAll} className="gap-2">
+                <ArrowLeft className="w-4 h-4" />
+                Nova busca
+              </Button>
+            </div>
           </>
         )}
-      </div>
 
-      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Database className="w-5 h-5 text-violet-600" />
-              Confirmar importação
-            </DialogTitle>
-            <DialogDescription>
-              Os leads serão criados no pipeline Upsell com as mesmas regras do Novo Lead.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-2">
-            <div className="bg-violet-50 dark:bg-violet-900/20 rounded-lg p-4 border border-violet-200 dark:border-violet-800 space-y-1 text-sm">
-              <p className="font-semibold text-violet-800 dark:text-violet-300">Resumo</p>
-              <p className="text-gray-600 dark:text-gray-400">
-                <span className="font-medium text-gray-800 dark:text-gray-200">{selectedKeys.size}</span> lead(s) selecionados para importação
-              </p>
-              <p className="text-xs text-gray-500">Duplicatas serão puladas automaticamente e incluídas na exportação.</p>
+        <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirmar importação</DialogTitle>
+              <DialogDescription>
+                Você está prestes a importar <strong>{selectedKeys.size} leads</strong> para o pipeline Upsell.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              {canSelectAgent && (
+                <div className="space-y-1.5">
+                  <Label>Agente responsável</Label>
+                  <Select value={agentId} onValueChange={setAgentId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o agente" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeAgents.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {selectedAgentName && (
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Agente: <strong>{selectedAgentName}</strong>
+                </p>
+              )}
+              <p className="text-xs text-gray-500">Leads já existentes no sistema serão ignorados automaticamente (deduplicação por CPF/telefone).</p>
             </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>Cancelar</Button>
+              <Button
+                onClick={handleImport}
+                disabled={!agentId}
+                className="bg-violet-600 hover:bg-violet-700 text-white"
+              >
+                Confirmar importação
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-            {canSelectAgent && (
-              <div className="space-y-2">
-                <Label>
-                  Agente responsável <span className="text-red-500">*</span>
-                </Label>
-                <Select value={agentId} onValueChange={setAgentId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um agente" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {activeAgents.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>
-                        <div className="flex items-center gap-2">
-                          {a.photo_url && <img src={a.photo_url} alt={a.name} className="w-5 h-5 rounded-full object-cover" />}
-                          <span>{a.name}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {agentId && (
-              <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
-                <User className="w-4 h-4 text-violet-500" />
-                <span>Agente: <span className="font-medium text-gray-900 dark:text-gray-100">{selectedAgentName}</span></span>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>Cancelar</Button>
-            <Button
-              onClick={handleImport}
-              disabled={!agentId}
-              className="bg-violet-600 hover:bg-violet-700 text-white gap-2"
-            >
-              <Database className="w-4 h-4" />
-              Importar {selectedKeys.size} leads
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      </div>
     </div>
   );
 }
