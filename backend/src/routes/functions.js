@@ -277,7 +277,9 @@ router.get('/erp-cadastro-pessoas-options', authMiddleware, async (req, res) => 
     );
 
     const cidades = [...new Set(allRecords.map(r => r.cidade).filter(Boolean))].sort();
-    const descricaos = [...new Set(allRecords.map(r => r.descricao).filter(Boolean))].sort();
+    const descricaos = [...new Set(
+      allRecords.map(r => r.descricao).filter(d => d && !d.toUpperCase().includes('DEPENDENTE'))
+    )].sort();
     return res.json({ uf: UF_BRASIL, cidade: cidades, descricao: descricaos });
   } catch (error) {
     console.error('[ERP Cadastro Options] Error:', error.message);

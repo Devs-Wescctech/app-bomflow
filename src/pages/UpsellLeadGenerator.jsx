@@ -332,6 +332,25 @@ export default function UpsellLeadGenerator() {
 
   const cidadeOptions = cidadeData?.cities || [];
 
+  const { data: produtoData, isFetching: loadingProdutos } = useQuery({
+    queryKey: ["erpProdutoOptions", filters.ufs],
+    queryFn: async () => {
+      if (filters.ufs.length === 0) return { descricao: [] };
+      const params = new URLSearchParams({ uf: filters.ufs.join(",") });
+      const res = await fetch(`${API_BASE}/functions/erp-cadastro-pessoas-options?${params}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    enabled: filters.ufs.length > 0,
+    staleTime: 30 * 60 * 1000,
+    retry: 1,
+    keepPreviousData: true,
+  });
+
+  const produtoOptions = produtoData?.descricao || [];
+
   const currentAgent = user?.agent;
   const isPrivileged = isUpsellPrivileged(user, currentAgent);
   const canSelectAgent = isPrivileged;
@@ -553,14 +572,27 @@ export default function UpsellLeadGenerator() {
                       <span className="ml-2 text-xs text-violet-600 font-normal">{filters.descricaos.length} plano(s)</span>
                     )}
                   </Label>
-                  <AutocompleteTagInput
-                    values={filters.descricaos}
+                  <MultiSelect
+                    options={produtoOptions}
+                    selected={filters.descricaos}
                     onChange={(v) => setFilters(f => ({ ...f, descricaos: v }))}
-                    placeholder="Digite 2+ letras para buscar..."
-                    searchField="descricao"
-                    selectedUfs={filters.ufs}
+                    placeholder={
+                      filters.ufs.length === 0
+                        ? "Selecione a UF primeiro"
+                        : loadingProdutos
+                          ? "Carregando planos..."
+                          : produtoOptions.length === 0
+                            ? "Nenhum plano encontrado"
+                            : "Selecione o(s) plano(s)"
+                    }
+                    loading={loadingProdutos}
+                    disabled={filters.ufs.length === 0}
                   />
-                  <p className="text-xs text-gray-400">Digite para buscar no ERP — clique para adicionar</p>
+                  <p className="text-xs text-gray-400">
+                    {filters.ufs.length === 0
+                      ? "Selecione ao menos uma UF para ver os planos"
+                      : `${produtoOptions.length} plano(s) disponível(is)`}
+                  </p>
                 </div>
 
                 <div className="space-y-2">
