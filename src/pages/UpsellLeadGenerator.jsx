@@ -286,18 +286,11 @@ export default function UpsellLeadGenerator() {
   const [records, setRecords] = useState([]);
   const [selectedKeys, setSelectedKeys] = useState(new Set());
   const [searching, setSearching] = useState(false);
-  const [agentId, setAgentId] = useState("");
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
 
   const { data: user } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
-  const { data: agents = [] } = useQuery({
-    queryKey: ["salesAgentsForUpsellGen"],
-    queryFn: () => base44.entities.SalesAgent.list(),
-  });
-  const activeAgents = agents.filter((a) => a.active !== false);
-
   const { data: ufData } = useQuery({
     queryKey: ["erpUFOptions"],
     queryFn: async () => {
@@ -349,14 +342,6 @@ export default function UpsellLeadGenerator() {
 
   const currentAgent = user?.agent;
   const isPrivileged = isUpsellPrivileged(user, currentAgent);
-  const canSelectAgent = isPrivileged;
-
-  useEffect(() => {
-    if (user && !canSelectAgent && !agentId) {
-      const mine = activeAgents.find((a) => a.email === user.email);
-      if (mine) setAgentId(mine.id);
-    }
-  }, [user, activeAgents, canSelectAgent, agentId]);
 
   async function handleSearch() {
     setSearching(true);
@@ -402,7 +387,6 @@ export default function UpsellLeadGenerator() {
   const selectedRecords = records.filter((r) => selectedKeys.has(recordKey(r)));
 
   async function handleImport() {
-    if (!agentId) { toast.error("Selecione um agente responsável."); return; }
     if (selectedRecords.length === 0) { toast.error("Selecione ao menos um lead para importar."); return; }
     setShowConfirmDialog(false);
     setImporting(true);
@@ -411,7 +395,7 @@ export default function UpsellLeadGenerator() {
       const res = await fetch(`${API_BASE}/functions/upsell-lead-generator-import`, {
         method: "POST",
         headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ leads: selectedRecords, agent_id: agentId }),
+        body: JSON.stringify({ leads: selectedRecords }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -451,7 +435,6 @@ export default function UpsellLeadGenerator() {
     setFilters({ cidades: [], ufs: [], descricaos: [], quantidade: "200", excluirJaImportados: true });
   }
 
-  const selectedAgentName = activeAgents.find((a) => a.id === agentId)?.name;
   const hasFilters = filters.cidades.length > 0 || filters.ufs.length > 0 || filters.descricaos.length > 0;
 
   return (
@@ -901,33 +884,12 @@ export default function UpsellLeadGenerator() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 py-2">
-              {canSelectAgent && (
-                <div className="space-y-1.5">
-                  <Label>Agente responsável</Label>
-                  <Select value={agentId} onValueChange={setAgentId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o agente" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {activeAgents.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              {selectedAgentName && (
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Agente: <strong>{selectedAgentName}</strong>
-                </p>
-              )}
               <p className="text-xs text-gray-500">Leads já existentes no sistema serão ignorados automaticamente (deduplicação por CPF/telefone).</p>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>Cancelar</Button>
               <Button
                 onClick={handleImport}
-                disabled={!agentId}
                 className="bg-violet-600 hover:bg-violet-700 text-white"
               >
                 Confirmar importação

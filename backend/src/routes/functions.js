@@ -463,9 +463,6 @@ router.post('/upsell-lead-generator-import', authMiddleware, async (req, res) =>
     if (!Array.isArray(leads) || leads.length === 0) {
       return res.status(400).json({ error: 'Lista de leads é obrigatória' });
     }
-    if (!agent_id) {
-      return res.status(400).json({ error: 'agent_id é obrigatório' });
-    }
     const imported = [];
     const skipped = [];
     const errors = [];

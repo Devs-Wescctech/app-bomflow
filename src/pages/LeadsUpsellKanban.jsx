@@ -420,35 +420,45 @@ function SortableLeadCard({ lead, stage, pendingTasksCount, agentData, navigate,
                         open: true,
                         title: 'Confirmar Venda Concluída',
                         message: 'Confirma a conclusão desta venda? Este lead sairá do pipeline de vendas.',
-                        onConfirm: () => updateLeadMutation.mutate({
-                          id: lead.id,
-                          data: {
-                            concluded: true,
-                            concluded_at: nowIso,
-                            concluded_by: userEmail || 'Sistema',
-                            converted_at: nowIso,
-                            stage: 'fechado_ganho',
-                          },
-                        }, {
-                          onSuccess: () => toast.success('Venda concluída com sucesso!'),
-                        }),
+                        onConfirm: () => {
+                          const stageHistory = [...(lead.stageHistory || lead.stage_history || [])];
+                          stageHistory.push({ from: lead.stage, to: 'fechado_ganho', changed_at: nowIso, changed_by: userEmail || 'Sistema' });
+                          updateLeadMutation.mutate({
+                            id: lead.id,
+                            data: {
+                              concluded: true,
+                              concluded_at: nowIso,
+                              concluded_by: userEmail || 'Sistema',
+                              converted_at: nowIso,
+                              stage: 'fechado_ganho',
+                              stage_history: stageHistory,
+                            },
+                          }, {
+                            onSuccess: () => toast.success('Venda concluída com sucesso!'),
+                          });
+                        },
                       });
                     } else {
                       setConfirmDialog({
                         open: true,
                         title: 'Confirmar Lead Perdido',
                         message: 'Confirma que este lead foi perdido?',
-                        onConfirm: () => updateLeadMutation.mutate({
-                          id: lead.id,
-                          data: {
-                            lost: true,
-                            lost_at: nowIso,
-                            lost_by: userEmail || 'Sistema',
-                            stage: 'fechado_perdido',
-                          },
-                        }, {
-                          onSuccess: () => toast.success('Lead marcado como perdido.'),
-                        }),
+                        onConfirm: () => {
+                          const stageHistory = [...(lead.stageHistory || lead.stage_history || [])];
+                          stageHistory.push({ from: lead.stage, to: 'fechado_perdido', changed_at: nowIso, changed_by: userEmail || 'Sistema' });
+                          updateLeadMutation.mutate({
+                            id: lead.id,
+                            data: {
+                              lost: true,
+                              lost_at: nowIso,
+                              lost_by: userEmail || 'Sistema',
+                              stage: 'fechado_perdido',
+                              stage_history: stageHistory,
+                            },
+                          }, {
+                            onSuccess: () => toast.success('Lead marcado como perdido.'),
+                          });
+                        },
                       });
                     }
                   }}
