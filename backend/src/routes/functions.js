@@ -313,8 +313,8 @@ router.get('/erp-cadastro-pessoas-batch', authMiddleware, async (req, res) => {
     const authHeader = erpToken.startsWith('Bearer ') ? erpToken : `Bearer ${erpToken}`;
     const totalLimit = quantidade ? Math.min(parseInt(quantidade) || 200, 2000) : 200;
 
-    const ufs = uf ? uf.split(',').map(s => s.trim()).filter(Boolean) : [];
-    const cidades = cidade ? cidade.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const ufs = uf ? uf.split(',').map(s => s.trim().toUpperCase()).filter(Boolean) : [];
+    const cidades = cidade ? cidade.split(',').map(s => s.trim().toUpperCase()).filter(Boolean) : [];
     const descricaos = descricao ? descricao.split(',').map(s => s.trim()).filter(Boolean) : [];
 
     let allRecords = [];
