@@ -368,7 +368,7 @@ router.get('/erp-cadastro-pessoas-batch', authMiddleware, async (req, res) => {
     // Normalize missing plan description
     allRecords = allRecords.map(rec => ({
       ...rec,
-      descricao: rec.descricao && rec.descricao.trim() ? rec.descricao.trim() : 'Sem contrato',
+      descricao: rec.descricao && rec.descricao.trim() ? rec.descricao.trim() : 'SEM CONTRATO',
     }));
 
     if (allRecords.length > totalLimit) allRecords = allRecords.slice(0, totalLimit);
