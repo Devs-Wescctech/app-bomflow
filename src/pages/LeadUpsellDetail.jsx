@@ -127,6 +127,7 @@ export default function LeadUpsellDetail() {
   const [sendingContractLink, setSendingContractLink] = useState(false);
   const [sendingAcceptLink, setSendingAcceptLink] = useState(false);
   const [showLostDialog, setShowLostDialog] = useState(false);
+  const [erpCardOpen, setErpCardOpen] = useState(true);
   const [lostReason, setLostReason] = useState("");
 
   const { data: user } = useQuery({
@@ -166,6 +167,53 @@ export default function LeadUpsellDetail() {
     queryKey: ['proposalTemplates'],
     queryFn: () => base44.entities.ProposalTemplate.list(),
   });
+
+  const { data: erpData = [], isLoading: erpLoading } = useQuery({
+    queryKey: ['erpCadastroPessoas', lead?.cpf],
+    queryFn: async () => {
+      const cpf = lead?.cpf?.replace(/\D/g, '');
+      if (!cpf || cpf.length < 11) return [];
+      const res = await fetch(`/api/functions/erp-cadastro-pessoas?cpf=${encodeURIComponent(cpf)}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken')}` },
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+    enabled: !!lead?.cpf,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const erpContracts = (() => {
+    const map = {};
+    for (const r of erpData) {
+      const key = r.contrato || '__sem_contrato__';
+      if (!map[key]) {
+        map[key] = {
+          contrato: r.contrato || null,
+          situacao_contrato: r.situacao_contrato || null,
+          nome_titular: r.nome_titular || null,
+          cpf: r.cpf || null,
+          data_titular: r.data_titular || null,
+          telefone: r.telefone || null,
+          telefone_2: r.telefone_2 || null,
+          rua: r.rua || null,
+          numero: r.numero || null,
+          complemento: r.complemento || null,
+          bairro: r.bairro || null,
+          cep: r.cep || null,
+          cidade: r.cidade || null,
+          uf: r.uf || null,
+          descricao: r.descricao || null,
+          dependentes: [],
+        };
+      }
+      if (r.nome_dependente) {
+        map[key].dependentes.push({ nome: r.nome_dependente, cpf: r.cpf_dependente });
+      }
+    }
+    return Object.values(map);
+  })();
 
   const actionableTypes = ['task', 'visit', 'call', 'meeting', 'email', 'presentation', 'proposal'];
   const pendingTasks = activities.filter(a => actionableTypes.includes(a.type) && !a.completed);
@@ -1691,6 +1739,141 @@ export default function LeadUpsellDetail() {
                 )}
               </div>
             </div>
+
+            {/* ERP — Dados API_CADASTRO_PESSOAS */}
+            {lead?.cpf && (
+              <div className="bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950/50 dark:to-purple-950/50 rounded-2xl border border-violet-200 dark:border-violet-800 shadow-sm overflow-hidden">
+                <button
+                  type="button"
+                  className="w-full px-5 py-4 border-b border-violet-200/50 dark:border-violet-800/50 bg-violet-100/50 dark:bg-violet-900/30 flex items-center justify-between hover:bg-violet-100 dark:hover:bg-violet-900/50 transition-colors"
+                  onClick={() => setErpCardOpen(v => !v)}
+                >
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                    <h3 className="font-semibold text-violet-800 dark:text-violet-200">Dados ERP</h3>
+                    {erpLoading && <Loader2 className="w-4 h-4 animate-spin text-violet-500" />}
+                    {!erpLoading && erpContracts.length > 0 && (
+                      <Badge className="bg-violet-200 dark:bg-violet-800 text-violet-800 dark:text-violet-200 text-xs">
+                        {erpContracts.length} contrato{erpContracts.length > 1 ? 's' : ''}
+                      </Badge>
+                    )}
+                    {!erpLoading && erpContracts.length === 0 && (
+                      <Badge className="bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-xs">
+                        sem registros
+                      </Badge>
+                    )}
+                  </div>
+                  {erpCardOpen
+                    ? <ChevronDown className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+                    : <ChevronRight className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+                  }
+                </button>
+
+                {erpCardOpen && (
+                  <div className="p-5 space-y-4">
+                    {erpLoading ? (
+                      <div className="flex items-center justify-center py-6 text-violet-500">
+                        <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                        <span className="text-sm">Consultando ERP...</span>
+                      </div>
+                    ) : erpContracts.length === 0 ? (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                        Nenhum registro encontrado no ERP para este CPF.
+                      </p>
+                    ) : (
+                      erpContracts.map((c, i) => {
+                        const statusColor = c.situacao_contrato === 'ATIVO'
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300'
+                          : c.situacao_contrato === 'CANCELADO' || c.situacao_contrato === 'SUSPENSO'
+                            ? 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300'
+                            : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300';
+
+                        const address = [c.rua, c.numero, c.complemento, c.bairro, c.cidade, c.uf, c.cep]
+                          .filter(Boolean).join(', ');
+
+                        return (
+                          <div
+                            key={i}
+                            className="bg-white/70 dark:bg-gray-900/60 rounded-xl border border-violet-200 dark:border-violet-800 p-4 space-y-3"
+                          >
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              {c.contrato && (
+                                <span className="text-xs font-mono font-semibold text-violet-700 dark:text-violet-300">
+                                  Contrato #{c.contrato}
+                                </span>
+                              )}
+                              {c.situacao_contrato && (
+                                <Badge className={`text-xs ${statusColor}`}>{c.situacao_contrato}</Badge>
+                              )}
+                            </div>
+
+                            {c.descricao && (
+                              <div>
+                                <p className="text-xs font-medium text-violet-600 dark:text-violet-400 uppercase tracking-wide">Plano</p>
+                                <p className="text-sm text-gray-800 dark:text-gray-200 mt-0.5">{c.descricao}</p>
+                              </div>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              {c.nome_titular && (
+                                <div className="col-span-2">
+                                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Titular</p>
+                                  <p className="text-gray-800 dark:text-gray-200 mt-0.5">{c.nome_titular}</p>
+                                </div>
+                              )}
+                              {c.data_titular && (
+                                <div>
+                                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Nascimento</p>
+                                  <p className="text-gray-800 dark:text-gray-200 mt-0.5">{c.data_titular}</p>
+                                </div>
+                              )}
+                              {c.telefone && (
+                                <div>
+                                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Telefone</p>
+                                  <p className="text-gray-800 dark:text-gray-200 mt-0.5">{c.telefone}</p>
+                                </div>
+                              )}
+                              {c.telefone_2 && (
+                                <div>
+                                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Telefone 2</p>
+                                  <p className="text-gray-800 dark:text-gray-200 mt-0.5">{c.telefone_2}</p>
+                                </div>
+                              )}
+                            </div>
+
+                            {address && (
+                              <div>
+                                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1">
+                                  <MapPin className="w-3 h-3" /> Endereço
+                                </p>
+                                <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5">{address}</p>
+                              </div>
+                            )}
+
+                            {c.dependentes.length > 0 && (
+                              <div>
+                                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                                  Dependentes ({c.dependentes.length})
+                                </p>
+                                <ul className="mt-1 space-y-1">
+                                  {c.dependentes.map((d, j) => (
+                                    <li key={j} className="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                                      <User className="w-3 h-3 text-violet-400 flex-shrink-0" />
+                                      <span>{d.nome}</span>
+                                      {d.cpf && <span className="text-xs text-gray-400 ml-1">({d.cpf})</span>}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Financial Values Card */}
             <div className="bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/50 dark:to-green-950/50 rounded-2xl border border-emerald-200 dark:border-emerald-800 shadow-sm overflow-hidden">
