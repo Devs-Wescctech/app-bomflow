@@ -330,7 +330,7 @@ export default function UpsellLeadGenerator() {
     keepPreviousData: true,
   });
 
-  const cidadeOptions = (cidadeData?.cities || []).map(c => ({ value: c, label: c }));
+  const cidadeOptions = cidadeData?.cities || [];
 
   const currentAgent = user?.agent;
   const isPrivileged = isUpsellPrivileged(user, currentAgent);
