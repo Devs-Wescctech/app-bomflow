@@ -313,6 +313,25 @@ export default function UpsellLeadGenerator() {
 
   const ufOptions = ufData?.uf || [];
 
+  const { data: cidadeData, isFetching: loadingCidades } = useQuery({
+    queryKey: ["brazilCities", filters.ufs],
+    queryFn: async () => {
+      if (filters.ufs.length === 0) return { cities: [] };
+      const params = new URLSearchParams({ uf: filters.ufs.join(",") });
+      const res = await fetch(`${API_BASE}/functions/brazil-cities?${params}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    enabled: filters.ufs.length > 0,
+    staleTime: 24 * 60 * 60 * 1000,
+    retry: 1,
+    keepPreviousData: true,
+  });
+
+  const cidadeOptions = (cidadeData?.cities || []).map(c => ({ value: c, label: c }));
+
   const currentAgent = user?.agent;
   const isPrivileged = isUpsellPrivileged(user, currentAgent);
   const canSelectAgent = isPrivileged;
@@ -504,14 +523,27 @@ export default function UpsellLeadGenerator() {
                       <span className="ml-2 text-xs text-violet-600 font-normal">{filters.cidades.length} cidade(s)</span>
                     )}
                   </Label>
-                  <AutocompleteTagInput
-                    values={filters.cidades}
+                  <MultiSelect
+                    options={cidadeOptions}
+                    selected={filters.cidades}
                     onChange={(v) => setFilters(f => ({ ...f, cidades: v }))}
-                    placeholder="Digite 2+ letras para buscar..."
-                    searchField="cidade"
-                    selectedUfs={filters.ufs}
+                    placeholder={
+                      filters.ufs.length === 0
+                        ? "Selecione a UF primeiro"
+                        : loadingCidades
+                          ? "Carregando cidades..."
+                          : cidadeOptions.length === 0
+                            ? "Nenhuma cidade encontrada"
+                            : "Selecione a(s) cidade(s)"
+                    }
+                    loading={loadingCidades}
+                    disabled={filters.ufs.length === 0}
                   />
-                  <p className="text-xs text-gray-400">Digite para buscar no ERP — clique para adicionar</p>
+                  <p className="text-xs text-gray-400">
+                    {filters.ufs.length === 0
+                      ? "Selecione ao menos uma UF para ver as cidades"
+                      : `${cidadeOptions.length} cidade(s) disponível(is)`}
+                  </p>
                 </div>
 
                 <div className="space-y-2">

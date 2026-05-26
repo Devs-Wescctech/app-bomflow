@@ -169,6 +169,49 @@ router.post('/run-lead-automations', authMiddleware, loadAgentMiddleware, requir
   }
 });
 
+const brazilCitiesCache = new Map();
+const BRAZIL_CITIES_TTL = 24 * 60 * 60 * 1000;
+
+router.get('/brazil-cities', authMiddleware, async (req, res) => {
+  try {
+    const { uf } = req.query;
+    if (!uf) return res.status(400).json({ error: 'UF é obrigatório' });
+
+    const ufs = uf.split(',').map(u => u.trim().toUpperCase()).filter(Boolean);
+    const now = Date.now();
+    const cities = [];
+
+    await Promise.allSettled(ufs.map(async (singleUf) => {
+      const cached = brazilCitiesCache.get(singleUf);
+      if (cached && (now - cached.ts) < BRAZIL_CITIES_TTL) {
+        cities.push(...cached.cities);
+        return;
+      }
+      try {
+        const ctrl = new AbortController();
+        const timeout = setTimeout(() => ctrl.abort(), 10000);
+        const resp = await fetch(
+          `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${singleUf}/municipios`,
+          { signal: ctrl.signal }
+        );
+        clearTimeout(timeout);
+        if (!resp.ok) throw new Error(`IBGE HTTP ${resp.status}`);
+        const data = await resp.json();
+        const names = data.map(m => m.nome).sort();
+        brazilCitiesCache.set(singleUf, { cities: names, ts: now });
+        cities.push(...names);
+      } catch (e) {
+        console.warn(`[IBGE] UF=${singleUf} falhou:`, e.message);
+      }
+    }));
+
+    const sorted = [...new Set(cities)].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    res.json({ cities: sorted });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.get('/erp-cadastro-pessoas', authMiddleware, async (req, res) => {
   try {
     const { cpf } = req.query;
