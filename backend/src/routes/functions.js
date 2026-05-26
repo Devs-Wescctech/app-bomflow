@@ -197,14 +197,44 @@ router.get('/erp-cadastro-pessoas', authMiddleware, async (req, res) => {
 
 const UF_BRASIL = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
 
+const cidadeProdutoCache = new Map();
+const CIDADE_PRODUTO_TTL = 30 * 60 * 1000;
+
 router.get('/erp-cadastro-pessoas-options', authMiddleware, async (req, res) => {
   try {
-    const [cidadeResult, descricaoResult] = await Promise.all([
-      query(`SELECT DISTINCT city AS cidade FROM leads_upsell WHERE city IS NOT NULL AND city <> '' ORDER BY city LIMIT 2000`).catch(() => ({ rows: [] })),
-      query(`SELECT DISTINCT interest AS descricao FROM leads_upsell WHERE interest IS NOT NULL AND interest <> '' ORDER BY interest LIMIT 2000`).catch(() => ({ rows: [] })),
-    ]);
-    const cidades = cidadeResult.rows.map(r => r.cidade).filter(Boolean);
-    const descricaos = descricaoResult.rows.map(r => r.descricao).filter(Boolean);
+    const { uf } = req.query;
+    const ufs = uf ? uf.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    if (ufs.length === 0) {
+      return res.json({ uf: UF_BRASIL, cidade: [], descricao: [] });
+    }
+
+    const erpToken = process.env.ERP_AUTH_TOKEN;
+    if (!erpToken) return res.status(500).json({ error: 'ERP_AUTH_TOKEN não configurado' });
+    const authHeader = erpToken.startsWith('Bearer ') ? erpToken : `Bearer ${erpToken}`;
+
+    const now = Date.now();
+    const allRecords = [];
+
+    await Promise.allSettled(
+      ufs.map(async (singleUf) => {
+        const cached = cidadeProdutoCache.get(singleUf);
+        if (cached && (now - cached.ts) < CIDADE_PRODUTO_TTL) {
+          allRecords.push(...cached.records);
+          return;
+        }
+        try {
+          const records = await erpCadastroPessoasCall(authHeader, { uf: singleUf });
+          cidadeProdutoCache.set(singleUf, { records, ts: now });
+          allRecords.push(...records);
+        } catch (e) {
+          console.warn(`[ERP Options] UF=${singleUf} falhou:`, e.message);
+        }
+      })
+    );
+
+    const cidades = [...new Set(allRecords.map(r => r.cidade).filter(Boolean))].sort();
+    const descricaos = [...new Set(allRecords.map(r => r.descricao).filter(Boolean))].sort();
     return res.json({ uf: UF_BRASIL, cidade: cidades, descricao: descricaos });
   } catch (error) {
     console.error('[ERP Cadastro Options] Error:', error.message);

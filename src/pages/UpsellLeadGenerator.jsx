@@ -185,8 +185,8 @@ export default function UpsellLeadGenerator() {
   });
   const activeAgents = agents.filter((a) => a.active !== false);
 
-  const { data: erpOptions, isLoading: loadingOptions } = useQuery({
-    queryKey: ["erpCadastroPessoasOptions"],
+  const { data: ufData } = useQuery({
+    queryKey: ["erpUFOptions"],
     queryFn: async () => {
       const res = await fetch(`${API_BASE}/functions/erp-cadastro-pessoas-options`, {
         headers: getAuthHeaders(),
@@ -194,13 +194,30 @@ export default function UpsellLeadGenerator() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.json();
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60 * 60 * 1000,
     retry: 1,
   });
 
-  const ufOptions = erpOptions?.uf || [];
-  const cidadeOptions = erpOptions?.cidade || [];
-  const descricaoOptions = erpOptions?.descricao || [];
+  const { data: cidadeProdutoData, isFetching: loadingCidadeProduto } = useQuery({
+    queryKey: ["erpCidadeProdutoOptions", filters.ufs],
+    queryFn: async () => {
+      if (filters.ufs.length === 0) return { cidade: [], descricao: [] };
+      const params = new URLSearchParams({ uf: filters.ufs.join(",") });
+      const res = await fetch(`${API_BASE}/functions/erp-cadastro-pessoas-options?${params}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    enabled: filters.ufs.length > 0,
+    staleTime: 30 * 60 * 1000,
+    retry: 0,
+    keepPreviousData: true,
+  });
+
+  const ufOptions = ufData?.uf || [];
+  const cidadeOptions = cidadeProdutoData?.cidade || [];
+  const descricaoOptions = cidadeProdutoData?.descricao || [];
 
   const currentAgent = user?.agent;
   const isPrivileged = isUpsellPrivileged(user, currentAgent);
@@ -381,7 +398,7 @@ export default function UpsellLeadGenerator() {
                     selected={filters.ufs}
                     onChange={(v) => setFilters(f => ({ ...f, ufs: v }))}
                     placeholder="Selecione o(s) estado(s)"
-                    loading={loadingOptions}
+                    loading={false}
                   />
                   <p className="text-xs text-gray-400">Ex: SP, MG, RJ</p>
                 </div>
@@ -397,10 +414,19 @@ export default function UpsellLeadGenerator() {
                     options={cidadeOptions}
                     selected={filters.cidades}
                     onChange={(v) => setFilters(f => ({ ...f, cidades: v }))}
-                    placeholder={cidadeOptions.length === 0 ? "Disponível após importações" : "Selecione a(s) cidade(s)"}
-                    loading={loadingOptions}
+                    placeholder={
+                      filters.ufs.length === 0
+                        ? "Selecione a UF primeiro"
+                        : loadingCidadeProduto
+                          ? "Carregando cidades..."
+                          : cidadeOptions.length === 0
+                            ? "Nenhuma cidade encontrada"
+                            : "Selecione a(s) cidade(s)"
+                    }
+                    loading={loadingCidadeProduto}
+                    disabled={filters.ufs.length === 0}
                   />
-                  <p className="text-xs text-gray-400">Deixe vazio para todas</p>
+                  <p className="text-xs text-gray-400">Opcional — filtra por cidade</p>
                 </div>
 
                 <div className="space-y-2">
@@ -414,10 +440,19 @@ export default function UpsellLeadGenerator() {
                     options={descricaoOptions}
                     selected={filters.descricaos}
                     onChange={(v) => setFilters(f => ({ ...f, descricaos: v }))}
-                    placeholder={descricaoOptions.length === 0 ? "Disponível após importações" : "Selecione o(s) plano(s)"}
-                    loading={loadingOptions}
+                    placeholder={
+                      filters.ufs.length === 0
+                        ? "Selecione a UF primeiro"
+                        : loadingCidadeProduto
+                          ? "Carregando planos..."
+                          : descricaoOptions.length === 0
+                            ? "Nenhum plano encontrado"
+                            : "Selecione o(s) plano(s)"
+                    }
+                    loading={loadingCidadeProduto}
+                    disabled={filters.ufs.length === 0}
                   />
-                  <p className="text-xs text-gray-400">Deixe vazio para todos</p>
+                  <p className="text-xs text-gray-400">Opcional — filtra por produto</p>
                 </div>
 
                 <div className="space-y-2">
