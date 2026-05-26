@@ -857,6 +857,13 @@ router.post('/leads', authMiddleware, async (req, res) => {
       }
     }
 
+    if (data.agent_id && !data.team_id) {
+      const agentTeamResult = await query('SELECT team_id FROM agents WHERE id = $1', [data.agent_id]);
+      if (agentTeamResult.rows[0]?.team_id) {
+        data.team_id = agentTeamResult.rows[0].team_id;
+      }
+    }
+
     const keys = Object.keys(data).filter(k => data[k] !== null && data[k] !== undefined && data[k] !== '');
     const values = keys.map(k => {
       const val = data[k];
@@ -1039,6 +1046,13 @@ router.post('/leads-pj', authMiddleware, async (req, res) => {
       if (dupRef.rows.length > 0) {
         const dup = dupRef.rows[0];
         return res.status(409).json({ message: `WhatsApp ja cadastrado em Indicacoes. Lead "${dup.referred_name}" com o agente ${dup.agent_name || 'nao atribuido'}.` });
+      }
+    }
+
+    if (data.agent_id && !data.team_id) {
+      const agentTeamResult = await query('SELECT team_id FROM agents WHERE id = $1', [data.agent_id]);
+      if (agentTeamResult.rows[0]?.team_id) {
+        data.team_id = agentTeamResult.rows[0].team_id;
       }
     }
 
