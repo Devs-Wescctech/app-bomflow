@@ -195,43 +195,42 @@ router.get('/erp-cadastro-pessoas', authMiddleware, async (req, res) => {
   }
 });
 
-let cadastroPessoasOptionsCache = { data: null, timestamp: 0 };
-const CADASTRO_PESSOAS_CACHE_TTL = 10 * 60 * 1000;
+const UF_BRASIL = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
 
 router.get('/erp-cadastro-pessoas-options', authMiddleware, async (req, res) => {
   try {
-    const forceRefresh = req.query.refresh === 'true';
-    const now = Date.now();
-    if (!forceRefresh && cadastroPessoasOptionsCache.data && (now - cadastroPessoasOptionsCache.timestamp) < CADASTRO_PESSOAS_CACHE_TTL) {
-      return res.json(cadastroPessoasOptionsCache.data);
-    }
-    const erpToken = process.env.ERP_AUTH_TOKEN;
-    if (!erpToken) return res.status(500).json({ error: 'ERP_AUTH_TOKEN não configurado' });
-    const authHeader = erpToken.startsWith('Bearer ') ? erpToken : `Bearer ${erpToken}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
-    try {
-      const response = await fetch(`http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CADASTRO_PESSOAS`, {
-        headers: { 'Authorization': authHeader },
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      const data = await response.json();
-      const records = Array.isArray(data) ? data : [];
-      const unique = (field) => [...new Set(records.map(d => d[field]).filter(Boolean))].sort();
-      const options = { cidade: unique('cidade'), uf: unique('uf'), descricao: unique('descricao') };
-      cadastroPessoasOptionsCache = { data: options, timestamp: now };
-      return res.json(options);
-    } catch (fetchError) {
-      clearTimeout(timeout);
-      if (fetchError.name === 'AbortError') return res.status(504).json({ error: 'Timeout ao consultar ERP' });
-      throw fetchError;
-    }
+    const [cidadeResult, descricaoResult] = await Promise.all([
+      query(`SELECT DISTINCT city AS cidade FROM leads_upsell WHERE city IS NOT NULL AND city <> '' ORDER BY city LIMIT 2000`).catch(() => ({ rows: [] })),
+      query(`SELECT DISTINCT interest AS descricao FROM leads_upsell WHERE interest IS NOT NULL AND interest <> '' ORDER BY interest LIMIT 2000`).catch(() => ({ rows: [] })),
+    ]);
+    const cidades = cidadeResult.rows.map(r => r.cidade).filter(Boolean);
+    const descricaos = descricaoResult.rows.map(r => r.descricao).filter(Boolean);
+    return res.json({ uf: UF_BRASIL, cidade: cidades, descricao: descricaos });
   } catch (error) {
     console.error('[ERP Cadastro Options] Error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
+
+async function erpCadastroPessoasCall(authHeader, { cidade, uf, descricao }) {
+  const params = new URLSearchParams();
+  if (cidade) params.set('cidade', cidade);
+  if (uf) params.set('uf', uf);
+  if (descricao) params.set('descricao', descricao);
+  const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CADASTRO_PESSOAS${params.toString() ? '?' + params.toString() : ''}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const response = await fetch(erpUrl, { headers: { 'Authorization': authHeader }, signal: controller.signal });
+    clearTimeout(timeout);
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err.name === 'AbortError') throw new Error('Timeout ao consultar ERP');
+    throw err;
+  }
+}
 
 router.get('/erp-cadastro-pessoas-batch', authMiddleware, async (req, res) => {
   try {
@@ -239,29 +238,54 @@ router.get('/erp-cadastro-pessoas-batch', authMiddleware, async (req, res) => {
     const erpToken = process.env.ERP_AUTH_TOKEN;
     if (!erpToken) return res.status(500).json({ error: 'ERP_AUTH_TOKEN não configurado' });
     const authHeader = erpToken.startsWith('Bearer ') ? erpToken : `Bearer ${erpToken}`;
-    const params = new URLSearchParams();
-    if (cidade && cidade !== 'todos') params.set('cidade', cidade);
-    if (uf && uf !== 'todos') params.set('uf', uf);
-    if (descricao && descricao !== 'todos') params.set('descricao', descricao);
-    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CADASTRO_PESSOAS${params.toString() ? '?' + params.toString() : ''}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
-    try {
-      const response = await fetch(erpUrl, { headers: { 'Authorization': authHeader }, signal: controller.signal });
-      clearTimeout(timeout);
-      const data = await response.json();
-      let records = Array.isArray(data) ? data : [];
-      const limit = quantidade ? Math.min(parseInt(quantidade) || 200, 2000) : 200;
-      if (records.length > limit) records = records.slice(0, limit);
-      console.log(`[ERP Cadastro Batch] cidade=${cidade} uf=${uf} descricao=${descricao} → ${records.length} records`);
-      return res.json({ records, total: records.length });
-    } catch (fetchError) {
-      clearTimeout(timeout);
-      if (fetchError.name === 'AbortError') return res.status(504).json({ error: 'Timeout ao consultar ERP' });
-      throw fetchError;
+    const totalLimit = quantidade ? Math.min(parseInt(quantidade) || 200, 2000) : 200;
+
+    const ufs = uf ? uf.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const cidades = cidade ? cidade.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const descricaos = descricao ? descricao.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    let allRecords = [];
+
+    if (ufs.length > 1) {
+      const results = await Promise.allSettled(
+        ufs.map(singleUf => erpCadastroPessoasCall(authHeader, {
+          uf: singleUf,
+          cidade: cidades.length === 1 ? cidades[0] : undefined,
+          descricao: descricaos.length === 1 ? descricaos[0] : undefined,
+        }))
+      );
+      for (const r of results) {
+        if (r.status === 'fulfilled') allRecords.push(...r.value);
+      }
+      const seen = new Set();
+      allRecords = allRecords.filter(rec => {
+        const key = rec.cpf || rec.telefone || rec.id;
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    } else {
+      allRecords = await erpCadastroPessoasCall(authHeader, {
+        uf: ufs[0] || undefined,
+        cidade: cidades[0] || undefined,
+        descricao: descricaos[0] || undefined,
+      });
+      if (cidades.length > 1) {
+        const cidadeSet = new Set(cidades.map(c => c.toLowerCase()));
+        allRecords = allRecords.filter(r => r.cidade && cidadeSet.has(r.cidade.toLowerCase()));
+      }
+      if (descricaos.length > 1) {
+        const descSet = new Set(descricaos.map(d => d.toLowerCase()));
+        allRecords = allRecords.filter(r => r.descricao && descSet.has(r.descricao.toLowerCase()));
+      }
     }
+
+    if (allRecords.length > totalLimit) allRecords = allRecords.slice(0, totalLimit);
+    console.log(`[ERP Cadastro Batch] ufs=${ufs} cidades=${cidades} descricaos=${descricaos} → ${allRecords.length} records`);
+    return res.json({ records: allRecords, total: allRecords.length });
   } catch (error) {
     console.error('[ERP Cadastro Batch] Error:', error.message);
+    if (error.message.includes('Timeout')) return res.status(504).json({ error: error.message });
     res.status(500).json({ error: error.message });
   }
 });
