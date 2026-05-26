@@ -694,7 +694,11 @@ export default function UpsellLeadGenerator() {
                             </div>
                           </td>
                           <td className="px-3 py-2.5">
-                            {r.descricao ? (
+                            {r.descricao === "Sem contrato" ? (
+                              <Badge variant="outline" className="text-xs border-orange-300 text-orange-600 dark:border-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20">
+                                Sem contrato
+                              </Badge>
+                            ) : r.descricao ? (
                               <Badge variant="outline" className="text-xs border-violet-300 text-violet-700 dark:text-violet-300">
                                 {r.descricao}
                               </Badge>

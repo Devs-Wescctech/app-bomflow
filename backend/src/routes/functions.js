@@ -365,6 +365,12 @@ router.get('/erp-cadastro-pessoas-batch', authMiddleware, async (req, res) => {
     }
     allRecords = Array.from(seenCpf.values());
 
+    // Normalize missing plan description
+    allRecords = allRecords.map(rec => ({
+      ...rec,
+      descricao: rec.descricao && rec.descricao.trim() ? rec.descricao.trim() : 'Sem contrato',
+    }));
+
     if (allRecords.length > totalLimit) allRecords = allRecords.slice(0, totalLimit);
     console.log(`[ERP Cadastro Batch] ufs=${ufs} cidades=${cidades} descricaos=${descricaos} → ${allRecords.length} records (after dedup)`);
     return res.json({ records: allRecords, total: allRecords.length });
