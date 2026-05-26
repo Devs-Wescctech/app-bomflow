@@ -171,8 +171,9 @@ export default function LeadUpsellDetail() {
   const { data: erpData = [], isLoading: erpLoading } = useQuery({
     queryKey: ['erpCadastroPessoas', lead?.cpf],
     queryFn: async () => {
-      const cpf = lead?.cpf?.replace(/\D/g, '');
-      if (!cpf || cpf.length < 11) return [];
+      const digits = (lead?.cpf || '').replace(/\D/g, '');
+      if (digits.length < 11) return [];
+      const cpf = digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
       const res = await fetch(`/api/functions/erp-cadastro-pessoas?cpf=${encodeURIComponent(cpf)}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken')}` },
       });
