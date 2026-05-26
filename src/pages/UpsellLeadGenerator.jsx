@@ -167,52 +167,115 @@ function MultiSelect({ options = [], selected = [], onChange, placeholder, loadi
   );
 }
 
-function TagInput({ values = [], onChange, placeholder, hint }) {
+function AutocompleteTagInput({ values = [], onChange, placeholder, searchField, selectedUfs = [] }) {
   const [inputVal, setInputVal] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [loadingSugg, setLoadingSugg] = useState(false);
+  const [open, setOpen] = useState(false);
   const inputRef = useRef(null);
+  const containerRef = useRef(null);
+  const debounceRef = useRef(null);
 
-  function addTag() {
-    const v = inputVal.trim();
+  useEffect(() => {
+    function handleClick(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    const q = inputVal.trim();
+    if (q.length < 2) { setSuggestions([]); setOpen(false); return; }
+    debounceRef.current = setTimeout(async () => {
+      setLoadingSugg(true);
+      try {
+        const params = new URLSearchParams({ quantidade: "500" });
+        if (selectedUfs.length > 0) params.set("uf", selectedUfs.join(","));
+        if (searchField === "cidade") params.set("cidade", q);
+        else params.set("descricao", q);
+        const token = localStorage.getItem("accessToken");
+        const res = await fetch(`/api/functions/erp-cadastro-pessoas-batch?${params}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        const records = data.records || [];
+        const field = searchField === "cidade" ? "cidade" : "descricao";
+        const opts = [...new Set(records.map(r => r[field]).filter(Boolean))].sort();
+        setSuggestions(opts.filter(o => !values.includes(o)));
+        setOpen(opts.length > 0);
+      } catch { setSuggestions([]); }
+      finally { setLoadingSugg(false); }
+    }, 350);
+    return () => clearTimeout(debounceRef.current);
+  }, [inputVal, selectedUfs, searchField, values]);
+
+  function addValue(v) {
     if (v && !values.includes(v)) onChange([...values, v]);
     setInputVal("");
+    setSuggestions([]);
+    setOpen(false);
+    inputRef.current?.focus();
+  }
+
+  function removeValue(v) {
+    onChange(values.filter(t => t !== v));
   }
 
   function handleKeyDown(e) {
-    if (e.key === "Enter" || e.key === ",") {
+    if ((e.key === "Enter" || e.key === ",") && inputVal.trim()) {
       e.preventDefault();
-      addTag();
+      addValue(inputVal.trim());
     }
+    if (e.key === "Escape") { setOpen(false); setInputVal(""); }
     if (e.key === "Backspace" && inputVal === "" && values.length > 0) {
       onChange(values.slice(0, -1));
     }
   }
 
-  function removeTag(v) {
-    onChange(values.filter(t => t !== v));
-  }
-
   return (
-    <div
-      className="min-h-[40px] w-full flex flex-wrap gap-1.5 items-center px-3 py-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 cursor-text hover:border-violet-400 focus-within:ring-2 focus-within:ring-violet-500/30 transition-colors"
-      onClick={() => inputRef.current?.focus()}
-    >
-      {values.map(v => (
-        <span key={v} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 text-xs font-medium flex-shrink-0">
-          {v}
-          <button type="button" onClick={() => removeTag(v)} className="hover:text-red-500 transition-colors">
-            <X className="w-3 h-3" />
-          </button>
-        </span>
-      ))}
-      <input
-        ref={inputRef}
-        value={inputVal}
-        onChange={e => setInputVal(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onBlur={addTag}
-        placeholder={values.length === 0 ? placeholder : ""}
-        className="flex-1 min-w-[80px] text-sm bg-transparent outline-none text-gray-900 dark:text-gray-100 placeholder-gray-400"
-      />
+    <div className="relative" ref={containerRef}>
+      <div
+        className="min-h-[40px] w-full flex flex-wrap gap-1.5 items-center px-3 py-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 cursor-text hover:border-violet-400 focus-within:ring-2 focus-within:ring-violet-500/30 transition-colors"
+        onClick={() => inputRef.current?.focus()}
+      >
+        {values.map(v => (
+          <span key={v} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 text-xs font-medium flex-shrink-0">
+            {v}
+            <button type="button" onClick={() => removeValue(v)} className="hover:text-red-500 transition-colors">
+              <X className="w-3 h-3" />
+            </button>
+          </span>
+        ))}
+        <div className="flex items-center flex-1 min-w-[120px] gap-1">
+          <input
+            ref={inputRef}
+            value={inputVal}
+            onChange={e => setInputVal(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onFocus={() => suggestions.length > 0 && setOpen(true)}
+            placeholder={values.length === 0 ? placeholder : "Adicionar mais..."}
+            className="flex-1 text-sm bg-transparent outline-none text-gray-900 dark:text-gray-100 placeholder-gray-400"
+          />
+          {loadingSugg && <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin flex-shrink-0" />}
+        </div>
+      </div>
+
+      {open && suggestions.length > 0 && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg max-h-52 overflow-y-auto">
+          {suggestions.map(opt => (
+            <div
+              key={opt}
+              onMouseDown={(e) => { e.preventDefault(); addValue(opt); }}
+              className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200 hover:bg-violet-50 dark:hover:bg-violet-900/20 cursor-pointer"
+            >
+              {opt}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -441,12 +504,14 @@ export default function UpsellLeadGenerator() {
                       <span className="ml-2 text-xs text-violet-600 font-normal">{filters.cidades.length} cidade(s)</span>
                     )}
                   </Label>
-                  <TagInput
+                  <AutocompleteTagInput
                     values={filters.cidades}
                     onChange={(v) => setFilters(f => ({ ...f, cidades: v }))}
-                    placeholder="Digite e pressione Enter"
+                    placeholder="Digite 2+ letras para buscar..."
+                    searchField="cidade"
+                    selectedUfs={filters.ufs}
                   />
-                  <p className="text-xs text-gray-400">Múltiplas: digite e pressione Enter para cada uma</p>
+                  <p className="text-xs text-gray-400">Digite para buscar no ERP — clique para adicionar</p>
                 </div>
 
                 <div className="space-y-2">
@@ -456,12 +521,14 @@ export default function UpsellLeadGenerator() {
                       <span className="ml-2 text-xs text-violet-600 font-normal">{filters.descricaos.length} plano(s)</span>
                     )}
                   </Label>
-                  <TagInput
+                  <AutocompleteTagInput
                     values={filters.descricaos}
                     onChange={(v) => setFilters(f => ({ ...f, descricaos: v }))}
-                    placeholder="Digite e pressione Enter"
+                    placeholder="Digite 2+ letras para buscar..."
+                    searchField="descricao"
+                    selectedUfs={filters.ufs}
                   />
-                  <p className="text-xs text-gray-400">Múltiplos: digite e pressione Enter para cada um</p>
+                  <p className="text-xs text-gray-400">Digite para buscar no ERP — clique para adicionar</p>
                 </div>
 
                 <div className="space-y-2">

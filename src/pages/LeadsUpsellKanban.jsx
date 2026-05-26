@@ -933,7 +933,60 @@ export default function LeadsUpsellKanban() {
     if (!destStage) return;
 
     if (sourceStage !== destStage) {
-      handleStageChange(activeLeadId, destStage, sourceStage);
+      const destStageInfo = STAGES.find(s => s.id === destStage);
+      const destLabel = destStageInfo?.label || destStage;
+      const nowIso = new Date().toISOString();
+      const userEmail = user?.email;
+
+      if (destStage === 'fechado_ganho') {
+        setConfirmDialog({
+          open: true,
+          title: 'Confirmar Venda Concluída',
+          message: `Mover "${activeLead.name}" para "${destLabel}" e concluir a venda?`,
+          onConfirm: () => {
+            const stageHistory = [...(activeLead.stageHistory || activeLead.stage_history || [])];
+            stageHistory.push({ from: sourceStage, to: destStage, changed_at: nowIso, changed_by: userEmail });
+            updateLeadMutation.mutate({
+              id: activeLeadId,
+              data: {
+                concluded: true,
+                concluded_at: nowIso,
+                concluded_by: userEmail || 'Sistema',
+                converted_at: nowIso,
+                stage: 'fechado_ganho',
+                stage_history: stageHistory,
+              },
+            }, { onSuccess: () => toast.success('Venda concluída!') });
+          },
+        });
+      } else if (destStage === 'fechado_perdido') {
+        setConfirmDialog({
+          open: true,
+          title: 'Confirmar Lead Perdido',
+          message: `Mover "${activeLead.name}" para "${destLabel}"?`,
+          onConfirm: () => {
+            const stageHistory = [...(activeLead.stageHistory || activeLead.stage_history || [])];
+            stageHistory.push({ from: sourceStage, to: destStage, changed_at: nowIso, changed_by: userEmail });
+            updateLeadMutation.mutate({
+              id: activeLeadId,
+              data: {
+                lost: true,
+                lost_at: nowIso,
+                lost_by: userEmail || 'Sistema',
+                stage: 'fechado_perdido',
+                stage_history: stageHistory,
+              },
+            }, { onSuccess: () => toast.success('Lead marcado como perdido.') });
+          },
+        });
+      } else {
+        setConfirmDialog({
+          open: true,
+          title: 'Mover Lead',
+          message: `Mover "${activeLead.name}" para "${destLabel}"?`,
+          onConfirm: () => handleStageChange(activeLeadId, destStage, sourceStage),
+        });
+      }
     } else {
       const stageLeads = getOrderedLeadsByStage(sourceStage);
       const oldIndex = stageLeads.findIndex(l => l.id === activeLeadId);
@@ -952,7 +1005,7 @@ export default function LeadsUpsellKanban() {
         toast.success('Ordem atualizada');
       }
     }
-  }, [leads, handleStageChange, getOrderedLeadsByStage]);
+  }, [leads, handleStageChange, getOrderedLeadsByStage, setConfirmDialog, updateLeadMutation, user?.email]);
 
   const actionableTypes = ['task', 'visit', 'call', 'meeting', 'email', 'presentation', 'proposal'];
 

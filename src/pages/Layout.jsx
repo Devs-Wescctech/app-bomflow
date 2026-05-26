@@ -787,7 +787,20 @@ function LayoutContent({ children, currentPageName }) {
     staleTime: 30000,
   });
 
-  const currentAgent = user?.agent || null;
+  const { data: allAgentsForLayout = [] } = useQuery({
+    queryKey: ['agents'],
+    queryFn: () => base44.entities.Agent.list(),
+    enabled: !isPublicPage && !!user && !user?.agent,
+    staleTime: 60000,
+  });
+
+  const currentAgent = user?.agent ||
+    allAgentsForLayout.find(a =>
+      a.email === user?.email ||
+      a.userEmail === user?.email ||
+      a.user_email === user?.email
+    ) ||
+    null;
 
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
