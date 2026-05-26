@@ -167,6 +167,56 @@ function MultiSelect({ options = [], selected = [], onChange, placeholder, loadi
   );
 }
 
+function TagInput({ values = [], onChange, placeholder, hint }) {
+  const [inputVal, setInputVal] = useState("");
+  const inputRef = useRef(null);
+
+  function addTag() {
+    const v = inputVal.trim();
+    if (v && !values.includes(v)) onChange([...values, v]);
+    setInputVal("");
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addTag();
+    }
+    if (e.key === "Backspace" && inputVal === "" && values.length > 0) {
+      onChange(values.slice(0, -1));
+    }
+  }
+
+  function removeTag(v) {
+    onChange(values.filter(t => t !== v));
+  }
+
+  return (
+    <div
+      className="min-h-[40px] w-full flex flex-wrap gap-1.5 items-center px-3 py-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 cursor-text hover:border-violet-400 focus-within:ring-2 focus-within:ring-violet-500/30 transition-colors"
+      onClick={() => inputRef.current?.focus()}
+    >
+      {values.map(v => (
+        <span key={v} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 text-xs font-medium flex-shrink-0">
+          {v}
+          <button type="button" onClick={() => removeTag(v)} className="hover:text-red-500 transition-colors">
+            <X className="w-3 h-3" />
+          </button>
+        </span>
+      ))}
+      <input
+        ref={inputRef}
+        value={inputVal}
+        onChange={e => setInputVal(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onBlur={addTag}
+        placeholder={values.length === 0 ? placeholder : ""}
+        className="flex-1 min-w-[80px] text-sm bg-transparent outline-none text-gray-900 dark:text-gray-100 placeholder-gray-400"
+      />
+    </div>
+  );
+}
+
 export default function UpsellLeadGenerator() {
   const [step, setStep] = useState("filters");
   const [filters, setFilters] = useState({ cidades: [], ufs: [], descricaos: [], quantidade: "200" });
@@ -198,26 +248,7 @@ export default function UpsellLeadGenerator() {
     retry: 1,
   });
 
-  const { data: cidadeProdutoData, isFetching: loadingCidadeProduto } = useQuery({
-    queryKey: ["erpCidadeProdutoOptions", filters.ufs],
-    queryFn: async () => {
-      if (filters.ufs.length === 0) return { cidade: [], descricao: [] };
-      const params = new URLSearchParams({ uf: filters.ufs.join(",") });
-      const res = await fetch(`${API_BASE}/functions/erp-cadastro-pessoas-options?${params}`, {
-        headers: getAuthHeaders(),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    },
-    enabled: filters.ufs.length > 0,
-    staleTime: 30 * 60 * 1000,
-    retry: 0,
-    keepPreviousData: true,
-  });
-
   const ufOptions = ufData?.uf || [];
-  const cidadeOptions = cidadeProdutoData?.cidade || [];
-  const descricaoOptions = cidadeProdutoData?.descricao || [];
 
   const currentAgent = user?.agent;
   const isPrivileged = isUpsellPrivileged(user, currentAgent);
@@ -407,52 +438,30 @@ export default function UpsellLeadGenerator() {
                   <Label className="font-medium text-gray-700 dark:text-gray-300">
                     Cidade
                     {filters.cidades.length > 0 && (
-                      <span className="ml-2 text-xs text-violet-600 font-normal">{filters.cidades.length} selecionada(s)</span>
+                      <span className="ml-2 text-xs text-violet-600 font-normal">{filters.cidades.length} cidade(s)</span>
                     )}
                   </Label>
-                  <MultiSelect
-                    options={cidadeOptions}
-                    selected={filters.cidades}
+                  <TagInput
+                    values={filters.cidades}
                     onChange={(v) => setFilters(f => ({ ...f, cidades: v }))}
-                    placeholder={
-                      filters.ufs.length === 0
-                        ? "Selecione a UF primeiro"
-                        : loadingCidadeProduto
-                          ? "Carregando cidades..."
-                          : cidadeOptions.length === 0
-                            ? "Nenhuma cidade encontrada"
-                            : "Selecione a(s) cidade(s)"
-                    }
-                    loading={loadingCidadeProduto}
-                    disabled={filters.ufs.length === 0}
+                    placeholder="Digite e pressione Enter"
                   />
-                  <p className="text-xs text-gray-400">Opcional — filtra por cidade</p>
+                  <p className="text-xs text-gray-400">Múltiplas: digite e pressione Enter para cada uma</p>
                 </div>
 
                 <div className="space-y-2">
                   <Label className="font-medium text-gray-700 dark:text-gray-300">
                     Produto / Plano
                     {filters.descricaos.length > 0 && (
-                      <span className="ml-2 text-xs text-violet-600 font-normal">{filters.descricaos.length} selecionado(s)</span>
+                      <span className="ml-2 text-xs text-violet-600 font-normal">{filters.descricaos.length} plano(s)</span>
                     )}
                   </Label>
-                  <MultiSelect
-                    options={descricaoOptions}
-                    selected={filters.descricaos}
+                  <TagInput
+                    values={filters.descricaos}
                     onChange={(v) => setFilters(f => ({ ...f, descricaos: v }))}
-                    placeholder={
-                      filters.ufs.length === 0
-                        ? "Selecione a UF primeiro"
-                        : loadingCidadeProduto
-                          ? "Carregando planos..."
-                          : descricaoOptions.length === 0
-                            ? "Nenhum plano encontrado"
-                            : "Selecione o(s) plano(s)"
-                    }
-                    loading={loadingCidadeProduto}
-                    disabled={filters.ufs.length === 0}
+                    placeholder="Digite e pressione Enter"
                   />
-                  <p className="text-xs text-gray-400">Opcional — filtra por produto</p>
+                  <p className="text-xs text-gray-400">Múltiplos: digite e pressione Enter para cada um</p>
                 </div>
 
                 <div className="space-y-2">
