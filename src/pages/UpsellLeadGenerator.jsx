@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,8 +15,8 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import {
-  Users, Search, Loader2, Download, CheckCircle2, XCircle, AlertTriangle,
-  ArrowLeft, RefreshCw, Filter, Database, FileDown, Phone, User, MapPin, Sparkles,
+  Users, Search, Loader2, CheckCircle2, XCircle, AlertTriangle,
+  ArrowLeft, Filter, Database, FileDown, Phone, User, MapPin,
 } from "lucide-react";
 import { toast } from "sonner";
 import { isUpsellPrivileged } from "@/components/utils/permissions";
@@ -53,11 +53,9 @@ function buildCSV(imported, skipped, errors) {
 
 export default function UpsellLeadGenerator() {
   const [step, setStep] = useState("filters");
-  const [filterOptions, setFilterOptions] = useState({ cidade: [], uf: [], descricao: [] });
-  const [filters, setFilters] = useState({ cidade: "todos", uf: "todos", descricao: "todos", quantidade: "200" });
+  const [filters, setFilters] = useState({ cidade: "", uf: "", descricao: "", quantidade: "200" });
   const [records, setRecords] = useState([]);
   const [selectedKeys, setSelectedKeys] = useState(new Set());
-  const [loadingOptions, setLoadingOptions] = useState(true);
   const [searching, setSearching] = useState(false);
   const [agentId, setAgentId] = useState("");
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -82,39 +80,13 @@ export default function UpsellLeadGenerator() {
     }
   }, [user, activeAgents, canSelectAgent, agentId]);
 
-  useEffect(() => {
-    loadOptions();
-  }, []);
-
-  async function loadOptions(force = false) {
-    setLoadingOptions(true);
-    try {
-      const url = force
-        ? `${API_BASE}/functions/erp-cadastro-pessoas-options?refresh=true`
-        : `${API_BASE}/functions/erp-cadastro-pessoas-options`;
-      const res = await fetch(url, { headers: getAuthHeaders() });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setFilterOptions({
-        cidade: data.cidade || [],
-        uf: data.uf || [],
-        descricao: data.descricao || [],
-      });
-    } catch (err) {
-      console.warn("[UpsellGen] loadOptions error:", err.message);
-      toast.error("Não foi possível carregar as opções de filtro. Tente recarregar.");
-    } finally {
-      setLoadingOptions(false);
-    }
-  }
-
   async function handleSearch() {
     setSearching(true);
     try {
       const params = new URLSearchParams();
-      if (filters.cidade !== "todos") params.set("cidade", filters.cidade);
-      if (filters.uf !== "todos") params.set("uf", filters.uf);
-      if (filters.descricao !== "todos") params.set("descricao", filters.descricao);
+      if (filters.cidade.trim()) params.set("cidade", filters.cidade.trim());
+      if (filters.uf.trim()) params.set("uf", filters.uf.trim());
+      if (filters.descricao.trim()) params.set("descricao", filters.descricao.trim());
       if (filters.quantidade) params.set("quantidade", filters.quantidade);
       const res = await fetch(`${API_BASE}/functions/erp-cadastro-pessoas-batch?${params.toString()}`, {
         headers: getAuthHeaders(),
@@ -208,7 +180,7 @@ export default function UpsellLeadGenerator() {
     setRecords([]);
     setSelectedKeys(new Set());
     setImportResult(null);
-    setFilters({ cidade: "todos", uf: "todos", descricao: "todos", quantidade: "200" });
+    setFilters({ cidade: "", uf: "", descricao: "", quantidade: "200" });
   }
 
   const selectedAgentName = activeAgents.find((a) => a.id === agentId)?.name;
@@ -269,66 +241,42 @@ export default function UpsellLeadGenerator() {
               <CardTitle className="flex items-center gap-2 text-violet-700 dark:text-violet-300">
                 <Filter className="w-5 h-5" />
                 Filtros de Busca
-                {loadingOptions && <Loader2 className="w-4 h-4 animate-spin ml-2 text-violet-400" />}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="space-y-2">
                   <Label>Cidade</Label>
-                  <Select
+                  <Input
                     value={filters.cidade}
-                    onValueChange={(v) => setFilters((f) => ({ ...f, cidade: v }))}
-                    disabled={loadingOptions}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={loadingOptions ? "Carregando..." : "Todas as cidades"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="todos">Todas as cidades</SelectItem>
-                      {filterOptions.cidade.map((c) => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    onChange={(e) => setFilters((f) => ({ ...f, cidade: e.target.value }))}
+                    placeholder="Ex: São Paulo"
+                    className="bg-white dark:bg-gray-900"
+                  />
+                  <p className="text-xs text-gray-400">Deixe em branco para todas</p>
                 </div>
 
                 <div className="space-y-2">
                   <Label>UF</Label>
-                  <Select
+                  <Input
                     value={filters.uf}
-                    onValueChange={(v) => setFilters((f) => ({ ...f, uf: v }))}
-                    disabled={loadingOptions}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={loadingOptions ? "Carregando..." : "Todos os estados"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="todos">Todos os estados</SelectItem>
-                      {filterOptions.uf.map((u) => (
-                        <SelectItem key={u} value={u}>{u}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    onChange={(e) => setFilters((f) => ({ ...f, uf: e.target.value.toUpperCase().slice(0, 2) }))}
+                    placeholder="Ex: SP"
+                    maxLength={2}
+                    className="bg-white dark:bg-gray-900"
+                  />
+                  <p className="text-xs text-gray-400">Sigla do estado</p>
                 </div>
 
                 <div className="space-y-2">
                   <Label>Produto / Plano</Label>
-                  <Select
+                  <Input
                     value={filters.descricao}
-                    onValueChange={(v) => setFilters((f) => ({ ...f, descricao: v }))}
-                    disabled={loadingOptions}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={loadingOptions ? "Carregando..." : "Todos os produtos"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="todos">Todos os produtos</SelectItem>
-                      {filterOptions.descricao.map((d) => (
-                        <SelectItem key={d} value={d}>{d}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    onChange={(e) => setFilters((f) => ({ ...f, descricao: e.target.value }))}
+                    placeholder="Ex: Internet 100MB"
+                    className="bg-white dark:bg-gray-900"
+                  />
+                  <p className="text-xs text-gray-400">Deixe em branco para todos</p>
                 </div>
 
                 <div className="space-y-2">
@@ -349,21 +297,11 @@ export default function UpsellLeadGenerator() {
               <div className="flex items-center gap-3 pt-2">
                 <Button
                   onClick={handleSearch}
-                  disabled={searching || loadingOptions}
+                  disabled={searching}
                   className="bg-violet-600 hover:bg-violet-700 text-white gap-2"
                 >
                   {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
                   {searching ? "Buscando..." : "Buscar Leads"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => loadOptions(true)}
-                  disabled={loadingOptions}
-                  className="gap-1 text-gray-500"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${loadingOptions ? "animate-spin" : ""}`} />
-                  Recarregar opções
                 </Button>
               </div>
             </CardContent>
