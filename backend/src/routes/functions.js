@@ -353,8 +353,17 @@ router.get('/erp-cadastro-pessoas-batch', authMiddleware, async (req, res) => {
       }
     }
 
+    // Deduplicate by CPF (ERP returns one row per contract, same person can appear many times)
+    const seenCpf = new Map();
+    for (const rec of allRecords) {
+      const key = rec.cpf ? rec.cpf.replace(/\D/g, '') : null;
+      if (key && !seenCpf.has(key)) seenCpf.set(key, rec);
+      else if (!key) seenCpf.set(`_no_cpf_${seenCpf.size}`, rec);
+    }
+    allRecords = Array.from(seenCpf.values());
+
     if (allRecords.length > totalLimit) allRecords = allRecords.slice(0, totalLimit);
-    console.log(`[ERP Cadastro Batch] ufs=${ufs} cidades=${cidades} descricaos=${descricaos} → ${allRecords.length} records`);
+    console.log(`[ERP Cadastro Batch] ufs=${ufs} cidades=${cidades} descricaos=${descricaos} → ${allRecords.length} records (after dedup)`);
     return res.json({ records: allRecords, total: allRecords.length });
   } catch (error) {
     console.error('[ERP Cadastro Batch] Error:', error.message);
