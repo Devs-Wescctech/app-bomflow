@@ -353,6 +353,9 @@ router.get('/erp-cadastro-pessoas-batch', authMiddleware, async (req, res) => {
       }
     }
 
+    // Exclude dependents plans (e.g. "PLANO DEPENDENTES", "DEPENDENTES FAMILIAR")
+    allRecords = allRecords.filter(r => !r.descricao || !r.descricao.toUpperCase().includes('DEPENDENTES'));
+
     // Deduplicate by CPF (ERP returns one row per contract, same person can appear many times)
     const seenCpf = new Map();
     for (const rec of allRecords) {
