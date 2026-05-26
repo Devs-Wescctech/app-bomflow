@@ -480,7 +480,7 @@ router.post('/upsell-lead-generator-import', authMiddleware, async (req, res) =>
              SELECT 'leads' AS src, id, name FROM leads
              WHERE REGEXP_REPLACE(COALESCE(phone,''), '[^0-9]', '', 'g') LIKE $1
              UNION ALL
-             SELECT 'leads_pj' AS src, id, name FROM leads_pj
+             SELECT 'leads_pj' AS src, id, COALESCE(razao_social, contact_name, '') AS name FROM leads_pj
              WHERE REGEXP_REPLACE(COALESCE(phone,''), '[^0-9]', '', 'g') LIKE $1
              LIMIT 1`,
             [`%${phoneSuffix}`]
