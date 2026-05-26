@@ -367,6 +367,7 @@ router.get('/erp-cadastro-pessoas-batch', authMiddleware, async (req, res) => {
     const ufs = uf ? uf.split(',').map(s => s.trim().toUpperCase()).filter(Boolean) : [];
     const cidades = cidade ? cidade.split(',').map(s => s.trim().toUpperCase()).filter(Boolean) : [];
     const descricaos = descricao ? descricao.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const excludeImported = req.query.excludeImported === 'true';
 
     let allRecords = [];
 
@@ -406,6 +407,30 @@ router.get('/erp-cadastro-pessoas-batch', authMiddleware, async (req, res) => {
 
     // Exclude dependent plans (singular "DEPENDENTE" also catches plural "DEPENDENTES")
     allRecords = allRecords.filter(r => !r.descricao || !r.descricao.toUpperCase().includes('DEPENDENTE'));
+
+    // Optionally exclude / mark already-imported CPFs
+    let importedCpfMap = new Map(); // cpf_digits -> imported_at
+    if (excludeImported || true) { // always load to enable badge marking
+      try {
+        const importedRows = await query(`SELECT cpf, imported_at FROM upsell_generator_imported_cpfs`);
+        importedRows.rows.forEach(r => importedCpfMap.set(r.cpf, r.imported_at));
+      } catch (e) {
+        console.warn('[ERP Batch] imported CPF lookup failed:', e.message);
+      }
+    }
+    if (excludeImported) {
+      allRecords = allRecords.filter(r => {
+        const key = r.cpf ? r.cpf.replace(/\D/g, '') : null;
+        return !key || !importedCpfMap.has(key);
+      });
+    } else {
+      // Mark records that were previously imported
+      allRecords = allRecords.map(r => {
+        const key = r.cpf ? r.cpf.replace(/\D/g, '') : null;
+        const importedAt = key ? importedCpfMap.get(key) : null;
+        return importedAt ? { ...r, already_imported: true, imported_at: importedAt } : r;
+      });
+    }
 
     // Deduplicate by CPF (ERP returns one row per contract, same person can appear many times)
     const seenCpf = new Map();
@@ -526,6 +551,17 @@ router.post('/upsell-lead-generator-import', authMiddleware, async (req, res) =>
           phone: newLead.phone,
           phone_2: newLead.phone_2 || '',
         });
+
+        // Track CPF import history
+        if (newLead.cpf) {
+          const cleanCpf = newLead.cpf.replace(/\D/g, '');
+          query(
+            `INSERT INTO upsell_generator_imported_cpfs (cpf, imported_at, imported_by)
+             VALUES ($1, NOW(), $2)
+             ON CONFLICT (cpf) DO UPDATE SET imported_at = NOW(), imported_by = $2`,
+            [cleanCpf, agent_id]
+          ).catch(e => console.warn('[UpsellGen] CPF history upsert:', e.message));
+        }
 
         notifyLeadAssigned(newLead, agent_id).catch(e => console.error('[UpsellGen] notify:', e.message));
         executeLeadCreatedAutomation(newLead, 'lead_upsell').catch(e => console.error('[UpsellGen] automation:', e.message));

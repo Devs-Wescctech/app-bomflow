@@ -23,6 +23,15 @@ pool.query('ALTER TABLE teams ADD COLUMN IF NOT EXISTS supervisor_emails TEXT[]'
   .catch(e => console.error('[Migration] teams.supervisor_emails error:', e.message));
 
 pool.query(`
+  CREATE TABLE IF NOT EXISTS upsell_generator_imported_cpfs (
+    cpf VARCHAR(20) PRIMARY KEY,
+    imported_at TIMESTAMP DEFAULT NOW(),
+    imported_by VARCHAR(255)
+  )
+`).then(() => console.log('[Migration] upsell_generator_imported_cpfs OK'))
+  .catch(e => console.error('[Migration] upsell_generator_imported_cpfs error:', e.message));
+
+pool.query(`
   ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS phone_2 VARCHAR(50);
   ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS contract_number VARCHAR(50);
   ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS contract_status VARCHAR(10);

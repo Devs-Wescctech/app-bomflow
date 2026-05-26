@@ -282,7 +282,7 @@ function AutocompleteTagInput({ values = [], onChange, placeholder, searchField,
 
 export default function UpsellLeadGenerator() {
   const [step, setStep] = useState("filters");
-  const [filters, setFilters] = useState({ cidades: [], ufs: [], descricaos: [], quantidade: "200" });
+  const [filters, setFilters] = useState({ cidades: [], ufs: [], descricaos: [], quantidade: "200", excluirJaImportados: true });
   const [records, setRecords] = useState([]);
   const [selectedKeys, setSelectedKeys] = useState(new Set());
   const [searching, setSearching] = useState(false);
@@ -366,6 +366,7 @@ export default function UpsellLeadGenerator() {
       if (filters.ufs.length > 0) params.set("uf", filters.ufs.join(","));
       if (filters.descricaos.length > 0) params.set("descricao", filters.descricaos.join(","));
       if (filters.quantidade) params.set("quantidade", filters.quantidade);
+      params.set("excludeImported", filters.excluirJaImportados ? "true" : "false");
       const res = await fetch(`${API_BASE}/functions/erp-cadastro-pessoas-batch?${params.toString()}`, {
         headers: getAuthHeaders(),
       });
@@ -447,7 +448,7 @@ export default function UpsellLeadGenerator() {
     setRecords([]);
     setSelectedKeys(new Set());
     setImportResult(null);
-    setFilters({ cidades: [], ufs: [], descricaos: [], quantidade: "200" });
+    setFilters({ cidades: [], ufs: [], descricaos: [], quantidade: "200", excluirJaImportados: true });
   }
 
   const selectedAgentName = activeAgents.find((a) => a.id === agentId)?.name;
@@ -601,6 +602,24 @@ export default function UpsellLeadGenerator() {
                 </div>
               </div>
 
+              <div className="flex items-center justify-between px-1 py-2 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="excluirJaImportados"
+                    checked={filters.excluirJaImportados}
+                    onCheckedChange={(v) => setFilters(f => ({ ...f, excluirJaImportados: !!v }))}
+                  />
+                  <Label htmlFor="excluirJaImportados" className="cursor-pointer text-sm text-gray-700 dark:text-gray-300 font-normal">
+                    Ocultar leads já importados anteriormente
+                  </Label>
+                </div>
+                {!filters.excluirJaImportados && (
+                  <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full">
+                    Mostrando todos — importados aparecerão marcados
+                  </span>
+                )}
+              </div>
+
               {!hasFilters && (
                 <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
                   <AlertTriangle className="w-4 h-4 flex-shrink-0" />
@@ -717,15 +736,22 @@ export default function UpsellLeadGenerator() {
                             </div>
                           </td>
                           <td className="px-3 py-2.5">
-                            {r.descricao === "SEM CONTRATO" ? (
-                              <Badge variant="outline" className="text-xs border-orange-300 text-orange-600 dark:border-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20">
-                                SEM CONTRATO
-                              </Badge>
-                            ) : r.descricao ? (
-                              <Badge variant="outline" className="text-xs border-violet-300 text-violet-700 dark:text-violet-300">
-                                {r.descricao}
-                              </Badge>
-                            ) : "-"}
+                            <div className="flex flex-col gap-1">
+                              {r.descricao === "SEM CONTRATO" ? (
+                                <Badge variant="outline" className="text-xs border-orange-300 text-orange-600 dark:border-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20">
+                                  SEM CONTRATO
+                                </Badge>
+                              ) : r.descricao ? (
+                                <Badge variant="outline" className="text-xs border-violet-300 text-violet-700 dark:text-violet-300">
+                                  {r.descricao}
+                                </Badge>
+                              ) : "-"}
+                              {r.already_imported && (
+                                <Badge variant="outline" className="text-xs border-sky-300 text-sky-600 dark:border-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/20">
+                                  Importado {new Date(r.imported_at).toLocaleDateString("pt-BR")}
+                                </Badge>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
