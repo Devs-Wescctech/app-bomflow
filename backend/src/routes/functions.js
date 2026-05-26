@@ -212,6 +212,48 @@ router.get('/brazil-cities', authMiddleware, async (req, res) => {
   }
 });
 
+// Cache for plan names — populated once per day from a small-UF ERP call
+let erp_planos_cache = null;
+let erp_planos_cache_ts = 0;
+const ERP_PLANOS_TTL = 24 * 60 * 60 * 1000;
+// Small UFs tried in order until one succeeds (fewer customers = faster ERP response)
+const SMALL_UFS = ['AC', 'RR', 'AP', 'RO', 'TO', 'DF', 'AL'];
+
+router.get('/erp-planos', authMiddleware, async (req, res) => {
+  try {
+    const now = Date.now();
+    if (erp_planos_cache && (now - erp_planos_cache_ts) < ERP_PLANOS_TTL) {
+      return res.json({ planos: erp_planos_cache });
+    }
+    const erpToken = process.env.ERP_AUTH_TOKEN;
+    if (!erpToken) return res.status(500).json({ error: 'ERP_AUTH_TOKEN não configurado' });
+    const authHeader = erpToken.startsWith('Bearer ') ? erpToken : `Bearer ${erpToken}`;
+
+    let planos = [];
+    for (const uf of SMALL_UFS) {
+      try {
+        const records = await erpCadastroPessoasCall(authHeader, { uf });
+        const names = [...new Set(
+          records.map(r => r.descricao).filter(d => d && !d.toUpperCase().includes('DEPENDENTE'))
+        )].sort();
+        if (names.length > 0) {
+          planos = names;
+          erp_planos_cache = planos;
+          erp_planos_cache_ts = now;
+          console.log(`[ERP Planos] Cache populado via UF=${uf}: ${planos.length} planos`);
+          break;
+        }
+      } catch (e) {
+        console.warn(`[ERP Planos] UF=${uf} falhou:`, e.message);
+      }
+    }
+    res.json({ planos });
+  } catch (error) {
+    console.error('[ERP Planos] Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.get('/erp-cadastro-pessoas', authMiddleware, async (req, res) => {
   try {
     const { cpf } = req.query;

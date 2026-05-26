@@ -333,23 +333,19 @@ export default function UpsellLeadGenerator() {
   const cidadeOptions = cidadeData?.cities || [];
 
   const { data: produtoData, isFetching: loadingProdutos } = useQuery({
-    queryKey: ["erpProdutoOptions", filters.ufs],
+    queryKey: ["erpPlanos"],
     queryFn: async () => {
-      if (filters.ufs.length === 0) return { descricao: [] };
-      const params = new URLSearchParams({ uf: filters.ufs.join(",") });
-      const res = await fetch(`${API_BASE}/functions/erp-cadastro-pessoas-options?${params}`, {
+      const res = await fetch(`${API_BASE}/functions/erp-planos`, {
         headers: getAuthHeaders(),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.json();
     },
-    enabled: filters.ufs.length > 0,
-    staleTime: 30 * 60 * 1000,
+    staleTime: 24 * 60 * 60 * 1000,
     retry: 1,
-    keepPreviousData: true,
   });
 
-  const produtoOptions = produtoData?.descricao || [];
+  const produtoOptions = produtoData?.planos || [];
 
   const currentAgent = user?.agent;
   const isPrivileged = isUpsellPrivileged(user, currentAgent);
@@ -577,21 +573,16 @@ export default function UpsellLeadGenerator() {
                     selected={filters.descricaos}
                     onChange={(v) => setFilters(f => ({ ...f, descricaos: v }))}
                     placeholder={
-                      filters.ufs.length === 0
-                        ? "Selecione a UF primeiro"
-                        : loadingProdutos
-                          ? "Carregando planos..."
-                          : produtoOptions.length === 0
-                            ? "Nenhum plano encontrado"
-                            : "Selecione o(s) plano(s)"
+                      loadingProdutos
+                        ? "Carregando planos..."
+                        : produtoOptions.length === 0
+                          ? "Nenhum plano disponível"
+                          : "Selecione o(s) plano(s)"
                     }
                     loading={loadingProdutos}
-                    disabled={filters.ufs.length === 0}
                   />
                   <p className="text-xs text-gray-400">
-                    {filters.ufs.length === 0
-                      ? "Selecione ao menos uma UF para ver os planos"
-                      : `${produtoOptions.length} plano(s) disponível(is)`}
+                    {loadingProdutos ? "Buscando planos..." : `${produtoOptions.length} plano(s) disponível(is)`}
                   </p>
                 </div>
 
