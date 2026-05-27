@@ -1,7 +1,8 @@
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -28,11 +29,24 @@ export default function CollectionBoard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('all');
 
-  const { data: tickets = [], isLoading, refetch } = useQuery({
+  const { data: user } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  const { data: allAgents = [] } = useQuery({
+    queryKey: ['agents'],
+    queryFn: () => base44.entities.Agent.list(),
+    initialData: [],
+  });
+
+  const currentAgent = user?.agent || allAgents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
+
+  const { data: allTicketsRaw = [], isLoading, refetch } = useQuery({
     queryKey: ['collectionTickets'],
     queryFn: async () => {
-      const allTickets = await base44.entities.Ticket.list('-createdDate', 500);
-      return allTickets.filter(t => t.ticket_type === 'collection');
+      const t = await base44.entities.Ticket.list('-createdDate', 500);
+      return t.filter(t => t.ticket_type === 'collection');
     },
     initialData: [],
   });
@@ -42,6 +56,19 @@ export default function CollectionBoard() {
     queryFn: () => base44.entities.Queue.list(),
     initialData: [],
   });
+
+  // Filtro de visibilidade por equipe/agente
+  const tickets = useMemo(() => {
+    if (!currentAgent) return allTicketsRaw;
+    if (canViewAll(currentAgent, 'tickets')) return allTicketsRaw;
+    if (canViewTeam(currentAgent, 'tickets')) {
+      const tid = currentAgent.team_id || currentAgent.teamId;
+      if (!tid) return allTicketsRaw;
+      const teamAgentIds = allAgents.filter(a => String(a.team_id || a.teamId) === String(tid)).map(a => a.id);
+      return allTicketsRaw.filter(t => teamAgentIds.includes(t.agent_id) || teamAgentIds.includes(t.created_by_agent_id));
+    }
+    return allTicketsRaw.filter(t => t.agent_id === currentAgent.id || t.created_by_agent_id === currentAgent.id);
+  }, [allTicketsRaw, allAgents, currentAgent]);
 
   const contactQueue = queues.find(q => q.name.includes('Contato'));
   const agreementQueue = queues.find(q => q.name.includes('Efetivação'));

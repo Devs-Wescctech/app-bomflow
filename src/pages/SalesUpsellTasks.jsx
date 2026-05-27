@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { upsell } from "@/api/upsellClient";
-import { isUpsellPrivileged } from "@/components/utils/permissions.jsx";
+import { isUpsellPrivileged, canViewTeam } from "@/components/utils/permissions.jsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -155,12 +155,25 @@ export default function SalesUpsellTasks() {
   });
 
   const activities = useMemo(() => {
-    if (privileged) return allActivities;
+    const agentType = currentAgent?.agent_type || currentAgent?.agentType;
+    if (user?.role === 'admin' || agentType === 'admin' || agentType === 'upsell_admin') return allActivities;
+    if (canViewTeam(currentAgent, 'leads')) {
+      const tid = currentAgent?.team_id || currentAgent?.teamId;
+      if (tid) {
+        const teamEmails = agents.filter(a => String(a.team_id || a.teamId) === String(tid)).map(a => a.userEmail || a.email || a.user_email);
+        const teamIds = agents.filter(a => String(a.team_id || a.teamId) === String(tid)).map(a => a.id);
+        return allActivities.filter(act =>
+          teamEmails.includes(act.assignedTo) || teamIds.includes(act.assignedTo) ||
+          teamEmails.includes(act.createdBy) || teamIds.includes(act.createdBy)
+        );
+      }
+      return allActivities;
+    }
     if (!currentAgent) return [];
     return allActivities.filter(act =>
       act.assignedTo === user?.email || act.assignedTo === currentAgent?.id || act.createdBy === currentAgent?.id || !act.assignedTo
     );
-  }, [allActivities, privileged, currentAgent, user]);
+  }, [allActivities, currentAgent, user, agents]);
 
   const { data: leads = [], isLoading: loadingLeads } = useQuery({
     queryKey: ['leadsUpsell'],

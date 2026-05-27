@@ -33,7 +33,7 @@ import {
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { createPageUrl } from "@/utils";
-import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
+import { canViewAll, canViewTeam, getVisibleAgents } from "@/components/utils/permissions.jsx";
 
 export default function LeadSearch() {
   const navigate = useNavigate();
@@ -389,7 +389,7 @@ export default function LeadSearch() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos os agentes</SelectItem>
-                    {allAgents.map(agent => (
+                    {getVisibleAgents(allAgents, currentAgent).map(agent => (
                       <SelectItem key={agent.id} value={agent.id}>
                         {agent.name || agent.fullName || agent.full_name || agent.userEmail || agent.user_email}
                       </SelectItem>

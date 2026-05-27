@@ -277,6 +277,23 @@ export function isSupervisorType(agentType) {
   return agentType === 'supervisor' || agentType === 'sales_supervisor' || agentType?.endsWith('_supervisor');
 }
 
+/**
+ * Retorna a lista de agentes visíveis para o usuário atual:
+ *   admin        → todos os agentes
+ *   supervisor   → apenas agentes da mesma equipe (team_id)
+ *   vendedor     → apenas ele próprio
+ */
+export function getVisibleAgents(allAgents, currentAgent) {
+  if (!currentAgent) return allAgents;
+  if (canViewAll(currentAgent, 'leads')) return allAgents;
+  if (canViewTeam(currentAgent, 'leads')) {
+    const tid = currentAgent.team_id || currentAgent.teamId;
+    if (!tid) return allAgents;
+    return allAgents.filter(a => String(a.team_id || a.teamId) === String(tid));
+  }
+  return allAgents.filter(a => a.id === currentAgent.id);
+}
+
 export function isAdminUser(user, agent) {
   const agentType = agent?.agent_type || agent?.agentType;
   return (

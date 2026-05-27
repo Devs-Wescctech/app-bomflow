@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -24,11 +25,24 @@ export default function SalesTickets() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedQueue, setSelectedQueue] = useState("all");
 
-  const { data: tickets = [] } = useQuery({
+  const { data: user } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  const { data: allAgents = [] } = useQuery({
+    queryKey: ['agents'],
+    queryFn: () => base44.entities.Agent.list(),
+    initialData: [],
+  });
+
+  const currentAgent = user?.agent || allAgents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
+
+  const { data: allTickets = [] } = useQuery({
     queryKey: ['salesTickets'],
     queryFn: async () => {
-      const allTickets = await base44.entities.Ticket.list('-createdDate');
-      return allTickets.filter(t => t.ticket_type === 'sales');
+      const t = await base44.entities.Ticket.list('-createdDate');
+      return t.filter(t => t.ticket_type === 'sales');
     },
     initialData: [],
   });
@@ -38,6 +52,19 @@ export default function SalesTickets() {
     queryFn: () => base44.entities.Queue.list(),
     initialData: [],
   });
+
+  // Filtro de visibilidade por equipe/agente
+  const tickets = useMemo(() => {
+    if (!currentAgent) return allTickets;
+    if (canViewAll(currentAgent, 'tickets')) return allTickets;
+    if (canViewTeam(currentAgent, 'tickets')) {
+      const tid = currentAgent.team_id || currentAgent.teamId;
+      if (!tid) return allTickets;
+      const teamAgentIds = allAgents.filter(a => String(a.team_id || a.teamId) === String(tid)).map(a => a.id);
+      return allTickets.filter(t => teamAgentIds.includes(t.agent_id) || teamAgentIds.includes(t.created_by_agent_id));
+    }
+    return allTickets.filter(t => t.agent_id === currentAgent.id || t.created_by_agent_id === currentAgent.id);
+  }, [allTickets, allAgents, currentAgent]);
 
   const filteredTickets = tickets.filter(ticket => {
     const matchesSearch = !searchQuery || 

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -50,7 +51,20 @@ export default function TicketControl() {
   const [dateFilter, setDateFilter] = useState('all'); // today, week, month, all
   const [activeTab, setActiveTab] = useState('active');
 
-  const { data: allTickets = [], isLoading, refetch } = useQuery({
+  const { data: user } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  const { data: allAgentsRaw = [] } = useQuery({
+    queryKey: ['agents'],
+    queryFn: () => base44.entities.Agent.list(),
+    initialData: [],
+  });
+
+  const currentAgent = user?.agent || allAgentsRaw.find(a => a.userEmail === user?.email || a.user_email === user?.email);
+
+  const { data: allTicketsRaw = [], isLoading, refetch } = useQuery({
     queryKey: ['allTickets'],
     queryFn: async () => {
       const tickets = await base44.entities.Ticket.list('-createdDate', 1000);
@@ -65,11 +79,30 @@ export default function TicketControl() {
     initialData: [],
   });
 
-  const { data: agents = [] } = useQuery({
-    queryKey: ['agents'],
-    queryFn: () => base44.entities.Agent.list(),
-    initialData: [],
-  });
+  // Filtro de tickets por visibilidade do usuário
+  const allTickets = useMemo(() => {
+    if (!currentAgent) return allTicketsRaw;
+    if (canViewAll(currentAgent, 'tickets')) return allTicketsRaw;
+    if (canViewTeam(currentAgent, 'tickets')) {
+      const tid = currentAgent.team_id || currentAgent.teamId;
+      if (!tid) return allTicketsRaw;
+      const teamAgentIds = allAgentsRaw.filter(a => String(a.team_id || a.teamId) === String(tid)).map(a => a.id);
+      return allTicketsRaw.filter(t => teamAgentIds.includes(t.agent_id) || teamAgentIds.includes(t.created_by_agent_id));
+    }
+    return allTicketsRaw.filter(t => t.agent_id === currentAgent.id || t.created_by_agent_id === currentAgent.id);
+  }, [allTicketsRaw, allAgentsRaw, currentAgent]);
+
+  // Lista de agentes visíveis no seletor
+  const agents = useMemo(() => {
+    if (!currentAgent) return allAgentsRaw;
+    if (canViewAll(currentAgent, 'tickets')) return allAgentsRaw;
+    if (canViewTeam(currentAgent, 'tickets')) {
+      const tid = currentAgent.team_id || currentAgent.teamId;
+      if (!tid) return allAgentsRaw;
+      return allAgentsRaw.filter(a => String(a.team_id || a.teamId) === String(tid));
+    }
+    return allAgentsRaw.filter(a => a.id === currentAgent.id);
+  }, [allAgentsRaw, currentAgent]);
 
   // Separar tickets ativos e finalizados
   const activeTickets = allTickets.filter(t => !['resolvido', 'fechado'].includes(t.status));
