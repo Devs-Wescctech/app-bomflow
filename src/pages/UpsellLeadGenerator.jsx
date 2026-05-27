@@ -291,6 +291,13 @@ export default function UpsellLeadGenerator() {
   const [importResult, setImportResult] = useState(null);
 
   const { data: user } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
+
+  const { data: allAgents = [] } = useQuery({
+    queryKey: ['agents'],
+    queryFn: () => base44.entities.Agent.list(),
+    staleTime: 1000 * 60 * 5,
+  });
+
   const { data: ufData } = useQuery({
     queryKey: ["erpUFOptions"],
     queryFn: async () => {
@@ -340,7 +347,7 @@ export default function UpsellLeadGenerator() {
 
   const produtoOptions = produtoData?.planos || [];
 
-  const currentAgent = user?.agent;
+  const currentAgent = user?.agent || allAgents.find(a => a.userEmail === user?.email || a.user_email === user?.email || a.email === user?.email);
   const isPrivileged = isUpsellPrivileged(user, currentAgent);
   const allowedSubmenus = currentAgent?.allowedSubmenus || [];
   const hasAccess = isPrivileged || allowedSubmenus.includes('UpsellLeadGenerator');
