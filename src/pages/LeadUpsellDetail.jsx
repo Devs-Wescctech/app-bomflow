@@ -51,6 +51,7 @@ import {
   AlertCircle,
   Presentation,
   Users,
+  UserPlus,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -241,6 +242,16 @@ export default function LeadUpsellDetail() {
       toast.success('Lead atualizado com sucesso!');
       setHasChanges(false);
     },
+  });
+
+  const claimLeadMutation = useMutation({
+    mutationFn: () => upsell.entities.LeadUpsell.update(leadId, { agent_id: user?.agent?.id }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      toast.success('Lead atribuído a você com sucesso!');
+    },
+    onError: () => toast.error('Erro ao assumir o lead'),
   });
 
   const createActivityMutation = useMutation({
@@ -680,17 +691,22 @@ export default function LeadUpsellDetail() {
     let hasAccess = isOwnLead;
     
     if (!hasAccess && userAgent) {
-      const canSeeAll = canViewAll(userAgent, 'leads');
-      if (canSeeAll) {
+      // Lead sem dono (importado pelo gerador): qualquer agente pode abrir para assumir
+      if (!leadAgentId) {
         hasAccess = true;
       } else {
-        const canSeeTeam = canViewTeam(userAgent, 'leads');
-        if (canSeeTeam) {
-          const leadAgent = agents.find(a => a.id === leadAgentId);
-          const leadPromoterId = lead?.promoterId || lead?.promoter_id;
-          const leadPromoter = agents.find(a => a.id === leadPromoterId);
-          hasAccess = leadAgent?.teamId === userAgent.teamId || leadAgent?.team_id === userAgent.team_id || 
-                      leadPromoter?.teamId === userAgent.teamId || leadPromoter?.team_id === userAgent.team_id;
+        const canSeeAll = canViewAll(userAgent, 'leads');
+        if (canSeeAll) {
+          hasAccess = true;
+        } else {
+          const canSeeTeam = canViewTeam(userAgent, 'leads');
+          if (canSeeTeam) {
+            const leadAgent = agents.find(a => a.id === leadAgentId);
+            const leadPromoterId = lead?.promoterId || lead?.promoter_id;
+            const leadPromoter = agents.find(a => a.id === leadPromoterId);
+            hasAccess = leadAgent?.teamId === userAgent.teamId || leadAgent?.team_id === userAgent.team_id || 
+                        leadPromoter?.teamId === userAgent.teamId || leadPromoter?.team_id === userAgent.team_id;
+          }
         }
       }
     }
@@ -831,6 +847,27 @@ export default function LeadUpsellDetail() {
           </Button>
         </div>
       )}
+      {/* Banner: Assumir Lead (apenas para agentes sem dono atribuído) */}
+      {!leadAgentId && !isAdmin && !isSupervisor && userAgent?.id && (
+        <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-lg p-4 mx-3 sm:mx-6 mt-3 flex items-center gap-3">
+          <UserPlus className="text-violet-600 dark:text-violet-400 w-5 h-5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-violet-900 dark:text-violet-200 font-medium text-sm">Lead sem responsável</p>
+            <p className="text-violet-700 dark:text-violet-400 text-xs mt-0.5">Este lead ainda não foi atribuído a nenhum vendedor.</p>
+          </div>
+          <Button
+            onClick={() => claimLeadMutation.mutate()}
+            disabled={claimLeadMutation.isPending}
+            size="sm"
+            className="bg-violet-600 hover:bg-violet-700 text-white"
+          >
+            {claimLeadMutation.isPending
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <><UserPlus className="w-4 h-4 mr-1.5" />Assumir Lead</>}
+          </Button>
+        </div>
+      )}
+
       {/* Top Navigation Bar */}
       <div className="sticky top-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-gray-800">
         <div className="max-w-[1600px] mx-auto px-3 sm:px-6 py-3">
