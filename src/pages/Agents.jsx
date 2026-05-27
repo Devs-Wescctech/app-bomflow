@@ -142,6 +142,7 @@ const MENU_MODULES = [
       { id: "LeadUpsellAutomations", title: "Automações" },
       { id: "SalesTasks", title: "Tarefas" },
       { id: "ProposalTemplates", title: "Templates" },
+      { id: "UpsellLeadGenerator", title: "Gerador de Leads" },
     ]
   },
   {

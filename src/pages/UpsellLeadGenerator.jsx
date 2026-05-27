@@ -16,7 +16,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import {
   Users, Search, Loader2, CheckCircle2, XCircle, AlertTriangle,
-  ArrowLeft, Filter, Database, FileDown, Phone, MapPin, ChevronDown, X,
+  ArrowLeft, Filter, Database, FileDown, Phone, MapPin, ChevronDown, X, ShieldX,
 } from "lucide-react";
 import { toast } from "sonner";
 import { isUpsellPrivileged } from "@/components/utils/permissions";
@@ -342,6 +342,18 @@ export default function UpsellLeadGenerator() {
 
   const currentAgent = user?.agent;
   const isPrivileged = isUpsellPrivileged(user, currentAgent);
+  const allowedSubmenus = currentAgent?.allowedSubmenus || [];
+  const hasAccess = isPrivileged || allowedSubmenus.includes('UpsellLeadGenerator');
+
+  if (user && !hasAccess) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+        <ShieldX className="w-16 h-16 text-gray-400 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">Acesso Negado</h2>
+        <p className="text-gray-500 dark:text-gray-400">Você não tem permissão para acessar o Gerador de Leads.</p>
+      </div>
+    );
+  }
 
   async function handleSearch() {
     setSearching(true);

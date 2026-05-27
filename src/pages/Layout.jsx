@@ -226,7 +226,7 @@ const menuModules = [
       { title: "Rel. de Ganhos", url: createPageUrl("SalesUpsellWonReport"), icon: Trophy },
       { title: "Automações", url: createPageUrl("LeadUpsellAutomations"), icon: Zap, supervisorOnly: true },
       { title: "Tarefas", url: createPageUrl("SalesUpsellTasks"), icon: CheckSquare },
-      { title: "Gerador de Leads", url: createPageUrl("UpsellLeadGenerator"), icon: Users, supervisorOnly: true },
+      { title: "Gerador de Leads", url: createPageUrl("UpsellLeadGenerator"), icon: Users, requiredSubmenu: "UpsellLeadGenerator" },
       { title: "Templates", url: createPageUrl("ProposalTemplates"), icon: FileText, supervisorOnly: true },
     ]
   },
