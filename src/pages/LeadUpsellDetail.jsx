@@ -430,6 +430,11 @@ export default function LeadUpsellDetail() {
   const handleSaveChanges = () => {
     const dataToSave = { ...editedLead };
     
+    // Auto-assign current agent if lead has no agent and user is a salesperson (not admin/supervisor)
+    if (!leadAgentId && userAgent?.id && !isAdmin && !isSupervisor) {
+      dataToSave.agent_id = userAgent.id;
+    }
+
     const monthlyValue = editedLead.monthlyValue !== undefined && editedLead.monthlyValue !== null && editedLead.monthlyValue !== ""
       ? parseFloat(editedLead.monthlyValue)
       : (lead.monthlyValue ? parseFloat(lead.monthlyValue) : 0);
@@ -1632,15 +1637,15 @@ export default function LeadUpsellDetail() {
                   <Label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Telefone</Label>
                   <div className="flex gap-2 mt-1.5">
                     <Input
-                      value={lead.phone || ""}
-                      readOnly
-                      className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-lg"
+                      value={editedLead.phone !== undefined ? editedLead.phone : (lead.phone || "")}
+                      onChange={(e) => handleFieldChange('phone', e.target.value)}
+                      className="flex-1 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
-                    {lead.phone && (
+                    {(editedLead.phone ?? lead.phone) && (
                       <Button
                         variant="outline"
                         size="icon"
-                        onClick={() => window.open(`https://wa.me/55${lead.phone.replace(/\D/g, '')}`, '_blank')}
+                        onClick={() => window.open(`https://wa.me/55${(editedLead.phone ?? lead.phone).replace(/\D/g, '')}`, '_blank')}
                         className="rounded-lg hover:bg-green-50 hover:border-green-300 hover:text-green-600"
                       >
                         <Phone className="w-4 h-4" />
