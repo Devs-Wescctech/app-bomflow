@@ -426,6 +426,7 @@ const PAGES = {
     SalesUpsellWonReport: SalesUpsellWonReport,
     SalesUpsellTasks: SalesUpsellTasks,
     SalesUpsellAgenda: SalesUpsellAgenda,
+    UpsellLeadGenerator: UpsellLeadGenerator,
     ReferralWonReport: ReferralWonReport,
     
 }
