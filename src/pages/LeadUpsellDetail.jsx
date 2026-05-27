@@ -680,22 +680,17 @@ export default function LeadUpsellDetail() {
     let hasAccess = isOwnLead;
     
     if (!hasAccess && userAgent) {
-      // Leads sem agente atribuído (importados pelo gerador) podem ser acessados por qualquer agente do módulo
-      if (!leadAgentId) {
+      const canSeeAll = canViewAll(userAgent, 'leads');
+      if (canSeeAll) {
         hasAccess = true;
       } else {
-        const canSeeAll = canViewAll(userAgent, 'leads');
-        if (canSeeAll) {
-          hasAccess = true;
-        } else {
-          const canSeeTeam = canViewTeam(userAgent, 'leads');
-          if (canSeeTeam) {
-            const leadAgent = agents.find(a => a.id === leadAgentId);
-            const leadPromoterId = lead?.promoterId || lead?.promoter_id;
-            const leadPromoter = agents.find(a => a.id === leadPromoterId);
-            hasAccess = leadAgent?.teamId === userAgent.teamId || leadAgent?.team_id === userAgent.team_id || 
-                        leadPromoter?.teamId === userAgent.teamId || leadPromoter?.team_id === userAgent.team_id;
-          }
+        const canSeeTeam = canViewTeam(userAgent, 'leads');
+        if (canSeeTeam) {
+          const leadAgent = agents.find(a => a.id === leadAgentId);
+          const leadPromoterId = lead?.promoterId || lead?.promoter_id;
+          const leadPromoter = agents.find(a => a.id === leadPromoterId);
+          hasAccess = leadAgent?.teamId === userAgent.teamId || leadAgent?.team_id === userAgent.team_id || 
+                      leadPromoter?.teamId === userAgent.teamId || leadPromoter?.team_id === userAgent.team_id;
         }
       }
     }
