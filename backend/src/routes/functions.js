@@ -6204,10 +6204,15 @@ async function sendPerspectivaReport(options = {}) {
     return { success: true, skipped: true, message: 'Ciclo sem comissões' };
   }
 
-  const html = buildCommissionEmailHtml(reportData);
-  const pdfBuffer = await generateCommissionPDF(reportData);
+  const perspectivaReportData = {
+    ...reportData,
+    reportTitle: 'RELATÓRIO DE PERSPECTIVAS LIQUIDADAS ELEGÍVEIS',
+    periodoLabel: `Data de referência: ${reportData.cycle.label}`,
+  };
+  const html = buildCommissionEmailHtml(perspectivaReportData);
+  const pdfBuffer = await generateCommissionPDF(perspectivaReportData);
   const dateStr = new Date().toISOString().split('T')[0];
-  const pdfFilename = `relatorio_comissoes_erp_${dateStr}.pdf`;
+  const pdfFilename = `relatorio_perspectivas_elegiveis_${dateStr}.pdf`;
 
   const transporter = nodemailer.createTransport({
     host: settings.smtp_server, port: settings.smtp_port, secure: true,
@@ -6419,14 +6424,19 @@ router.post('/commission-perspectiva/report/test', authMiddleware, loadAgentMidd
     const recipients = (settings.email_to || '').split(',').map(e => e.trim()).filter(Boolean);
     if (recipients.length === 0) return res.status(400).json({ success: false, error: 'Nenhum destinatário configurado' });
     const reportData = await getPerspectivaReportData();
-    const html = buildCommissionEmailHtml(reportData);
-    const pdfBuffer = await generateCommissionPDF(reportData);
+    const perspectivaReportDataTest = {
+      ...reportData,
+      reportTitle: 'RELATÓRIO DE PERSPECTIVAS LIQUIDADAS ELEGÍVEIS',
+      periodoLabel: `Data de referência: ${reportData.cycle.label}`,
+    };
+    const html = buildCommissionEmailHtml(perspectivaReportDataTest);
+    const pdfBuffer = await generateCommissionPDF(perspectivaReportDataTest);
     await transporter.sendMail({
       from: settings.email_from || settings.smtp_user,
       to: recipients.join(', '),
       subject: `[TESTE] Relatório de Perspectivas Liquidadas Elegíveis`,
       html,
-      attachments: [{ filename: 'relatorio_comissoes_erp_teste.pdf', content: pdfBuffer, contentType: 'application/pdf' }]
+      attachments: [{ filename: 'relatorio_perspectivas_elegiveis_teste.pdf', content: pdfBuffer, contentType: 'application/pdf' }]
     });
     res.json({ success: true, message: `Email de teste enviado para ${recipients.join(', ')}` });
   } catch (error) {
