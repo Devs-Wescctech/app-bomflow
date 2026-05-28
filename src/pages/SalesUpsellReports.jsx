@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { canAccessReports, canViewAll, canViewTeam, isUpsellPrivileged } from "@/components/utils/permissions.jsx";
+import { canAccessReports, canViewAll, canViewTeam, getVisibleAgents, isUpsellPrivileged } from "@/components/utils/permissions.jsx";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 import { LEAD_PF_STAGES } from "@/constants/stages";
 
@@ -58,29 +58,33 @@ export default function SalesUpsellReports() {
   });
 
   const { data: leads = [] } = useQuery({
-    queryKey: ['leads-reports', isAdmin ? 'admin' : isSupervisor ? 'supervisor' : currentAgent?.id],
+    queryKey: ['leads-reports', isAdmin ? 'admin' : currentAgent?.id],
     queryFn: async () => {
       const allLeads = await upsell.entities.LeadUpsell.list('-createdDate', 5000);
-      
-      if (isAdmin || isSupervisor) {
-        return allLeads;
-      }
-      
+
+      if (isAdmin) return allLeads;
+
       if (!currentAgent) return [];
-      
-      if (canViewAll(currentAgent, 'leads')) {
-        return allLeads;
-      }
-      
-      if (canViewTeam(currentAgent, 'leads')) {
-        const teamAgents = allAgents.filter(a => (a.teamId || a.team_id) === (currentAgent?.teamId || currentAgent?.team_id));
-        const teamAgentIds = teamAgents.map(a => a.id);
-        return allLeads.filter(l => 
-          teamAgentIds.includes(l.agentId || l.agent_id) || teamAgentIds.includes(l.promoterId || l.promoter_id)
+
+      if (isSupervisor) {
+        const visibleAgs = getVisibleAgents(allAgents, currentAgent);
+        const visibleIds = new Set(visibleAgs.map(a => a.id));
+        return allLeads.filter(l =>
+          visibleIds.has(l.agentId || l.agent_id) || visibleIds.has(l.promoterId || l.promoter_id)
         );
       }
-      
-      return allLeads.filter(l => 
+
+      if (canViewAll(currentAgent, 'leads')) return allLeads;
+
+      if (canViewTeam(currentAgent, 'leads')) {
+        const visibleAgs = getVisibleAgents(allAgents, currentAgent);
+        const visibleIds = new Set(visibleAgs.map(a => a.id));
+        return allLeads.filter(l =>
+          visibleIds.has(l.agentId || l.agent_id) || visibleIds.has(l.promoterId || l.promoter_id)
+        );
+      }
+
+      return allLeads.filter(l =>
         (l.agentId || l.agent_id) === currentAgent?.id || (l.promoterId || l.promoter_id) === currentAgent?.id
       );
     },
@@ -88,11 +92,12 @@ export default function SalesUpsellReports() {
   });
 
   const salesAgents = useMemo(() => {
-    return allAgents.filter(a => {
+    const base = isAdmin ? allAgents : getVisibleAgents(allAgents, currentAgent);
+    return base.filter(a => {
       const agentType = a.agentType || a.agent_type;
       return agentType === 'sales' || agentType === 'pre_sales' || agentType === 'sales_supervisor' || agentType === 'admin';
     });
-  }, [allAgents]);
+  }, [allAgents, currentAgent, isAdmin]);
 
   const displayAgents = useMemo(() => {
     if (!selectedTeam) return salesAgents;

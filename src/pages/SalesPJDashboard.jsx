@@ -24,7 +24,7 @@ import { createPageUrl } from "@/utils";
 import StatsCard from "@/components/dashboard/StatsCard";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 import MetricsHelpDialog from "@/components/dashboard/MetricsHelpDialog";
-import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
+import { canViewAll, canViewTeam, getVisibleAgents } from "@/components/utils/permissions.jsx";
 import { isWithinInterval, parseISO, startOfDay, endOfDay } from "date-fns";
 import { LEAD_PJ_STAGES, isActiveStage, isWonStage, isLostStage } from "@/constants/stages";
 
@@ -67,31 +67,31 @@ export default function SalesPJDashboard() {
   const isSupervisor = user?.role === 'supervisor' || currentAgentType?.includes('supervisor');
 
   const { data: rawLeads = [] } = useQuery({
-    queryKey: ['leads-pj-dashboard', isAdmin ? 'admin' : isSupervisor ? 'supervisor' : currentAgent?.id],
+    queryKey: ['leads-pj-dashboard', isAdmin ? 'admin' : currentAgent?.id],
     queryFn: async () => {
       const allLeads = await base44.entities.LeadPJ.list('-createdDate');
-      
-      if (isAdmin || isSupervisor) {
-        return allLeads;
-      }
-      
+
+      if (isAdmin) return allLeads;
+
       if (!currentAgent) return [];
-      
-      const canSeeAll = canViewAll(currentAgent, 'leads-pj');
-      if (canSeeAll) {
-        return allLeads;
+
+      if (isSupervisor) {
+        const visibleAgs = getVisibleAgents(allAgents, currentAgent);
+        const visibleIds = new Set(visibleAgs.map(a => a.id));
+        return allLeads.filter(l => visibleIds.has(l.agentId || l.agent_id));
       }
-      
+
+      const canSeeAll = canViewAll(currentAgent, 'leads-pj');
+      if (canSeeAll) return allLeads;
+
       const canSeeTeam = canViewTeam(currentAgent, 'leads-pj');
       if (canSeeTeam) {
-        const teamAgents = allAgents.filter(a => (a.teamId || a.team_id) === (currentAgent.teamId || currentAgent.team_id));
-        const teamAgentIds = teamAgents.map(a => a.id);
-        return allLeads.filter(l => 
-          teamAgentIds.includes(l.agentId || l.agent_id)
-        );
+        const visibleAgs = getVisibleAgents(allAgents, currentAgent);
+        const visibleIds = new Set(visibleAgs.map(a => a.id));
+        return allLeads.filter(l => visibleIds.has(l.agentId || l.agent_id));
       }
-      
-      return allLeads.filter(l => 
+
+      return allLeads.filter(l =>
         (l.agentId || l.agent_id) === currentAgent.id
       );
     },
@@ -112,13 +112,14 @@ export default function SalesPJDashboard() {
   });
 
   const displayAgents = useMemo(() => {
-    const salesFiltered = agents.filter(a => {
+    const base = isAdmin ? agents : getVisibleAgents(agents, currentAgent);
+    const salesFiltered = base.filter(a => {
       const agentType = a.agentType || a.agent_type;
       return agentType?.includes('sales') || agentType?.includes('vendas') || agentType === 'admin' || agentType?.includes('supervisor');
     });
     if (!selectedTeam) return salesFiltered;
     return salesFiltered.filter(a => String(a.teamId || a.team_id) === String(selectedTeam));
-  }, [agents, selectedTeam]);
+  }, [agents, currentAgent, isAdmin, selectedTeam]);
 
   const leads = useMemo(() => {
     let filtered = [...rawLeads];

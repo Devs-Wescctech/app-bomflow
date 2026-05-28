@@ -287,6 +287,13 @@ export function getVisibleAgents(allAgents, currentAgent) {
   if (!currentAgent) return allAgents;
   if (canViewAll(currentAgent, 'leads')) return allAgents;
   if (canViewTeam(currentAgent, 'leads')) {
+    const bySupervisor = allAgents.filter(
+      a => a.supervisor_id && String(a.supervisor_id) === String(currentAgent.id)
+    );
+    if (bySupervisor.length > 0) {
+      const ids = new Set([currentAgent.id, ...bySupervisor.map(a => a.id)]);
+      return allAgents.filter(a => ids.has(a.id));
+    }
     const tid = currentAgent.team_id || currentAgent.teamId;
     if (!tid) return allAgents;
     return allAgents.filter(a => String(a.team_id || a.teamId) === String(tid));

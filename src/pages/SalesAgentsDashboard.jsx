@@ -25,6 +25,7 @@ import {
 import { format, startOfMonth, endOfMonth, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
+import { getVisibleAgents } from "@/components/utils/permissions.jsx";
 
 export default function SalesAgentsDashboard() {
   const [selectedTeam, setSelectedTeam] = useState(null);
@@ -67,6 +68,11 @@ export default function SalesAgentsDashboard() {
   });
 
   const canSeeAllAgents = isAdmin || isSupervisor;
+  const visibleAgents = useMemo(() => {
+    if (isAdmin) return agents;
+    return getVisibleAgents(agents, currentAgent);
+  }, [agents, currentAgent, isAdmin]);
+  const visibleAgentIds = useMemo(() => new Set(visibleAgents.map(a => a.id)), [visibleAgents]);
   const isLoading = agentsLoading || teamsLoading || leadsLoading;
 
   const teamsForFilter = useMemo(() => {
@@ -100,9 +106,7 @@ export default function SalesAgentsDashboard() {
   const agentStats = useMemo(() => {
     return agents
       .filter(agent => {
-        if (!canSeeAllAgents && agent.id !== currentAgent?.id) {
-          return false;
-        }
+        if (!visibleAgentIds.has(agent.id)) return false;
         const agentTeamId = agent.teamId || agent.team_id;
         if (selectedTeam && String(agentTeamId) !== String(selectedTeam)) {
           return false;
@@ -152,7 +156,7 @@ export default function SalesAgentsDashboard() {
           ticketMedio,
         };
       });
-  }, [agents, filteredLeadsByDate, canSeeAllAgents, currentAgent, selectedTeam]);
+  }, [agents, filteredLeadsByDate, visibleAgentIds, selectedTeam]);
 
   const sortedAgents = useMemo(() => {
     return [...agentStats].sort((a, b) => {
