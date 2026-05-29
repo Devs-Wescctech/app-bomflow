@@ -6132,6 +6132,21 @@ async function getPerspectivaReportData() {
     indicatorMap[key].count += 1;
     indicatorMap[key].details.push(r);
   }
+  // Busca CPFs marcados como corretor na tabela referrals
+  const corretorCpfs = new Set();
+  try {
+    const corretorResult = await query(
+      `SELECT DISTINCT regexp_replace(referrer_cpf, '[^0-9]', '', 'g') AS cpf
+       FROM referrals
+       WHERE referrer_is_corretor = true AND referrer_cpf IS NOT NULL AND referrer_cpf <> ''`
+    );
+    for (const row of corretorResult.rows) {
+      if (row.cpf) corretorCpfs.add(row.cpf);
+    }
+  } catch (e) {
+    console.warn('[Perspectiva Report] Não foi possível buscar CPFs corretor:', e.message);
+  }
+
   // Enrich with historical paid count to determine correct tier per indicator
   for (const ind of Object.values(indicatorMap)) {
     let historicoPago = 0;
@@ -6145,7 +6160,12 @@ async function getPerspectivaReportData() {
     }
     const totalCumulative = ind.count + historicoPago;
     ind.nivel = totalCumulative >= 13 ? 3 : totalCumulative >= 4 ? 2 : 1;
-    const unitValue = ind.nivel === 3 ? 200 : ind.nivel === 2 ? 150 : 100;
+    const cpfCleanInd = ind.cpf ? String(ind.cpf).replace(/\D/g, '') : '';
+    const isCorretor = cpfCleanInd ? corretorCpfs.has(cpfCleanInd) : false;
+    ind.isCorretor = isCorretor;
+    const unitValue = isCorretor
+      ? (ind.nivel === 3 ? 400 : ind.nivel === 2 ? 300 : 200)
+      : (ind.nivel === 3 ? 200 : ind.nivel === 2 ? 150 : 100);
     ind.total = unitValue * ind.count;
   }
 
