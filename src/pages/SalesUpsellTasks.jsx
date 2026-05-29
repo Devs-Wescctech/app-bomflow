@@ -285,11 +285,29 @@ export default function SalesUpsellTasks() {
 
   const novoLeads = useMemo(() => {
     if (!privileged) return [];
+    const agentType = currentAgent?.agent_type || currentAgent?.agentType;
+    const isFullAdmin = user?.role === 'admin' || agentType === 'admin' || agentType === 'upsell_admin';
+    let visibleLeads = leads;
+    if (!isFullAdmin && currentAgent) {
+      const tid = currentAgent?.team_id || currentAgent?.teamId;
+      if (tid) {
+        const teamAgentIds = new Set(
+          agents.filter(a => String(a.team_id || a.teamId) === String(tid)).map(a => a.id)
+        );
+        visibleLeads = leads.filter(l => {
+          const aid = l.agentId || l.agent_id;
+          return aid != null && teamAgentIds.has(aid);
+        });
+      }
+    }
     const leadIdsWithTasks = new Set(
-      tasks.map(t => String(t.leadId || t.lead_id)).filter(Boolean)
+      tasks
+        .map(t => t.leadId || t.lead_id)
+        .filter(id => id != null)
+        .map(String)
     );
-    return leads.filter(l => l.stage === 'novo' && !l.concluded && !leadIdsWithTasks.has(String(l.id)));
-  }, [leads, tasks, privileged]);
+    return visibleLeads.filter(l => l.stage === 'novo' && !l.concluded && !leadIdsWithTasks.has(String(l.id)));
+  }, [leads, tasks, privileged, currentAgent, user, agents]);
 
   const pendingTasks = tasks.filter(t => !t.completed);
   const completedTasks = tasks.filter(t => t.completed);

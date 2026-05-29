@@ -1817,10 +1817,10 @@ export default function LeadsUpsellKanban() {
           <DialogContent className="max-w-2xl glass-card border-0">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 text-white">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-white">
                   <Plus className="w-4 h-4" />
                 </div>
-                Novo Lead PF
+                Novo Lead Upsell
               </DialogTitle>
             </DialogHeader>
             <QuickLeadForm

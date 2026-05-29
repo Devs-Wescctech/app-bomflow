@@ -198,7 +198,7 @@ export default function SalesUpsellWonReport() {
       : 'Todo o período';
 
     const csvContent = [
-      ['RELATÓRIO DE GANHOS - VENDAS PF'],
+      ['RELATÓRIO DE GANHOS - VENDAS UPSELL'],
       [`Período: ${periodLabel}`],
       [`Total: ${totalRegistros} | Valor Total: R$ ${valorTotal.toFixed(2)} | Ticket Médio: R$ ${ticketMedio.toFixed(2)}`],
       [''],
@@ -225,7 +225,7 @@ export default function SalesUpsellWonReport() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `relatorio-ganhos-pf-${format(new Date(), 'yyyy-MM-dd-HHmm')}.csv`;
+    link.download = `relatorio-ganhos-upsell-${format(new Date(), 'yyyy-MM-dd-HHmm')}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
