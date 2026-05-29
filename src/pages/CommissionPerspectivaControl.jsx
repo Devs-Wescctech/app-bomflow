@@ -214,6 +214,13 @@ export default function CommissionPerspectivaControl() {
   });
   const pixMap = pixData || {};
 
+  const { data: corretorData } = useQuery({
+    queryKey: ['commission-perspectiva-corretor-cpfs'],
+    queryFn: () => fetchWithAuth('/api/functions/commission-perspectiva/corretor-cpfs'),
+    staleTime: 300000,
+  });
+  const corretorCpfs = new Set((corretorData?.cpfs || []).map(c => String(c).replace(/\D/g, '')));
+
   const groupedByIndicator = {};
   for (const r of records.filter(r => r.status_pagamento === 'elegivel')) {
     const key = r.cpf_indicador || r.nome_indicador || 'unknown';
@@ -607,7 +614,11 @@ export default function CommissionPerspectivaControl() {
                       const historicoPago = parseInt(data.items[0]?.historico_pago_count || 0);
                       const totalCumulative = data.items.length + historicoPago;
                       const level = totalCumulative >= 13 ? 3 : totalCumulative >= 4 ? 2 : 1;
-                      const unitValue = level === 3 ? 200 : level === 2 ? 150 : 100;
+                      const cpfNorm = data.cpf ? String(data.cpf).replace(/\D/g, '') : '';
+                      const isCorretor = cpfNorm ? corretorCpfs.has(cpfNorm) : false;
+                      const unitValue = isCorretor
+                        ? (level === 3 ? 400 : level === 2 ? 300 : 200)
+                        : (level === 3 ? 200 : level === 2 ? 150 : 100);
                       const value = unitValue * data.items.length;
                       const nivelLabel = level === 3 ? '3 (13+)' : level === 2 ? '2 (4-12)' : '1 (1-3)';
                       return (

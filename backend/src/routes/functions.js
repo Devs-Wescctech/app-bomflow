@@ -6289,6 +6289,19 @@ router.get('/commission-perspectiva/batches', authMiddleware, loadAgentMiddlewar
   }
 });
 
+router.get('/commission-perspectiva/corretor-cpfs', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT DISTINCT regexp_replace(referrer_cpf, '[^0-9]', '', 'g') AS cpf
+       FROM referrals
+       WHERE referrer_is_corretor = true AND referrer_cpf IS NOT NULL AND referrer_cpf <> ''`
+    );
+    res.json({ cpfs: result.rows.map(r => r.cpf).filter(Boolean) });
+  } catch (error) {
+    res.status(500).json({ cpfs: [], error: error.message });
+  }
+});
+
 router.get('/commission-perspectiva/control', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
   try {
     const { status, lote_id, data_inicio, data_fim } = req.query;
