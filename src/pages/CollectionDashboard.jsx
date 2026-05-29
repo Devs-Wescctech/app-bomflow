@@ -1,5 +1,5 @@
-import { useQuery, useMemo } from "@tanstack/react-query";
-import React from "react";
+import { useQuery } from "@tanstack/react-query";
+import React, { useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
