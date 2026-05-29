@@ -36,7 +36,7 @@ import {
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { createPageUrl } from "@/utils";
-import { canViewAll, canViewTeam } from "@/components/utils/permissions";
+import { canViewAll, canViewTeam, getVisibleAgents } from "@/components/utils/permissions";
 
 const STAGES_PJ = [
   { value: 'novo', label: 'Novo', color: 'bg-blue-100 text-blue-800' },
@@ -76,15 +76,15 @@ export default function LeadPJSearch() {
   const isSupervisor = user?.role === 'supervisor' || currentAgentType?.includes('supervisor');
 
   const { data: leadsPJ = [], isLoading } = useQuery({
-    queryKey: ['leadsPJ', isAdmin ? 'admin' : isSupervisor ? 'supervisor' : currentAgent?.id],
+    queryKey: ['leadsPJ', isAdmin ? 'admin' : currentAgent?.id],
     queryFn: async () => {
       const allLeads = await base44.entities.LeadPJ.list('-createdDate');
       
-      if (isAdmin || isSupervisor) {
+      if (isAdmin) {
         return allLeads;
       }
 
-      if (!currentAgent) return allLeads;
+      if (!currentAgent) return [];
 
       const canSeeAll = canViewAll(currentAgent, 'leads');
       if (canSeeAll) {
@@ -93,9 +93,9 @@ export default function LeadPJSearch() {
 
       const canSeeTeam = canViewTeam(currentAgent, 'leads');
       if (canSeeTeam) {
-        const teamAgents = allAgents.filter(a => (a.teamId || a.team_id) === (currentAgent.teamId || currentAgent.team_id));
-        const teamAgentIds = teamAgents.map(a => a.id);
-        return allLeads.filter(l => teamAgentIds.includes(l.agentId || l.agent_id));
+        const visibleAgs = getVisibleAgents(allAgents, currentAgent);
+        const visibleIds = new Set(visibleAgs.map(a => a.id));
+        return allLeads.filter(l => visibleIds.has(l.agentId || l.agent_id));
       }
 
       return allLeads.filter(l => (l.agentId || l.agent_id) === currentAgent.id);

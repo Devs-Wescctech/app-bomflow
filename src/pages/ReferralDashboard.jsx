@@ -25,7 +25,7 @@ import { createPageUrl } from "@/utils";
 import StatsCard from "@/components/dashboard/StatsCard";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 import MetricsHelpDialog from "@/components/dashboard/MetricsHelpDialog";
-import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
+import { canViewAll, canViewTeam, getVisibleAgents } from "@/components/utils/permissions.jsx";
 import { isWithinInterval, parseISO, startOfDay, endOfDay } from "date-fns";
 import { REFERRAL_STAGES as REFERRAL_STAGES_CONST, isActiveStage, isWonStage, isLostStage } from "@/constants/stages";
 
@@ -68,11 +68,11 @@ export default function ReferralDashboard() {
   const isSupervisor = user?.role === 'supervisor' || currentAgentType?.includes('supervisor');
 
   const { data: rawReferrals = [] } = useQuery({
-    queryKey: ['referrals-dashboard', isAdmin ? 'admin' : isSupervisor ? 'supervisor' : currentAgent?.id],
+    queryKey: ['referrals-dashboard', isAdmin ? 'admin' : currentAgent?.id],
     queryFn: async () => {
       const allReferrals = await base44.entities.Referral.list('-createdAt');
       
-      if (isAdmin || isSupervisor) {
+      if (isAdmin) {
         return allReferrals;
       }
       
@@ -85,10 +85,10 @@ export default function ReferralDashboard() {
       
       const canSeeTeam = canViewTeam(currentAgent, 'referrals');
       if (canSeeTeam) {
-        const teamAgents = allAgents.filter(a => (a.teamId || a.team_id) === (currentAgent.teamId || currentAgent.team_id));
-        const teamAgentIds = teamAgents.map(a => a.id);
+        const visibleAgs = getVisibleAgents(allAgents, currentAgent);
+        const visibleIds = new Set(visibleAgs.map(a => a.id));
         return allReferrals.filter(r => 
-          teamAgentIds.includes(r.agentId || r.agent_id)
+          visibleIds.has(r.agentId || r.agent_id)
         );
       }
       
@@ -96,7 +96,7 @@ export default function ReferralDashboard() {
         (r.agentId || r.agent_id) === currentAgent.id
       );
     },
-    enabled: !!user && (isAdmin || isSupervisor || !!currentAgent),
+    enabled: !!user && !!currentAgent,
   });
 
   const agents = allAgents;

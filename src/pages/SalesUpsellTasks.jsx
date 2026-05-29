@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { upsell } from "@/api/upsellClient";
-import { isUpsellPrivileged, canViewTeam } from "@/components/utils/permissions.jsx";
+import { isUpsellPrivileged, canViewTeam, getVisibleAgents } from "@/components/utils/permissions.jsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -158,16 +158,13 @@ export default function SalesUpsellTasks() {
     const agentType = currentAgent?.agent_type || currentAgent?.agentType;
     if (user?.role === 'admin' || agentType === 'admin' || agentType === 'upsell_admin') return allActivities;
     if (canViewTeam(currentAgent, 'leads')) {
-      const tid = currentAgent?.team_id || currentAgent?.teamId;
-      if (tid) {
-        const teamEmails = agents.filter(a => String(a.team_id || a.teamId) === String(tid)).map(a => a.userEmail || a.email || a.user_email);
-        const teamIds = agents.filter(a => String(a.team_id || a.teamId) === String(tid)).map(a => a.id);
-        return allActivities.filter(act =>
-          teamEmails.includes(act.assignedTo) || teamIds.includes(act.assignedTo) ||
-          teamEmails.includes(act.createdBy) || teamIds.includes(act.createdBy)
-        );
-      }
-      return allActivities;
+      const visibleAgs = getVisibleAgents(agents, currentAgent);
+      const visibleEmails = new Set(visibleAgs.map(a => a.userEmail || a.email || a.user_email).filter(Boolean));
+      const visibleIds = new Set(visibleAgs.map(a => a.id));
+      return allActivities.filter(act =>
+        visibleEmails.has(act.assignedTo) || visibleIds.has(act.assignedTo) ||
+        visibleEmails.has(act.createdBy) || visibleIds.has(act.createdBy)
+      );
     }
     if (!currentAgent) return [];
     return allActivities.filter(act =>
@@ -289,16 +286,12 @@ export default function SalesUpsellTasks() {
     const isFullAdmin = user?.role === 'admin' || agentType === 'admin' || agentType === 'upsell_admin';
     let visibleLeads = leads;
     if (!isFullAdmin && currentAgent) {
-      const tid = currentAgent?.team_id || currentAgent?.teamId;
-      if (tid) {
-        const teamAgentIds = new Set(
-          agents.filter(a => String(a.team_id || a.teamId) === String(tid)).map(a => a.id)
-        );
-        visibleLeads = leads.filter(l => {
-          const aid = l.agentId || l.agent_id;
-          return aid != null && teamAgentIds.has(aid);
-        });
-      }
+      const visibleAgs = getVisibleAgents(agents, currentAgent);
+      const visibleAgentIds = new Set(visibleAgs.map(a => a.id));
+      visibleLeads = leads.filter(l => {
+        const aid = l.agentId || l.agent_id;
+        return aid != null && visibleAgentIds.has(aid);
+      });
     }
     const leadIdsWithTasks = new Set(
       tasks

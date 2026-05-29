@@ -13,7 +13,7 @@ import "leaflet/dist/leaflet.css";
 import "react-leaflet-cluster/dist/assets/MarkerCluster.css";
 import "react-leaflet-cluster/dist/assets/MarkerCluster.Default.css";
 import L from "leaflet";
-import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
+import { canViewAll, canViewTeam, getVisibleAgents } from "@/components/utils/permissions.jsx";
 
 // Fix do ícone padrão do Leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -81,10 +81,10 @@ export default function LeadsMap() {
       }
       
       if (canViewTeam(currentAgent, 'leads')) {
-        const teamAgents = allAgents.filter(a => (a.teamId || a.team_id) === (currentAgent.teamId || currentAgent.team_id));
-        const teamAgentIds = teamAgents.map(a => a.id);
+        const visibleAgs = getVisibleAgents(allAgents, currentAgent);
+        const visibleIds = new Set(visibleAgs.map(a => a.id));
         return allLeads.filter(l => 
-          teamAgentIds.includes(l.agentId || l.agent_id) || teamAgentIds.includes(l.promoterId || l.promoter_id)
+          visibleIds.has(l.agentId || l.agent_id) || visibleIds.has(l.promoterId || l.promoter_id)
         );
       }
       

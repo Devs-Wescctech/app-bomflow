@@ -1,0 +1,1 @@
+- [GitHub MCP push limit](github-mcp-push-limit.md) — MCP pushFiles/createOrUpdateFile falha para arquivos JSX >~11KB; use pushFiles apenas para arquivos pequenos

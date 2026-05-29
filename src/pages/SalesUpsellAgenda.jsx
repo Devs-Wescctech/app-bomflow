@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { upsell } from "@/api/upsellClient";
-import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
+import { canViewAll, canViewTeam, getVisibleAgents } from "@/components/utils/permissions.jsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -91,15 +91,14 @@ export default function SalesUpsellAgenda() {
 
   const myActivities = activities.filter(act => {
     if (isAdmin) return true;
-    if (canViewTeam(currentAgent, 'leads')) {
-      const tid = currentAgent?.team_id || currentAgent?.teamId;
-      if (!tid) return true;
-      const teamEmails = agents.filter(a => String(a.team_id || a.teamId) === String(tid)).map(a => a.userEmail || a.email || a.user_email);
-      const teamIds = agents.filter(a => String(a.team_id || a.teamId) === String(tid)).map(a => a.id);
-      return teamEmails.includes(act.assignedTo) || teamIds.includes(act.assignedTo) ||
-             teamEmails.includes(act.createdBy) || teamIds.includes(act.createdBy);
-    }
     if (!currentAgent) return true;
+    if (canViewTeam(currentAgent, 'leads')) {
+      const visibleAgs = getVisibleAgents(agents, currentAgent);
+      const visibleEmails = new Set(visibleAgs.map(a => a.userEmail || a.email || a.user_email).filter(Boolean));
+      const visibleIds = new Set(visibleAgs.map(a => a.id));
+      return visibleEmails.has(act.assignedTo) || visibleIds.has(act.assignedTo) ||
+             visibleEmails.has(act.createdBy) || visibleIds.has(act.createdBy);
+    }
     return act.assignedTo === user?.email || act.assignedTo === currentAgent?.id || act.createdBy === currentAgent?.id || !act.assignedTo;
   });
 

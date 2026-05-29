@@ -49,7 +49,7 @@ import QuickLeadPJForm from "../components/sales/QuickLeadPJForm";
 import { createPageUrl } from "@/utils";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
-import { canViewAll, canViewTeam } from "@/components/utils/permissions";
+import { canViewAll, canViewTeam, getVisibleAgents } from "@/components/utils/permissions";
 import {
   DndContext,
   DragOverlay,
@@ -550,12 +550,12 @@ export default function LeadsPJKanban() {
 
       const canSeeTeam = canViewTeam(currentAgent, 'leads-pj');
       if (canSeeTeam) {
-        const teamAgents = allAgents.filter(a => a.team_id === currentAgent.team_id);
-        const teamAgentIds = teamAgents.map(a => a.id);
+        const visibleAgs = getVisibleAgents(allAgents, currentAgent);
+        const visibleIds = new Set(visibleAgs.map(a => a.id));
 
         return allLeads.filter(l =>
           !l.lost &&
-          (teamAgentIds.includes(l.agentId) || teamAgentIds.includes(l.agent_id))
+          (visibleIds.has(l.agentId) || visibleIds.has(l.agent_id))
         );
       }
 

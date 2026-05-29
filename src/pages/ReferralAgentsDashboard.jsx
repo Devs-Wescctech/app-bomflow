@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, startOfDay, endOfDay } from "date-fns";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
+import { getVisibleAgents } from "@/components/utils/permissions";
 
 export default function ReferralAgentsDashboard() {
   const [selectedTeam, setSelectedTeam] = useState(null);
@@ -62,7 +63,11 @@ export default function ReferralAgentsDashboard() {
     enabled: canFetchData,
   });
 
-  const canSeeAllAgents = isAdmin || isSupervisor;
+  const visibleAgents = useMemo(() => {
+    if (isAdmin) return agents;
+    return getVisibleAgents(agents, currentAgent);
+  }, [agents, currentAgent, isAdmin]);
+  const visibleAgentIds = useMemo(() => new Set(visibleAgents.map(a => a.id)), [visibleAgents]);
   const isLoading = agentsLoading || teamsLoading || referralsLoading;
 
   const teamsForFilter = useMemo(() => {
@@ -98,7 +103,7 @@ export default function ReferralAgentsDashboard() {
       .filter(agent => {
         const agentType = agent.agentType || agent.agent_type;
         if (agentType !== 'indicacoes_atendente') return false;
-        if (!canSeeAllAgents && agent.id !== currentAgent?.id) return false;
+        if (!visibleAgentIds.has(agent.id)) return false;
         const agentTeamId = agent.teamId || agent.team_id;
         if (selectedTeam && String(agentTeamId) !== String(selectedTeam)) return false;
         return agent.active;
@@ -132,7 +137,7 @@ export default function ReferralAgentsDashboard() {
           comissaoMedia,
         };
       });
-  }, [agents, filteredReferralsByDate, canSeeAllAgents, currentAgent, selectedTeam]);
+  }, [agents, filteredReferralsByDate, visibleAgentIds, currentAgent, selectedTeam]);
 
   const sortedAgents = useMemo(() => {
     return [...agentStats].sort((a, b) => {
@@ -213,7 +218,7 @@ export default function ReferralAgentsDashboard() {
       </div>
 
       <DashboardFilters
-        teams={canSeeAllAgents ? teamsForFilter.filter(t => (t.name || '').toLowerCase().includes('indicaç')) : []}
+        teams={isAdmin || isSupervisor ? teamsForFilter.filter(t => (t.name || '').toLowerCase().includes('indicaç')) : []}
         selectedTeam={selectedTeam}
         onTeamChange={setSelectedTeam}
         selectedPeriod={selectedPeriod}
@@ -222,7 +227,7 @@ export default function ReferralAgentsDashboard() {
         onDateRangeChange={setDateRange}
         onClearFilters={handleClearFilters}
         showAgentFilter={false}
-        showTeamFilter={canSeeAllAgents}
+        showTeamFilter={isAdmin || isSupervisor}
         showStageFilter={false}
       />
 

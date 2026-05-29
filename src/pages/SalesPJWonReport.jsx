@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
+import { canViewAll, canViewTeam, getVisibleAgents } from "@/components/utils/permissions.jsx";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 
 const createPageUrl = (pageName) => `/${pageName}`;
@@ -77,9 +77,9 @@ export default function SalesPJWonReport() {
       if (canViewAll(currentAgent, 'leads-pj')) return wonLeads;
 
       if (canViewTeam(currentAgent, 'leads-pj')) {
-        const teamAgents = allAgents.filter(a => (a.teamId || a.team_id) === (currentAgent?.teamId || currentAgent?.team_id));
-        const teamAgentIds = teamAgents.map(a => a.id);
-        return wonLeads.filter(l => teamAgentIds.includes(l.agentId || l.agent_id));
+        const visibleAgs = getVisibleAgents(allAgents, currentAgent);
+        const visibleIds = new Set(visibleAgs.map(a => a.id));
+        return wonLeads.filter(l => visibleIds.has(l.agentId || l.agent_id));
       }
 
       return wonLeads.filter(l => (l.agentId || l.agent_id) === currentAgent?.id);

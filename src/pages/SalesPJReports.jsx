@@ -22,7 +22,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RePieChart, Pie, Cell } from 'recharts';
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { canViewAll, canViewTeam, canAccessReports } from "@/components/utils/permissions";
+import { canViewAll, canViewTeam, canAccessReports, getVisibleAgents } from "@/components/utils/permissions";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 import { LEAD_PJ_STAGES } from "@/constants/stages";
 
@@ -60,15 +60,15 @@ export default function SalesPJReports() {
   const hasPermission = isAdmin || isSupervisor || canAccessReports(currentAgent);
 
   const { data: leadsPJ = [] } = useQuery({
-    queryKey: ['leadsPJ-reports', isAdmin ? 'admin' : isSupervisor ? 'supervisor' : currentAgent?.id],
+    queryKey: ['leadsPJ-reports', isAdmin ? 'admin' : currentAgent?.id],
     queryFn: async () => {
       const allLeads = await base44.entities.LeadPJ.list('-createdDate');
       
-      if (isAdmin || isSupervisor) {
+      if (isAdmin) {
         return allLeads;
       }
 
-      if (!currentAgent) return allLeads;
+      if (!currentAgent) return [];
 
       const canSeeAll = canViewAll(currentAgent, 'leads-pj');
       if (canSeeAll) {
@@ -77,10 +77,9 @@ export default function SalesPJReports() {
 
       const canSeeTeam = canViewTeam(currentAgent, 'leads-pj');
       if (canSeeTeam) {
-        const teamAgents = allAgents.filter(a => (a.teamId || a.team_id) === (currentAgent.teamId || currentAgent.team_id));
-        const teamAgentIds = teamAgents.map(a => a.id);
-        
-        return allLeads.filter(l => teamAgentIds.includes(l.agentId || l.agent_id));
+        const visibleAgs = getVisibleAgents(allAgents, currentAgent);
+        const visibleIds = new Set(visibleAgs.map(a => a.id));
+        return allLeads.filter(l => visibleIds.has(l.agentId || l.agent_id));
       }
 
       return allLeads.filter(l => (l.agentId || l.agent_id) === currentAgent.id);

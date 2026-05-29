@@ -32,6 +32,7 @@ import { ptBR } from "date-fns/locale";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { toast } from "sonner";
+import { canViewTeam, getVisibleAgents } from "@/components/utils/permissions.jsx";
 
 const ACTIVITY_TYPES = {
   visit: { label: "Visita", icon: MapPin, color: "bg-blue-500", gradient: "from-blue-500 to-blue-600", bgLight: "bg-blue-50 dark:bg-blue-950/50", textColor: "text-blue-700 dark:text-blue-300" },
@@ -86,13 +87,19 @@ export default function ReferralAgenda() {
 
   const currentAgent = user?.agent || agents.find(a => a.userEmail === user?.email || a.email === user?.email);
   const isAdmin = currentAgent?.agentType === 'admin' || currentAgent?.agent_type === 'admin' || currentAgent?.agentType === 'indicacoes_admin' || currentAgent?.agent_type === 'indicacoes_admin' || user?.role === 'admin';
-  const isSupervisor = currentAgent?.agentType === 'supervisor' || currentAgent?.agent_type === 'supervisor';
 
   const referralActivities = activities.filter(act => act.referralId || act.referral_id);
   
   const myActivities = referralActivities.filter(act => {
-    if (isAdmin || isSupervisor) return true;
+    if (isAdmin) return true;
     if (!currentAgent) return true;
+    if (canViewTeam(currentAgent, 'referrals')) {
+      const visibleAgs = getVisibleAgents(agents, currentAgent);
+      const visibleEmails = new Set(visibleAgs.map(a => a.userEmail || a.email || a.user_email).filter(Boolean));
+      const visibleIds = new Set(visibleAgs.map(a => a.id));
+      return visibleEmails.has(act.assignedTo) || visibleIds.has(act.assignedTo) ||
+             visibleEmails.has(act.createdBy) || visibleIds.has(act.createdBy);
+    }
     return act.assignedTo === user?.email || act.assignedTo === currentAgent?.id || act.createdBy === currentAgent?.id || !act.assignedTo;
   });
 

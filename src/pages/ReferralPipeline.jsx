@@ -66,7 +66,7 @@ import { toast } from "sonner";
 import StatsCard from "@/components/dashboard/StatsCard";
 import { format, differenceInDays, differenceInHours, differenceInMinutes } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { canViewAll, canViewTeam } from "@/components/utils/permissions";
+import { canViewAll, canViewTeam, getVisibleAgents } from "@/components/utils/permissions";
 
 function safeDate(val) {
   if (!val) return null;
@@ -579,13 +579,12 @@ export default function ReferralPipeline() {
 
       const canSeeTeam = canViewTeam(resolvedAgent, 'referrals');
       if (canSeeTeam) {
-        const teamAgentIds = agents
-          .filter(a => String(a.team_id) === String(resolvedAgent.team_id) || String(a.teamId) === String(resolvedAgent.teamId))
-          .map(a => String(a.id));
+        const visibleAgs = getVisibleAgents(agents, resolvedAgent);
+        const visibleIds = new Set(visibleAgs.map(a => String(a.id)));
 
         return allReferrals.filter(r =>
           !r.lost &&
-          (teamAgentIds.includes(String(r.agentId)) || teamAgentIds.includes(String(r.agent_id)))
+          (visibleIds.has(String(r.agentId)) || visibleIds.has(String(r.agent_id)))
         );
       }
 

@@ -27,7 +27,7 @@ import {
 import { format, startOfMonth, endOfMonth, eachMonthOfInterval, eachWeekOfInterval, eachDayOfInterval } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
-import { canViewAll, canViewTeam, canAccessReports } from "@/components/utils/permissions.jsx";
+import { canViewAll, canViewTeam, canAccessReports, getVisibleAgents } from "@/components/utils/permissions.jsx";
 import { REFERRAL_STAGES as REFERRAL_STAGES_CONST } from "@/constants/stages";
 
 const COLORS = ['#ec4899', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
@@ -65,23 +65,25 @@ export default function ReferralReports() {
   });
 
   const { data: referrals = [], isLoading: referralsLoading } = useQuery({
-    queryKey: ['referralReportsData', isAdmin ? 'admin' : isSupervisor ? 'supervisor' : currentAgent?.id],
+    queryKey: ['referralReportsData', isAdmin ? 'admin' : currentAgent?.id],
     queryFn: async () => {
       const allReferrals = await base44.entities.Referral.list('-createdAt', 5000);
       
-      if (isAdmin || isSupervisor) {
+      if (isAdmin) {
         return allReferrals;
       }
+      
+      if (!currentAgent) return [];
       
       if (canViewAll(currentAgent, 'referrals')) {
         return allReferrals;
       }
       
       if (canViewTeam(currentAgent, 'referrals')) {
-        const teamAgents = allAgents.filter(a => (a.teamId || a.team_id) === (currentAgent?.teamId || currentAgent?.team_id));
-        const teamAgentIds = teamAgents.map(a => a.id);
+        const visibleAgs = getVisibleAgents(allAgents, currentAgent);
+        const visibleIds = new Set(visibleAgs.map(a => a.id));
         return allReferrals.filter(r => 
-          teamAgentIds.includes(r.agentId || r.agent_id)
+          visibleIds.has(r.agentId || r.agent_id)
         );
       }
       
@@ -89,7 +91,7 @@ export default function ReferralReports() {
         (r.agentId || r.agent_id) === currentAgent?.id
       );
     },
-    enabled: hasPermission && !!user && (isAdmin || isSupervisor || !!currentAgent),
+    enabled: hasPermission && !!user && !!currentAgent,
   });
 
   const isLoading = referralsLoading || agentsLoading;

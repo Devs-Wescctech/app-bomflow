@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { canViewAll, canViewTeam, isUpsellPrivileged } from "@/components/utils/permissions.jsx";
+import { canViewAll, canViewTeam, isUpsellPrivileged, getVisibleAgents } from "@/components/utils/permissions.jsx";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 
 const createPageUrl = (pageName) => `/${pageName}`;
@@ -85,10 +85,10 @@ export default function SalesUpsellWonReport() {
       if (canViewAll(currentAgent, 'leads')) return wonLeads;
 
       if (canViewTeam(currentAgent, 'leads')) {
-        const teamAgents = allAgents.filter(a => (a.teamId || a.team_id) === (currentAgent?.teamId || currentAgent?.team_id));
-        const teamAgentIds = teamAgents.map(a => a.id);
+        const visibleAgs = getVisibleAgents(allAgents, currentAgent);
+        const visibleIds = new Set(visibleAgs.map(a => a.id));
         return wonLeads.filter(l =>
-          teamAgentIds.includes(l.agentId || l.agent_id) || teamAgentIds.includes(l.promoterId || l.promoter_id)
+          visibleIds.has(l.agentId || l.agent_id) || visibleIds.has(l.promoterId || l.promoter_id)
         );
       }
 

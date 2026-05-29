@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { canAccessReports, canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
+import { canAccessReports, canViewAll, canViewTeam, getVisibleAgents } from "@/components/utils/permissions.jsx";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 import { LEAD_PF_STAGES } from "@/constants/stages";
 
@@ -57,11 +57,11 @@ export default function SalesReports() {
   });
 
   const { data: leads = [] } = useQuery({
-    queryKey: ['leads-reports', isAdmin ? 'admin' : isSupervisor ? 'supervisor' : currentAgent?.id],
+    queryKey: ['leads-reports', isAdmin ? 'admin' : currentAgent?.id],
     queryFn: async () => {
       const allLeads = await base44.entities.Lead.list('-createdDate', 5000);
       
-      if (isAdmin || isSupervisor) {
+      if (isAdmin) {
         return allLeads;
       }
       
@@ -72,10 +72,10 @@ export default function SalesReports() {
       }
       
       if (canViewTeam(currentAgent, 'leads')) {
-        const teamAgents = allAgents.filter(a => (a.teamId || a.team_id) === (currentAgent?.teamId || currentAgent?.team_id));
-        const teamAgentIds = teamAgents.map(a => a.id);
+        const visibleAgs = getVisibleAgents(allAgents, currentAgent);
+        const visibleIds = new Set(visibleAgs.map(a => a.id));
         return allLeads.filter(l => 
-          teamAgentIds.includes(l.agentId || l.agent_id) || teamAgentIds.includes(l.promoterId || l.promoter_id)
+          visibleIds.has(l.agentId || l.agent_id) || visibleIds.has(l.promoterId || l.promoter_id)
         );
       }
       

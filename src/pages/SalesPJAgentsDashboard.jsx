@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, startOfDay, endOfDay } from "date-fns";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
+import { getVisibleAgents } from "@/components/utils/permissions";
 
 export default function SalesPJAgentsDashboard() {
   const [selectedTeam, setSelectedTeam] = useState(null);
@@ -61,7 +62,11 @@ export default function SalesPJAgentsDashboard() {
     enabled: canFetchData,
   });
 
-  const canSeeAllAgents = isAdmin || isSupervisor;
+  const visibleAgents = useMemo(() => {
+    if (isAdmin) return agents;
+    return getVisibleAgents(agents, currentAgent);
+  }, [agents, currentAgent, isAdmin]);
+  const visibleAgentIds = useMemo(() => new Set(visibleAgents.map(a => a.id)), [visibleAgents]);
   const isLoading = agentsLoading || teamsLoading || leadsLoading;
 
   const teamsForFilter = useMemo(() => {
@@ -95,7 +100,7 @@ export default function SalesPJAgentsDashboard() {
   const agentStats = useMemo(() => {
     return agents
       .filter(agent => {
-        if (!canSeeAllAgents && agent.id !== currentAgent?.id) return false;
+        if (!visibleAgentIds.has(agent.id)) return false;
         const agentTeamId = agent.teamId || agent.team_id;
         if (selectedTeam && String(agentTeamId) !== String(selectedTeam)) return false;
         return agent.active;
@@ -131,7 +136,7 @@ export default function SalesPJAgentsDashboard() {
           ticketMedio,
         };
       });
-  }, [agents, filteredLeadsByDate, canSeeAllAgents, currentAgent, selectedTeam]);
+  }, [agents, filteredLeadsByDate, visibleAgentIds, currentAgent, selectedTeam]);
 
   const sortedAgents = useMemo(() => {
     return [...agentStats].sort((a, b) => {
@@ -212,7 +217,7 @@ export default function SalesPJAgentsDashboard() {
       </div>
 
       <DashboardFilters
-        teams={canSeeAllAgents ? teamsForFilter : []}
+        teams={isAdmin || isSupervisor ? teamsForFilter : []}
         selectedTeam={selectedTeam}
         onTeamChange={setSelectedTeam}
         selectedPeriod={selectedPeriod}
@@ -221,7 +226,7 @@ export default function SalesPJAgentsDashboard() {
         onDateRangeChange={setDateRange}
         onClearFilters={handleClearFilters}
         showAgentFilter={false}
-        showTeamFilter={canSeeAllAgents}
+        showTeamFilter={isAdmin || isSupervisor}
         showStageFilter={false}
       />
 
