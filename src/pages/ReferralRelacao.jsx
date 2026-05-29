@@ -162,25 +162,29 @@ export default function ReferralRelacao() {
     return `${clean.slice(0, 3)}.${clean.slice(3, 6)}.${clean.slice(6, 9)}-${clean.slice(9)}`;
   }
 
-  async function handlePixCpfChange(raw) {
-    const formatted = formatCPFInput(raw);
-    setPixCpf(formatted);
-    const clean = formatted.replace(/\D/g, '');
-    if (clean.length === 11) {
-      setPixLookupLoading(true);
-      setPixChave('');
-      try {
-        const res = await fetch(`${API_BASE}/functions/indicadores-pix/${clean}`, {
-          headers: { ...getAuthHeaders() },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.chave_pix) setPixChave(data.chave_pix);
-        }
-      } catch (_) {}
-      finally { setPixLookupLoading(false); }
-    }
+  function handlePixCpfChange(raw) {
+    setPixCpf(formatCPFInput(raw));
   }
+
+  useEffect(() => {
+    const clean = pixCpf.replace(/\D/g, '');
+    if (clean.length !== 11) return;
+
+    let cancelled = false;
+    setPixLookupLoading(true);
+
+    fetch(`${API_BASE}/functions/indicadores-pix/${clean}`, {
+      headers: { ...getAuthHeaders() },
+    })
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (!cancelled && data?.chave_pix) setPixChave(data.chave_pix);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setPixLookupLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [pixCpf]);
 
   async function handleSavePix() {
     const clean = pixCpf.replace(/\D/g, '');
