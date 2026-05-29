@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   Search, Edit2, Loader2, ChevronLeft, ChevronRight, List, X, Save,
-  StickyNote, Plus, Trash2, MessageCircle, User
+  StickyNote, Plus, Trash2, MessageCircle, User, QrCode
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
@@ -47,6 +47,12 @@ export default function ReferralRelacao() {
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editingNoteContent, setEditingNoteContent] = useState('');
   const limit = 50;
+
+  const [pixModalOpen, setPixModalOpen] = useState(false);
+  const [pixCpf, setPixCpf] = useState('');
+  const [pixChave, setPixChave] = useState('');
+  const [pixLookupLoading, setPixLookupLoading] = useState(false);
+  const [pixSaving, setPixSaving] = useState(false);
 
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -146,6 +152,66 @@ export default function ReferralRelacao() {
     setNewNote('');
     setEditingNoteId(null);
     setEditingNoteContent('');
+  }
+
+  function formatCPFInput(value) {
+    const clean = value.replace(/\D/g, '').slice(0, 11);
+    if (clean.length <= 3) return clean;
+    if (clean.length <= 6) return `${clean.slice(0, 3)}.${clean.slice(3)}`;
+    if (clean.length <= 9) return `${clean.slice(0, 3)}.${clean.slice(3, 6)}.${clean.slice(6)}`;
+    return `${clean.slice(0, 3)}.${clean.slice(3, 6)}.${clean.slice(6, 9)}-${clean.slice(9)}`;
+  }
+
+  async function handlePixCpfChange(raw) {
+    const formatted = formatCPFInput(raw);
+    setPixCpf(formatted);
+    const clean = formatted.replace(/\D/g, '');
+    if (clean.length === 11) {
+      setPixLookupLoading(true);
+      setPixChave('');
+      try {
+        const res = await fetch(`${API_BASE}/functions/indicadores-pix/${clean}`, {
+          headers: { ...getAuthHeaders() },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.chave_pix) setPixChave(data.chave_pix);
+        }
+      } catch (_) {}
+      finally { setPixLookupLoading(false); }
+    }
+  }
+
+  async function handleSavePix() {
+    const clean = pixCpf.replace(/\D/g, '');
+    if (clean.length !== 11) { toast.error('CPF inválido — informe os 11 dígitos'); return; }
+    if (!pixChave.trim()) { toast.error('Chave PIX obrigatória'); return; }
+    setPixSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/functions/indicadores-pix/${clean}`, {
+        method: 'PUT',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chave_pix: pixChave.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Erro ao salvar');
+      }
+      toast.success('PIX do indicador salvo com sucesso!');
+      setPixModalOpen(false);
+      setPixCpf('');
+      setPixChave('');
+    } catch (err) {
+      toast.error('Erro ao salvar PIX: ' + err.message);
+    } finally {
+      setPixSaving(false);
+    }
+  }
+
+  function openPixModal() {
+    setPixCpf('');
+    setPixChave('');
+    setPixModalOpen(true);
   }
 
   const { data: notesData, refetch: refetchNotes } = useQuery({
@@ -280,14 +346,26 @@ export default function ReferralRelacao() {
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 text-white">
-          <List className="w-5 h-5" />
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 text-white">
+            <List className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Relação Indicações</h1>
+            <p className="text-sm text-gray-500">Listagem e gestão de todas as indicações cadastradas</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Relação Indicações</h1>
-          <p className="text-sm text-gray-500">Listagem e gestão de todas as indicações cadastradas</p>
-        </div>
+        {isPrivileged && (
+          <Button
+            onClick={openPixModal}
+            size="sm"
+            className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-sm"
+          >
+            <QrCode className="w-4 h-4 mr-2" />
+            Cadastrar PIX do Indicador
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -675,6 +753,77 @@ export default function ReferralRelacao() {
             <Button onClick={handleSave} disabled={saving} className="gap-2 bg-amber-600 hover:bg-amber-700 text-white">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pixModalOpen} onOpenChange={(open) => { if (!open) { setPixCpf(''); setPixChave(''); } setPixModalOpen(open); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 text-white">
+                <QrCode className="w-4 h-4" />
+              </div>
+              Cadastrar PIX do Indicador
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                CPF do Indicador <span className="text-red-500">*</span>
+              </Label>
+              <div className="relative mt-1">
+                <Input
+                  placeholder="000.000.000-00"
+                  value={pixCpf}
+                  onChange={e => handlePixCpfChange(e.target.value)}
+                  maxLength={14}
+                  className="pr-9"
+                />
+                {pixLookupLoading && (
+                  <Loader2 className="absolute right-3 top-2.5 w-4 h-4 animate-spin text-amber-500" />
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Ao completar o CPF, a chave PIX existente será carregada automaticamente.
+              </p>
+            </div>
+
+            <div>
+              <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Chave PIX <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                placeholder="CPF, e-mail, telefone ou chave aleatória"
+                value={pixChave}
+                onChange={e => setPixChave(e.target.value.slice(0, 150))}
+                maxLength={150}
+                className="mt-1"
+                disabled={pixLookupLoading}
+              />
+              <p className="text-xs text-gray-400 mt-1 text-right">{pixChave.length}/150</p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setPixModalOpen(false); setPixCpf(''); setPixChave(''); }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSavePix}
+              disabled={pixSaving || pixLookupLoading || pixCpf.replace(/\D/g, '').length !== 11 || !pixChave.trim()}
+              className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white gap-2"
+            >
+              {pixSaving
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Save className="w-4 h-4" />
+              }
+              Salvar PIX
             </Button>
           </DialogFooter>
         </DialogContent>
