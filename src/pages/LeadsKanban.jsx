@@ -746,10 +746,6 @@ export default function LeadsKanban() {
     }
   }, [leads]);
 
-  const getLeadsByStage = useCallback((stage) => {
-    return leads.filter(l => l.stage === stage);
-  }, [leads]);
-
   const filteredLeads = leads.filter(lead => {
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
@@ -794,6 +790,10 @@ export default function LeadsKanban() {
 
     return true;
   });
+
+  const getLeadsByStage = (stage) => {
+    return filteredLeads.filter(l => l.stage === stage);
+  };
 
   const listViewLeads = listStageFilter === 'all'
     ? filteredLeads
