@@ -28,6 +28,10 @@ async function loadAutomationTeamIds(automations, junctionTable = 'lead_automati
 }
 
 export async function checkAndExecuteLeadAutomations() {
+  if (!isWithinDispatchWindow()) {
+    console.log('[LeadAutomation] Fora da janela de disparo — nenhuma mensagem enviada.');
+    return;
+  }
   try {
     const automationsResult = await query(`
       SELECT * FROM lead_automations 
@@ -51,6 +55,10 @@ export async function checkAndExecuteLeadAutomations() {
 }
 
 export async function checkAndExecuteLeadPJAutomations() {
+  if (!isWithinDispatchWindow()) {
+    console.log('[LeadPJAutomation] Fora da janela de disparo — nenhuma mensagem enviada.');
+    return;
+  }
   try {
     const automationsResult = await query(`
       SELECT * FROM lead_pj_automations 
@@ -74,6 +82,10 @@ export async function checkAndExecuteLeadPJAutomations() {
 }
 
 export async function checkAndExecuteLeadUpsellAutomations() {
+  if (!isWithinDispatchWindow()) {
+    console.log('[LeadUpsellAutomation] Fora da janela de disparo — nenhuma mensagem enviada.');
+    return;
+  }
   try {
     const automationsResult = await query(`
       SELECT * FROM lead_upsell_automations 
@@ -97,6 +109,10 @@ export async function checkAndExecuteLeadUpsellAutomations() {
 }
 
 export async function checkAndExecuteReferralAutomations() {
+  if (!isWithinDispatchWindow()) {
+    console.log('[ReferralAutomation] Fora da janela de disparo — nenhuma mensagem enviada.');
+    return;
+  }
   try {
     const automationsResult = await query(`
       SELECT * FROM referral_automations 
@@ -119,22 +135,21 @@ export async function checkAndExecuteReferralAutomations() {
   }
 }
 
-function isWithinReferralDispatchWindow() {
+function isWithinDispatchWindow() {
   // Horário de Brasília (UTC-3)
+  // Seg–Sex: 09h–21h | Sab–Dom: 10h–17h
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
   const day  = now.getDay(); // 0=Dom, 1=Seg, ..., 5=Sex, 6=Sab
   const hour = now.getHours();
   const isWeekend = day === 0 || day === 6;
   if (isWeekend) {
-    // Sábado e domingo: 10h–17h
     return hour >= 10 && hour < 17;
   }
-  // Segunda a sexta: 09h–21h
   return hour >= 9 && hour < 21;
 }
 
 export async function checkAndExecuteReferralChannelAutomations() {
-  if (!isWithinReferralDispatchWindow()) {
+  if (!isWithinDispatchWindow()) {
     console.log('[ChannelAutomation] Fora da janela de disparo — nenhuma mensagem enviada.');
     return;
   }
@@ -167,6 +182,10 @@ export async function checkAndExecuteReferralChannelAutomations() {
 }
 
 export async function checkAndExecuteUpsellChannelAutomations() {
+  if (!isWithinDispatchWindow()) {
+    console.log('[UpsellChannelAutomation] Fora da janela de disparo — nenhuma mensagem enviada.');
+    return;
+  }
   try {
     const automationsResult = await query(`
       SELECT * FROM upsell_channel_automations 
@@ -190,6 +209,10 @@ export async function checkAndExecuteUpsellChannelAutomations() {
 }
 
 export async function executeUpsellChannelLeadCreatedAutomation(lead) {
+  if (!isWithinDispatchWindow()) {
+    console.log('[UpsellChannel] lead_created fora da janela de disparo — mensagem não enviada.');
+    return;
+  }
   try {
     const automationsResult = await query(`
       SELECT * FROM upsell_channel_automations 
@@ -214,6 +237,10 @@ export async function executeUpsellChannelLeadCreatedAutomation(lead) {
 
 export async function executeUpsellChannelStageChangeAutomation(lead, fromStage, toStage) {
   if (!toStage || fromStage === toStage) return;
+  if (!isWithinDispatchWindow()) {
+    console.log('[UpsellChannel] stage_change fora da janela de disparo — mensagem não enviada.');
+    return;
+  }
   try {
     const automationsResult = await query(`
       SELECT * FROM upsell_channel_automations 
@@ -801,6 +828,10 @@ async function updateAutomationCount(automationId, automationType) {
 }
 
 export async function executeLeadCreatedAutomation(lead, leadType = 'lead') {
+  if (!isWithinDispatchWindow()) {
+    console.log(`[Automation] lead_created (${leadType}) fora da janela de disparo — mensagem não enviada.`);
+    return;
+  }
   const tableName = leadType === 'lead' ? 'lead_automations' 
     : leadType === 'lead_pj' ? 'lead_pj_automations' 
     : leadType === 'lead_upsell' ? 'lead_upsell_automations'
@@ -857,6 +888,10 @@ export async function executeLeadCreatedAutomation(lead, leadType = 'lead') {
 
 export async function executeStageChangeAutomation(lead, fromStage, toStage, leadType = 'lead') {
   if (!toStage || fromStage === toStage) return;
+  if (!isWithinDispatchWindow()) {
+    console.log(`[Automation] stage_change (${leadType}) fora da janela de disparo — mensagem não enviada.`);
+    return;
+  }
 
   const tableName = leadType === 'lead' ? 'lead_automations' 
     : leadType === 'lead_pj' ? 'lead_pj_automations' 
