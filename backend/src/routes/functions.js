@@ -5113,11 +5113,11 @@ async function getCommissionReportData() {
   let pixMap = {};
   if (allCpfsNormalized.length > 0) {
     const pixResult = await query(
-      `SELECT cpf_indicador, chave_pix FROM indicadores_pix WHERE cpf_indicador = ANY($1)`,
+      `SELECT cpf_indicador, chave_pix FROM indicadores_pix WHERE regexp_replace(cpf_indicador, '[^0-9]', '', 'g') = ANY($1)`,
       [allCpfsNormalized]
     );
     for (const row of pixResult.rows) {
-      pixMap[row.cpf_indicador] = row.chave_pix;
+      pixMap[String(row.cpf_indicador).replace(/\D/g, '')] = row.chave_pix;
     }
   }
   for (const ind of Object.values(indicatorMap)) {
@@ -5165,11 +5165,11 @@ async function getCommissionReportData() {
   const missingCpfs = pendingCpfsNormalized.filter(c => !pixMap[c]);
   if (missingCpfs.length > 0) {
     const extraPixResult = await query(
-      `SELECT cpf_indicador, chave_pix FROM indicadores_pix WHERE cpf_indicador = ANY($1)`,
+      `SELECT cpf_indicador, chave_pix FROM indicadores_pix WHERE regexp_replace(cpf_indicador, '[^0-9]', '', 'g') = ANY($1)`,
       [missingCpfs]
     );
     for (const row of extraPixResult.rows) {
-      pixMap[row.cpf_indicador] = row.chave_pix;
+      pixMap[String(row.cpf_indicador).replace(/\D/g, '')] = row.chave_pix;
     }
   }
 
@@ -5865,7 +5865,7 @@ router.get('/indicadores-pix/:cpf', authMiddleware, async (req, res) => {
     if (!cpf) return res.status(400).json({ error: 'CPF obrigatório' });
 
     const result = await query(
-      'SELECT chave_pix FROM indicadores_pix WHERE cpf_indicador = $1',
+      `SELECT chave_pix FROM indicadores_pix WHERE regexp_replace(cpf_indicador, '[^0-9]', '', 'g') = $1`,
       [cpf]
     );
 
@@ -5913,7 +5913,7 @@ router.get('/portal/indicadores-pix/:cpf', async (req, res) => {
     if (cpf !== contactCpf) return res.status(403).json({ error: 'Acesso negado' });
 
     const result = await query(
-      'SELECT chave_pix FROM indicadores_pix WHERE cpf_indicador = $1',
+      `SELECT chave_pix FROM indicadores_pix WHERE regexp_replace(cpf_indicador, '[^0-9]', '', 'g') = $1`,
       [cpf]
     );
 
@@ -6156,10 +6156,10 @@ async function getPerspectivaReportData() {
   let pixMap = {};
   if (allCpfsNormalized.length > 0) {
     const pixResult = await query(
-      `SELECT cpf_indicador, chave_pix FROM indicadores_pix WHERE cpf_indicador = ANY($1)`,
+      `SELECT cpf_indicador, chave_pix FROM indicadores_pix WHERE regexp_replace(cpf_indicador, '[^0-9]', '', 'g') = ANY($1)`,
       [allCpfsNormalized]
     );
-    for (const row of pixResult.rows) pixMap[row.cpf_indicador] = row.chave_pix;
+    for (const row of pixResult.rows) pixMap[String(row.cpf_indicador).replace(/\D/g, '')] = row.chave_pix;
   }
   for (const ind of Object.values(indicatorMap)) {
     const cpfClean = ind.cpf ? String(ind.cpf).replace(/\D/g, '') : '';
