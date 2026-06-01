@@ -52,12 +52,23 @@ router.get('/pessoa', authMiddleware, async (req, res) => {
 
 // POST /api/erp/pessoa
 // Cria uma Pessoa Física no ERP
-// body: { tipo_pessoa, nome_completo, cpf, situacao }
+// body: { tipo_pessoa, nome_completo, cpf, situacao, email? }
 router.post('/pessoa', authMiddleware, async (req, res) => {
   const token = getToken(res);
   if (!token) return;
 
   try {
+    // Extrai email (campo auxiliar) e monta meios_contato se fornecido
+    const { email, ...pessoaBody } = req.body;
+    const meiosContato = email
+      ? [{ tipo: 'Email', contato: email, principal: 'S' }]
+      : [];
+    const body = {
+      ...pessoaBody,
+      ...(meiosContato.length > 0 ? { meios_contato: meiosContato } : {}),
+    };
+
+    console.log('[ERP POST /pessoa] payload:', JSON.stringify({ ...body, meios_contato: body.meios_contato }));
     const url = `${ERP_BASE}/Pessoas`;
     const response = await fetch(url, {
       method: 'POST',
@@ -65,7 +76,7 @@ router.post('/pessoa', authMiddleware, async (req, res) => {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`
       },
-      body: JSON.stringify(req.body)
+      body: JSON.stringify(body)
     });
     const data = await response.json();
     console.log('[ERP POST /pessoa] resposta completa:', JSON.stringify(data).substring(0, 800));

@@ -318,7 +318,8 @@ export default function Agents() {
                 tipo_pessoa: "Física",
                 nome_completo: formData.name.toUpperCase(),
                 cpf: formData.cpf,
-                situacao: "A"
+                situacao: "A",
+                email: formData.email || loginErp
               });
               // ERP POST /Pessoas retorna { pessoa: "CODIGO", id: 999 }
               // O campo "pessoa" (string curta, ex: "2606501") é o código para criar Usuário
