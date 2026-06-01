@@ -229,6 +229,7 @@ export default function Agents() {
   const [erpPessoaCode, setErpPessoaCode] = useState("");
   const [loadingErpPessoa, setLoadingErpPessoa] = useState(false);
   const [erpPessoaResult, setErpPessoaResult] = useState(null); // { nome_completo, pessoa } | { notFound: true } | null
+  const [erpLoginInput, setErpLoginInput] = useState(""); // login ERP customizado; vazio = usa o e-mail do agente
 
   const [agentSearchName, setAgentSearchName] = useState("");
   const [agentFilterType, setAgentFilterType] = useState("all");
@@ -327,8 +328,9 @@ export default function Agents() {
               throw new Error("ERP não retornou um ID de pessoa válido.");
             }
             // Cria o usuário ERP — defaults sensíveis aplicados no backend
+            const loginErp = (erpLoginInput || formData.email || "").toLowerCase().trim();
             const result = await createUsuarioErp({
-              login: formData.email.toLowerCase(),
+              login: loginErp,
               pessoa: codigoPessoa,
               ativo: "S",
               super_usuario: "N",
@@ -340,7 +342,19 @@ export default function Agents() {
             }
             toast.success('Agente criado e usuário ERP vinculado com sucesso!');
           } catch (erpError) {
-            toast.error('Agente criado no BomFlow, mas erro ao vincular ERP: ' + erpError.message);
+            // Detecta e-mail/login já existente no ERP e orienta o admin
+            const msgErp = erpError.message || "";
+            const matchLogin = msgErp.match(/utilizado pelo usu[aá]rio\s+([^\s!<>]+)/i);
+            if (matchLogin) {
+              const loginExistente = matchLogin[1].replace(/<[^>]+>/g, "").replace(/[!.]+$/, "");
+              toast.error(
+                `Agente criado no BomFlow. Este CPF já tem conta ERP (login: ${loginExistente}). ` +
+                `Informe o ID desse usuário no campo "ID do Agente no ERP" e salve novamente.`,
+                { duration: 8000 }
+              );
+            } else {
+              toast.error('Agente criado no BomFlow, mas erro ao vincular ERP: ' + msgErp);
+            }
           }
         } else {
           toast.success('Agente criado com sucesso!');
@@ -595,6 +609,7 @@ export default function Agents() {
     setErpPessoaCode("");
     setLoadingErpPessoa(false);
     setErpPessoaResult(null);
+    setErpLoginInput("");
   };
 
   const resetTeamForm = () => {
@@ -1609,17 +1624,18 @@ export default function Agents() {
                 </div>
                 <div className="p-4 bg-violet-50 dark:bg-violet-950/20 rounded-xl border border-violet-100 dark:border-violet-900 space-y-4">
 
-                  {/* A — Login ERP (read-only, derivado do e-mail) */}
+                  {/* A — Login ERP (editável; vazio = usa e-mail do agente) */}
                   <div>
                     <Label className="text-gray-900 dark:text-gray-100">Login ERP</Label>
                     <Input
-                      value={formData.email ? formData.email.toLowerCase() : ""}
-                      readOnly
-                      disabled
-                      placeholder="Preenchido automaticamente com o e-mail"
-                      className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 opacity-70 cursor-not-allowed"
+                      value={erpLoginInput}
+                      onChange={(e) => setErpLoginInput(e.target.value)}
+                      placeholder={formData.email ? formData.email.toLowerCase() : "login no ERP (padrão: e-mail do agente)"}
+                      className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Será usado o e-mail do agente como login no ERP.</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Deixe em branco para usar o e-mail do agente. Preencha caso o login no ERP seja diferente (ex: <em>marcelo.almeida</em>).
+                    </p>
                   </div>
 
                   {/* B — Consulta ERP por CPF */}
