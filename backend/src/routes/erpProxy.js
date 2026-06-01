@@ -61,7 +61,7 @@ router.post('/pessoa', authMiddleware, async (req, res) => {
     // Extrai email (campo auxiliar) e monta meios_contato se fornecido
     const { email, ...pessoaBody } = req.body;
     const meiosContato = email
-      ? [{ tipo: 'Email', contato: email, principal: 'S' }]
+      ? [{ meio: 'Email', contato: email, principal: 'S' }]
       : [];
     const body = {
       ...pessoaBody,
@@ -102,7 +102,7 @@ router.post('/usuario', authMiddleware, async (req, res) => {
     // Extrai email do body (não vai pro ERP diretamente) e monta meios_contato
     const { email, ...restBody } = req.body;
     const meiosContato = email
-      ? [{ tipo: 'Email', contato: email, principal: 'S' }]
+      ? [{ meio: 'Email', contato: email, principal: 'S' }]
       : [];
 
     const payload = {
