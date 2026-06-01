@@ -73,13 +73,21 @@ router.post('/pessoa', authMiddleware, async (req, res) => {
 });
 
 // POST /api/erp/usuario
-// Cria um Usuário no ERP vinculado a uma Pessoa
-// body: { login, pessoa, estabelecimento_padrao, senha_prot, copiar_direitos_de, ativo, super_usuario, observacoes }
+// Cria um Usuário no ERP vinculado a uma Pessoa.
+// O frontend envia: { login, pessoa, ativo, super_usuario, observacoes }
+// O backend injeta os defaults sensíveis (estabelecimento, senha, direitos).
 router.post('/usuario', authMiddleware, async (req, res) => {
   const token = getToken(res);
   if (!token) return;
 
   try {
+    const payload = {
+      ...req.body,
+      estabelecimento_padrao: ERP_ESTABELECIMENTO_PADRAO,
+      senha_prot: ERP_SENHA_PADRAO,
+      copiar_direitos_de: ERP_COPIAR_DIREITOS_DE,
+    };
+
     const url = `${ERP_BASE}/Usuarios`;
     const response = await fetch(url, {
       method: 'POST',
@@ -87,7 +95,7 @@ router.post('/usuario', authMiddleware, async (req, res) => {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`
       },
-      body: JSON.stringify(req.body)
+      body: JSON.stringify(payload)
     });
     const data = await response.json();
     if (!response.ok || data?.error) {

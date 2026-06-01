@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Edit, Trash2, UserCheck, UserX, Activity, Upload, Loader2, MessageSquare, Copy, Check, ExternalLink, MoreVertical, Clock, Users, Building2, Layers, Settings, ShieldX, KeyRound, Eye, EyeOff, Search, X, UserPlus, Server } from "lucide-react";
+import { Plus, Edit, Trash2, UserCheck, UserX, Activity, Upload, Loader2, MessageSquare, Copy, Check, ExternalLink, MoreVertical, Clock, Users, Building2, Layers, Settings, ShieldX, KeyRound, Eye, EyeOff, Search, X, UserPlus, Server, CheckCircle, AlertCircle } from "lucide-react";
 import { canManageAgents, isSupervisorType } from "@/components/utils/permissions.jsx";
 /* NOVO — integração ERP */
 import { createPessoaErp, createUsuarioErp, getPessoaByErp } from "@/api/erpClient";
@@ -228,6 +228,7 @@ export default function Agents() {
   /* NOVO — estados de integração ERP */
   const [erpPessoaCode, setErpPessoaCode] = useState("");
   const [loadingErpPessoa, setLoadingErpPessoa] = useState(false);
+  const [erpPessoaResult, setErpPessoaResult] = useState(null); // { nome_completo, pessoa } | { notFound: true } | null
 
   const [agentSearchName, setAgentSearchName] = useState("");
   const [agentFilterType, setAgentFilterType] = useState("all");
@@ -298,14 +299,24 @@ export default function Agents() {
     mutationFn: (data) => base44.entities.Agent.create(data),
     /* MODIFICADO — chama ERP após criar agente no BomFlow */
     onSuccess: async (novoAgente) => {
-      if (erpPessoaCode && !formData.erpAgentId) {
+      const deveVincularErp = (erpPessoaCode || erpPessoaResult?.notFound) && !formData.erpAgentId;
+      if (deveVincularErp) {
         try {
+          let codigoPessoa = erpPessoaCode;
+          // Se CPF não estava no ERP, cria a pessoa primeiro
+          if (!codigoPessoa && erpPessoaResult?.notFound) {
+            const criada = await createPessoaErp({
+              tipo_pessoa: "Física",
+              nome_completo: formData.name.toUpperCase(),
+              cpf: formData.cpf,
+              situacao: "A"
+            });
+            codigoPessoa = criada.pessoa;
+          }
+          // Cria o usuário ERP — defaults sensíveis aplicados no backend
           const result = await createUsuarioErp({
             login: formData.email.toLowerCase(),
-            pessoa: erpPessoaCode,
-            estabelecimento_padrao: 104,
-            senha_prot: "bp@2026",
-            copiar_direitos_de: "base.upsell",
+            pessoa: codigoPessoa,
             ativo: "S",
             super_usuario: "N",
             observacoes: "Criado via BomFlow"
@@ -313,7 +324,7 @@ export default function Agents() {
           await base44.entities.Agent.update(novoAgente.id, { erpAgentId: result.id });
           toast.success('Agente criado e usuário ERP vinculado com sucesso!');
         } catch (erpError) {
-          toast.error('Agente criado no BomFlow, mas erro ao criar usuário no ERP: ' + erpError.message);
+          toast.error('Agente criado no BomFlow, mas erro ao vincular ERP: ' + erpError.message);
         }
       } else {
         toast.success('Agente criado com sucesso!');
@@ -564,6 +575,7 @@ export default function Agents() {
     /* NOVO — reset estados ERP */
     setErpPessoaCode("");
     setLoadingErpPessoa(false);
+    setErpPessoaResult(null);
   };
 
   const resetTeamForm = () => {
@@ -763,27 +775,28 @@ export default function Agents() {
   /* NOVO — busca ou cria Pessoa ERP pelo CPF do agente */
   const handleBuscarOuCriarPessoaErp = async () => {
     if (!formData.cpf) {
-      toast.error("Preencha o CPF antes de buscar/criar a pessoa no ERP.");
+      toast.error("Preencha o CPF antes de consultar o ERP.");
       return;
     }
     setLoadingErpPessoa(true);
+    setErpPessoaResult(null);
     try {
       const pessoa = await getPessoaByErp(formData.cpf);
       if (pessoa) {
-        setErpPessoaCode(pessoa.pessoa);
+        setErpPessoaCode(pessoa.pessoa || "");
+        setErpPessoaResult(pessoa);
+        // Auto-preenche os campos do formulário com dados do ERP
+        setFormData(prev => ({
+          ...prev,
+          name: pessoa.nome_completo || prev.name,
+        }));
         toast.success("Pessoa encontrada no ERP: " + pessoa.nome_completo);
       } else {
-        const result = await createPessoaErp({
-          tipo_pessoa: "Física",
-          nome_completo: formData.name.toUpperCase(),
-          cpf: formData.cpf,
-          situacao: "A"
-        });
-        setErpPessoaCode(result.pessoa);
-        toast.success("Pessoa criada no ERP com sucesso!");
+        setErpPessoaResult({ notFound: true });
+        toast.info("CPF não cadastrado no ERP. Será criado automaticamente ao salvar o agente.");
       }
     } catch (error) {
-      toast.error("Erro ao buscar/criar pessoa no ERP: " + error.message);
+      toast.error("Erro ao consultar ERP: " + error.message);
     }
     setLoadingErpPessoa(false);
   };
@@ -1590,36 +1603,57 @@ export default function Agents() {
                     <p className="text-xs text-gray-500 mt-1">Será usado o e-mail do agente como login no ERP.</p>
                   </div>
 
-                  {/* B — Código da Pessoa no ERP */}
+                  {/* B — Consulta ERP por CPF */}
                   <div>
-                    <Label className="text-gray-900 dark:text-gray-100">Código da Pessoa no ERP</Label>
+                    <Label className="text-gray-900 dark:text-gray-100">CPF para consulta no ERP</Label>
                     <div className="flex gap-2 mt-1">
                       <Input
-                        value={erpPessoaCode}
-                        onChange={(e) => setErpPessoaCode(e.target.value)}
-                        placeholder="Ex: PESSOA123"
+                        value={formData.cpf}
+                        onChange={(e) => setFormData(prev => ({ ...prev, cpf: e.target.value }))}
+                        placeholder="000.000.000-00"
                         className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                       />
                       <Button
                         type="button"
                         size="sm"
                         onClick={handleBuscarOuCriarPessoaErp}
-                        disabled={loadingErpPessoa}
+                        disabled={loadingErpPessoa || !formData.cpf}
                         className="bg-violet-600 hover:bg-violet-700 text-white shrink-0"
                       >
                         {loadingErpPessoa ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
-                          <UserPlus className="w-4 h-4" />
+                          <Search className="w-4 h-4" />
                         )}
                         <span className="ml-1.5 hidden sm:inline">
-                          {loadingErpPessoa ? "Buscando..." : "Buscar/Criar"}
+                          {loadingErpPessoa ? "Consultando..." : "Consultar ERP"}
                         </span>
                       </Button>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
-                      Código da pessoa vinculada a este usuário no ERP. Clique no botão para buscar pelo CPF ou criar automaticamente.
+                      Informe o CPF e clique em Consultar. Se já estiver cadastrado no ERP, os dados serão preenchidos automaticamente.
                     </p>
+
+                    {/* Resultado da consulta */}
+                    {erpPessoaResult && !erpPessoaResult.notFound && (
+                      <div className="mt-2 p-2 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" />
+                        <div className="text-sm">
+                          <span className="font-medium text-green-800 dark:text-green-300">{erpPessoaResult.nome_completo}</span>
+                          {erpPessoaResult.pessoa && (
+                            <span className="text-green-600 dark:text-green-400 ml-2 text-xs">(Cód. ERP: {erpPessoaResult.pessoa})</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {erpPessoaResult?.notFound && (
+                      <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <p className="text-sm text-amber-800 dark:text-amber-300">
+                          CPF não encontrado no ERP. Uma conta será criada automaticamente ao salvar.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* C — Indicador de status da vinculação ERP */}
