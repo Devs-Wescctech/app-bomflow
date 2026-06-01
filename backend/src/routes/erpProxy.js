@@ -37,8 +37,6 @@ router.get('/pessoa', authMiddleware, async (req, res) => {
 
     const results = data?.results || data?.data || (Array.isArray(data) ? data : null);
     const pessoa = results?.[0] ?? null;
-    console.log('[ERP Debug] Raw API response keys:', data ? Object.keys(data) : 'null');
-    console.log('[ERP Debug] Pessoa object:', JSON.stringify(pessoa));
     return res.json({ pessoa });
   } catch (err) {
     console.error('[ERP Proxy] GET /pessoa error:', err.message);

@@ -783,14 +783,14 @@ export default function Agents() {
     try {
       const pessoa = await getPessoaByErp(formData.cpf);
       if (pessoa) {
-        setErpPessoaCode(pessoa.pessoa || "");
+        setErpPessoaCode(String(pessoa.id || pessoa.contrato || ""));
         setErpPessoaResult(pessoa);
         // Auto-preenche os campos do formulário com dados do ERP
         setFormData(prev => ({
           ...prev,
-          name: pessoa.nome_completo || prev.name,
+          name: pessoa.nome_titular || prev.name,
         }));
-        toast.success("Pessoa encontrada no ERP: " + pessoa.nome_completo);
+        toast.success("Pessoa encontrada no ERP: " + pessoa.nome_titular);
       } else {
         setErpPessoaResult({ notFound: true });
         toast.info("CPF não cadastrado no ERP. Será criado automaticamente ao salvar o agente.");
@@ -1640,9 +1640,9 @@ export default function Agents() {
                       <div className="mt-2 p-2 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" />
                         <div className="text-sm">
-                          <span className="font-medium text-green-800 dark:text-green-300">{erpPessoaResult.nome_completo}</span>
-                          {erpPessoaResult.pessoa && (
-                            <span className="text-green-600 dark:text-green-400 ml-2 text-xs">(Cód. ERP: {erpPessoaResult.pessoa})</span>
+                          <span className="font-medium text-green-800 dark:text-green-300">{erpPessoaResult.nome_titular}</span>
+                          {erpPessoaResult.id && (
+                            <span className="text-green-600 dark:text-green-400 ml-2 text-xs">(Cód. ERP: {erpPessoaResult.id})</span>
                           )}
                         </div>
                       </div>
