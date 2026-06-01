@@ -349,9 +349,10 @@ export default function Agents() {
             if (matchLogin) {
               const loginExistente = matchLogin[1].replace(/[!.]+$/, "");
               toast.error(
-                `Agente criado no BomFlow. Este CPF já tem conta ERP (login: ${loginExistente}). ` +
-                `Informe o ID desse usuário no campo "ID do Agente no ERP" e salve novamente.`,
-                { duration: 8000 }
+                `Agente criado no BomFlow, mas o login/e-mail informado já pertence ao usuário ERP "${loginExistente}". ` +
+                `Edite o agente, altere o campo "Login ERP" para um login único, e salve novamente. ` +
+                `Ou informe manualmente o ID ERP no campo "ID do Agente no ERP".`,
+                { duration: 10000 }
               );
             } else {
               toast.error('Agente criado no BomFlow, mas erro ao vincular ERP: ' + msgErp);
