@@ -319,8 +319,9 @@ export default function Agents() {
                 cpf: formData.cpf,
                 situacao: "A"
               });
-              // ERP retorna o objeto criado — o ID pode vir em .id ou .pessoa
-              codigoPessoa = String(criada.id || criada.pessoa || "");
+              // ERP POST /Pessoas retorna { pessoa: "CODIGO", id: 999 }
+              // O campo "pessoa" é o código usado para criar o usuário ERP
+              codigoPessoa = String(criada.pessoa || criada.id || "");
             }
             if (!codigoPessoa) {
               throw new Error("ERP não retornou um ID de pessoa válido.");
