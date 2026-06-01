@@ -619,7 +619,6 @@ export default function CommissionPerspectivaControl() {
                       <th className="py-2 px-3">Conversões</th>
                       <th className="py-2 px-3">Nível</th>
                       <th className="py-2 px-3">Comissão</th>
-                      <th className="py-2 px-3">Perspectivas</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -668,9 +667,6 @@ export default function CommissionPerspectivaControl() {
                                 R$ {totalSpecial.toFixed(2)} vc + R$ {(unitValue * countRegular).toFixed(2)} tier
                               </div>
                             )}
-                          </td>
-                          <td className="py-2 px-3 text-xs text-gray-500">
-                            {data.items.map(i => i.perspectiva_id).join(', ')}
                           </td>
                         </tr>
                       );
