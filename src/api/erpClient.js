@@ -1,15 +1,20 @@
 // ============================================================
 // ERP Client — Bom Pastor
-// Funções de integração com o ERP.
-// TODO: preencher ERP_BASE_URL e ERP_TOKEN antes de ativar em produção.
+// As chamadas ao ERP passam pelo backend (/api/erp/*) para
+// manter o ERP_AUTH_TOKEN seguro no servidor.
 // ============================================================
-
-const ERP_BASE_URL = ""; // TODO: URL base do ERP (ex: https://api.bompastor.com.br)
-const ERP_TOKEN   = ""; // TODO: Bearer token do ERP
 
 export const ESTABELECIMENTO_PADRAO = 104;   // LIMEIRA - CNPA
 export const SENHA_PADRAO           = "bp@2026";
 export const COPIAR_DIREITOS_DE     = "base.upsell";
+
+function authHeaders() {
+  const token = localStorage.getItem('accessToken') || localStorage.getItem('auth_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  };
+}
 
 // ------------------------------------------------------------
 // getPessoaByErp(cpf)
@@ -17,15 +22,12 @@ export const COPIAR_DIREITOS_DE     = "base.upsell";
 // Retorna o objeto da pessoa encontrada ou null se não existir.
 // ------------------------------------------------------------
 export async function getPessoaByErp(cpf) {
-  // TODO: substituir stub pela chamada real:
-  //   const res = await fetch(`${ERP_BASE_URL}/Pessoas?cpf=${cpf}`, {
-  //     headers: { Authorization: `Bearer ${ERP_TOKEN}` }
-  //   });
-  //   if (!res.ok) return null;
-  //   const data = await res.json();
-  //   return data?.results?.[0] ?? null;
-
-  return null; // stub — pessoa não encontrada
+  const res = await fetch(`/api/erp/pessoa?cpf=${encodeURIComponent(cpf)}`, {
+    headers: authHeaders()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || 'Erro ao buscar pessoa no ERP.');
+  return data?.pessoa ?? null;
 }
 
 // ------------------------------------------------------------
@@ -34,23 +36,14 @@ export async function getPessoaByErp(cpf) {
 // payload: { tipo_pessoa, nome_completo, cpf, situacao }
 // ------------------------------------------------------------
 export async function createPessoaErp(payload) {
-  // TODO: substituir stub pela chamada real:
-  //   const res = await fetch(`${ERP_BASE_URL}/Pessoas`, {
-  //     method: "POST",
-  //     headers: {
-  //       "Content-Type": "application/json",
-  //       Authorization: `Bearer ${ERP_TOKEN}`
-  //     },
-  //     body: JSON.stringify(payload)
-  //   });
-  //   const data = await res.json();
-  //   if (data?.error) throw new Error(data.error);
-  //   return data; // { pessoa: "CODIGO", nome_completo: "..." }
-
-  return {
-    pessoa: "PESSOA123",         // stub — código fictício
-    nome_completo: payload.nome_completo,
-  };
+  const res = await fetch('/api/erp/pessoa', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (!res.ok || data?.error) throw new Error(data?.error || 'Erro ao criar pessoa no ERP.');
+  return data; // { pessoa: "CODIGO", nome_completo: "..." }
 }
 
 // ------------------------------------------------------------
@@ -58,24 +51,15 @@ export async function createPessoaErp(payload) {
 // Cria um Usuário no ERP vinculado a uma Pessoa.
 // payload: { login, pessoa, estabelecimento_padrao, senha_prot,
 //            copiar_direitos_de, ativo, super_usuario, observacoes }
-// Lança Error se o ERP retornar { error: "mensagem" }.
+// Lança Error se o ERP retornar erro.
 // ------------------------------------------------------------
 export async function createUsuarioErp(payload) {
-  // TODO: substituir stub pela chamada real:
-  //   const res = await fetch(`${ERP_BASE_URL}/Usuarios`, {
-  //     method: "POST",
-  //     headers: {
-  //       "Content-Type": "application/json",
-  //       Authorization: `Bearer ${ERP_TOKEN}`
-  //     },
-  //     body: JSON.stringify(payload)
-  //   });
-  //   const data = await res.json();
-  //   if (data?.error) throw new Error(data.error);
-  //   return data; // { id: number, login: string }
-
-  return {
-    id: 99999,           // stub — ID fictício
-    login: payload.login,
-  };
+  const res = await fetch('/api/erp/usuario', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (!res.ok || data?.error) throw new Error(data?.error || 'Erro ao criar usuário no ERP.');
+  return data; // { id: number, login: string }
 }

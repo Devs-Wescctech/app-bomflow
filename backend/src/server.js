@@ -11,6 +11,7 @@ import uploadRoutes from './routes/upload.js';
 import functionRoutes from './routes/functions.js';
 import whatsappRoutes from './routes/whatsapp.js';
 import bomAutoRoutes from './routes/bomAuto.js';
+import erpProxyRoutes from './routes/erpProxy.js';
 import { runAllAutomations } from './services/automationService.js';
 import cron from 'node-cron';
 import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport, runPerspectivaBatch, sendPerspectivaReport } from './routes/functions.js';
@@ -62,6 +63,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/functions', functionRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/bom-auto', bomAutoRoutes);
+app.use('/api/erp', erpProxyRoutes);
 
 app.post('/api/api_chatid_indicacoes', async (req, res) => {
   try {
