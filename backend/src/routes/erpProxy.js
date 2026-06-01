@@ -58,17 +58,10 @@ router.post('/pessoa', authMiddleware, async (req, res) => {
   if (!token) return;
 
   try {
-    // Extrai email (campo auxiliar) e monta meios_contato se fornecido
-    const { email, ...pessoaBody } = req.body;
-    const meiosContato = email
-      ? [{ sequencia: 1, meio: 'Email', contato: email, principal: 'S' }]
-      : [];
-    const body = {
-      ...pessoaBody,
-      ...(meiosContato.length > 0 ? { meios_contato: meiosContato } : {}),
-    };
+    // Remove campo auxiliar 'email' — não vai pro ERP
+    const { email: _email, ...body } = req.body;
 
-    console.log('[ERP POST /pessoa] payload:', JSON.stringify({ ...body, meios_contato: body.meios_contato }));
+    console.log('[ERP POST /pessoa] payload:', JSON.stringify(body));
     const url = `${ERP_BASE}/Pessoas`;
     const response = await fetch(url, {
       method: 'POST',
@@ -99,21 +92,17 @@ router.post('/usuario', authMiddleware, async (req, res) => {
   if (!token) return;
 
   try {
-    // Extrai email do body (não vai pro ERP diretamente) e monta meios_contato
-    const { email, ...restBody } = req.body;
-    const meiosContato = email
-      ? [{ sequencia: 1, meio: 'Email', contato: email, principal: 'S' }]
-      : [];
+    // Remove campo auxiliar 'email' — não vai pro ERP
+    const { email: _email, ...restBody } = req.body;
 
     const payload = {
       ...restBody,
       estabelecimento_padrao: ERP_ESTABELECIMENTO_PADRAO,
       senha_prot: ERP_SENHA_PADRAO,
       copiar_direitos_de: ERP_COPIAR_DIREITOS_DE,
-      ...(meiosContato.length > 0 ? { meios_contato: meiosContato } : {}),
     };
 
-    console.log('[ERP POST /usuario] payload enviado (sem senha):', JSON.stringify({ login: payload.login, pessoa: payload.pessoa, ativo: payload.ativo, estabelecimento_padrao: payload.estabelecimento_padrao, copiar_direitos_de: payload.copiar_direitos_de, meios_contato: payload.meios_contato }));
+    console.log('[ERP POST /usuario] payload enviado (sem senha):', JSON.stringify({ login: payload.login, pessoa: payload.pessoa, ativo: payload.ativo, estabelecimento_padrao: payload.estabelecimento_padrao, copiar_direitos_de: payload.copiar_direitos_de }));
     const url = `${ERP_BASE}/Usuarios`;
     const response = await fetch(url, {
       method: 'POST',
