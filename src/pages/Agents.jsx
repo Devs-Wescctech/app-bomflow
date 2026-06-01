@@ -299,39 +299,57 @@ export default function Agents() {
     mutationFn: (data) => base44.entities.Agent.create(data),
     /* MODIFICADO — chama ERP após criar agente no BomFlow */
     onSuccess: async (novoAgente) => {
-      const deveVincularErp = (erpPessoaCode || erpPessoaResult?.notFound) && !formData.erpAgentId;
-      if (deveVincularErp) {
-        try {
-          let codigoPessoa = erpPessoaCode;
-          // Se CPF não estava no ERP, cria a pessoa primeiro
-          if (!codigoPessoa && erpPessoaResult?.notFound) {
-            const criada = await createPessoaErp({
-              tipo_pessoa: "Física",
-              nome_completo: formData.name.toUpperCase(),
-              cpf: formData.cpf,
-              situacao: "A"
+      // Garante que dialog e form sempre fecham, mesmo em erro inesperado
+      const finalizar = () => {
+        queryClient.invalidateQueries({ queryKey: ['agents'] });
+        setIsDialogOpen(false);
+        resetForm();
+      };
+
+      try {
+        const deveVincularErp = (erpPessoaCode || erpPessoaResult?.notFound) && !formData.erpAgentId;
+        if (deveVincularErp) {
+          try {
+            let codigoPessoa = erpPessoaCode;
+            // Se CPF não estava no ERP, cria a pessoa primeiro
+            if (!codigoPessoa && erpPessoaResult?.notFound) {
+              const criada = await createPessoaErp({
+                tipo_pessoa: "Física",
+                nome_completo: formData.name.toUpperCase(),
+                cpf: formData.cpf,
+                situacao: "A"
+              });
+              // ERP retorna o objeto criado — o ID pode vir em .id ou .pessoa
+              codigoPessoa = String(criada.id || criada.pessoa || "");
+            }
+            if (!codigoPessoa) {
+              throw new Error("ERP não retornou um ID de pessoa válido.");
+            }
+            // Cria o usuário ERP — defaults sensíveis aplicados no backend
+            const result = await createUsuarioErp({
+              login: formData.email.toLowerCase(),
+              pessoa: codigoPessoa,
+              ativo: "S",
+              super_usuario: "N",
+              observacoes: "Criado via BomFlow"
             });
-            codigoPessoa = criada.pessoa;
+            const erpUserId = result?.id || result?.usuario || null;
+            if (erpUserId) {
+              await base44.entities.Agent.update(novoAgente.id, { erpAgentId: erpUserId });
+            }
+            toast.success('Agente criado e usuário ERP vinculado com sucesso!');
+          } catch (erpError) {
+            toast.error('Agente criado no BomFlow, mas erro ao vincular ERP: ' + erpError.message);
           }
-          // Cria o usuário ERP — defaults sensíveis aplicados no backend
-          const result = await createUsuarioErp({
-            login: formData.email.toLowerCase(),
-            pessoa: codigoPessoa,
-            ativo: "S",
-            super_usuario: "N",
-            observacoes: "Criado via BomFlow"
-          });
-          await base44.entities.Agent.update(novoAgente.id, { erpAgentId: result.id });
-          toast.success('Agente criado e usuário ERP vinculado com sucesso!');
-        } catch (erpError) {
-          toast.error('Agente criado no BomFlow, mas erro ao vincular ERP: ' + erpError.message);
+        } else {
+          toast.success('Agente criado com sucesso!');
         }
-      } else {
-        toast.success('Agente criado com sucesso!');
+      } catch (unexpectedError) {
+        console.error('[createAgentMutation] Erro inesperado no onSuccess:', unexpectedError);
+        toast.error('Agente criado, mas ocorreu um erro inesperado: ' + unexpectedError.message);
+      } finally {
+        finalizar();
       }
-      queryClient.invalidateQueries({ queryKey: ['agents'] });
-      setIsDialogOpen(false);
-      resetForm();
     },
     onError: (error) => {
       toast.error('Erro ao criar agente: ' + error.message);
