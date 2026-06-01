@@ -1623,6 +1623,8 @@ CREATE TABLE IF NOT EXISTS commission_perspectiva_batches (
 );
 
 ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS lote_pagamento_id INTEGER REFERENCES commission_perspectiva_batches(id);
+ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS produto VARCHAR(255);
+ALTER TABLE erp_perspectivas_negocios ADD COLUMN IF NOT EXISTS valor_contrato DECIMAL(15,2);
 
 -- Remove duplicatas de perspectiva antes de criar o índice único
 DELETE FROM erp_perspectivas_negocios a
