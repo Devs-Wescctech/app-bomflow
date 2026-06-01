@@ -95,7 +95,7 @@ router.post('/usuario', authMiddleware, async (req, res) => {
       copiar_direitos_de: ERP_COPIAR_DIREITOS_DE,
     };
 
-    console.log('[ERP POST /usuario] payload enviado:', JSON.stringify({ login: payload.login, pessoa: payload.pessoa, ativo: payload.ativo }));
+    console.log('[ERP POST /usuario] payload enviado (sem senha):', JSON.stringify({ login: payload.login, pessoa: payload.pessoa, ativo: payload.ativo, estabelecimento_padrao: payload.estabelecimento_padrao, copiar_direitos_de: payload.copiar_direitos_de }));
     const url = `${ERP_BASE}/Usuarios`;
     const response = await fetch(url, {
       method: 'POST',
