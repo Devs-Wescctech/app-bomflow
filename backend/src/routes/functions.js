@@ -4521,6 +4521,7 @@ router.get('/referral-paid-sales', authMiddleware, loadAgentMiddleware, async (r
       const cpfIndicador = sale.cpf_indicador ? String(sale.cpf_indicador).replace(/\D/g, '') : '';
       const valorContrato = sale.valor_contrato ? String(sale.valor_contrato).trim() : '';
       const dataContrato = sale.data_contrato ? String(sale.data_contrato).trim() : '';
+      const produto = sale.produto ? String(sale.produto).trim().toUpperCase() : null;
 
       let saleIdentifier = '';
       if (contratoId) {
@@ -4548,7 +4549,8 @@ router.get('/referral-paid-sales', authMiddleware, loadAgentMiddleware, async (r
           name: sale.nome_indicador || '',
           contratoId,
           valorContrato,
-          dataContrato
+          dataContrato,
+          produto
         });
       }
 
@@ -4559,7 +4561,8 @@ router.get('/referral-paid-sales', authMiddleware, loadAgentMiddleware, async (r
         paidByCpfIndicado[cpfIndicado].push({
           contrato_servicos: contratoId,
           valor_contrato: valorContrato,
-          data_contrato: dataContrato
+          data_contrato: dataContrato,
+          produto
         });
       }
     }
@@ -4569,10 +4572,10 @@ router.get('/referral-paid-sales', authMiddleware, loadAgentMiddleware, async (r
       for (const s of newSalesToPersist) {
         try {
           await query(
-            `INSERT INTO processed_referral_sales (sale_identifier, indicator_cpf, indicator_phone, indicator_name, contrato_servicos, valor_contrato, data_contrato)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
+            `INSERT INTO processed_referral_sales (sale_identifier, indicator_cpf, indicator_phone, indicator_name, contrato_servicos, valor_contrato, data_contrato, produto)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              ON CONFLICT (sale_identifier) DO NOTHING`,
-            [s.saleIdentifier, s.cpf || null, s.phone || null, s.name || null, s.contratoId || null, s.valorContrato || null, s.dataContrato || null]
+            [s.saleIdentifier, s.cpf || null, s.phone || null, s.name || null, s.contratoId || null, s.valorContrato || null, s.dataContrato || null, s.produto || null]
           );
         } catch (persistErr) {
           console.error(`[Comissões] Error persisting sale ${s.saleIdentifier}:`, persistErr.message);
@@ -5230,6 +5233,9 @@ function getCommissionByTier(totalConversions) {
   else return 0;
   return unitValue * totalConversions;
 }
+
+// Produtos que recebem comissão via valor_contrato (apenas indicador não-corretor)
+const SPECIAL_PRODUCTS = new Set(['BOM AUTO', 'BOM MED', 'BOMPET']);
 
 function formatPhoneNumber(phone) {
   if (!phone) return '-';
@@ -6026,13 +6032,29 @@ async function runPerspectivaBatch() {
       return { success: true, newCommissions: newCount, batchId: null, message: 'Nenhuma comissão elegível para o lote' };
     }
 
+    // Busca CPFs corretor para aplicar tier diferenciado e excluir da regra especial
+    const corretorCpfsInBatch = new Set();
+    try {
+      const corretorRes = await query(
+        `SELECT DISTINCT regexp_replace(referrer_cpf, '[^0-9]', '', 'g') AS cpf
+         FROM referrals
+         WHERE referrer_is_corretor = true AND referrer_cpf IS NOT NULL AND referrer_cpf <> ''`
+      );
+      for (const row of corretorRes.rows) {
+        if (row.cpf) corretorCpfsInBatch.add(row.cpf);
+      }
+    } catch (e) {
+      console.warn('[Perspectiva Batch] Não foi possível buscar CPFs corretor:', e.message);
+    }
+
     const indicatorMap = {};
     for (const e of elegiveis) {
       const key = e.cpf_indicador || e.nome_indicador || 'unknown';
       if (!indicatorMap[key]) {
-        indicatorMap[key] = { nome: e.nome_indicador, cpf: e.cpf_indicador, count: 0, total: 0, totalCumulative: 0 };
+        indicatorMap[key] = { nome: e.nome_indicador, cpf: e.cpf_indicador, count: 0, total: 0, totalCumulative: 0, records: [] };
       }
       indicatorMap[key].count += 1;
+      indicatorMap[key].records.push(e);
     }
     // Enrich each indicator with historical paid count to determine correct tier
     for (const ind of Object.values(indicatorMap)) {
@@ -6047,12 +6069,27 @@ async function runPerspectivaBatch() {
       }
       // Cumulative = already paid (historical) + new eligible in this batch
       ind.totalCumulative = ind.count + historicoPago;
-      // Unit value is determined by cumulative total; pay only for new conversions
+      const cpfCleanBatch = ind.cpf ? String(ind.cpf).replace(/\D/g, '') : '';
+      const isCorretorBatch = cpfCleanBatch ? corretorCpfsInBatch.has(cpfCleanBatch) : false;
+      // Unit value by cumulative tier (corretor tem tier próprio)
       let unitValue;
-      if (ind.totalCumulative >= 13) unitValue = 200;
-      else if (ind.totalCumulative >= 4) unitValue = 150;
-      else unitValue = 100;
-      ind.total = unitValue * ind.count;
+      if (isCorretorBatch) {
+        unitValue = ind.totalCumulative >= 13 ? 400 : ind.totalCumulative >= 4 ? 300 : 200;
+      } else {
+        unitValue = ind.totalCumulative >= 13 ? 200 : ind.totalCumulative >= 4 ? 150 : 100;
+      }
+      // Cálculo híbrido: registros especiais → valor_contrato; demais → tier
+      let totalSpecial = 0;
+      let countRegular = 0;
+      for (const rec of ind.records) {
+        const prod = rec.produto ? String(rec.produto).trim().toUpperCase() : '';
+        if (!isCorretorBatch && SPECIAL_PRODUCTS.has(prod)) {
+          totalSpecial += parseFloat(rec.valor_contrato || rec.valor_titulo || 0);
+        } else {
+          countRegular += 1;
+        }
+      }
+      ind.total = totalSpecial + (unitValue * countRegular);
     }
 
     const totalIndicadores = Object.keys(indicatorMap).length;
@@ -6166,7 +6203,20 @@ async function getPerspectivaReportData() {
     const unitValue = isCorretor
       ? (ind.nivel === 3 ? 400 : ind.nivel === 2 ? 300 : 200)
       : (ind.nivel === 3 ? 200 : ind.nivel === 2 ? 150 : 100);
-    ind.total = unitValue * ind.count;
+    // Cálculo híbrido: registros especiais → valor_contrato; demais → tier
+    let totalSpecial = 0;
+    let countRegular = 0;
+    for (const rec of ind.details) {
+      const prod = rec.produto ? String(rec.produto).trim().toUpperCase() : '';
+      if (!isCorretor && SPECIAL_PRODUCTS.has(prod)) {
+        totalSpecial += parseFloat(rec.valor_contrato || rec.valor_titulo || 0);
+      } else {
+        countRegular += 1;
+      }
+    }
+    ind.totalSpecial = totalSpecial;
+    ind.countRegular = countRegular;
+    ind.total = totalSpecial + (unitValue * countRegular);
   }
 
   // Busca chaves PIX para os indicadores com CPF

@@ -419,6 +419,7 @@ export default function CommissionPerspectivaControl() {
                     <tr className="border-b text-left">
                       <th className="py-2 px-3">Indicador</th>
                       <th className="py-2 px-3">Indicado</th>
+                      <th className="py-2 px-3">Produto</th>
                       <th className="py-2 px-3">Data Pagamento</th>
                       <th className="py-2 px-3">Status</th>
                       <th className="py-2 px-3">Lote</th>
@@ -435,6 +436,18 @@ export default function CommissionPerspectivaControl() {
                         <td className="py-2 px-3">
                           <div>{r.nome_indicado || '-'}</div>
                           <div className="text-xs text-gray-500">{r.cpf_indicado || '-'}</div>
+                        </td>
+                        <td className="py-2 px-3">
+                          {r.produto ? (
+                            <div className="flex flex-col gap-1">
+                              <Badge className="bg-violet-100 text-violet-800 text-xs w-fit">{r.produto}</Badge>
+                              {['BOM AUTO', 'BOM MED', 'BOMPET'].includes(r.produto) && (
+                                <Badge className="bg-amber-100 text-amber-800 text-xs w-fit">val. contrato</Badge>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
                         </td>
                         <td className="py-2 px-3 text-xs">{safeFormatDate(r.data_pagamento)}</td>
                         <td className="py-2 px-3">
@@ -619,7 +632,19 @@ export default function CommissionPerspectivaControl() {
                       const unitValue = isCorretor
                         ? (level === 3 ? 400 : level === 2 ? 300 : 200)
                         : (level === 3 ? 200 : level === 2 ? 150 : 100);
-                      const value = unitValue * data.items.length;
+                      const FE_SPECIAL = new Set(['BOM AUTO', 'BOM MED', 'BOMPET']);
+                      let totalSpecial = 0;
+                      let countRegular = 0;
+                      for (const item of data.items) {
+                        const prod = item.produto ? String(item.produto).trim().toUpperCase() : '';
+                        if (!isCorretor && FE_SPECIAL.has(prod)) {
+                          totalSpecial += parseFloat(item.valor_contrato || item.valor_titulo || 0);
+                        } else {
+                          countRegular += 1;
+                        }
+                      }
+                      const value = totalSpecial + (unitValue * countRegular);
+                      const hasSpecial = totalSpecial > 0;
                       const nivelLabel = level === 3 ? '3 (13+)' : level === 2 ? '2 (4-12)' : '1 (1-3)';
                       return (
                         <tr key={key} className="border-b hover:bg-gray-50">
@@ -636,7 +661,14 @@ export default function CommissionPerspectivaControl() {
                             <Badge className="bg-emerald-100 text-emerald-800">{data.items.length}</Badge>
                           </td>
                           <td className="py-2 px-3 text-sm">{nivelLabel}</td>
-                          <td className="py-2 px-3 font-bold text-green-600">R$ {value.toFixed(2)}</td>
+                          <td className="py-2 px-3 font-bold text-green-600">
+                            R$ {value.toFixed(2)}
+                            {hasSpecial && (
+                              <div className="text-xs font-normal text-amber-600 mt-0.5">
+                                R$ {totalSpecial.toFixed(2)} vc + R$ {(unitValue * countRegular).toFixed(2)} tier
+                              </div>
+                            )}
+                          </td>
                           <td className="py-2 px-3 text-xs text-gray-500">
                             {data.items.map(i => i.perspectiva_id).join(', ')}
                           </td>

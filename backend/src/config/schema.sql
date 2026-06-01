@@ -1087,6 +1087,7 @@ CREATE TABLE IF NOT EXISTS processed_referral_sales (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_processed_referral_sales_identifier ON processed_referral_sales (sale_identifier);
+ALTER TABLE processed_referral_sales ADD COLUMN IF NOT EXISTS produto VARCHAR(255);
 
 CREATE TABLE IF NOT EXISTS processed_referral_contracts (
     id SERIAL PRIMARY KEY,

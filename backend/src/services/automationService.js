@@ -989,8 +989,8 @@ export async function syncPerspectivaNegociosFromERP() {
             try {
               await query(
                 `INSERT INTO erp_perspectivas_negocios
-                  (perspectiva, nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_titulo, sit_perspectiva, observacoes, origem, sincronizado_em, data_pagamento, contrato, valor_titulo, data_vencimento, status_pagamento)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'erp',NOW(),$10,$11,$12,$13,'elegivel')
+                  (perspectiva, nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_titulo, sit_perspectiva, observacoes, origem, sincronizado_em, data_pagamento, contrato, valor_titulo, data_vencimento, produto, valor_contrato, status_pagamento)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'erp',NOW(),$10,$11,$12,$13,$14,$15,'elegivel')
                  ON CONFLICT (perspectiva) WHERE perspectiva IS NOT NULL
                  DO UPDATE SET
                    nome_indicador  = EXCLUDED.nome_indicador,
@@ -1006,6 +1006,8 @@ export async function syncPerspectivaNegociosFromERP() {
                    contrato        = EXCLUDED.contrato,
                    valor_titulo    = EXCLUDED.valor_titulo,
                    data_vencimento = EXCLUDED.data_vencimento,
+                   produto         = EXCLUDED.produto,
+                   valor_contrato  = EXCLUDED.valor_contrato,
                    status_pagamento = COALESCE(erp_perspectivas_negocios.status_pagamento, 'elegivel')`,
                 [
                   rec.perspectiva     || null,
@@ -1021,6 +1023,8 @@ export async function syncPerspectivaNegociosFromERP() {
                   rec.contrato        || null,
                   rec.valor_titulo    != null ? parseFloat(rec.valor_titulo) : null,
                   rec.data_vencimento || null,
+                  rec.produto         || null,
+                  rec.valor_contrato  != null ? parseFloat(rec.valor_contrato) : null,
                 ]
               );
               upserted++;
