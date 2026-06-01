@@ -1609,8 +1609,9 @@ export default function Agents() {
                     <div className="flex gap-2 mt-1">
                       <Input
                         value={formData.cpf}
-                        onChange={(e) => setFormData(prev => ({ ...prev, cpf: e.target.value }))}
+                        onChange={handleCpfChange}
                         placeholder="000.000.000-00"
+                        maxLength={14}
                         className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                       />
                       <Button
