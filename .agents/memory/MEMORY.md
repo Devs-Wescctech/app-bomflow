@@ -1,1 +1,1 @@
-- [GitHub MCP push limit](github-mcp-push-limit.md) — MCP pushFiles/createOrUpdateFile falha para arquivos JSX >~11KB; use pushFiles apenas para arquivos pequenos
+- [API key casing](api-key-casing.md) — Express API sends camelCase (convertKeysToCamel); snake_case field access on frontend silently returns undefined. Bit supervisor visibility.

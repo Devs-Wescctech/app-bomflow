@@ -280,23 +280,19 @@ export function isSupervisorType(agentType) {
 /**
  * Retorna a lista de agentes visíveis para o usuário atual:
  *   admin        → todos os agentes
- *   supervisor   → apenas agentes da mesma equipe (team_id)
+ *   supervisor   → apenas ele próprio + vendedores vinculados via supervisorId
  *   vendedor     → apenas ele próprio
  */
 export function getVisibleAgents(allAgents, currentAgent) {
   if (!currentAgent) return allAgents;
   if (canViewAll(currentAgent, 'leads')) return allAgents;
   if (canViewTeam(currentAgent, 'leads')) {
-    const bySupervisor = allAgents.filter(
-      a => a.supervisor_id && String(a.supervisor_id) === String(currentAgent.id)
-    );
-    if (bySupervisor.length > 0) {
-      const ids = new Set([currentAgent.id, ...bySupervisor.map(a => a.id)]);
-      return allAgents.filter(a => ids.has(a.id));
-    }
-    const tid = currentAgent.team_id || currentAgent.teamId;
-    if (!tid) return allAgents.filter(a => a.id === currentAgent.id);
-    return allAgents.filter(a => String(a.team_id || a.teamId) === String(tid));
+    const bySupervisor = allAgents.filter(a => {
+      const sid = a.supervisorId || a.supervisor_id;
+      return sid && String(sid) === String(currentAgent.id);
+    });
+    const ids = new Set([currentAgent.id, ...bySupervisor.map(a => a.id)]);
+    return allAgents.filter(a => ids.has(a.id));
   }
   return allAgents.filter(a => a.id === currentAgent.id);
 }
