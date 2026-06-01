@@ -10,43 +10,99 @@ const apiGroups = [
     color: "blue",
     apis: [
       {
+        name: "API_CADASTRO_PESSOAS",
+        status: "Ativa",
+        file: "backend/src/routes/functions.js",
+        line: 271,
+        usages: [
+          { module: "Vendas / Indicações → Consulta de CPF", desc: "Busca dados cadastrais (nome, plano/contrato) de pessoas no ERP por CPF para validação e preenchimento automático." },
+          { module: "Consulta por filtros", desc: "Mesma API consultada com múltiplos parâmetros/filtros.", extraFile: "backend/src/routes/functions.js", extraLine: 344 },
+        ],
+      },
+      {
         name: "API_BASE_LEADS",
         status: "Ativa",
         file: "backend/src/routes/functions.js",
-        line: 216,
+        line: 687,
         usages: [
           { module: "Gerador de Leads", desc: "Busca toda a base de leads do ERP para filtragem, seleção e disparo de campanhas WhatsApp. Fornece os filtros de cidade, UF, produto, situação e tempo ativo de contrato." },
+        ],
+      },
+      {
+        name: "API_BUSCAR_CLIENTE_INDICADOR",
+        status: "Ativa",
+        file: "backend/src/routes/functions.js",
+        line: 882,
+        usages: [
+          { module: "Indicações → Busca de Indicador", desc: "Busca informações do cliente indicador (quem fez a indicação) por CPF ou número de SMS para validação e preenchimento." },
+          { module: "Indicações → Busca avançada / variações de SMS", desc: "Consultas adicionais por CPF e múltiplas variações de SMS.", extraFile: "backend/src/routes/functions.js", extraLine: 2973 },
         ],
       },
       {
         name: "API_CPF_INDICADOR",
         status: "Ativa",
         file: "backend/src/routes/functions.js",
-        line: 1568,
+        line: 2566,
         usages: [
-          { module: "Indicações → Nova Indicação / Busca CPF", desc: "Consulta dados do indicador pelo CPF para validação e preenchimento automático (nome, telefone, endereço). Também usado no Portal do Indicador." },
-          { module: "Gerador de Leads → Conversões", desc: "Busca dados do ERP para verificar conversão de leads disparados (cruzamento telefone/CPF).", extraFile: "backend/src/routes/functions.js", extraLine: 1471 },
+          { module: "Gerador de Leads → Conversões", desc: "Cruza CPFs/telefones com o ERP para verificar conversão de leads disparados." },
+          { module: "Indicações → Nova Indicação / Busca CPF", desc: "Consulta dados do indicador pelo CPF para validação e preenchimento automático (nome, telefone, endereço).", extraFile: "backend/src/routes/functions.js", extraLine: 2809 },
+        ],
+      },
+      {
+        name: "API_CPF_REATIVACAO",
+        status: "Ativa",
+        file: "backend/src/routes/functions.js",
+        line: 2665,
+        usages: [
+          { module: "Indicações → Reativação", desc: "Consulta elegibilidade e dados de clientes no ERP para campanhas de reativação." },
+        ],
+      },
+      {
+        name: "API_DADOS_BASE_COMPLETA",
+        status: "Ativa",
+        file: "backend/src/routes/functions.js",
+        line: 3089,
+        usages: [
+          { module: "Indicações → Busca Completa (fallback)", desc: "Fallback para busca de dados completos do cliente quando as demais APIs de busca não retornam resultado." },
         ],
       },
       {
         name: "API_DADOS_VENDAS_INDICACOES",
         status: "Ativa",
         file: "backend/src/routes/functions.js",
-        line: 823,
+        line: 1918,
         usages: [
           { module: "Gerador de Leads → Métricas ROI", desc: "Busca vendas pagas do ERP para calcular ROI dos disparos (vendas ÷ disparos)." },
-          { module: "Gerador de Leads → Auditoria Diária", desc: "Cruza vendas do ERP com disparos do sistema para detectar vendas sem disparo, disparos sem venda, duplicatas e recalcular ROI.", extraFile: "backend/src/routes/functions.js", extraLine: 945 },
-          { module: "Comissões → Relatório de Vendas Pagas", desc: "Lista vendas com valores_pagos=SIM para o relatório de comissões e validação de elegibilidade.", extraFile: "backend/src/routes/functions.js", extraLine: 2858 },
-          { module: "Comissões → Batch Semanal", desc: "Busca vendas pagas para gerar lotes de pagamento de comissão automaticamente (cron quarta 05h).", extraFile: "backend/src/routes/functions.js", extraLine: 3044 },
+          { module: "Gerador de Leads → Auditoria Diária", desc: "Cruza vendas do ERP com disparos do sistema para detectar vendas sem disparo, disparos sem venda, duplicatas e recalcular ROI.", extraFile: "backend/src/routes/functions.js", extraLine: 2040 },
+          { module: "Comissões → Relatório de Vendas Pagas", desc: "Lista vendas com valores_pagos=SIM para o relatório de comissões e validação de elegibilidade.", extraFile: "backend/src/routes/functions.js", extraLine: 4487 },
+          { module: "Comissões → Batch Semanal", desc: "Busca vendas pagas para gerar lotes de pagamento de comissão automaticamente (cron quarta 05h).", extraFile: "backend/src/routes/functions.js", extraLine: 4673 },
         ],
       },
       {
         name: "API_VENDAS_INDICACAO_AGENTES",
         status: "Ativa",
         file: "backend/src/routes/functions.js",
-        line: 2763,
+        line: 4392,
         usages: [
           { module: "Indicações → Meu Painel", desc: "Busca vendas de indicação filtradas por erp_agent_id do agente logado para exibir desempenho individual." },
+        ],
+      },
+      {
+        name: "API_PERSPECTIVA_NEGOCIOS",
+        status: "Ativa",
+        file: "backend/src/services/automationService.js",
+        line: 973,
+        usages: [
+          { module: "Automações → Sincronização de Perspectivas", desc: "Sincroniza o status de negociações (perspectivas) entre o ERP e o CRM." },
+        ],
+      },
+      {
+        name: "API_VALIDACAO_PAGAMENTO",
+        status: "Ativa",
+        file: "backend/src/services/automationService.js",
+        line: 1130,
+        usages: [
+          { module: "Comissões → Validação de Pagamento", desc: "Verifica no ERP se títulos de indicações pendentes foram liquidados, para atualização automática no CRM." },
         ],
       },
       {
@@ -56,6 +112,24 @@ const apiGroups = [
         line: 67,
         usages: [
           { module: "Bom Auto → Consulta Veicular", desc: "Busca dados de veículos e clientes no ERP por documento (CPF/CNPJ) ou placa para verificar elegibilidade de serviços." },
+        ],
+      },
+      {
+        name: "API_FUNCIONARIOS_BP",
+        status: "Ativa",
+        file: "backend/src/routes/bomAuto.js",
+        line: 117,
+        usages: [
+          { module: "Bom Auto → Validação de Funcionário", desc: "Valida CPF de funcionários do Grupo Bom Pastor para liberar consultas no módulo Bom Auto." },
+        ],
+      },
+      {
+        name: "api.grupobompastor.com.br/dados-vendas-indicacoes",
+        status: "Ativa",
+        file: "backend/src/routes/functions.js",
+        line: 2264,
+        usages: [
+          { module: "Comissões → Reconciliação", desc: "Endpoint alternativo (proxy HTTPS) para buscar vendas pagas na reconciliação semanal de comissões." },
         ],
       },
     ],
@@ -81,6 +155,18 @@ const apiGroups = [
         line: 61,
         usages: [
           { module: "Automações → Envio WhatsApp", desc: "Cria nova conversa no WHU quando o contato não existe. Usado como fallback do send-template quando o contato não está cadastrado." },
+          { module: "Gerador de Leads → Fila de Disparos", desc: "Cria conversa antes do envio em massa via fila assíncrona.", extraFile: "backend/src/services/whatsappService.js", extraLine: 177 },
+        ],
+      },
+      {
+        name: "/chats/send-template",
+        status: "Ativa",
+        file: "backend/src/services/whatsappService.js",
+        line: 98,
+        usages: [
+          { module: "Automações → Envio de Template WhatsApp", desc: "Envia mensagem baseada em template para leads/indicações (automações de inatividade, follow-up, reengajamento)." },
+          { module: "Gerador de Leads → Fila de Disparos", desc: "Envia templates WhatsApp em massa via fila assíncrona com rate limiting (campanhas de disparo).", extraFile: "backend/src/services/whatsappQueueService.js", extraLine: 6 },
+          { module: "Vendas → Envio de Proposta por WhatsApp", desc: "Envia proposta comercial como template WhatsApp para o lead.", extraFile: "backend/src/routes/functions.js", extraLine: 3482 },
         ],
       },
       {
@@ -93,6 +179,15 @@ const apiGroups = [
         ],
       },
       {
+        name: "/chats/send-text",
+        status: "Ativa",
+        file: "backend/src/services/whatsappService.js",
+        line: 311,
+        usages: [
+          { module: "WhatsApp → Envio de Texto", desc: "Envia mensagem de texto simples para um contato existente." },
+        ],
+      },
+      {
         name: "/chats/send-media",
         status: "Ativa",
         file: "backend/src/services/whatsappService.js",
@@ -102,21 +197,10 @@ const apiGroups = [
         ],
       },
       {
-        name: "/chats/send-template",
-        status: "Ativa",
-        file: "backend/src/services/whatsappService.js",
-        line: 98,
-        usages: [
-          { module: "Automações → Envio de Template WhatsApp", desc: "Envia mensagem baseada em template para leads/indicações (automações de inatividade, follow-up, reengajamento)." },
-          { module: "Gerador de Leads → Fila de Disparos", desc: "Envia templates WhatsApp em massa via fila assíncrona com rate limiting (campanhas de disparo).", extraFile: "backend/src/services/whatsappQueueService.js", extraLine: 5 },
-          { module: "Vendas → Envio de Proposta por WhatsApp", desc: "Envia proposta comercial como template WhatsApp para o lead.", extraFile: "backend/src/routes/functions.js", extraLine: 1859 },
-        ],
-      },
-      {
         name: "/contacts?phone={phone}",
         status: "Ativa",
         file: "backend/src/services/whatsappService.js",
-        line: 314,
+        line: 344,
         usages: [
           { module: "WhatsApp → Busca de Contato", desc: "Busca contato no WHU pelo telefone para verificar se já existe antes de criar conversa." },
         ],
@@ -125,9 +209,27 @@ const apiGroups = [
         name: "/contacts/{id}/set-attributes",
         status: "Ativa",
         file: "backend/src/services/whatsappService.js",
-        line: 349,
+        line: 379,
         usages: [
           { module: "WhatsApp → Atualização de Atributos", desc: "Atualiza atributos do contato no WHU (ex: nome do agente, produto) após envio de mensagem." },
+        ],
+      },
+      {
+        name: "/wa-number-check/{phone}",
+        status: "Ativa",
+        file: "backend/src/services/whatsappValidationService.js",
+        line: 51,
+        usages: [
+          { module: "Gerador de Leads → Pré-validação de Números", desc: "Verifica se um telefone é uma conta WhatsApp válida antes de processar a fila de disparos, com cache de resultados." },
+        ],
+      },
+      {
+        name: "/api/v1/1/messages/send-text (WHU v1)",
+        status: "Ativa",
+        file: "backend/src/routes/functions.js",
+        line: 3931,
+        usages: [
+          { module: "Vendas → Link de Assinatura de Contrato", desc: "Envia o link de assinatura digital do contrato para o cliente via WhatsApp (API V1 direta da WHU)." },
         ],
       },
     ],
@@ -140,25 +242,26 @@ const apiGroups = [
         name: "GraphQL — createDocument",
         status: "Ativa",
         file: "backend/src/routes/functions.js",
-        line: 2332,
+        line: 4075,
         usages: [
-          { module: "Vendas → Assinatura Digital", desc: "Cria documento na Autentique para envio de contrato ao cliente para assinatura eletrônica (via email ou link)." },
+          { module: "Vendas → Assinatura Digital", desc: "Faz upload do PDF do contrato e cria o documento na Autentique para envio ao cliente (via email ou link) para assinatura eletrônica." },
         ],
       },
       {
         name: "GraphQL — document(id)",
         status: "Ativa",
         file: "backend/src/routes/functions.js",
-        line: 2507,
+        line: 4187,
         usages: [
-          { module: "Vendas → Verificação de Assinatura", desc: "Consulta status do documento na Autentique (pendente, assinado, recusado) e baixa o contrato assinado quando finalizado." },
+          { module: "Vendas → Verificação de Assinatura", desc: "Consulta o status do documento na Autentique (pendente, assinado, recusado)." },
+          { module: "Vendas → Download do Contrato Assinado", desc: "Baixa o contrato assinado quando a assinatura é finalizada.", extraFile: "backend/src/routes/functions.js", extraLine: 4256 },
         ],
       },
       {
         name: "GraphQL — documents (test)",
         status: "Ativa",
         file: "backend/src/routes/functions.js",
-        line: 2685,
+        line: 4331,
         usages: [
           { module: "Configurações → Teste de Conexão", desc: "Valida que o token Autentique está funcionando listando documentos recentes." },
         ],
@@ -173,9 +276,39 @@ const apiGroups = [
         name: "publica.cnpj.ws/cnpj/{cnpj}",
         status: "Ativa",
         file: "backend/src/routes/functions.js",
-        line: 2016,
+        line: 3645,
         usages: [
           { module: "Vendas PJ → Busca de CNPJ", desc: "Consulta dados públicos de empresa (razão social, endereço, porte, atividade) para preenchimento automático no cadastro de leads PJ." },
+        ],
+      },
+    ],
+  },
+  {
+    group: "OpenAI",
+    color: "teal",
+    apis: [
+      {
+        name: "Chat Completions (GPT)",
+        status: "Ativa",
+        file: "backend/src/routes/functions.js",
+        line: 3550,
+        usages: [
+          { module: "Assistente de IA (/ai-assistant)", desc: "Gera respostas, sugere soluções técnicas, analisa situações de vendas, resume históricos de atendimento e cria templates de mensagens para os agentes." },
+        ],
+      },
+    ],
+  },
+  {
+    group: "IBGE",
+    color: "rose",
+    apis: [
+      {
+        name: "servicodados.ibge.gov.br/localidades",
+        status: "Ativa",
+        file: "backend/src/routes/functions.js",
+        line: 194,
+        usages: [
+          { module: "Cadastros → Seleção de Cidade", desc: "Recupera a lista de municípios de um estado (UF) para popular os campos de endereço do sistema." },
         ],
       },
     ],
@@ -187,6 +320,8 @@ const groupColors = {
   green: { border: "border-l-green-500", badge: "bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700", heading: "text-green-700 dark:text-green-400", line: "border-green-200 dark:border-green-800", bullet: "text-green-500" },
   purple: { border: "border-l-purple-500", badge: "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700", heading: "text-purple-700 dark:text-purple-400", line: "border-purple-200 dark:border-purple-800", bullet: "text-purple-500" },
   orange: { border: "border-l-orange-500", badge: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700", heading: "text-orange-700 dark:text-orange-400", line: "border-orange-200 dark:border-orange-800", bullet: "text-orange-500" },
+  teal: { border: "border-l-teal-500", badge: "bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-700", heading: "text-teal-700 dark:text-teal-400", line: "border-teal-200 dark:border-teal-800", bullet: "text-teal-500" },
+  rose: { border: "border-l-rose-500", badge: "bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-700", heading: "text-rose-700 dark:text-rose-400", line: "border-rose-200 dark:border-rose-800", bullet: "text-rose-500" },
 };
 
 export default function SystemsApiDocs() {
@@ -288,15 +423,15 @@ export default function SystemsApiDocs() {
         <CardContent>
           <div className="text-sm">
             <span className="font-medium text-yellow-900 dark:text-yellow-300">
-              executeLeadCreatedAutomation → /chats/send-template (WHU)
+              executeLeadCreatedAutomation → indicação (referral)
             </span>
             <span className="text-yellow-700 dark:text-yellow-500">
-              {" "}— Envio automático de WhatsApp ao cadastrar indicação desativado temporariamente para correção de template.
+              {" "}— Envio automático de WhatsApp ao cadastrar uma nova indicação desativado temporariamente (template incorreto). Reativar após correção do template.
             </span>
             <div className="flex items-center gap-1 mt-1">
               <FileText className="w-3 h-3 text-yellow-600 dark:text-yellow-500 shrink-0" />
               <span className="text-xs font-mono text-yellow-600 dark:text-yellow-500">
-                backend/src/routes/entities.js:789
+                backend/src/routes/entities.js:1688
               </span>
             </div>
           </div>
