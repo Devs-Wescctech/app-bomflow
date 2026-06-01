@@ -564,7 +564,7 @@ export default function LeadsKanban() {
   const currentAgent = user?.agent || allAgents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
 
-  const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor';
+  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
   
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ['leads', isAdmin ? 'admin' : currentAgent?.id],

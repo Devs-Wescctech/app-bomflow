@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { getVisibleAgents, canViewAll, canViewTeam } from "@/components/utils/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -132,6 +133,21 @@ export default function SalesTasks() {
     scheduledAt: '',
   });
 
+  const { data: user } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  const { data: agents = [] } = useQuery({
+    queryKey: ['salesTasksAgents'],
+    queryFn: () => base44.entities.Agent.list(),
+    staleTime: 1000 * 60 * 2,
+  });
+
+  const currentAgent = user?.agent || agents.find(a => a.email === user?.email || a.userEmail === user?.email || a.user_email === user?.email);
+  const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
+  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
+
   const { data: activities = [], isLoading: loadingActivities } = useQuery({
     queryKey: ['activities'],
     queryFn: () => base44.entities.Activity.list('-scheduledAt', 500),
@@ -244,8 +260,25 @@ export default function SalesTasks() {
     }
   };
 
-  const tasks = activities;
-  
+  const tasks = useMemo(() => {
+    if (isAdmin) return activities;
+    if (!currentAgent) return [];
+    if (canViewAll(currentAgent, 'leads')) return activities;
+    if (canViewTeam(currentAgent, 'leads')) {
+      const visibleAgs = getVisibleAgents(agents, currentAgent);
+      const visibleEmails = new Set(visibleAgs.map(a => a.userEmail || a.email || a.user_email).filter(Boolean));
+      const visibleIds = new Set(visibleAgs.map(a => a.id));
+      return activities.filter(act =>
+        visibleEmails.has(act.assignedTo) || visibleIds.has(act.assignedTo) ||
+        visibleEmails.has(act.createdBy) || visibleIds.has(act.createdBy)
+      );
+    }
+    return activities.filter(act =>
+      act.assignedTo === user?.email || act.assignedTo === currentAgent?.id ||
+      act.createdBy === currentAgent?.id || !act.assignedTo
+    );
+  }, [activities, agents, currentAgent, isAdmin, user]);
+
   const pendingTasks = tasks.filter(t => !t.completed);
   const completedTasks = tasks.filter(t => t.completed);
   const overdueTasks = pendingTasks.filter(t => {
