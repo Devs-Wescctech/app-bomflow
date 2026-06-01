@@ -295,7 +295,7 @@ export function getVisibleAgents(allAgents, currentAgent) {
       return allAgents.filter(a => ids.has(a.id));
     }
     const tid = currentAgent.team_id || currentAgent.teamId;
-    if (!tid) return allAgents;
+    if (!tid) return allAgents.filter(a => a.id === currentAgent.id);
     return allAgents.filter(a => String(a.team_id || a.teamId) === String(tid));
   }
   return allAgents.filter(a => a.id === currentAgent.id);
