@@ -62,7 +62,6 @@ router.post('/pessoa', authMiddleware, async (req, res) => {
       body: JSON.stringify(req.body)
     });
     const data = await response.json();
-    console.log('[ERP Debug] POST /pessoa status:', response.status, '| body:', JSON.stringify(data));
     if (!response.ok || data?.error) {
       return res.status(response.ok ? 400 : response.status).json({ error: data?.error || 'Erro ao criar pessoa no ERP.' });
     }
@@ -99,7 +98,6 @@ router.post('/usuario', authMiddleware, async (req, res) => {
       body: JSON.stringify(payload)
     });
     const data = await response.json();
-    console.log('[ERP Debug] POST /usuario status:', response.status, '| body:', JSON.stringify(data));
     if (!response.ok || data?.error) {
       return res.status(response.ok ? 400 : response.status).json({ error: data?.error || 'Erro ao criar usuário no ERP.' });
     }
