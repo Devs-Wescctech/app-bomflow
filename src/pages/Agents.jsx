@@ -1569,6 +1569,74 @@ export default function Agents() {
           
           <div className="flex-1 overflow-y-auto px-6">
             <div className="space-y-4 py-4">
+              {/* NOVO — Seção Integração ERP */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Server className="w-4 h-4 text-violet-500" />
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Integração ERP</span>
+                </div>
+                <div className="p-4 bg-violet-50 dark:bg-violet-950/20 rounded-xl border border-violet-100 dark:border-violet-900 space-y-4">
+
+                  {/* A — Login ERP (read-only, derivado do e-mail) */}
+                  <div>
+                    <Label className="text-gray-900 dark:text-gray-100">Login ERP</Label>
+                    <Input
+                      value={formData.email ? formData.email.toLowerCase() : ""}
+                      readOnly
+                      disabled
+                      placeholder="Preenchido automaticamente com o e-mail"
+                      className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 opacity-70 cursor-not-allowed"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Será usado o e-mail do agente como login no ERP.</p>
+                  </div>
+
+                  {/* B — Código da Pessoa no ERP */}
+                  <div>
+                    <Label className="text-gray-900 dark:text-gray-100">Código da Pessoa no ERP</Label>
+                    <div className="flex gap-2 mt-1">
+                      <Input
+                        value={erpPessoaCode}
+                        onChange={(e) => setErpPessoaCode(e.target.value)}
+                        placeholder="Ex: PESSOA123"
+                        className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleBuscarOuCriarPessoaErp}
+                        disabled={loadingErpPessoa}
+                        className="bg-violet-600 hover:bg-violet-700 text-white shrink-0"
+                      >
+                        {loadingErpPessoa ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <UserPlus className="w-4 h-4" />
+                        )}
+                        <span className="ml-1.5 hidden sm:inline">
+                          {loadingErpPessoa ? "Buscando..." : "Buscar/Criar"}
+                        </span>
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Código da pessoa vinculada a este usuário no ERP. Clique no botão para buscar pelo CPF ou criar automaticamente.
+                    </p>
+                  </div>
+
+                  {/* C — Indicador de status da vinculação ERP */}
+                  <div>
+                    {formData.erpAgentId ? (
+                      <Badge className="bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300">
+                        Usuário ERP vinculado (ID: {formData.erpAgentId})
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800">
+                        Sem usuário ERP vinculado
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* Upload de Foto */}
               <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 {formData.photoUrl ? (
@@ -2071,74 +2139,6 @@ export default function Agents() {
                       aria-label="Gerenciar configurações"
                     />
                   </label>
-                </div>
-              </div>
-
-              {/* NOVO — Seção Integração ERP */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Server className="w-4 h-4 text-violet-500" />
-                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Integração ERP</span>
-                </div>
-                <div className="p-4 bg-violet-50 dark:bg-violet-950/20 rounded-xl border border-violet-100 dark:border-violet-900 space-y-4">
-
-                  {/* A — Login ERP (read-only, derivado do e-mail) */}
-                  <div>
-                    <Label className="text-gray-900 dark:text-gray-100">Login ERP</Label>
-                    <Input
-                      value={formData.email ? formData.email.toLowerCase() : ""}
-                      readOnly
-                      disabled
-                      placeholder="Preenchido automaticamente com o e-mail"
-                      className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 opacity-70 cursor-not-allowed"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Será usado o e-mail do agente como login no ERP.</p>
-                  </div>
-
-                  {/* B — Código da Pessoa no ERP */}
-                  <div>
-                    <Label className="text-gray-900 dark:text-gray-100">Código da Pessoa no ERP</Label>
-                    <div className="flex gap-2 mt-1">
-                      <Input
-                        value={erpPessoaCode}
-                        onChange={(e) => setErpPessoaCode(e.target.value)}
-                        placeholder="Ex: PESSOA123"
-                        className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={handleBuscarOuCriarPessoaErp}
-                        disabled={loadingErpPessoa}
-                        className="bg-violet-600 hover:bg-violet-700 text-white shrink-0"
-                      >
-                        {loadingErpPessoa ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <UserPlus className="w-4 h-4" />
-                        )}
-                        <span className="ml-1.5 hidden sm:inline">
-                          {loadingErpPessoa ? "Buscando..." : "Buscar/Criar"}
-                        </span>
-                      </Button>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Código da pessoa vinculada a este usuário no ERP. Clique no botão para buscar pelo CPF ou criar automaticamente.
-                    </p>
-                  </div>
-
-                  {/* C — Indicador de status da vinculação ERP */}
-                  <div>
-                    {formData.erpAgentId ? (
-                      <Badge className="bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300">
-                        Usuário ERP vinculado (ID: {formData.erpAgentId})
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800">
-                        Sem usuário ERP vinculado
-                      </Badge>
-                    )}
-                  </div>
                 </div>
               </div>
 
