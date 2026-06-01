@@ -321,8 +321,8 @@ export default function Agents() {
                 situacao: "A"
               });
               // ERP POST /Pessoas retorna { pessoa: "CODIGO", id: 999 }
-              // O campo "id" numérico é o que o ERP usa para vincular ao criar Usuário
-              codigoPessoa = String(criada.id || criada.pessoa || "");
+              // O campo "pessoa" (string curta, ex: "2606501") é o código para criar Usuário
+              codigoPessoa = String(criada.pessoa || "");
             }
             if (!codigoPessoa) {
               throw new Error("ERP não retornou um ID de pessoa válido.");
@@ -817,14 +817,25 @@ export default function Agents() {
     try {
       const pessoa = await getPessoaByErp(formData.cpf);
       if (pessoa) {
-        setErpPessoaCode(String(pessoa.id || pessoa.contrato || ""));
+        // pessoa.pessoa = código ERP (ex: "2606501") — usado para criar Usuário
+        // pessoa.id     = ID do registro/contrato (ex: 301228219) — NÃO usar para Usuário
+        const codigoErp = String(pessoa.pessoa || "");
+        setErpPessoaCode(codigoErp);
         setErpPessoaResult(pessoa);
         // Auto-preenche os campos do formulário com dados do ERP
         setFormData(prev => ({
           ...prev,
           name: pessoa.nome_titular || prev.name,
         }));
-        toast.success("Pessoa encontrada no ERP: " + pessoa.nome_titular);
+        if (codigoErp) {
+          toast.success("Pessoa encontrada no ERP: " + pessoa.nome_titular);
+        } else {
+          toast.warning(
+            "Pessoa encontrada no ERP mas o código de Pessoa não foi retornado. " +
+            "Verifique os logs do backend e informe o ID manualmente.",
+            { duration: 8000 }
+          );
+        }
       } else {
         setErpPessoaResult({ notFound: true });
         toast.info("CPF não cadastrado no ERP. Será criado automaticamente ao salvar o agente.");
