@@ -886,8 +886,10 @@ export default function Agents() {
       return;
     }
 
+    // erpLogin e erpEmail são campos temporários de UI — não vão para o banco de dados
+    const { erpLogin: _erpLogin, erpEmail: _erpEmail, ...formDataToSave } = formData;
     const dataToSend = { 
-      ...formData,
+      ...formDataToSave,
       erpAgentId: formData.erpAgentId ? Number(formData.erpAgentId) : null,
       supervisorId: formData.supervisorId && formData.supervisorId !== "none" ? formData.supervisorId : null,
       permissions: normalizePermissions(formData.permissions)
