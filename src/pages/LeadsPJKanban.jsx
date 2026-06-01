@@ -528,40 +528,47 @@ export default function LeadsPJKanban() {
     staleTime: 60000,
   });
 
-  const currentAgent = user?.agent || allAgents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
+  const currentAgent = user?.agent || allAgents.find(a => a.userEmail === user?.email || a.user_email === user?.email || a.email === user?.email);
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
   const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor';
 
+  // Conjunto de agentes visíveis para o usuário atual.
+  // `null` => vê todos os leads. Array => restringe aos ids informados.
+  // É computado fora da queryFn e entra no queryKey, garantindo refetch
+  // automático quando `allAgents` (e portanto o time do supervisor) resolver.
+  const visibleAgentIds = useMemo(() => {
+    if (isAdmin) return null;
+    if (!currentAgent) return [];
+    if (canViewAll(currentAgent, 'leads-pj')) return null;
+    if (canViewTeam(currentAgent, 'leads-pj')) {
+      return getVisibleAgents(allAgents, currentAgent).map(a => a.id);
+    }
+    return [currentAgent.id];
+  }, [isAdmin, allAgents, currentAgent]);
+
+  const visibleAgentSignature = visibleAgentIds === null
+    ? 'all'
+    : [...visibleAgentIds].sort().join(',');
+
+  const leadsQueryKey = [
+    'leadsPJ',
+    isAdmin ? 'admin' : (currentAgent?.id || 'none'),
+    visibleAgentSignature,
+  ];
+
   const { data: leadsPJ = [], isLoading } = useQuery({
-    queryKey: ['leadsPJ', isAdmin ? 'admin' : currentAgent?.id],
+    queryKey: leadsQueryKey,
     queryFn: async () => {
       const allLeads = await base44.entities.LeadPJ.list('-created_at');
-      
-      if (isAdmin) {
+
+      if (visibleAgentIds === null) {
         return allLeads.filter(l => !l.lost);
       }
 
-      if (!currentAgent) return [];
-
-      const canSeeAll = canViewAll(currentAgent, 'leads-pj');
-      if (canSeeAll) {
-        return allLeads.filter(l => !l.lost);
-      }
-
-      const canSeeTeam = canViewTeam(currentAgent, 'leads-pj');
-      if (canSeeTeam) {
-        const visibleAgs = getVisibleAgents(allAgents, currentAgent);
-        const visibleIds = new Set(visibleAgs.map(a => a.id));
-
-        return allLeads.filter(l =>
-          !l.lost &&
-          (visibleIds.has(l.agentId) || visibleIds.has(l.agent_id))
-        );
-      }
-
+      const idSet = new Set(visibleAgentIds);
       return allLeads.filter(l =>
         !l.lost &&
-        (l.agentId === currentAgent.id || l.agent_id === currentAgent.id)
+        (idSet.has(l.agentId) || idSet.has(l.agent_id))
       );
     },
     enabled: !!user && (isAdmin || !!currentAgent),
@@ -595,8 +602,6 @@ export default function LeadsPJKanban() {
     refetchInterval: 30000,
   });
 
-  const leadsQueryKey = ['leadsPJ', isAdmin ? 'admin' : currentAgent?.id];
-  
   const updateLeadMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.LeadPJ.update(id, data),
     onMutate: async ({ id, data }) => {
