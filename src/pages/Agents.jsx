@@ -321,8 +321,8 @@ export default function Agents() {
                 situacao: "A"
               });
               // ERP POST /Pessoas retorna { pessoa: "CODIGO", id: 999 }
-              // O campo "id" (numérico, ex: 301224889) é o valor para o campo "pessoa" em POST /Usuarios
-              codigoPessoa = String(criada.id || "");
+              // O campo "pessoa" (string curta, ex: "2606501") é o código para criar Usuário
+              codigoPessoa = String(criada.pessoa || "");
             }
             if (!codigoPessoa) {
               throw new Error("ERP não retornou um ID de pessoa válido.");
@@ -343,10 +343,11 @@ export default function Agents() {
             toast.success('Agente criado e usuário ERP vinculado com sucesso!');
           } catch (erpError) {
             // Detecta e-mail/login já existente no ERP e orienta o admin
-            const msgErp = erpError.message || "";
-            const matchLogin = msgErp.match(/utilizado pelo usu[aá]rio\s+([^\s!<>]+)/i);
+            // O ERP retorna HTML na mensagem (ex: <strong>marcelo.almeida</strong>) — strip antes do regex
+            const msgErp = (erpError.message || "").replace(/<[^>]+>/g, "");
+            const matchLogin = msgErp.match(/utilizado pelo usu[aá]rio\s+([^\s!]+)/i);
             if (matchLogin) {
-              const loginExistente = matchLogin[1].replace(/<[^>]+>/g, "").replace(/[!.]+$/, "");
+              const loginExistente = matchLogin[1].replace(/[!.]+$/, "");
               toast.error(
                 `Agente criado no BomFlow. Este CPF já tem conta ERP (login: ${loginExistente}). ` +
                 `Informe o ID desse usuário no campo "ID do Agente no ERP" e salve novamente.`,
@@ -817,9 +818,9 @@ export default function Agents() {
     try {
       const pessoa = await getPessoaByErp(formData.cpf);
       if (pessoa) {
-        // pessoa.id     = ID numérico do registro (ex: 301228219) — campo "pessoa" no POST /Usuarios
-        // pessoa.pessoa = código curto ERP (ex: "2606501") — NÃO usar para Usuário
-        const codigoErp = String(pessoa.id || "");
+        // pessoa.pessoa = código ERP curto (ex: "2606501") — campo "pessoa" no POST /Usuarios
+        // pessoa.id     = ID do registro/contrato (ex: 301228219) — NÃO usar para Usuário
+        const codigoErp = String(pessoa.pessoa || "");
         setErpPessoaCode(codigoErp);
         setErpPessoaResult(pessoa);
         // Auto-preenche os campos do formulário com dados do ERP
