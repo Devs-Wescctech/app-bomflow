@@ -321,8 +321,8 @@ export default function Agents() {
                 situacao: "A"
               });
               // ERP POST /Pessoas retorna { pessoa: "CODIGO", id: 999 }
-              // O campo "pessoa" (string curta, ex: "2606501") é o código para criar Usuário
-              codigoPessoa = String(criada.pessoa || "");
+              // O campo "id" (numérico, ex: 301224889) é o valor para o campo "pessoa" em POST /Usuarios
+              codigoPessoa = String(criada.id || "");
             }
             if (!codigoPessoa) {
               throw new Error("ERP não retornou um ID de pessoa válido.");
@@ -817,9 +817,9 @@ export default function Agents() {
     try {
       const pessoa = await getPessoaByErp(formData.cpf);
       if (pessoa) {
-        // pessoa.pessoa = código ERP (ex: "2606501") — usado para criar Usuário
-        // pessoa.id     = ID do registro/contrato (ex: 301228219) — NÃO usar para Usuário
-        const codigoErp = String(pessoa.pessoa || "");
+        // pessoa.id     = ID numérico do registro (ex: 301228219) — campo "pessoa" no POST /Usuarios
+        // pessoa.pessoa = código curto ERP (ex: "2606501") — NÃO usar para Usuário
+        const codigoErp = String(pessoa.id || "");
         setErpPessoaCode(codigoErp);
         setErpPessoaResult(pessoa);
         // Auto-preenche os campos do formulário com dados do ERP
