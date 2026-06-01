@@ -18,3 +18,9 @@ id = "azC3H5xfJb8lDpy3TzQ7t"
 uri = "file://docs/criacao-de-logins.md"
 type = "text"
 title = "Criação de Logins — Wescctech CRM"
+
+[[outputs]]
+id = "0WO_bko0xAxqa7cpqu1-a"
+uri = "file://docs/Agents.jsx.txt"
+type = "text"
+title = "Agents.jsx — código completo"
