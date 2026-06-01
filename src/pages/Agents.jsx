@@ -321,8 +321,8 @@ export default function Agents() {
                 situacao: "A"
               });
               // ERP POST /Pessoas retorna { pessoa: "CODIGO", id: 999 }
-              // O campo "pessoa" é o código usado para criar o usuário ERP
-              codigoPessoa = String(criada.pessoa || criada.id || "");
+              // O campo "id" numérico é o que o ERP usa para vincular ao criar Usuário
+              codigoPessoa = String(criada.id || criada.pessoa || "");
             }
             if (!codigoPessoa) {
               throw new Error("ERP não retornou um ID de pessoa válido.");
