@@ -5,6 +5,10 @@ const router = express.Router();
 
 const ERP_BASE = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api';
 
+const ERP_ESTABELECIMENTO_PADRAO = process.env.ERP_ESTABELECIMENTO_PADRAO || 104;
+const ERP_SENHA_PADRAO           = process.env.ERP_SENHA_PADRAO || 'bp@2026';
+const ERP_COPIAR_DIREITOS_DE     = process.env.ERP_COPIAR_DIREITOS_DE || 'base.upsell';
+
 function getToken(res) {
   const token = process.env.ERP_AUTH_TOKEN;
   if (!token) {

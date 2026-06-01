@@ -1,12 +1,9 @@
 // ============================================================
 // ERP Client — Bom Pastor
 // As chamadas ao ERP passam pelo backend (/api/erp/*) para
-// manter o ERP_AUTH_TOKEN seguro no servidor.
+// manter o ERP_AUTH_TOKEN e os defaults de provisionamento
+// seguros no servidor (ver backend/src/routes/erpProxy.js).
 // ============================================================
-
-export const ESTABELECIMENTO_PADRAO = 104;   // LIMEIRA - CNPA
-export const SENHA_PADRAO           = "bp@2026";
-export const COPIAR_DIREITOS_DE     = "base.upsell";
 
 function authHeaders() {
   const token = localStorage.getItem('accessToken') || localStorage.getItem('auth_token');
