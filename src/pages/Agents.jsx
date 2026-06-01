@@ -331,6 +331,7 @@ export default function Agents() {
             const loginErp = (erpLoginInput || formData.email || "").toLowerCase().trim();
             const result = await createUsuarioErp({
               login: loginErp,
+              email: formData.email || loginErp,
               pessoa: codigoPessoa,
               ativo: "S",
               super_usuario: "N",

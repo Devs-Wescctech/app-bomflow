@@ -88,14 +88,21 @@ router.post('/usuario', authMiddleware, async (req, res) => {
   if (!token) return;
 
   try {
+    // Extrai email do body (não vai pro ERP diretamente) e monta meios_contato
+    const { email, ...restBody } = req.body;
+    const meiosContato = email
+      ? [{ tipo: 'Email', contato: email, principal: 'S' }]
+      : [];
+
     const payload = {
-      ...req.body,
+      ...restBody,
       estabelecimento_padrao: ERP_ESTABELECIMENTO_PADRAO,
       senha_prot: ERP_SENHA_PADRAO,
       copiar_direitos_de: ERP_COPIAR_DIREITOS_DE,
+      ...(meiosContato.length > 0 ? { meios_contato: meiosContato } : {}),
     };
 
-    console.log('[ERP POST /usuario] payload enviado (sem senha):', JSON.stringify({ login: payload.login, pessoa: payload.pessoa, ativo: payload.ativo, estabelecimento_padrao: payload.estabelecimento_padrao, copiar_direitos_de: payload.copiar_direitos_de }));
+    console.log('[ERP POST /usuario] payload enviado (sem senha):', JSON.stringify({ login: payload.login, pessoa: payload.pessoa, ativo: payload.ativo, estabelecimento_padrao: payload.estabelecimento_padrao, copiar_direitos_de: payload.copiar_direitos_de, meios_contato: payload.meios_contato }));
     const url = `${ERP_BASE}/Usuarios`;
     const response = await fetch(url, {
       method: 'POST',
