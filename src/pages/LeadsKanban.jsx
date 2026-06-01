@@ -561,41 +561,48 @@ export default function LeadsKanban() {
     staleTime: 60000,
   });
 
-  const currentAgent = user?.agent || allAgents.find(a => a.userEmail === user?.email || a.user_email === user?.email);
+  const currentAgent = user?.agent || allAgents.find(a => a.userEmail === user?.email || a.user_email === user?.email || a.email === user?.email);
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
 
   const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
-  
+
+  // Conjunto de agentes visíveis para o usuário atual.
+  // `null` => vê todos os leads. Array => restringe aos ids informados.
+  // É computado fora da queryFn e entra no queryKey, garantindo refetch
+  // automático quando `allAgents` (e portanto o time do supervisor) resolver.
+  const visibleAgentIds = useMemo(() => {
+    if (isAdmin) return null;
+    if (!currentAgent) return [];
+    if (canViewAll(currentAgent, 'leads')) return null;
+    if (canViewTeam(currentAgent, 'leads')) {
+      return getVisibleAgents(allAgents, currentAgent).map(a => a.id);
+    }
+    return [currentAgent.id];
+  }, [isAdmin, allAgents, currentAgent]);
+
+  const visibleAgentSignature = visibleAgentIds === null
+    ? 'all'
+    : [...visibleAgentIds].sort().join(',');
+
+  const leadsQueryKey = [
+    'leads',
+    isAdmin ? 'admin' : (currentAgent?.id || 'none'),
+    visibleAgentSignature,
+  ];
+
   const { data: leads = [], isLoading } = useQuery({
-    queryKey: ['leads', isAdmin ? 'admin' : currentAgent?.id],
+    queryKey: leadsQueryKey,
     queryFn: async () => {
       const allLeads = await base44.entities.Lead.list('-createdDate');
 
-      if (isAdmin) {
+      if (visibleAgentIds === null) {
         return allLeads.filter(l => !l.lost);
       }
 
-      if (!currentAgent) return [];
-
-      const canSeeAll = canViewAll(currentAgent, 'leads');
-      if (canSeeAll) {
-        return allLeads.filter(l => !l.lost);
-      }
-
-      const canSeeTeam = canViewTeam(currentAgent, 'leads');
-      if (canSeeTeam) {
-        const visibleAgs = getVisibleAgents(allAgents, currentAgent);
-        const visibleIds = new Set(visibleAgs.map(a => a.id));
-
-        return allLeads.filter(l =>
-          !l.lost &&
-          (visibleIds.has(l.agentId) || visibleIds.has(l.promoterId))
-        );
-      }
-
+      const idSet = new Set(visibleAgentIds);
       return allLeads.filter(l =>
         !l.lost &&
-        (l.agentId === currentAgent.id || l.promoterId === currentAgent.id)
+        (idSet.has(l.agentId) || idSet.has(l.promoterId))
       );
     },
     enabled: !!user && (isAdmin || !!currentAgent),
@@ -620,8 +627,6 @@ export default function LeadsKanban() {
     staleTime: 15000,
     refetchInterval: 30000,
   });
-
-  const leadsQueryKey = ['leads', isAdmin ? 'admin' : currentAgent?.id];
 
   const updateLeadMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Lead.update(id, data),
