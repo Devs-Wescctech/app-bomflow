@@ -35,8 +35,12 @@ router.get('/pessoa', authMiddleware, async (req, res) => {
     const data = await response.json();
     if (!response.ok) return res.status(response.status).json(data);
 
+    console.log('[ERP GET /pessoa] CPF buscado:', cpf);
+    console.log('[ERP GET /pessoa] status HTTP:', response.status);
+    console.log('[ERP GET /pessoa] raw data (primeiros 500 chars):', JSON.stringify(data).substring(0, 500));
     const results = data?.results || data?.data || (Array.isArray(data) ? data : null);
     const pessoa = results?.[0] ?? null;
+    console.log('[ERP GET /pessoa] results.length:', results?.length ?? 'null');
     console.log('[ERP GET /pessoa] campos retornados:', pessoa ? Object.keys(pessoa) : 'null');
     console.log('[ERP GET /pessoa] valores-chave:', pessoa ? { id: pessoa.id, pessoa: pessoa.pessoa, contrato: pessoa.contrato, nome_titular: pessoa.nome_titular } : null);
     return res.json({ pessoa });
