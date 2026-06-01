@@ -92,17 +92,21 @@ router.post('/usuario', authMiddleware, async (req, res) => {
   if (!token) return;
 
   try {
-    // Remove campo auxiliar 'email' — não vai pro ERP
-    const { email: _email, ...restBody } = req.body;
+    const { login, email, pessoa, ativo, super_usuario, observacoes } = req.body;
 
     const payload = {
-      ...restBody,
+      login: (login || "").toLowerCase().trim(),
+      ...(email ? { email: email.trim() } : {}),
+      pessoa,
+      ativo: ativo || "S",
+      super_usuario: super_usuario || "N",
+      observacoes: observacoes || "Criado via BomFlow",
       estabelecimento_padrao: ERP_ESTABELECIMENTO_PADRAO,
       senha_prot: ERP_SENHA_PADRAO,
       copiar_direitos_de: ERP_COPIAR_DIREITOS_DE,
     };
 
-    console.log('[ERP POST /usuario] payload enviado (sem senha):', JSON.stringify({ login: payload.login, pessoa: payload.pessoa, ativo: payload.ativo, estabelecimento_padrao: payload.estabelecimento_padrao, copiar_direitos_de: payload.copiar_direitos_de }));
+    console.log('[ERP POST /usuario] payload enviado (sem senha):', JSON.stringify({ login: payload.login, email: payload.email, pessoa: payload.pessoa, ativo: payload.ativo, estabelecimento_padrao: payload.estabelecimento_padrao, copiar_direitos_de: payload.copiar_direitos_de }));
     const url = `${ERP_BASE}/Usuarios`;
     const response = await fetch(url, {
       method: 'POST',

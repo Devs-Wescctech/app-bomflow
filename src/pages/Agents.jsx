@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -187,6 +187,18 @@ const MENU_MODULES = [
   }
 ];
 
+function generateErpLogin(name) {
+  if (!name) return "";
+  const normalize = (str) =>
+    str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.]/g, "").toLowerCase();
+  const parts = name.trim().split(/\s+/);
+  const firstName = normalize(parts[0] || "");
+  const second = normalize(parts[1] || "");
+  const secondInitial = second.charAt(0);
+  if (!firstName) return "";
+  return secondInitial ? `${firstName}.${secondInitial}` : firstName;
+}
+
 export default function Agents() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("agents");
@@ -229,7 +241,6 @@ export default function Agents() {
   const [erpPessoaCode, setErpPessoaCode] = useState("");
   const [loadingErpPessoa, setLoadingErpPessoa] = useState(false);
   const [erpPessoaResult, setErpPessoaResult] = useState(null); // { nome_completo, pessoa } | { notFound: true } | null
-  const [erpLoginInput, setErpLoginInput] = useState(""); // login ERP customizado; vazio = usa o e-mail do agente
 
   const [agentSearchName, setAgentSearchName] = useState("");
   const [agentFilterType, setAgentFilterType] = useState("all");
@@ -247,6 +258,8 @@ export default function Agents() {
     supervisorId: "",
     workUnit: "",
     erpAgentId: "",
+    erpLogin: "",
+    erpEmail: "",
     queueIds: [],
     level: "pleno",
     online: false,
@@ -263,6 +276,13 @@ export default function Agents() {
       can_manage_settings: false,
     }
   });
+
+  /* Auto-gera erpLogin a partir do nome quando o campo estiver vazio */
+  useEffect(() => {
+    if (formData.name && !formData.erpLogin) {
+      setFormData(prev => ({ ...prev, erpLogin: generateErpLogin(prev.name) }));
+    }
+  }, [formData.name]);
 
   const { data: agents = [], isLoading: agentsLoading } = useQuery({
     queryKey: ['agents'],
@@ -300,12 +320,13 @@ export default function Agents() {
     mutationFn: (data) => base44.entities.Agent.create(data),
     /* MODIFICADO — chama ERP após criar agente no BomFlow */
     onSuccess: async (novoAgente) => {
-      // Garante que dialog e form sempre fecham, mesmo em erro inesperado
       const finalizar = () => {
         queryClient.invalidateQueries({ queryKey: ['agents'] });
         setIsDialogOpen(false);
         resetForm();
       };
+
+      let keepSheetOpen = false;
 
       try {
         const deveVincularErp = (erpPessoaCode || erpPessoaResult?.notFound) && !formData.erpAgentId;
@@ -319,20 +340,18 @@ export default function Agents() {
                 nome_completo: formData.name.toUpperCase(),
                 cpf: formData.cpf,
                 situacao: "A",
-                email: formData.email || loginErp
               });
-              // ERP POST /Pessoas retorna { pessoa: "CODIGO", id: 999 }
-              // O campo "pessoa" (string curta, ex: "2606501") é o código para criar Usuário
               codigoPessoa = String(criada.pessoa || "");
             }
             if (!codigoPessoa) {
               throw new Error("ERP não retornou um ID de pessoa válido.");
             }
-            // Cria o usuário ERP — defaults sensíveis aplicados no backend
-            const loginErp = (erpLoginInput || formData.email || "").toLowerCase().trim();
+            // Monta login e email ERP separados
+            const loginErp = (formData.erpLogin || "").toLowerCase().trim() || formData.email.toLowerCase().trim();
+            const emailErp = (formData.erpEmail || formData.email || "").trim();
             const result = await createUsuarioErp({
               login: loginErp,
-              email: formData.email || loginErp,
+              email: emailErp,
               pessoa: codigoPessoa,
               ativo: "S",
               super_usuario: "N",
@@ -344,16 +363,20 @@ export default function Agents() {
             }
             toast.success('Agente criado e usuário ERP vinculado com sucesso!');
           } catch (erpError) {
-            // Detecta e-mail/login já existente no ERP e orienta o admin
-            // O ERP retorna HTML na mensagem (ex: <strong>marcelo.almeida</strong>) — strip antes do regex
             const msgErp = (erpError.message || "").replace(/<[^>]+>/g, "");
-            const matchLogin = msgErp.match(/utilizado pelo usu[aá]rio\s+([^\s!]+)/i);
-            if (matchLogin) {
-              const loginExistente = matchLogin[1].replace(/[!.]+$/, "");
+            // Detecta conflito de login ou e-mail no ERP
+            const isDuplicate =
+              /utilizado pelo usu[aá]rio/i.test(msgErp) ||
+              /j[aá] pertence ao usu[aá]rio/i.test(msgErp) ||
+              /j[aá] est[aá] sendo utilizado/i.test(msgErp) ||
+              /login.*j[aá]/i.test(msgErp) ||
+              /email.*j[aá]/i.test(msgErp);
+            if (isDuplicate) {
+              keepSheetOpen = true;
+              // Muda para modo edição para que o próximo save seja um UPDATE
+              setEditingAgent(novoAgente);
               toast.error(
-                `Agente criado no BomFlow, mas o login/e-mail informado já pertence ao usuário ERP "${loginExistente}". ` +
-                `Edite o agente, altere o campo "Login ERP" para um login único, e salve novamente. ` +
-                `Ou informe manualmente o ID ERP no campo "ID do Agente no ERP".`,
+                'Login ou e-mail ERP já existentes. Edite os campos "Login ERP" e/ou "Email ERP" para valores únicos e salve novamente.',
                 { duration: 10000 }
               );
             } else {
@@ -367,7 +390,11 @@ export default function Agents() {
         console.error('[createAgentMutation] Erro inesperado no onSuccess:', unexpectedError);
         toast.error('Agente criado, mas ocorreu um erro inesperado: ' + unexpectedError.message);
       } finally {
-        finalizar();
+        if (keepSheetOpen) {
+          queryClient.invalidateQueries({ queryKey: ['agents'] });
+        } else {
+          finalizar();
+        }
       }
     },
     onError: (error) => {
@@ -589,6 +616,8 @@ export default function Agents() {
       supervisorId: "",
       workUnit: "",
       erpAgentId: "",
+      erpLogin: "",
+      erpEmail: "",
       queueIds: [],
       level: "pleno",
       online: false,
@@ -613,7 +642,6 @@ export default function Agents() {
     setErpPessoaCode("");
     setLoadingErpPessoa(false);
     setErpPessoaResult(null);
-    setErpLoginInput("");
   };
 
   const resetTeamForm = () => {
@@ -707,6 +735,8 @@ export default function Agents() {
       supervisorId: agent.supervisorId || "",
       workUnit: agent.workUnit || "",
       erpAgentId: agent.erpAgentId != null ? String(agent.erpAgentId) : "",
+      erpLogin: generateErpLogin(agent.name || ""),
+      erpEmail: "",
       queueIds: agent.queueIds || [],
       level: agent.level || "pleno",
       online: agent.online || false,
@@ -1639,17 +1669,31 @@ export default function Agents() {
                 </div>
                 <div className="p-4 bg-violet-50 dark:bg-violet-950/20 rounded-xl border border-violet-100 dark:border-violet-900 space-y-4">
 
-                  {/* A — Login ERP (editável; vazio = usa e-mail do agente) */}
+                  {/* A — Login ERP */}
                   <div>
                     <Label className="text-gray-900 dark:text-gray-100">Login ERP</Label>
                     <Input
-                      value={erpLoginInput}
-                      onChange={(e) => setErpLoginInput(e.target.value)}
-                      placeholder={formData.email ? formData.email.toLowerCase() : "login no ERP (padrão: e-mail do agente)"}
+                      value={formData.erpLogin}
+                      onChange={(e) => setFormData(prev => ({ ...prev, erpLogin: e.target.value }))}
+                      placeholder="ex: marcelo.a"
                       className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Deixe em branco para usar o e-mail do agente. Preencha caso o login no ERP seja diferente (ex: <em>marcelo.almeida</em>).
+                      Login gerado automaticamente a partir do nome. Edite se necessário para evitar conflitos no ERP.
+                    </p>
+                  </div>
+
+                  {/* B — Email ERP */}
+                  <div>
+                    <Label className="text-gray-900 dark:text-gray-100">Email ERP</Label>
+                    <Input
+                      value={formData.erpEmail || formData.email}
+                      onChange={(e) => setFormData(prev => ({ ...prev, erpEmail: e.target.value }))}
+                      placeholder={formData.email || "email cadastrado no ERP"}
+                      className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Este e-mail é cadastrado no ERP. Se houver conflito de e-mail já existente, ajuste aqui sem alterar o e-mail real do agente no BomFlow.
                     </p>
                   </div>
 
