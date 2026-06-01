@@ -84,8 +84,15 @@ export default function TicketControl() {
     if (!currentAgent) return allTicketsRaw;
     if (canViewAll(currentAgent, 'tickets')) return allTicketsRaw;
     if (canViewTeam(currentAgent, 'tickets')) {
+      const bySupervisor = allAgentsRaw.filter(
+        a => a.supervisor_id && String(a.supervisor_id) === String(currentAgent.id)
+      );
+      if (bySupervisor.length > 0) {
+        const ids = new Set([currentAgent.id, ...bySupervisor.map(a => a.id)]);
+        return allTicketsRaw.filter(t => ids.has(t.agent_id) || ids.has(t.created_by_agent_id));
+      }
       const tid = currentAgent.team_id || currentAgent.teamId;
-      if (!tid) return allTicketsRaw;
+      if (!tid) return allTicketsRaw.filter(t => t.agent_id === currentAgent.id || t.created_by_agent_id === currentAgent.id);
       const teamAgentIds = allAgentsRaw.filter(a => String(a.team_id || a.teamId) === String(tid)).map(a => a.id);
       return allTicketsRaw.filter(t => teamAgentIds.includes(t.agent_id) || teamAgentIds.includes(t.created_by_agent_id));
     }
@@ -97,8 +104,15 @@ export default function TicketControl() {
     if (!currentAgent) return allAgentsRaw;
     if (canViewAll(currentAgent, 'tickets')) return allAgentsRaw;
     if (canViewTeam(currentAgent, 'tickets')) {
+      const bySupervisor = allAgentsRaw.filter(
+        a => a.supervisor_id && String(a.supervisor_id) === String(currentAgent.id)
+      );
+      if (bySupervisor.length > 0) {
+        const ids = new Set([currentAgent.id, ...bySupervisor.map(a => a.id)]);
+        return allAgentsRaw.filter(a => ids.has(a.id));
+      }
       const tid = currentAgent.team_id || currentAgent.teamId;
-      if (!tid) return allAgentsRaw;
+      if (!tid) return allAgentsRaw.filter(a => a.id === currentAgent.id);
       return allAgentsRaw.filter(a => String(a.team_id || a.teamId) === String(tid));
     }
     return allAgentsRaw.filter(a => a.id === currentAgent.id);
