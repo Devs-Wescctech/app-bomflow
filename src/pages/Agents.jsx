@@ -5,8 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Edit, Trash2, UserCheck, UserX, Activity, Upload, Loader2, MessageSquare, Copy, Check, ExternalLink, MoreVertical, Clock, Users, Building2, Layers, Settings, ShieldX, KeyRound, Eye, EyeOff, Search, X } from "lucide-react";
+import { Plus, Edit, Trash2, UserCheck, UserX, Activity, Upload, Loader2, MessageSquare, Copy, Check, ExternalLink, MoreVertical, Clock, Users, Building2, Layers, Settings, ShieldX, KeyRound, Eye, EyeOff, Search, X, UserPlus, Server } from "lucide-react";
 import { canManageAgents, isSupervisorType } from "@/components/utils/permissions.jsx";
+/* NOVO — integração ERP */
+import { createPessoaErp, createUsuarioErp, getPessoaByErp } from "@/api/erpClient";
 import {
   Dialog,
   DialogContent,
@@ -223,6 +225,10 @@ export default function Agents() {
   const [newPassword, setNewPassword] = useState("");
   const [resettingPassword, setResettingPassword] = useState(false);
 
+  /* NOVO — estados de integração ERP */
+  const [erpPessoaCode, setErpPessoaCode] = useState("");
+  const [loadingErpPessoa, setLoadingErpPessoa] = useState(false);
+
   const [agentSearchName, setAgentSearchName] = useState("");
   const [agentFilterType, setAgentFilterType] = useState("all");
   const [agentFilterActive, setAgentFilterActive] = useState("all");
@@ -290,11 +296,31 @@ export default function Agents() {
 
   const createAgentMutation = useMutation({
     mutationFn: (data) => base44.entities.Agent.create(data),
-    onSuccess: () => {
+    /* MODIFICADO — chama ERP após criar agente no BomFlow */
+    onSuccess: async (novoAgente) => {
+      if (erpPessoaCode && !formData.erpAgentId) {
+        try {
+          const result = await createUsuarioErp({
+            login: formData.email.toLowerCase(),
+            pessoa: erpPessoaCode,
+            estabelecimento_padrao: 104,
+            senha_prot: "bp@2026",
+            copiar_direitos_de: "base.upsell",
+            ativo: "S",
+            super_usuario: "N",
+            observacoes: "Criado via BomFlow"
+          });
+          await base44.entities.Agent.update(novoAgente.id, { erpAgentId: result.id });
+          toast.success('Agente criado e usuário ERP vinculado com sucesso!');
+        } catch (erpError) {
+          toast.error('Agente criado no BomFlow, mas erro ao criar usuário no ERP: ' + erpError.message);
+        }
+      } else {
+        toast.success('Agente criado com sucesso!');
+      }
       queryClient.invalidateQueries({ queryKey: ['agents'] });
       setIsDialogOpen(false);
       resetForm();
-      toast.success('Agente criado com sucesso!');
     },
     onError: (error) => {
       toast.error('Erro ao criar agente: ' + error.message);
@@ -535,6 +561,9 @@ export default function Agents() {
     setChannelTokenInput("");
     setChannelTokenChanged(false);
     setShowTokenField(false);
+    /* NOVO — reset estados ERP */
+    setErpPessoaCode("");
+    setLoadingErpPessoa(false);
   };
 
   const resetTeamForm = () => {
@@ -638,6 +667,8 @@ export default function Agents() {
     });
     setShowTokenField(false);
     setChannelTokenChanged(false);
+    /* NOVO — preenche código da pessoa ERP ao editar */
+    setErpPessoaCode(agent.erpPessoaCode || "");
     if (agent.agentType === 'indicacoes_atendente') {
       try {
         const token = localStorage.getItem('accessToken');
@@ -727,6 +758,34 @@ export default function Agents() {
       toast.error('Erro ao enviar foto: ' + error.message);
     }
     setUploadingPhoto(false);
+  };
+
+  /* NOVO — busca ou cria Pessoa ERP pelo CPF do agente */
+  const handleBuscarOuCriarPessoaErp = async () => {
+    if (!formData.cpf) {
+      toast.error("Preencha o CPF antes de buscar/criar a pessoa no ERP.");
+      return;
+    }
+    setLoadingErpPessoa(true);
+    try {
+      const pessoa = await getPessoaByErp(formData.cpf);
+      if (pessoa) {
+        setErpPessoaCode(pessoa.pessoa);
+        toast.success("Pessoa encontrada no ERP: " + pessoa.nome_completo);
+      } else {
+        const result = await createPessoaErp({
+          tipo_pessoa: "Física",
+          nome_completo: formData.name.toUpperCase(),
+          cpf: formData.cpf,
+          situacao: "A"
+        });
+        setErpPessoaCode(result.pessoa);
+        toast.success("Pessoa criada no ERP com sucesso!");
+      }
+    } catch (error) {
+      toast.error("Erro ao buscar/criar pessoa no ERP: " + error.message);
+    }
+    setLoadingErpPessoa(false);
   };
 
   const handleSubmit = () => {
@@ -2012,6 +2071,74 @@ export default function Agents() {
                       aria-label="Gerenciar configurações"
                     />
                   </label>
+                </div>
+              </div>
+
+              {/* NOVO — Seção Integração ERP */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Server className="w-4 h-4 text-violet-500" />
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Integração ERP</span>
+                </div>
+                <div className="p-4 bg-violet-50 dark:bg-violet-950/20 rounded-xl border border-violet-100 dark:border-violet-900 space-y-4">
+
+                  {/* A — Login ERP (read-only, derivado do e-mail) */}
+                  <div>
+                    <Label className="text-gray-900 dark:text-gray-100">Login ERP</Label>
+                    <Input
+                      value={formData.email ? formData.email.toLowerCase() : ""}
+                      readOnly
+                      disabled
+                      placeholder="Preenchido automaticamente com o e-mail"
+                      className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 opacity-70 cursor-not-allowed"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Será usado o e-mail do agente como login no ERP.</p>
+                  </div>
+
+                  {/* B — Código da Pessoa no ERP */}
+                  <div>
+                    <Label className="text-gray-900 dark:text-gray-100">Código da Pessoa no ERP</Label>
+                    <div className="flex gap-2 mt-1">
+                      <Input
+                        value={erpPessoaCode}
+                        onChange={(e) => setErpPessoaCode(e.target.value)}
+                        placeholder="Ex: PESSOA123"
+                        className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleBuscarOuCriarPessoaErp}
+                        disabled={loadingErpPessoa}
+                        className="bg-violet-600 hover:bg-violet-700 text-white shrink-0"
+                      >
+                        {loadingErpPessoa ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <UserPlus className="w-4 h-4" />
+                        )}
+                        <span className="ml-1.5 hidden sm:inline">
+                          {loadingErpPessoa ? "Buscando..." : "Buscar/Criar"}
+                        </span>
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Código da pessoa vinculada a este usuário no ERP. Clique no botão para buscar pelo CPF ou criar automaticamente.
+                    </p>
+                  </div>
+
+                  {/* C — Indicador de status da vinculação ERP */}
+                  <div>
+                    {formData.erpAgentId ? (
+                      <Badge className="bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300">
+                        Usuário ERP vinculado (ID: {formData.erpAgentId})
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800">
+                        Sem usuário ERP vinculado
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </div>
 
