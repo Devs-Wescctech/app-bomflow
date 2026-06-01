@@ -12,3 +12,9 @@ id = "n_tXX5fT3udvRfqx8RLTF"
 uri = "file://analise-bom-pastor.pdf"
 type = "pdf"
 title = "Análise de Viabilidade — App Bom Pastor"
+
+[[outputs]]
+id = "azC3H5xfJb8lDpy3TzQ7t"
+uri = "file://docs/criacao-de-logins.md"
+type = "text"
+title = "Criação de Logins — Wescctech CRM"
