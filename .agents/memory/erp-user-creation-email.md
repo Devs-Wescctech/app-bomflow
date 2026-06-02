@@ -20,11 +20,24 @@ duplicate login so nothing persists: ONLY `ativo:"S"` reproduced the email-colli
 (not only synthetic API pessoas), so it is NOT a synthetic-pessoa artifact. Failed creates roll back (no user persists).
 Per the ERP doc, only `login` + `pessoa` are `Requerido: Sim`; everything else (estabelecimento_padrao, copiar_direitos_de,
 menu, grupo, funcoes, sugerir_senha...) is optional. `funcoes` = "Funções do sistema atribuídas ao usuário".
-**Leading hypothesis:** the rights-template user (`copiar_direitos_de`, env `ERP_COPIAR_DIREITOS_DE`, currently `base.upsell`)
-has a `menu` (MENU_VENDEDOR_PAP, estab 104) but GET /Usuarios returns NO `funcoes` field for it — copying an empty/null
-function set is what trips salvarFuncoesUsuario. Likely fix is to point copiar_direitos_de at a real, fully-configured
-working user, or have the ERP admin fix the template's functions. Reaching salvarFuncoesUsuario requires a UNIQUE login
-(a duplicate login short-circuits earlier), so any successful diagnostic persists a real user — cannot dry-run it.
+**RESOLVED — salvarFuncoesUsuario NPE is non-fatal on POST.** Confirmed by live ERP tests:
+- The NPE fires on EVERY POST /Usuarios create (with or without copiar_direitos_de, with or without menu) — it is a
+  server-side ERP bug in the function/rights save routine, NOT a payload problem.
+- BUT the ERP still CREATES the user despite returning HTTP 500 with that NPE. The `menu` sent in the POST body IS applied
+  to the created user even when the NPE is returned.
+- `PUT /Usuarios/{id}` does NOT trip the NPE. `PUT {copiar_direitos_de: "base.upsell"}` returns HTTP 200, so rights are
+  copied via PUT. `PUT {ativo:"N"}` works too (used to deactivate leftover test users).
+
+**Implemented two-step flow** in `backend/src/routes/erpProxy.js` POST /usuario:
+1. POST /Usuarios with `{login, pessoa, estabelecimento_padrao:104, senha_prot, menu:MENU_VENDEDOR_PAP}` (no copiar, no ativo).
+2. If the response is the salvarFuncoesUsuario NPE, fetch the just-created user by login (`fetchUsuarioByLogin`) instead of
+   failing; other errors (duplicate login, email) still propagate as real errors.
+3. PUT /Usuarios/{id} `{copiar_direitos_de: ERP_COPIAR_DIREITOS_DE}` to copy the model user's rights.
+Returns `{id, login, direitosCopiados}`. Env: `ERP_MENU_PADRAO` (default MENU_VENDEDOR_PAP) added.
+**Why:** a duplicate login short-circuits before salvarFuncoesUsuario, so any successful POST persists a real user — cannot
+dry-run; the workaround sidesteps the unfixable server bug by copying rights through PUT (which the bug doesn't affect).
+**Still to confirm with the user:** that PUT copiar_direitos_de truly grants the same permissions as base.upsell in the
+ERP UI (PUT returns 200 but the rights effect can't be verified via GET).
 
 **Two `ativo` caveats to validate:** (1) without `ativo`, confirm new users are created active (ERP default unknown,
 couldn't verify because of the NPE); if they come inactive, may need a follow-up PUT to set `ativo:"S"`. (2) the CPF-reuse
