@@ -60,9 +60,17 @@ own (unique) email*. (Consistent with base.upsell: it HAS an email, so its error
 **Sending email at user-creation time does NOT fix it** — the email on POST /Usuarios attaches to the user, not the
 Pessoa; the empty-email collision on the Pessoa still fires first.
 
-**Still-open blocker — how to register the Pessoa's own EMAIL via API.** Admin says the address type name is `EMAIL`, but
-POST /EnderecosPessoas rejects it: `Valor inválido para o campo Tipo de endereço: EMAIL(!)` (and `E-MAIL` too). That
-generic endpoint only accepts `ENDERECO_COMERCIAL` / `ENDERECO RESIDENCIAL`. Untested candidates: the `e_mail` field on
-POST /Pessoas at creation time (doc says block-import only, but worth verifying), or an ERP-UI-only path. NEXT: confirm
-with admin the exact API way to set the Pessoa EMAIL; if it is `e_mail` on create, the client-side fix is to populate it
-when creating the Pessoa (needs a fresh test Pessoa to verify — only 1 was authorized so far).
+**CONCLUSIVE: there is NO API path to register a Pessoa's own email (all three ruled out empirically):**
+1. `e_mail` on POST /Pessoas → IGNORED on a normal create. Proven: created a Pessoa with `e_mail` populated and the
+   response came back `"meios_contato":[]`; subsequent user creation still failed with the marcelo error. (Doc was right:
+   the field only works in "importação de bloco".)
+2. POST /EnderecosPessoas → rejects every email-like `tipo_endereco` tried: EMAIL, E-MAIL, E_MAIL, EMAIL_NFE, EMAIL NFE,
+   E-MAIL NFE, NFE, CONTATO, WEBSITE, ENDERECO_EMAIL, "E MAIL". It accepts ONLY `ENDERECO_COMERCIAL` / `ENDERECO
+   RESIDENCIAL`. So the configured EMAIL "meio de contato" type is not settable through this generic API.
+3. `email` on POST /Usuarios → attaches to the user, not the Pessoa; the empty-email collision on the Pessoa fires first.
+
+**Therefore the fix is ERP-side, not in our code.** Viable resolutions for the ERP vendor/admin: (a) honor `e_mail` on a
+normal POST /Pessoas (or expose a Meios-de-contato / EMAIL endpoint), (b) register the Pessoa's EMAIL manually in the ERP
+UI before creating the user (manual workaround, not automatable), or (c) adjust the user-creation validation so an
+empty Pessoa email does not collide with the super-user's empty email. Our code already sends a unique email to
+/Usuarios; that alone cannot fix it.
