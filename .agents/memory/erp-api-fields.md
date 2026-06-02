@@ -25,9 +25,9 @@ Returns:
 
 ## POST /Usuarios (create ERP user)
 
-Payload sent: `{ login, pessoa, ativo, super_usuario, observacoes }` — backend injects `estabelecimento_padrao`, `senha_prot`, `copiar_direitos_de`.
-
-ERP validation: rejects if `login` email is already registered to another user ("e-mail já sendo utilizado").
+Payload sent: `{ login, pessoa }` — backend injects `estabelecimento_padrao` (104), `senha_prot`, `copiar_direitos_de`.
+Do NOT send `ativo`: it triggers the Pessoa email-collision validation and blocks creation (see erp-user-creation-email.md).
+`email`, `super_usuario`, `observacoes` are not required and are no longer sent.
 
 ## How to apply
 

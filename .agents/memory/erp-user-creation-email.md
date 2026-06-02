@@ -1,7 +1,34 @@
 ---
 name: ERP user creation email conflict
-description: Why ERP (Bom Pastor) POST /Usuarios always fails with an "e-mail já utilizado" error, and what cannot fix it from our payload.
+description: ERP (Bom Pastor) POST /Usuarios "e-mail já utilizado" error is triggered by the `ativo` field; omitting it bypasses the check. A separate salvarFuncoesUsuario NPE then surfaces on synthetic pessoas.
 ---
+
+## ⭐ BREAKTHROUGH (latest, supersedes the "ERP-side only" conclusion below)
+
+The empty-email collision on `POST /Usuarios` is **triggered by sending the `ativo` field**. Proven by adding
+one field at a time to a minimal payload (login+pessoa+estabelecimento_padrao) against an email-less pessoa, with a
+duplicate login so nothing persists: ONLY `ativo:"S"` reproduced the email-collision error; `senha_prot`, `super_usuario`,
+`observacoes`, `copiar_direitos_de`, and `email` all passed the email check (failed only on the intended duplicate-login).
+
+**Fix applied client-side:** stop sending `ativo` (it is `Requerido: Não` in the ERP doc). The proxy
+(`backend/src/routes/erpProxy.js` POST /usuario) and `src/pages/Agents.jsx` now send only the necessary documented fields:
+`login`, `pessoa`, `estabelecimento_padrao` (always 104) + `senha_prot` + `copiar_direitos_de`. No `ativo`, `email`,
+`super_usuario`, `observacoes`.
+
+**New blocker uncovered once `ativo` is removed:** a real create then fails with
+`null pointer em br.com.eligo.intf.CadUsuarios.salvarFuncoesUsuario linha 2457`. This NPE is **independent of the payload**
+(reproduced with/without copiar_direitos_de, with numeric copiar id, with `menu`, with `sugerir_senha`). It appears tied to
+**synthetic test pessoas created via API** (only cpf/nome/tipo, no colaborador/establishment setup) — NOT to a real
+ERP-registered person. Failed creates roll back (no user persists). **Open question:** whether a real new CPF also NPEs —
+needs validation by creating ONE real agent through the UI. If it does, that NPE is an ERP-side bug for the vendor.
+
+**Two `ativo` caveats to validate:** (1) without `ativo`, confirm new users are created active (ERP default unknown,
+couldn't verify because of the NPE); if they come inactive, may need a follow-up PUT to set `ativo:"S"`. (2) the CPF-reuse
+path (existing real pessoa) should work cleanly — real pessoas have their own email + setup.
+
+---
+
+## Original diagnosis (kept for history — the "intrinsic to the Pessoa / ERP-side only" theory was true ONLY while `ativo` was being sent)
 
 Creating a login in the Bom Pastor ERP via `POST /Usuarios` (proxied in `backend/src/routes/erpProxy.js`) fails 500 with
 "Pessoa X não pode ser utilizada pois possui um e-mail já sendo utilizado pelo usuário <conta>".
@@ -37,7 +64,7 @@ from the admin and used on every request (it identifies the caller, never the us
 is not a thing).
 
 **Token-owner ruled out (confirmed by the ERP admin):** the tested token belongs to a *separate* service account
-(`acesso.api`) that even had its own exclusive email added — and creation STILL stamps the same super-user's email. So the
+(a dedicated API service account) that even had its own exclusive email added — and creation STILL stamps the same super-user's email. So the
 fallback is NOT the caller's email; it is a fixed ERP-side default. This is the strongest possible isolation.
 
 **Why we cannot set the Pessoa's email via API (all doc-confirmed):**
@@ -47,22 +74,22 @@ fallback is NOT the caller's email; it is a fixed ERP-side default. This is the 
 - POST /EnderecosPessoas only exposes `tipo_endereco` values `ENDERECO_COMERCIAL` / `ENDERECO RESIDENCIAL` — there is no
   documented email type, and `"E-MAIL"` is rejected. The actual configured email-type name is an ERP preference we don't
   know. If the admin gives us that exact configured email `tipo_endereco` value, we could POST the Pessoa's own email and
-  the marcelo fallback would never trigger (potential client-side fix).
+  the empty-email fallback would never trigger (potential client-side fix).
 
-**REFINED ROOT CAUSE (proven, supersedes the "auto-assign" theory):** the "marcelo" collision is *intrinsic to the
-Pessoa* and independent of our payload. Controlled tests on one email-less Pessoa, all → identical marcelo error:
+**REFINED ROOT CAUSE (proven, supersedes the "auto-assign" theory):** the super-user collision is *intrinsic to the
+Pessoa* and independent of our payload. Controlled tests on one email-less Pessoa, all → identical super-user error:
 unique email sent / no email sent / `copiar_direitos_de` removed / unique login. So it is NOT the caller email, NOT
 copiar_direitos_de, NOT the login, NOT the email we POST to /Usuarios. It is an **empty-email collision**: a Pessoa with
-no email of its own collides with the super-user `marcelo.almeida` (whose user record apparently has an empty/default
+no email of its own collides with the super-user account (whose user record apparently has an empty/default
 email). The admin's wording confirms it: there is no auto-assign rule — the ERP simply *requires the Pessoa to have its
-own (unique) email*. (Consistent with base.upsell: it HAS an email, so its error named base.upsell, not marcelo.)
+own (unique) email*. (Consistent with base.upsell: it HAS an email, so its error named base.upsell, not the super-user.)
 
 **Sending email at user-creation time does NOT fix it** — the email on POST /Usuarios attaches to the user, not the
 Pessoa; the empty-email collision on the Pessoa still fires first.
 
 **CONCLUSIVE: there is NO API path to register a Pessoa's own email (all three ruled out empirically):**
 1. `e_mail` on POST /Pessoas → IGNORED on a normal create. Proven: created a Pessoa with `e_mail` populated and the
-   response came back `"meios_contato":[]`; subsequent user creation still failed with the marcelo error. (Doc was right:
+   response came back `"meios_contato":[]`; subsequent user creation still failed with the email-collision error. (Doc was right:
    the field only works in "importação de bloco".)
 2. POST /EnderecosPessoas → rejects every email-like `tipo_endereco` tried: EMAIL, E-MAIL, E_MAIL, EMAIL_NFE, EMAIL NFE,
    E-MAIL NFE, NFE, CONTATO, WEBSITE, ENDERECO_EMAIL, "E MAIL". It accepts ONLY `ENDERECO_COMERCIAL` / `ENDERECO

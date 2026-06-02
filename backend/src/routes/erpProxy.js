@@ -85,27 +85,25 @@ router.post('/pessoa', authMiddleware, async (req, res) => {
 
 // POST /api/erp/usuario
 // Cria um Usuário no ERP vinculado a uma Pessoa.
-// O frontend envia: { login, email, pessoa, ativo, super_usuario, observacoes }
-// O backend injeta os defaults sensíveis (estabelecimento, senha, direitos).
-// NOTA: copiar_direitos_de é essencial p/ herdar permissões do modelo base.upsell.
-// O email enviado deve ser o informado no BomFlow (não pode colidir com outro usuário).
+// Envia SOMENTE os campos necessários conforme a documentação do ERP:
+//   obrigatórios -> login, pessoa, estabelecimento_padrao (sempre 104)
+//   + senha_prot e copiar_direitos_de (herança de permissões do modelo)
+// IMPORTANTE: NÃO enviar `ativo`. Esse campo dispara, no ERP, a validação do
+// e-mail da Pessoa (colisão de e-mail vazio com outro usuário) e bloqueia a
+// criação. Campos não exigidos (email, super_usuario, observacoes) ficam de fora.
 router.post('/usuario', authMiddleware, async (req, res) => {
   const token = getToken(res);
   if (!token) return;
 
   try {
-    const { login, email, pessoa, ativo, super_usuario, observacoes } = req.body;
+    const { login, pessoa } = req.body;
 
     const payload = {
       login: (login || "").toLowerCase().trim(),
       pessoa,
       estabelecimento_padrao: Number(ERP_ESTABELECIMENTO_PADRAO),
       senha_prot: ERP_SENHA_PADRAO,
-      ativo: ativo || "S",
-      super_usuario: super_usuario || "N",
-      observacoes: observacoes || "Criado via BomFlow",
       copiar_direitos_de: ERP_COPIAR_DIREITOS_DE,
-      ...(email ? { email: email.trim() } : {}),
     };
 
     console.log('ERP /Usuarios payload:', JSON.stringify({ ...payload, senha_prot: '***' }, null, 2));

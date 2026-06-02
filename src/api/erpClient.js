@@ -46,8 +46,8 @@ export async function createPessoaErp(payload) {
 // ------------------------------------------------------------
 // createUsuarioErp(payload)
 // Cria um Usuário no ERP vinculado a uma Pessoa.
-// payload: { login, pessoa, estabelecimento_padrao, senha_prot,
-//            copiar_direitos_de, ativo, super_usuario, observacoes }
+// payload: { login, pessoa }  (o backend injeta estabelecimento_padrao,
+//            senha_prot e copiar_direitos_de). NÃO enviar `ativo`.
 // Lança Error se o ERP retornar erro.
 // ------------------------------------------------------------
 export async function createUsuarioErp(payload) {

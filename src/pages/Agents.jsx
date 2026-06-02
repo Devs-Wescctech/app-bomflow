@@ -359,23 +359,13 @@ export default function Agents() {
               keepSheetOpen = true;
               return;
             }
-            // Monta email ERP — obrigatório
-            const emailErp = (
-              (formData.erpEmail || "").trim() ||
-              (formData.email || "").trim()
-            );
-            if (!emailErp) {
-              toast.error("O agente precisa ter um e-mail para criar usuário no ERP.");
-              keepSheetOpen = true;
-              return;
-            }
+            // Envia SOMENTE os campos necessários ao ERP (login + pessoa).
+            // estabelecimento_padrao (104), senha_prot e copiar_direitos_de são
+            // injetados pelo backend. `ativo` é omitido de propósito: ele dispara
+            // a validação de e-mail da Pessoa no ERP e bloqueia a criação.
             const result = await createUsuarioErp({
               login: loginErp,
-              email: emailErp,
               pessoa: codigoPessoa,
-              ativo: "S",
-              super_usuario: "N",
-              observacoes: "Criado via BomFlow"
             });
             const erpUserId = result?.id || result?.usuario || null;
             if (erpUserId) {
@@ -1717,7 +1707,7 @@ export default function Agents() {
                       className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Este e-mail é cadastrado no ERP. Se houver conflito de e-mail já existente, ajuste aqui sem alterar o e-mail real do agente no BomFlow.
+                      Campo informativo. O e-mail não é mais enviado ao ERP na criação do usuário (o ERP exige apenas login e pessoa).
                     </p>
                   </div>
 
