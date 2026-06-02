@@ -87,15 +87,27 @@ router.post('/pessoa', authMiddleware, async (req, res) => {
 // Cria um Usuário no ERP vinculado a uma Pessoa.
 // O frontend envia: { login, email, pessoa, ativo, super_usuario, observacoes }
 // O backend injeta os defaults sensíveis (estabelecimento, senha, direitos).
-// NOTA: copiar_direitos_de é essencial p/ herdar permissões do modelo base.upsell.
-// O email enviado deve ser o informado no BomFlow (não pode colidir com outro usuário).
+//
+// ABORDAGEM EM DUAS ETAPAS (necessária por causa do comportamento do ERP):
+//   1) POST /Usuarios COM o email do BomFlow e SEM copiar_direitos_de.
+//      O copiar_direitos_de copia "direitos de acesso E preferências" do modelo
+//      (base.upsell) e, nessa cópia, arrasta um e-mail que colide com outro
+//      usuário do ERP (marcelo.almeida), derrubando a criação com 500.
+//   2) PUT /Usuarios/{id} aplicando copiar_direitos_de no usuário já criado,
+//      para herdar as permissões do modelo SEM sobrescrever o e-mail informado.
 router.post('/usuario', authMiddleware, async (req, res) => {
   const token = getToken(res);
   if (!token) return;
 
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
+
   try {
     const { login, email, pessoa, ativo, super_usuario, observacoes } = req.body;
 
+    // ---- ETAPA 1: cria o usuário com o e-mail do BomFlow (sem copiar_direitos_de) ----
     const payload = {
       login: (login || "").toLowerCase().trim(),
       pessoa,
@@ -104,28 +116,49 @@ router.post('/usuario', authMiddleware, async (req, res) => {
       ativo: ativo || "S",
       super_usuario: super_usuario || "N",
       observacoes: observacoes || "Criado via BomFlow",
-      copiar_direitos_de: ERP_COPIAR_DIREITOS_DE,
       ...(email ? { email: email.trim() } : {}),
     };
 
-    console.log('ERP /Usuarios payload:', JSON.stringify(payload, null, 2));
-    const url = `${ERP_BASE}/Usuarios`;
-    const response = await fetch(url, {
+    console.log('[ERP usuario][etapa 1] POST /Usuarios payload:', JSON.stringify(payload, null, 2));
+    const response = await fetch(`${ERP_BASE}/Usuarios`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify(payload)
+      headers: authHeaders,
+      body: JSON.stringify(payload),
     });
     const data = await response.json();
-    console.log('[ERP POST /usuario] status HTTP:', response.status);
-    console.log('[ERP POST /usuario] resposta ERP:', JSON.stringify(data).substring(0, 500));
-    console.error('ERP /Usuarios erro debug:', { status: response.status, data });
+    console.log('[ERP usuario][etapa 1] status HTTP:', response.status);
+    console.log('[ERP usuario][etapa 1] resposta ERP:', JSON.stringify(data).substring(0, 500));
     if (!response.ok || data?.error) {
+      console.error('[ERP usuario][etapa 1] erro debug:', { status: response.status, data });
       return res.status(response.ok ? 400 : response.status).json({ error: data?.error || 'Erro ao criar usuário no ERP.' });
     }
-    return res.json(data);
+
+    // ---- ETAPA 2: aplica os direitos do modelo (base.upsell) no usuário recém-criado ----
+    const usuarioId = data?.id ?? data?.usuario ?? data?.login;
+    let direitos = { ok: false, status: null, data: null };
+    if (usuarioId && ERP_COPIAR_DIREITOS_DE) {
+      try {
+        const putBody = { copiar_direitos_de: ERP_COPIAR_DIREITOS_DE };
+        console.log(`[ERP usuario][etapa 2] PUT /Usuarios/${usuarioId} body:`, JSON.stringify(putBody));
+        const putResp = await fetch(`${ERP_BASE}/Usuarios/${encodeURIComponent(usuarioId)}`, {
+          method: 'PUT',
+          headers: authHeaders,
+          body: JSON.stringify(putBody),
+        });
+        const putData = await putResp.json().catch(() => ({}));
+        direitos = { ok: putResp.ok && !putData?.error, status: putResp.status, data: putData };
+        console.log('[ERP usuario][etapa 2] status HTTP:', putResp.status);
+        console.log('[ERP usuario][etapa 2] resposta ERP:', JSON.stringify(putData).substring(0, 500));
+      } catch (putErr) {
+        direitos = { ok: false, status: null, data: { error: putErr.message } };
+        console.error('[ERP usuario][etapa 2] erro ao copiar direitos:', putErr.message);
+      }
+    } else {
+      console.warn('[ERP usuario][etapa 2] pulada — sem id do usuário ou sem modelo de direitos.', { usuarioId, modelo: ERP_COPIAR_DIREITOS_DE });
+    }
+
+    // O usuário foi criado com sucesso na etapa 1; a cópia de direitos vai como metadado.
+    return res.json({ ...data, _direitos_copiados: direitos.ok, _direitos_debug: direitos });
   } catch (err) {
     console.error('[ERP Proxy] POST /usuario error:', err.message);
     return res.status(500).json({ error: err.message });
