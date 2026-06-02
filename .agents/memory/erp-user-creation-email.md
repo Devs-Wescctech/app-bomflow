@@ -49,6 +49,20 @@ fallback is NOT the caller's email; it is a fixed ERP-side default. This is the 
   know. If the admin gives us that exact configured email `tipo_endereco` value, we could POST the Pessoa's own email and
   the marcelo fallback would never trigger (potential client-side fix).
 
-**Resolution requires ERP-side action (not our code):** (a) change/remove the fixed default email used for API-created
-users, OR (b) give us the configured email `tipo_endereco` value so we can set the Pessoa's email via /EnderecosPessoas,
-OR (c) adjust the validation / honor the email param. Do not keep adding blind payload workarounds.
+**REFINED ROOT CAUSE (proven, supersedes the "auto-assign" theory):** the "marcelo" collision is *intrinsic to the
+Pessoa* and independent of our payload. Controlled tests on one email-less Pessoa, all → identical marcelo error:
+unique email sent / no email sent / `copiar_direitos_de` removed / unique login. So it is NOT the caller email, NOT
+copiar_direitos_de, NOT the login, NOT the email we POST to /Usuarios. It is an **empty-email collision**: a Pessoa with
+no email of its own collides with the super-user `marcelo.almeida` (whose user record apparently has an empty/default
+email). The admin's wording confirms it: there is no auto-assign rule — the ERP simply *requires the Pessoa to have its
+own (unique) email*. (Consistent with base.upsell: it HAS an email, so its error named base.upsell, not marcelo.)
+
+**Sending email at user-creation time does NOT fix it** — the email on POST /Usuarios attaches to the user, not the
+Pessoa; the empty-email collision on the Pessoa still fires first.
+
+**Still-open blocker — how to register the Pessoa's own EMAIL via API.** Admin says the address type name is `EMAIL`, but
+POST /EnderecosPessoas rejects it: `Valor inválido para o campo Tipo de endereço: EMAIL(!)` (and `E-MAIL` too). That
+generic endpoint only accepts `ENDERECO_COMERCIAL` / `ENDERECO RESIDENCIAL`. Untested candidates: the `e_mail` field on
+POST /Pessoas at creation time (doc says block-import only, but worth verifying), or an ERP-UI-only path. NEXT: confirm
+with admin the exact API way to set the Pessoa EMAIL; if it is `e_mail` on create, the client-side fix is to populate it
+when creating the Pessoa (needs a fresh test Pessoa to verify — only 1 was authorized so far).
