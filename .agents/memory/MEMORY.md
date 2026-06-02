@@ -1,4 +1,4 @@
 - [API key casing](api-key-casing.md) — Express API sends camelCase (convertKeysToCamel); snake_case field access on frontend silently returns undefined. Bit supervisor visibility.
 - [Supervisor visibility](supervisor-visibility.md) — pages defining isAdmin to include 'supervisor'/'sales_supervisor' bypass getVisibleAgents and leak all data; isAdmin must be admin-only.
 - [ERP API fields](erp-api-fields.md) — GET API_CADASTRO_PESSOAS uses `nome_titular`/`id`; POST /Pessoas uses `pessoa` (not `id`) as the code for user creation.
-- [ERP user creation email conflict](erp-user-creation-email.md) — POST /Usuarios always 500s "e-mail já utilizado por marcelo.almeida"; ERP stamps token owner's email on every new Pessoa; not fixable in our payload, needs a dedicated ERP token.
+- [ERP user creation email conflict](erp-user-creation-email.md) — POST /Usuarios always 500s "e-mail já utilizado"; ERP stamps the API token owner's email on every new Pessoa; not fixable in our payload, needs a dedicated ERP token.
