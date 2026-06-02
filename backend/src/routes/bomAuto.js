@@ -154,22 +154,23 @@ router.get('/consulta', authMiddleware, async (req, res) => {
 router.get('/utilizacoes/:documento', authMiddleware, async (req, res) => {
   try {
     const { documento } = req.params;
+    const docNorm = documento.replace(/\D/g, '');
     const countResult = await query(
       `SELECT COUNT(*) FROM bom_auto_atendimentos
-       WHERE documento_cliente = $1
+       WHERE REPLACE(REPLACE(documento_cliente, '.', ''), '-', '') = $1
        AND data_hora >= date_trunc('year', CURRENT_DATE)
        AND data_hora < date_trunc('year', CURRENT_DATE) + interval '1 year'
        AND status_atendimento != 'Cancelado'`,
-      [documento]
+      [docNorm]
     );
     const listResult = await query(
       `SELECT id, protocolo, tipo_servico, status_atendimento, usuario, data_hora
        FROM bom_auto_atendimentos
-       WHERE documento_cliente = $1
+       WHERE REPLACE(REPLACE(documento_cliente, '.', ''), '-', '') = $1
        AND data_hora >= date_trunc('year', CURRENT_DATE)
        AND data_hora < date_trunc('year', CURRENT_DATE) + interval '1 year'
        ORDER BY data_hora DESC`,
-      [documento]
+      [docNorm]
     );
     res.json({ count: parseInt(countResult.rows[0].count, 10), atendimentos: listResult.rows });
   } catch (error) {
