@@ -277,12 +277,6 @@ export default function Agents() {
     }
   });
 
-  /* Auto-gera erpLogin a partir do nome quando o campo estiver vazio */
-  useEffect(() => {
-    if (formData.name && !formData.erpLogin) {
-      setFormData(prev => ({ ...prev, erpLogin: generateErpLogin(prev.name) }));
-    }
-  }, [formData.name]);
 
   const { data: agents = [], isLoading: agentsLoading } = useQuery({
     queryKey: ['agents'],
@@ -346,9 +340,26 @@ export default function Agents() {
             if (!codigoPessoa) {
               throw new Error("ERP não retornou um ID de pessoa válido.");
             }
-            // Monta login e email ERP separados
-            const loginErp = (formData.erpLogin || "").toLowerCase().trim() || formData.email.toLowerCase().trim();
-            const emailErp = (formData.erpEmail || formData.email || "").trim();
+            // Monta login ERP — nunca usa email como fallback
+            const loginErp = (
+              (formData.erpLogin || "").toLowerCase().trim() ||
+              generateErpLogin(formData.name).toLowerCase().trim()
+            );
+            if (!loginErp) {
+              toast.error("Preencha o campo 'Login ERP' antes de salvar.");
+              keepSheetOpen = true;
+              return;
+            }
+            // Monta email ERP — obrigatório
+            const emailErp = (
+              (formData.erpEmail || "").trim() ||
+              (formData.email || "").trim()
+            );
+            if (!emailErp) {
+              toast.error("O agente precisa ter um e-mail para criar usuário no ERP.");
+              keepSheetOpen = true;
+              return;
+            }
             const result = await createUsuarioErp({
               login: loginErp,
               email: emailErp,
@@ -1833,6 +1844,14 @@ export default function Agents() {
                 <Input
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  onBlur={(e) => {
+                    if (!formData.erpLogin && e.target.value) {
+                      setFormData(prev => ({
+                        ...prev,
+                        erpLogin: generateErpLogin(e.target.value)
+                      }));
+                    }
+                  }}
                   placeholder="Nome completo do agente"
                   className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                 />

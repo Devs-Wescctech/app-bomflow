@@ -96,14 +96,15 @@ router.post('/usuario', authMiddleware, async (req, res) => {
 
     const payload = {
       login: (login || "").toLowerCase().trim(),
-      ...(email ? { email: email.trim() } : {}),
       pessoa,
+      estabelecimento_padrao: Number(ERP_ESTABELECIMENTO_PADRAO),
+      senha_prot: ERP_SENHA_PADRAO,
+      copiar_direitos_de: ERP_COPIAR_DIREITOS_DE,
       ativo: ativo || "S",
       super_usuario: super_usuario || "N",
       observacoes: observacoes || "Criado via BomFlow",
-      estabelecimento_padrao: ERP_ESTABELECIMENTO_PADRAO,
-      senha_prot: ERP_SENHA_PADRAO,
-      copiar_direitos_de: ERP_COPIAR_DIREITOS_DE,
+      // email SEMPRE no final — garante que sobrescreve qualquer herança do copiar_direitos_de
+      ...(email ? { email: email.trim() } : {}),
     };
 
     console.log('[ERP POST /usuario] payload enviado (sem senha):', JSON.stringify({ login: payload.login, email: payload.email, pessoa: payload.pessoa, ativo: payload.ativo, estabelecimento_padrao: payload.estabelecimento_padrao, copiar_direitos_de: payload.copiar_direitos_de }));
