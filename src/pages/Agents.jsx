@@ -194,9 +194,9 @@ function generateErpLogin(name) {
   const parts = name.trim().split(/\s+/);
   const firstName = normalize(parts[0] || "");
   const second = normalize(parts[1] || "");
-  const secondInitial = second.charAt(0);
   if (!firstName) return "";
-  return secondInitial ? `${firstName}.${secondInitial}` : firstName;
+  // primeiro nome + "." + segundo nome completo (ex.: "User Teste" -> "user.teste")
+  return second ? `${firstName}.${second}` : firstName;
 }
 
 export default function Agents() {
