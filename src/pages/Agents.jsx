@@ -243,6 +243,9 @@ export default function Agents() {
   const [erpPessoaCode, setErpPessoaCode] = useState("");
   const [loadingErpPessoa, setLoadingErpPessoa] = useState(false);
   const [erpPessoaResult, setErpPessoaResult] = useState(null); // { nome_completo, pessoa } | { notFound: true } | null
+  // Controla se o usuário editou o Login ERP manualmente. Enquanto false, o
+  // Login ERP é gerado automaticamente a partir do campo Nome Completo.
+  const [erpLoginTouched, setErpLoginTouched] = useState(false);
 
   const [agentSearchName, setAgentSearchName] = useState("");
   const [agentFilterType, setAgentFilterType] = useState("all");
@@ -619,6 +622,7 @@ export default function Agents() {
   };
 
   const resetForm = () => {
+    setErpLoginTouched(false);
     setFormData({
       name: "",
       cpf: "",
@@ -738,6 +742,7 @@ export default function Agents() {
 
   const handleEdit = async (agent) => {
     setEditingAgent(agent);
+    setErpLoginTouched(true);
     setFormData({
       name: agent.name || "",
       cpf: agent.cpf || "",
@@ -871,10 +876,15 @@ export default function Agents() {
         setErpPessoaCode(codigoErp);
         setErpPessoaResult(pessoa);
         // Auto-preenche os campos do formulário com dados do ERP
-        setFormData(prev => ({
-          ...prev,
-          name: pessoa.nome_titular || prev.name,
-        }));
+        setFormData(prev => {
+          const nomeErp = pessoa.nome_titular || prev.name;
+          return {
+            ...prev,
+            name: nomeErp,
+            // Login ERP continua derivado do Nome Completo, salvo edição manual.
+            ...(erpLoginTouched ? {} : { erpLogin: generateErpLogin(nomeErp) })
+          };
+        });
         if (codigoErp) {
           toast.success("Pessoa encontrada no ERP: " + pessoa.nome_titular);
         } else {
@@ -1690,7 +1700,10 @@ export default function Agents() {
                     <Label className="text-gray-900 dark:text-gray-100">Login ERP</Label>
                     <Input
                       value={formData.erpLogin}
-                      onChange={(e) => setFormData(prev => ({ ...prev, erpLogin: e.target.value }))}
+                      onChange={(e) => {
+                        setErpLoginTouched(true);
+                        setFormData(prev => ({ ...prev, erpLogin: e.target.value }));
+                      }}
                       placeholder="ex: marcelo.a"
                       className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                     />
@@ -1846,14 +1859,15 @@ export default function Agents() {
                 <Label className="text-gray-900 dark:text-gray-100">Nome Completo *</Label>
                 <Input
                   value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  onBlur={(e) => {
-                    if (!formData.erpLogin && e.target.value) {
-                      setFormData(prev => ({
-                        ...prev,
-                        erpLogin: generateErpLogin(e.target.value)
-                      }));
-                    }
+                  onChange={(e) => {
+                    const novoNome = e.target.value;
+                    setFormData(prev => ({
+                      ...prev,
+                      name: novoNome,
+                      // Enquanto o usuário não editar o Login ERP manualmente,
+                      // ele é sempre derivado do Nome Completo (nunca do e-mail).
+                      ...(erpLoginTouched ? {} : { erpLogin: generateErpLogin(novoNome) })
+                    }));
                   }}
                   placeholder="Nome completo do agente"
                   className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
