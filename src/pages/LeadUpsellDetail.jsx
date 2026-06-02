@@ -52,6 +52,7 @@ import {
   Presentation,
   Users,
   UserPlus,
+  HelpCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -1057,6 +1058,33 @@ export default function LeadUpsellDetail() {
             <div className="flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-blue-600" />
               <h2 className="font-semibold text-gray-900 dark:text-white">Jornada do Lead</h2>
+              <div className="relative group">
+                <button type="button" className="flex items-center justify-center rounded-full text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors focus:outline-none">
+                  <HelpCircle className="w-4 h-4" />
+                </button>
+                <div className="absolute left-0 top-6 z-50 hidden group-hover:block w-80 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl p-4">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Guia das Etapas</p>
+                  <ul className="space-y-3">
+                    {[
+                      { label: "Novo", color: "bg-gray-400", desc: "Lead recém-cadastrado, sem contato realizado.", when: "Mova ao fazer o primeiro contato." },
+                      { label: "Abordado", color: "bg-blue-500", desc: "Primeiro contato feito, mas sem qualificação ainda.", when: "Mova quando o lead demonstrar interesse e informar dados relevantes." },
+                      { label: "Qualificado", color: "bg-purple-500", desc: "Lead avaliado com potencial real de compra.", when: "Mova ao preparar e enviar uma proposta formal." },
+                      { label: "Proposta Enviada", color: "bg-yellow-500", desc: "Proposta encaminhada ao cliente, aguardando retorno.", when: "Mova conforme a decisão do cliente (ganho ou perdido)." },
+                      { label: "Fechado — Ganho", color: "bg-green-500", desc: "Venda concluída com sucesso.", when: "Mova ao confirmar a adesão ou contrato assinado." },
+                      { label: "Fechado — Perdido", color: "bg-red-500", desc: "Negociação encerrada sem conversão.", when: "Mova quando o cliente recusar definitivamente ou não responder após todas as tentativas." },
+                    ].map((s) => (
+                      <li key={s.label} className="flex gap-2.5">
+                        <span className={`mt-1 flex-shrink-0 w-2.5 h-2.5 rounded-full ${s.color}`} />
+                        <div>
+                          <p className="text-xs font-semibold text-gray-800 dark:text-gray-100">{s.label}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{s.desc}</p>
+                          <p className="text-xs text-violet-600 dark:text-violet-400 mt-0.5">{s.when}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
             </div>
             <span className="text-sm text-gray-500">Clique em uma etapa para mover</span>
           </div>
