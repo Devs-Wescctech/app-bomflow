@@ -36,7 +36,7 @@ router.get('/pessoa', authMiddleware, async (req, res) => {
 
     console.log('[ERP GET /pessoa] CPF buscado:', cpf);
     console.log('[ERP GET /pessoa] status HTTP:', response.status);
-    console.log('[ERP GET /pessoa] raw data (primeiros 500 chars):', JSON.stringify(data).substring(0, 500));
+    console.log('ERP GET /Pessoas retorno completo:', JSON.stringify(data, null, 2));
     const results = data?.results || data?.data || (Array.isArray(data) ? data : null);
     const pessoa = results?.[0] ?? null;
     console.log('[ERP GET /pessoa] results.length:', results?.length ?? 'null');
@@ -71,7 +71,7 @@ router.post('/pessoa', authMiddleware, async (req, res) => {
       body: JSON.stringify(body)
     });
     const data = await response.json();
-    console.log('[ERP POST /pessoa] resposta completa:', JSON.stringify(data).substring(0, 800));
+    console.log('ERP POST /Pessoas retorno completo:', JSON.stringify(data, null, 2));
     if (!response.ok || data?.error) {
       return res.status(response.ok ? 400 : response.status).json({ error: data?.error || 'Erro ao criar pessoa no ERP.' });
     }

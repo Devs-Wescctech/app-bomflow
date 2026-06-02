@@ -328,14 +328,23 @@ export default function Agents() {
           try {
             let codigoPessoa = erpPessoaCode;
             // Se CPF não estava no ERP, cria a pessoa primeiro
-            if (!codigoPessoa && erpPessoaResult?.notFound) {
-              const criada = await createPessoaErp({
-                tipo_pessoa: "Física",
-                nome_completo: formData.name.toUpperCase(),
-                cpf: formData.cpf,
-                situacao: "A",
-              });
-              codigoPessoa = String(criada.pessoa || "");
+            if (!codigoPessoa) {
+              if (erpPessoaResult?.notFound) {
+                const criada = await createPessoaErp({
+                  tipo_pessoa: "Física",
+                  nome_completo: formData.name.toUpperCase(),
+                  cpf: formData.cpf,
+                  situacao: "A",
+                });
+                codigoPessoa = String(criada.pessoa || "");
+                setErpPessoaCode(codigoPessoa);
+              } else {
+                toast.error(
+                  'Use o botão "Consultar ERP" antes de salvar para identificar ou criar a Pessoa no ERP.'
+                );
+                keepSheetOpen = true;
+                return;
+              }
             }
             if (!codigoPessoa) {
               throw new Error("ERP não retornou um ID de pessoa válido.");
