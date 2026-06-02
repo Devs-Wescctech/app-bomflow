@@ -375,24 +375,26 @@ export default function Agents() {
             toast.success('Agente criado e usuário ERP vinculado com sucesso!');
           } catch (erpError) {
             console.error('ERRO createUsuarioErp debug:', erpError);
-            const msgErp = (erpError.message || "").replace(/<[^>]+>/g, "");
-            // Detecta conflito de login ou e-mail no ERP
+            const msgErpLimpa = (erpError.message || "")
+              .replace(/<[^>]+>/g, "")
+              .trim();
+            // Detecta conflito de login, e-mail ou Pessoa já vinculada no ERP
             const isDuplicate =
-              /utilizado pelo usu[aá]rio/i.test(msgErp) ||
-              /j[aá] pertence ao usu[aá]rio/i.test(msgErp) ||
-              /j[aá] est[aá] sendo utilizado/i.test(msgErp) ||
-              /login.*j[aá]/i.test(msgErp) ||
-              /email.*j[aá]/i.test(msgErp);
+              /utilizado pelo usu[aá]rio/i.test(msgErpLimpa) ||
+              /j[aá] pertence ao usu[aá]rio/i.test(msgErpLimpa) ||
+              /j[aá] est[aá] sendo utilizado/i.test(msgErpLimpa) ||
+              /n[aã]o pode ser utilizada pois poss?u[ií] um e-mail/i.test(msgErpLimpa);
             if (isDuplicate) {
               keepSheetOpen = true;
               // Muda para modo edição para que o próximo save seja um UPDATE
               setEditingAgent(novoAgente);
               toast.error(
-                'Login ou e-mail ERP já existentes. Edite os campos "Login ERP" e/ou "Email ERP" para valores únicos e salve novamente.',
-                { duration: 10000 }
+                `Erro no ERP: ${msgErpLimpa}. ` +
+                'Verifique se esta Pessoa já está vinculada a outro usuário no ERP, ou use um CPF/Pessoa diferente.',
+                { duration: 15000 }
               );
             } else {
-              toast.error('Agente criado no BomFlow, mas erro ao vincular ERP: ' + msgErp);
+              toast.error('Agente criado no BomFlow, mas erro ao vincular ERP: ' + msgErpLimpa);
             }
           }
         } else {

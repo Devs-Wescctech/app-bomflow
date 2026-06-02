@@ -99,15 +99,14 @@ router.post('/usuario', authMiddleware, async (req, res) => {
       pessoa,
       estabelecimento_padrao: Number(ERP_ESTABELECIMENTO_PADRAO),
       senha_prot: ERP_SENHA_PADRAO,
-      copiar_direitos_de: ERP_COPIAR_DIREITOS_DE,
+      // copiar_direitos_de: ERP_COPIAR_DIREITOS_DE, // TEMPORARIAMENTE COMENTADO — herdava e-mail conflitante
       ativo: ativo || "S",
       super_usuario: super_usuario || "N",
       observacoes: observacoes || "Criado via BomFlow",
-      // email SEMPRE no final — garante que sobrescreve qualquer herança do copiar_direitos_de
       ...(email ? { email: email.trim() } : {}),
     };
 
-    console.log('[ERP POST /usuario] payload enviado (sem senha):', JSON.stringify({ login: payload.login, email: payload.email, pessoa: payload.pessoa, ativo: payload.ativo, estabelecimento_padrao: payload.estabelecimento_padrao, copiar_direitos_de: payload.copiar_direitos_de }));
+    console.log('ERP /Usuarios payload:', JSON.stringify(payload, null, 2));
     const url = `${ERP_BASE}/Usuarios`;
     const response = await fetch(url, {
       method: 'POST',
