@@ -629,18 +629,13 @@ export default function BomAutoConsulta() {
   async function handleDownloadTermo(at) {
     setDownloadingId(at.id);
     try {
-      const res = await fetch(`${API_BASE}/bom-auto/atendimentos/${at.id}`, {
-        headers: { ...getAuthHeaders() },
-      });
-      if (!res.ok) throw new Error('Não foi possível carregar a Autorização.');
-      const fullAt = await res.json();
       const termoData = {
-        local: fullAt.termo_local || '',
-        rua: fullAt.termo_rua || '',
-        valores: fullAt.termo_valores_combinados || '',
-        descricao: fullAt.termo_descricao_produto || '',
+        local: at.termo_local || '',
+        rua: at.termo_rua || '',
+        valores: at.termo_valores_combinados || '',
+        descricao: at.termo_descricao_produto || '',
       };
-      await exportTermoPDF(fullAt, clientData, termoData);
+      await exportTermoPDF(at, clientData, termoData);
     } catch (err) {
       toast({ title: 'Erro', description: err.message, variant: 'destructive' });
     } finally {
