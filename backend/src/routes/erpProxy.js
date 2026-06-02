@@ -86,12 +86,16 @@ router.post('/pessoa', authMiddleware, async (req, res) => {
 // Cria um Usuário no ERP vinculado a uma Pessoa.
 // O frontend envia: { login, pessoa, ativo, super_usuario, observacoes }
 // O backend injeta os defaults sensíveis (estabelecimento, senha, direitos).
+// NOTA: o campo `email` é OPCIONAL na API do ERP e a unicidade do e-mail é
+// validada no nível da Pessoa/auth (RTAUTH_PESS). Enviar um e-mail já em uso
+// por outro usuário (ex.: planosrecebidos@yahoo.com.br -> marcelo.almeida)
+// faz o POST /Usuarios falhar. Por isso NÃO enviamos `email` ao ERP.
 router.post('/usuario', authMiddleware, async (req, res) => {
   const token = getToken(res);
   if (!token) return;
 
   try {
-    const { login, email, pessoa, ativo, super_usuario, observacoes } = req.body;
+    const { login, pessoa, ativo, super_usuario, observacoes } = req.body;
 
     const payload = {
       login: (login || "").toLowerCase().trim(),
@@ -101,7 +105,6 @@ router.post('/usuario', authMiddleware, async (req, res) => {
       ativo: ativo || "S",
       super_usuario: super_usuario || "N",
       observacoes: observacoes || "Criado via BomFlow",
-      ...(email ? { email: email.trim() } : {}),
     };
 
     console.log('ERP /Usuarios payload:', JSON.stringify(payload, null, 2));
