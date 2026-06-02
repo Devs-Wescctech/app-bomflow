@@ -1671,6 +1671,24 @@ export default function LeadUpsellDetail() {
                 </div>
 
                 <div>
+                  <Label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">CPF</Label>
+                  <Input
+                    value={editedLead.cpf !== undefined ? editedLead.cpf : (lead.cpf || "")}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, '').slice(0, 11);
+                      let masked = digits;
+                      if (digits.length > 9) masked = `${digits.slice(0,3)}.${digits.slice(3,6)}.${digits.slice(6,9)}-${digits.slice(9)}`;
+                      else if (digits.length > 6) masked = `${digits.slice(0,3)}.${digits.slice(3,6)}.${digits.slice(6)}`;
+                      else if (digits.length > 3) masked = `${digits.slice(0,3)}.${digits.slice(3)}`;
+                      handleFieldChange('cpf', masked);
+                    }}
+                    placeholder="000.000.000-00"
+                    maxLength={14}
+                    className="mt-1.5 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
                   <Label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Telefone</Label>
                   <div className="flex gap-2 mt-1.5">
                     <Input
