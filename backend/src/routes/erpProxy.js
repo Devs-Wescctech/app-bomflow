@@ -7,7 +7,6 @@ const ERP_BASE = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api';
 
 const ERP_ESTABELECIMENTO_PADRAO = process.env.ERP_ESTABELECIMENTO_PADRAO || 104;
 const ERP_SENHA_PADRAO           = process.env.ERP_SENHA_PADRAO || 'bp@2026';
-const ERP_COPIAR_DIREITOS_DE     = process.env.ERP_COPIAR_DIREITOS_DE || 'base.upsell';
 
 function getToken(res) {
   const token = process.env.ERP_AUTH_TOKEN;
@@ -99,7 +98,6 @@ router.post('/usuario', authMiddleware, async (req, res) => {
       pessoa,
       estabelecimento_padrao: Number(ERP_ESTABELECIMENTO_PADRAO),
       senha_prot: ERP_SENHA_PADRAO,
-      // copiar_direitos_de: ERP_COPIAR_DIREITOS_DE, // TEMPORARIAMENTE COMENTADO — herdava e-mail conflitante
       ativo: ativo || "S",
       super_usuario: super_usuario || "N",
       observacoes: observacoes || "Criado via BomFlow",

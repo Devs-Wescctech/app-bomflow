@@ -389,8 +389,7 @@ export default function Agents() {
               // Muda para modo edição para que o próximo save seja um UPDATE
               setEditingAgent(novoAgente);
               toast.error(
-                `Erro no ERP: ${msgErpLimpa}. ` +
-                'Verifique se esta Pessoa já está vinculada a outro usuário no ERP, ou use um CPF/Pessoa diferente.',
+                `Erro no ERP: ${msgErpLimpa}`,
                 { duration: 15000 }
               );
             } else {
