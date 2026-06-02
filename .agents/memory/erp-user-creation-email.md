@@ -25,13 +25,16 @@ created through the API, so the user-creation uniqueness check always collides w
 **The only working reference user was created through the ERP screen (UI), not the API** — the UI sets the Pessoa's own
 email. There is no documented API endpoint to set a Pessoa's email/contact.
 
-**A second, different integration token was later tested (read-only diagnosis, secret untouched):** it authenticates fine
-(GET returns 200) but reproduces the *identical* collision — creating a user for a fresh email-less Pessoa still fails
-naming the same super-user account. This shows the stamped email is a system/config default for API-created users, not
-strictly a property of which token account calls. So simply swapping the token (without it being a dedicated service
-account whose email does not collide) does NOT fix it. The ERP doc confirms there is no token-generation endpoint: the
-Bearer token is a single static integration credential requested from the admin and used on every request (it identifies
-the caller, never the user being created — so "one token per login" is not a thing).
+**A second integration token was tested (read-only diagnosis, secret untouched), including the two strongest isolations:**
+(1) an *exclusive email was added to that token's own service account*, and (2) a *brand-new Pessoa was created via POST
+/Pessoas using that very token* and then used for the user-creation attempt. BOTH still fail naming the same super-user
+account. This is conclusive: the stamped email is a **fixed GLOBAL default inside the ERP** for API-created users — it does
+NOT come from the token's account, nor from the Pessoa, nor from anything we send. A fresh Pessoa always returns
+`meios_contato: []` and the ERP falls back to that global default, which collides with the default account. Therefore no
+client-side change (token swap, adding an email to the token account, fresh pessoa, payload tweaks) can fix it. The ERP doc
+also confirms there is no token-generation endpoint: the Bearer token is a single static integration credential requested
+from the admin and used on every request (it identifies the caller, never the user being created — "one token per login"
+is not a thing).
 
 **Resolution requires ERP-side action (not our code):** get a dedicated integration token not tied to a real user's
 email, OR have the ERP team adjust the validation / expose a way to set a unique Pessoa email via API. Do not keep
