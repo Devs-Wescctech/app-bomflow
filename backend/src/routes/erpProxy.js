@@ -120,6 +120,7 @@ router.post('/usuario', authMiddleware, async (req, res) => {
     const data = await response.json();
     console.log('[ERP POST /usuario] status HTTP:', response.status);
     console.log('[ERP POST /usuario] resposta ERP:', JSON.stringify(data).substring(0, 500));
+    console.error('ERP /Usuarios erro debug:', { status: response.status, data });
     if (!response.ok || data?.error) {
       return res.status(response.ok ? 400 : response.status).json({ error: data?.error || 'Erro ao criar usuário no ERP.' });
     }

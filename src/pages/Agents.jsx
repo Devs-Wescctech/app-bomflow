@@ -374,6 +374,7 @@ export default function Agents() {
             }
             toast.success('Agente criado e usuário ERP vinculado com sucesso!');
           } catch (erpError) {
+            console.error('ERRO createUsuarioErp debug:', erpError);
             const msgErp = (erpError.message || "").replace(/<[^>]+>/g, "");
             // Detecta conflito de login ou e-mail no ERP
             const isDuplicate =
