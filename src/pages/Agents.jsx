@@ -195,8 +195,10 @@ function generateErpLogin(name) {
   const firstName = normalize(parts[0] || "");
   const second = normalize(parts[1] || "");
   if (!firstName) return "";
-  // primeiro nome + "." + segundo nome completo (ex.: "User Teste" -> "user.teste")
-  return second ? `${firstName}.${second}` : firstName;
+  // prefixo "user." + primeiro nome + "." + segundo nome completo
+  // ex.: "João Silva" -> "user.joao.silva" | "Maria" -> "user.maria"
+  const base = second ? `${firstName}.${second}` : firstName;
+  return `user.${base}`;
 }
 
 export default function Agents() {
