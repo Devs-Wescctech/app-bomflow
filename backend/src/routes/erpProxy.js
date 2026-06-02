@@ -162,7 +162,6 @@ router.post('/usuario', authMiddleware, async (req, res) => {
       estabelecimento_padrao: Number(ERP_ESTABELECIMENTO_PADRAO),
       senha_prot: ERP_SENHA_PADRAO,
       menu: ERP_MENU_PADRAO,
-      acesso_todos_estabelecimentos: 'S',
     };
     console.log('ERP /Usuarios payload:', JSON.stringify({ ...createPayload, senha_prot: '***' }, null, 2));
     const createResp = await fetch(`${ERP_BASE}/Usuarios`, {

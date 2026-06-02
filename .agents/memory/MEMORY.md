@@ -1,4 +1,5 @@
 - [API key casing](api-key-casing.md) — Express API sends camelCase (convertKeysToCamel); snake_case field access on frontend silently returns undefined. Bit supervisor visibility.
 - [Supervisor visibility](supervisor-visibility.md) — pages defining isAdmin to include 'supervisor'/'sales_supervisor' bypass getVisibleAgents and leak all data; isAdmin must be admin-only.
+- [ERP Usuarios API](erp-usuarios-api.md) — acesso_todos_estabelecimentos é read-only via API REST (POST/PUT retornam 200 mas ignoram); só seta pela tela web do ERP.
 - [ERP API fields](erp-api-fields.md) — GET API_CADASTRO_PESSOAS uses `nome_titular`/`id`; POST /Pessoas uses `pessoa` (not `id`) as the code for user creation.
 - [ERP user creation email conflict](erp-user-creation-email.md) — POST /Usuarios "e-mail já utilizado" is triggered by sending `ativo`; omit it to pass the check. A separate salvarFuncoesUsuario NPE then surfaces on synthetic API-created pessoas.
