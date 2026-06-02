@@ -19,6 +19,15 @@ function getToken(res) {
   return token;
 }
 
+// Normaliza um CPF para o formato que o ERP usa/exige (000.000.000-00).
+// A view API_CADASTRO_PESSOAS só encontra a pessoa com o CPF formatado
+// (com dígitos puros retorna 0), então padronizamos aqui.
+function formatCpf(cpf) {
+  const digits = String(cpf ?? '').replace(/\D/g, '');
+  if (digits.length !== 11) return String(cpf ?? '');
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
 // Busca um usuário do ERP pelo login (usado para recuperar o registro mesmo
 // quando o POST retorna o NPE de salvarFuncoesUsuario, pois o usuário acaba
 // sendo criado mesmo assim).
@@ -49,7 +58,10 @@ router.get('/pessoa', authMiddleware, async (req, res) => {
   if (!cpf) return res.status(400).json({ error: 'CPF obrigatório.' });
 
   try {
-    const url = `${ERP_BASE}/API_CADASTRO_PESSOAS?cpf=${encodeURIComponent(cpf)}`;
+    // A view API_CADASTRO_PESSOAS exige o CPF formatado (000.000.000-00);
+    // com dígitos puros ela retorna 0. Normaliza para não depender do frontend.
+    const cpfFormatado = formatCpf(cpf);
+    const url = `${ERP_BASE}/API_CADASTRO_PESSOAS?cpf=${encodeURIComponent(cpfFormatado)}`;
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -79,8 +91,24 @@ router.post('/pessoa', authMiddleware, async (req, res) => {
   if (!token) return;
 
   try {
-    // Remove campo auxiliar 'email' — não vai pro ERP
-    const { email: _email, ...body } = req.body;
+    // Remove campo auxiliar 'email' — não vai pro ERP.
+    // O CPF NÃO é um campo raiz no objeto /Pessoas do ERP: ele faz parte do
+    // array `documentos` (item { tipo_documento: 'CPF', documento: '000.000.000-00' }).
+    // Enviar `cpf` na raiz faz o ERP gravar a pessoa mas ignorar o CPF, deixando
+    // a pessoa "não encontrável" por CPF. Por isso convertemos aqui.
+    const { email: _email, cpf, ...rest } = req.body;
+    const body = { ...rest };
+
+    if (cpf) {
+      // O ERP armazena o CPF formatado (000.000.000-00), aceitando entrada
+      // já formatada ou só com dígitos.
+      const cpfFormatado = formatCpf(cpf);
+      const documentos = Array.isArray(body.documentos) ? [...body.documentos] : [];
+      if (!documentos.some((d) => String(d?.tipo_documento).toUpperCase() === 'CPF')) {
+        documentos.push({ tipo_documento: 'CPF', documento: cpfFormatado });
+      }
+      body.documentos = documentos;
+    }
 
     console.log('[ERP POST /pessoa] payload:', JSON.stringify(body));
     const url = `${ERP_BASE}/Pessoas`;

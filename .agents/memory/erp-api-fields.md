@@ -23,6 +23,21 @@ Returns:
 
 **Why:** `pessoa` (not `id`) must be passed as the `pessoa` field when calling POST /Usuarios.
 
+### CPF on /Pessoas is NOT a root field — it lives in `documentos`
+
+POST /Pessoas does NOT accept a root `cpf` field. Sending `cpf` at the top level makes the ERP save the person (nome etc.) but silently DROP the CPF — the create echo shows `documentos: []` and the person is then unfindable by CPF.
+
+Correct shape: put CPF inside the `documentos` array:
+```
+documentos: [{ tipo_documento: 'CPF', documento: '000.000.000-00' }]
+```
+- `documento` must be the FORMATTED CPF (000.000.000-00), same format the ERP stores.
+- Other doc types coexist in the same array on real people: `CONTRATO`, `DATA DE ADMISSÃO`, etc.
+
+**CPF lookup format matters:** `API_CADASTRO_PESSOAS?cpf=` only matches with the FORMATTED CPF — digits-only returns 0 even for people that exist. `/Pessoas?cpf=` matches either format. The backend `formatCpf()` helper normalizes both on GET and POST.
+
+**Indexing latency:** right after POST /Pessoas, the CPF search can take a few seconds to become findable; persistence itself is immediate (confirm via GET /Pessoas/{id} `documentos`).
+
 ## POST /Usuarios (create ERP user)
 
 Payload sent: `{ login, pessoa }` — backend injects `estabelecimento_padrao` (104), `senha_prot`, `copiar_direitos_de`.
