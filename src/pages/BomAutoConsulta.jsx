@@ -119,6 +119,7 @@ export default function BomAutoConsulta() {
   const [termoDescricaoProduto, setTermoDescricaoProduto] = useState('');
   const [termoSalvo, setTermoSalvo] = useState(false);
   const [termoModalAt, setTermoModalAt] = useState(null);
+  const [downloadingId, setDownloadingId] = useState(null);
 
   useEffect(() => {
     async function fetchUser() {
@@ -625,6 +626,28 @@ export default function BomAutoConsulta() {
     doc.save(`autorizacao-${at?.protocolo || 'servico'}.pdf`);
   }
 
+  async function handleDownloadTermo(at) {
+    setDownloadingId(at.id);
+    try {
+      const res = await fetch(`${API_BASE}/bom-auto/atendimentos/${at.id}`, {
+        headers: { ...getAuthHeaders() },
+      });
+      if (!res.ok) throw new Error('Não foi possível carregar a Autorização.');
+      const fullAt = await res.json();
+      const termoData = {
+        local: fullAt.termo_local || '',
+        rua: fullAt.termo_rua || '',
+        valores: fullAt.termo_valores_combinados || '',
+        descricao: fullAt.termo_descricao_produto || '',
+      };
+      await exportTermoPDF(fullAt, clientData, termoData);
+    } catch (err) {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
   function buildCommunicationMessage() {
     if (!atendimentoFinalizado || !clientData) return '';
     const cliente = clientData.contratante || clientData.data?.contratante || '';
@@ -998,15 +1021,30 @@ export default function BomAutoConsulta() {
                                   Disponível
                                 </span>
                               </div>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="gap-1.5 text-xs h-7 border-gray-300 dark:border-gray-600"
-                                onClick={() => setTermoModalAt(at)}
-                              >
-                                <FileText className="w-3 h-3" />
-                                Visualizar
-                              </Button>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-1.5 text-xs h-7 border-gray-300 dark:border-gray-600"
+                                  onClick={() => setTermoModalAt(at)}
+                                >
+                                  <FileText className="w-3 h-3" />
+                                  Visualizar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-1.5 text-xs h-7 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-950/30"
+                                  onClick={() => handleDownloadTermo(at)}
+                                  disabled={downloadingId === at.id}
+                                >
+                                  {downloadingId === at.id
+                                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                                    : <Download className="w-3 h-3" />
+                                  }
+                                  {downloadingId === at.id ? 'Gerando...' : 'Download PDF'}
+                                </Button>
+                              </div>
                             </div>
                           )}
                         </div>

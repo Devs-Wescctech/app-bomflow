@@ -164,7 +164,8 @@ router.get('/utilizacoes/:documento', authMiddleware, async (req, res) => {
       [docNorm]
     );
     const listResult = await query(
-      `SELECT id, protocolo, tipo_servico, status_atendimento, usuario, data_hora
+      `SELECT id, protocolo, tipo_servico, status_atendimento, usuario, data_hora,
+              termo_local, termo_rua, termo_valores_combinados, termo_descricao_produto
        FROM bom_auto_atendimentos
        WHERE REPLACE(REPLACE(documento_cliente, '.', ''), '-', '') = $1
        AND data_hora >= date_trunc('year', CURRENT_DATE)
