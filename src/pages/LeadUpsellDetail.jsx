@@ -169,10 +169,13 @@ export default function LeadUpsellDetail() {
     queryFn: () => base44.entities.ProposalTemplate.list(),
   });
 
+  const activeCpf = editedLead.cpf !== undefined ? editedLead.cpf : (lead?.cpf || '');
+  const erpQueryCpf = activeCpf.replace(/\D/g, '').length === 11 ? activeCpf : null;
+
   const { data: erpData = [], isLoading: erpLoading } = useQuery({
-    queryKey: ['erpCadastroPessoas', lead?.cpf],
+    queryKey: ['erpCadastroPessoas', erpQueryCpf],
     queryFn: async () => {
-      const digits = (lead?.cpf || '').replace(/\D/g, '');
+      const digits = (erpQueryCpf || '').replace(/\D/g, '');
       if (digits.length < 11) return [];
       const cpf = digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
       const res = await fetch(`/api/functions/erp-cadastro-pessoas?cpf=${encodeURIComponent(cpf)}`, {
@@ -182,7 +185,7 @@ export default function LeadUpsellDetail() {
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     },
-    enabled: !!lead?.cpf,
+    enabled: !!erpQueryCpf,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -1802,7 +1805,7 @@ export default function LeadUpsellDetail() {
             </div>
 
             {/* ERP — Dados API_CADASTRO_PESSOAS */}
-            {lead?.cpf && (
+            {erpQueryCpf && (
               <div className="bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950/50 dark:to-purple-950/50 rounded-2xl border border-violet-200 dark:border-violet-800 shadow-sm overflow-hidden">
                 <button
                   type="button"
