@@ -15,12 +15,16 @@ duplicate login so nothing persists: ONLY `ativo:"S"` reproduced the email-colli
 `login`, `pessoa`, `estabelecimento_padrao` (always 104) + `senha_prot` + `copiar_direitos_de`. No `ativo`, `email`,
 `super_usuario`, `observacoes`.
 
-**New blocker uncovered once `ativo` is removed:** a real create then fails with
-`null pointer em br.com.eligo.intf.CadUsuarios.salvarFuncoesUsuario linha 2457`. This NPE is **independent of the payload**
-(reproduced with/without copiar_direitos_de, with numeric copiar id, with `menu`, with `sugerir_senha`). It appears tied to
-**synthetic test pessoas created via API** (only cpf/nome/tipo, no colaborador/establishment setup) — NOT to a real
-ERP-registered person. Failed creates roll back (no user persists). **Open question:** whether a real new CPF also NPEs —
-needs validation by creating ONE real agent through the UI. If it does, that NPE is an ERP-side bug for the vendor.
+**New blocker uncovered once `ativo` is removed:** the create then fails with
+`null pointer em br.com.eligo.intf.CadUsuarios.salvarFuncoesUsuario linha 2457`. **CONFIRMED on a real CPF via the UI**
+(not only synthetic API pessoas), so it is NOT a synthetic-pessoa artifact. Failed creates roll back (no user persists).
+Per the ERP doc, only `login` + `pessoa` are `Requerido: Sim`; everything else (estabelecimento_padrao, copiar_direitos_de,
+menu, grupo, funcoes, sugerir_senha...) is optional. `funcoes` = "Funções do sistema atribuídas ao usuário".
+**Leading hypothesis:** the rights-template user (`copiar_direitos_de`, env `ERP_COPIAR_DIREITOS_DE`, currently `base.upsell`)
+has a `menu` (MENU_VENDEDOR_PAP, estab 104) but GET /Usuarios returns NO `funcoes` field for it — copying an empty/null
+function set is what trips salvarFuncoesUsuario. Likely fix is to point copiar_direitos_de at a real, fully-configured
+working user, or have the ERP admin fix the template's functions. Reaching salvarFuncoesUsuario requires a UNIQUE login
+(a duplicate login short-circuits earlier), so any successful diagnostic persists a real user — cannot dry-run it.
 
 **Two `ativo` caveats to validate:** (1) without `ativo`, confirm new users are created active (ERP default unknown,
 couldn't verify because of the NPE); if they come inactive, may need a follow-up PUT to set `ativo:"S"`. (2) the CPF-reuse
