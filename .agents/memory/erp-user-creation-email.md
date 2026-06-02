@@ -36,6 +36,19 @@ also confirms there is no token-generation endpoint: the Bearer token is a singl
 from the admin and used on every request (it identifies the caller, never the user being created — "one token per login"
 is not a thing).
 
-**Resolution requires ERP-side action (not our code):** get a dedicated integration token not tied to a real user's
-email, OR have the ERP team adjust the validation / expose a way to set a unique Pessoa email via API. Do not keep
-adding payload workarounds — they cannot fix a server-side behavior.
+**Token-owner ruled out (confirmed by the ERP admin):** the tested token belongs to a *separate* service account
+(`acesso.api`) that even had its own exclusive email added — and creation STILL stamps the same super-user's email. So the
+fallback is NOT the caller's email; it is a fixed ERP-side default. This is the strongest possible isolation.
+
+**Why we cannot set the Pessoa's email via API (all doc-confirmed):**
+- `e_mail` on POST /Pessoas works ONLY in the "importação de bloco" operation; on a normal POST it is ignored and
+  `meios_contato` stays `[]`. (The email would be stored under the NFE-email address type, per preference
+  `PESSOAS.CAD_PESSOAS.TIPO_ENDERECO_EMAIL_NFE_ID`.)
+- POST /EnderecosPessoas only exposes `tipo_endereco` values `ENDERECO_COMERCIAL` / `ENDERECO RESIDENCIAL` — there is no
+  documented email type, and `"E-MAIL"` is rejected. The actual configured email-type name is an ERP preference we don't
+  know. If the admin gives us that exact configured email `tipo_endereco` value, we could POST the Pessoa's own email and
+  the marcelo fallback would never trigger (potential client-side fix).
+
+**Resolution requires ERP-side action (not our code):** (a) change/remove the fixed default email used for API-created
+users, OR (b) give us the configured email `tipo_endereco` value so we can set the Pessoa's email via /EnderecosPessoas,
+OR (c) adjust the validation / honor the email param. Do not keep adding blind payload workarounds.
