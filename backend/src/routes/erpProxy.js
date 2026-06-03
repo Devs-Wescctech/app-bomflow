@@ -227,4 +227,26 @@ router.post('/usuario', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/erp/canais-venda
+// Retorna os canais de venda disponíveis no ERP (API_CANAL_VENDAS)
+// Retorno: [{ titulo_contrato: string, id: number }]
+router.get('/canais-venda', authMiddleware, async (req, res) => {
+  const token = getToken(res);
+  if (!token) return;
+
+  try {
+    const url = `${ERP_BASE}/API_CANAL_VENDAS`;
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) return res.status(response.status).json(data);
+    const results = data?.results || data?.data || (Array.isArray(data) ? data : []);
+    return res.json(results);
+  } catch (err) {
+    console.error('[ERP Proxy] GET /canais-venda error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

@@ -140,6 +140,21 @@ export async function buscarHistoricoIndicacoes(cpf) {
   return response.json();
 }
 
+export async function buscarCanaisVenda() {
+  const response = await fetch('/api/erp/canais-venda', {
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    const error = new Error(data.error || 'Erro ao buscar canais de venda no ERP');
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
 export async function buscarConversoesPorCpf(cpf) {
   const cpfLimpo = cpf.replace(/\D/g, '');
 
