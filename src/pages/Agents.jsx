@@ -262,6 +262,8 @@ export default function Agents() {
     teamId: "",
     supervisorId: "",
     workUnit: "",
+    canalVenda: "",
+    canalVendaId: null,
     erpAgentId: "",
     erpLogin: "",
     erpEmail: "",
@@ -312,6 +314,20 @@ export default function Agents() {
     queryFn: () => base44.entities.AgentType.list(),
     staleTime: 0,
     refetchOnMount: true,
+    enabled: hasPermission,
+  });
+
+  const { data: canaisVenda = [] } = useQuery({
+    queryKey: ['erp-canais-venda'],
+    queryFn: async () => {
+      const token = localStorage.getItem('accessToken') || localStorage.getItem('auth_token');
+      const resp = await fetch('/api/erp/canais-venda', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!resp.ok) return [];
+      return resp.json();
+    },
+    staleTime: 1000 * 60 * 5,
     enabled: hasPermission,
   });
 
@@ -633,6 +649,8 @@ export default function Agents() {
       teamId: "",
       supervisorId: "",
       workUnit: "",
+      canalVenda: "",
+      canalVendaId: null,
       erpAgentId: "",
       erpLogin: "",
       erpEmail: "",
@@ -753,6 +771,8 @@ export default function Agents() {
       teamId: agent.teamId || "",
       supervisorId: agent.supervisorId || "",
       workUnit: agent.workUnit || "",
+      canalVenda: agent.canalVenda || "",
+      canalVendaId: agent.canalVendaId || null,
       erpAgentId: agent.erpAgentId != null ? String(agent.erpAgentId) : "",
       erpLogin: generateErpLogin(agent.name || ""),
       erpEmail: "",
@@ -915,6 +935,7 @@ export default function Agents() {
     const dataToSend = { 
       ...formDataToSave,
       erpAgentId: formData.erpAgentId ? Number(formData.erpAgentId) : null,
+      canalVendaId: formData.canalVendaId ? Number(formData.canalVendaId) : null,
       supervisorId: formData.supervisorId && formData.supervisorId !== "none" ? formData.supervisorId : null,
       permissions: normalizePermissions(formData.permissions)
     };
@@ -1988,6 +2009,32 @@ export default function Agents() {
                   placeholder="Ex: Matriz, Filial SP"
                   className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                 />
+              </div>
+
+              <div>
+                <Label className="text-gray-900 dark:text-gray-100">
+                  Canal de Vendas <span className="text-red-500">*</span>
+                </Label>
+                <select
+                  value={formData.canalVendaId ?? ""}
+                  onChange={(e) => {
+                    const selected = canaisVenda.find(c => String(c.id) === e.target.value);
+                    setFormData({
+                      ...formData,
+                      canalVendaId: e.target.value ? Number(e.target.value) : null,
+                      canalVenda: selected?.titulo_contrato || ""
+                    });
+                  }}
+                  className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Selecione o canal de vendas...</option>
+                  {canaisVenda.map(c => (
+                    <option key={c.id} value={c.id}>{c.titulo_contrato}</option>
+                  ))}
+                </select>
+                {canaisVenda.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">Carregando canais do ERP...</p>
+                )}
               </div>
 
               <div>

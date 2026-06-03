@@ -517,7 +517,9 @@ router.get('/agents', authMiddleware, async (req, res) => {
       SELECT id, name, cpf, email, agent_type, team_id, supervisor_id, skills, active, 
              photo_url, permissions, level, online, capacity, working_hours, 
              queue_ids, work_unit, role, must_reset_password, erp_agent_id,
-             whatsapp_access_token, whatsapp_token_expires_at, created_at, updated_at
+             whatsapp_access_token, whatsapp_token_expires_at,
+             canal_venda, canal_venda_id,
+             created_at, updated_at
       FROM agents 
       ORDER BY created_at DESC 
       LIMIT 10000
@@ -541,6 +543,7 @@ router.get('/agents/:id', authMiddleware, async (req, res) => {
              queue_ids, work_unit, role, must_reset_password, erp_agent_id,
              whatsapp_access_token, whatsapp_token_expires_at,
              whatsapp_channel_token,
+             canal_venda, canal_venda_id,
              created_at, updated_at
       FROM agents WHERE id = $1
     `, [id]);
@@ -695,7 +698,9 @@ router.post('/agents/filter', authMiddleware, async (req, res) => {
     let sql = `
       SELECT id, name, cpf, email, agent_type, team_id, skills, active, 
              photo_url, permissions, level, online, capacity, working_hours, 
-             queue_ids, work_unit, role, erp_agent_id, created_at, updated_at
+             queue_ids, work_unit, role, erp_agent_id,
+             canal_venda, canal_venda_id,
+             created_at, updated_at
       FROM agents
     `;
     
