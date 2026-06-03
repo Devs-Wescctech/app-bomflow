@@ -252,6 +252,7 @@ export default function Agents() {
   const [agentFilterType, setAgentFilterType] = useState("all");
   const [agentFilterActive, setAgentFilterActive] = useState("all");
   const [agentFilterTeam, setAgentFilterTeam] = useState("all");
+  const [creatingStep, setCreatingStep] = useState(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -345,6 +346,7 @@ export default function Agents() {
             // Se CPF não estava no ERP, cria a pessoa primeiro
             if (!codigoPessoa) {
               if (erpPessoaResult?.notFound) {
+                setCreatingStep('erp_pessoa');
                 const criada = await createPessoaErp({
                   tipo_pessoa: "Física",
                   nome_completo: formData.name.toUpperCase(),
@@ -378,6 +380,7 @@ export default function Agents() {
             // estabelecimento_padrao (104), senha_prot e copiar_direitos_de são
             // injetados pelo backend. `ativo` é omitido de propósito: ele dispara
             // a validação de e-mail da Pessoa no ERP e bloqueia a criação.
+            setCreatingStep('erp_usuario');
             const result = await createUsuarioErp({
               login: loginErp,
               pessoa: codigoPessoa,
@@ -417,6 +420,7 @@ export default function Agents() {
         console.error('[createAgentMutation] Erro inesperado no onSuccess:', unexpectedError);
         toast.error('Agente criado, mas ocorreu um erro inesperado: ' + unexpectedError.message);
       } finally {
+        setCreatingStep(null);
         if (keepSheetOpen) {
           queryClient.invalidateQueries({ queryKey: ['agents'] });
         } else {
@@ -425,6 +429,7 @@ export default function Agents() {
       }
     },
     onError: (error) => {
+      setCreatingStep(null);
       toast.error('Erro ao criar agente: ' + error.message);
     },
   });
@@ -946,6 +951,7 @@ export default function Agents() {
         data: dataToSend
       });
     } else {
+      setCreatingStep('agent');
       createAgentMutation.mutate(dataToSend);
     }
   };
@@ -2397,18 +2403,78 @@ export default function Agents() {
           </div>
 
           <SheetFooter className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-            <div className="flex w-full gap-3">
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="flex-1">
-                Cancelar
-              </Button>
-              <Button 
-                onClick={handleSubmit}
-                disabled={!formData.name || !formData.email || !formData.agentType || (!editingAgent && (!formData.password || formData.password.length < 6))}
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
-              >
-                {editingAgent ? 'Salvar Alterações' : 'Criar Agente'}
-              </Button>
-            </div>
+            {(() => {
+              const CREATE_STEPS = [
+                { key: 'agent',       label: 'Criando agente no sistema...' },
+                { key: 'erp_pessoa',  label: 'Registrando no ERP...'        },
+                { key: 'erp_usuario', label: 'Criando acesso ao ERP...'     },
+              ];
+              const isBusy = creatingStep !== null || updateAgentMutation.isPending;
+              const stepIdx = CREATE_STEPS.findIndex(s => s.key === creatingStep);
+              const stepLabel = creatingStep
+                ? (CREATE_STEPS.find(s => s.key === creatingStep)?.label ?? 'Processando...')
+                : updateAgentMutation.isPending
+                  ? 'Salvando alterações...'
+                  : 'Processando...';
+
+              if (isBusy) {
+                return (
+                  <div className="w-full flex flex-col gap-2">
+                    <div className="flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl text-white shadow-lg">
+                      <div className="relative flex-shrink-0 w-8 h-8">
+                        <div className="absolute inset-0 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+                      </div>
+                      <div className="flex flex-col flex-1 min-w-0">
+                        <span className="text-sm font-semibold leading-tight">{stepLabel}</span>
+                        <div className="flex gap-1 mt-1">
+                          {[0, 1, 2].map(i => (
+                            <span
+                              key={i}
+                              className="inline-block w-1 h-1 rounded-full bg-white/60 animate-pulse"
+                              style={{ animationDelay: `${i * 180}ms` }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      {creatingStep && (
+                        <span className="flex-shrink-0 text-xs font-medium text-white/60 tabular-nums">
+                          {stepIdx + 1}/{CREATE_STEPS.length}
+                        </span>
+                      )}
+                    </div>
+                    {creatingStep && (
+                      <div className="flex gap-1.5 px-1">
+                        {CREATE_STEPS.map((s, i) => (
+                          <div
+                            key={s.key}
+                            className={`h-1 rounded-full transition-all duration-500 ${
+                              i <= stepIdx
+                                ? 'bg-blue-500 flex-[2]'
+                                : 'bg-gray-200 dark:bg-gray-700 flex-[1]'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="flex w-full gap-3">
+                  <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="flex-1">
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={handleSubmit}
+                    disabled={!formData.name || !formData.email || !formData.agentType || (!editingAgent && (!formData.password || formData.password.length < 6))}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  >
+                    {editingAgent ? 'Salvar Alterações' : 'Criar Agente'}
+                  </Button>
+                </div>
+              );
+            })()}
           </SheetFooter>
         </SheetContent>
       </Sheet>
