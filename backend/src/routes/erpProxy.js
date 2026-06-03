@@ -231,11 +231,13 @@ router.post('/usuario', authMiddleware, async (req, res) => {
 // Retorna os canais de venda disponíveis no ERP (API_CANAL_VENDAS)
 // Retorno: [{ titulo_contrato: string, id: number }]
 router.get('/canais-venda', authMiddleware, async (req, res) => {
+  console.log('[ERP Proxy] GET /canais-venda — requisição recebida');
   const token = getToken(res);
   if (!token) return;
 
   try {
     const url = `${ERP_BASE}/API_CANAL_VENDAS`;
+    console.log('[ERP Proxy] Chamando ERP:', url);
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` }
     });

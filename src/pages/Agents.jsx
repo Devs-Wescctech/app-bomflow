@@ -9,6 +9,7 @@ import { Plus, Edit, Trash2, UserCheck, UserX, Activity, Upload, Loader2, Messag
 import { canManageAgents, isSupervisorType } from "@/components/utils/permissions.jsx";
 /* NOVO — integração ERP */
 import { createPessoaErp, createUsuarioErp, getPessoaByErp } from "@/api/erpClient";
+import { buscarCanaisVenda } from "@/api/erpService";
 import {
   Dialog,
   DialogContent,
@@ -317,18 +318,11 @@ export default function Agents() {
     enabled: hasPermission,
   });
 
-  const { data: canaisVenda = [] } = useQuery({
+  const { data: canaisVenda = [], isLoading: loadingCanais } = useQuery({
     queryKey: ['erp-canais-venda'],
-    queryFn: async () => {
-      const token = localStorage.getItem('accessToken') || localStorage.getItem('auth_token');
-      const resp = await fetch('/api/erp/canais-venda', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!resp.ok) return [];
-      return resp.json();
-    },
+    queryFn: buscarCanaisVenda,
     staleTime: 1000 * 60 * 5,
-    enabled: hasPermission,
+    retry: 2,
   });
 
   const createAgentMutation = useMutation({
@@ -2017,6 +2011,7 @@ export default function Agents() {
                 </Label>
                 <select
                   value={formData.canalVendaId ?? ""}
+                  disabled={loadingCanais}
                   onChange={(e) => {
                     const selected = canaisVenda.find(c => String(c.id) === e.target.value);
                     setFormData({
@@ -2025,15 +2020,17 @@ export default function Agents() {
                       canalVenda: selected?.titulo_contrato || ""
                     });
                   }}
-                  className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
                 >
-                  <option value="">Selecione o canal de vendas...</option>
+                  <option value="">
+                    {loadingCanais ? "Carregando canais..." : "Selecione o canal de vendas..."}
+                  </option>
                   {canaisVenda.map(c => (
                     <option key={c.id} value={c.id}>{c.titulo_contrato}</option>
                   ))}
                 </select>
-                {canaisVenda.length === 0 && (
-                  <p className="text-xs text-amber-600 mt-1">Carregando canais do ERP...</p>
+                {!loadingCanais && canaisVenda.length === 0 && (
+                  <p className="text-xs text-red-500 mt-1">Não foi possível carregar os canais do ERP.</p>
                 )}
               </div>
 
