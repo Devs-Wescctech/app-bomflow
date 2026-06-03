@@ -441,7 +441,7 @@ export default function CommissionPerspectivaControl() {
                           {r.produto ? (
                             <div className="flex flex-col gap-1">
                               <Badge className="bg-violet-100 text-violet-800 text-xs w-fit">{r.produto}</Badge>
-                              {['BOM AUTO', 'BOM MED', 'BOMPET'].includes(r.produto) && (
+                              {['BOM AUTO', 'BOM MED', 'BOM PET', 'BOMPET'].some(kw => String(r.produto || '').trim().toUpperCase().includes(kw)) && (
                                 <Badge className="bg-amber-100 text-amber-800 text-xs w-fit">val. contrato</Badge>
                               )}
                             </div>
@@ -631,12 +631,13 @@ export default function CommissionPerspectivaControl() {
                       const unitValue = isCorretor
                         ? (level === 3 ? 400 : level === 2 ? 300 : 200)
                         : (level === 3 ? 200 : level === 2 ? 150 : 100);
-                      const FE_SPECIAL = new Set(['BOM AUTO', 'BOM MED', 'BOMPET']);
+                      const FE_SPECIAL_KEYWORDS = ['BOM AUTO', 'BOM MED', 'BOM PET', 'BOMPET'];
+                      const isFESpecial = (p) => p ? FE_SPECIAL_KEYWORDS.some(kw => String(p).trim().toUpperCase().includes(kw)) : false;
                       let totalSpecial = 0;
                       let countRegular = 0;
                       for (const item of data.items) {
                         const prod = item.produto ? String(item.produto).trim().toUpperCase() : '';
-                        if (!isCorretor && FE_SPECIAL.has(prod)) {
+                        if (!isCorretor && isFESpecial(prod)) {
                           totalSpecial += parseFloat(item.valor_contrato || item.valor_titulo || 0);
                         } else {
                           countRegular += 1;

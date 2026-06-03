@@ -5235,7 +5235,13 @@ function getCommissionByTier(totalConversions) {
 }
 
 // Produtos que recebem comissão via valor_contrato (apenas indicador não-corretor)
-const SPECIAL_PRODUCTS = new Set(['BOM AUTO', 'BOM MED', 'BOMPET']);
+// Verificação por correspondência parcial (contém) para capturar variações de nome
+const SPECIAL_KEYWORDS = ['BOM AUTO', 'BOM MED', 'BOM PET', 'BOMPET'];
+function isSpecialProduct(prod) {
+  if (!prod) return false;
+  const upper = String(prod).trim().toUpperCase();
+  return SPECIAL_KEYWORDS.some(kw => upper.includes(kw));
+}
 
 function formatPhoneNumber(phone) {
   if (!phone) return '-';
@@ -6083,7 +6089,7 @@ async function runPerspectivaBatch() {
       let countRegular = 0;
       for (const rec of ind.records) {
         const prod = rec.produto ? String(rec.produto).trim().toUpperCase() : '';
-        if (!isCorretorBatch && SPECIAL_PRODUCTS.has(prod)) {
+        if (!isCorretorBatch && isSpecialProduct(prod)) {
           totalSpecial += parseFloat(rec.valor_contrato || rec.valor_titulo || 0);
         } else {
           countRegular += 1;
@@ -6208,7 +6214,7 @@ async function getPerspectivaReportData() {
     let countRegular = 0;
     for (const rec of ind.details) {
       const prod = rec.produto ? String(rec.produto).trim().toUpperCase() : '';
-      if (!isCorretor && SPECIAL_PRODUCTS.has(prod)) {
+      if (!isCorretor && isSpecialProduct(prod)) {
         totalSpecial += parseFloat(rec.valor_contrato || rec.valor_titulo || 0);
       } else {
         countRegular += 1;
