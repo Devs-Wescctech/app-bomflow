@@ -399,6 +399,14 @@ export function filterMenuItems(agent, menuItems, user = null) {
         
         // No ADM submenu restrictions - use hardcoded flag-based permissions
         
+        // allowedEmails: só visível para e-mails específicos (admins sempre veem)
+        if (subItem.allowedEmails && subItem.allowedEmails.length > 0) {
+          const userEmail = user?.email || agent?.email || agent?.userEmail;
+          if (!userEmail || !subItem.allowedEmails.includes(userEmail)) {
+            return false;
+          }
+        }
+
         // supervisorOnly: only visible to supervisors, admins, and module admins (_admin types)
         const hasElevatedAccess = isSupervisor || isAdmin || agentType?.endsWith('_admin');
         if (subItem.supervisorOnly && !hasElevatedAccess) {
