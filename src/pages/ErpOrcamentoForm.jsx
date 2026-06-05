@@ -131,8 +131,10 @@ const PLANO_PAGAMENTO_OPTIONS = [
   "PIX",
 ];
 
+const TIPO_PEDIDO_FIXO = "ORÇAMENTO";
+const NOME_ESTABELECIMENTO_FIXO = "LIMEIRA - CNPA";
+
 const DEFAULT_FORM = {
-  tipo_pedido: "ORÇAMENTO",
   contratante_pessoa: "",
   cpf: "",
   pessoa_contato: "",
@@ -141,9 +143,7 @@ const DEFAULT_FORM = {
   whatsapp_do_cliente: "",
   agente_venda_id: "",
   titulo_contrato: "",
-  nome_estabelecimento: "BP CALL CENTER",
   plano_pagamento: "",
-  data_validade: "",
   observacoes: "",
 };
 
@@ -272,7 +272,8 @@ export default function ErpOrcamentoForm() {
 
   const payload = useMemo(() => {
     const p = {
-      tipo_pedido: form.tipo_pedido || undefined,
+      tipo_pedido: TIPO_PEDIDO_FIXO,
+      nome_estabelecimento: NOME_ESTABELECIMENTO_FIXO,
       contratante_pessoa: form.contratante_pessoa || undefined,
       cpf: form.cpf || undefined,
       pessoa_contato: form.pessoa_contato || undefined,
@@ -281,9 +282,7 @@ export default function ErpOrcamentoForm() {
       whatsapp_do_cliente: form.whatsapp_do_cliente || undefined,
       agente_venda_id: erpAgenteVendaId ? Number(erpAgenteVendaId) : undefined,
       titulo_contrato: form.titulo_contrato || undefined,
-      nome_estabelecimento: form.nome_estabelecimento || undefined,
       plano_pagamento: form.plano_pagamento || undefined,
-      data_validade: form.data_validade || undefined,
       observacoes: form.observacoes || undefined,
     };
     return Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
@@ -534,25 +533,18 @@ export default function ErpOrcamentoForm() {
 
           <SectionCard icon={FileText} title="Dados do Orçamento" color="violet">
             <div className="grid grid-cols-2 gap-3">
-              <FieldRow label="tipo_pedido" required>
-                <Select value={form.tipo_pedido} onValueChange={(v) => set("tipo_pedido", v)}>
-                  <SelectTrigger className="text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ORÇAMENTO">ORÇAMENTO</SelectItem>
-                    <SelectItem value="REPRESENTANTE">REPRESENTANTE</SelectItem>
-                  </SelectContent>
-                </Select>
+              <FieldRow label="tipo_pedido" hint="fixo">
+                <div className="flex items-center gap-2 h-9 px-3 rounded-md border border-slate-200 bg-slate-50">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                  <span className="text-sm font-medium text-slate-700">{TIPO_PEDIDO_FIXO}</span>
+                </div>
               </FieldRow>
 
-              <FieldRow label="data_validade" hint="+30 dias recomendado">
-                <Input
-                  type="date"
-                  value={form.data_validade}
-                  onChange={(e) => set("data_validade", e.target.value)}
-                  className="text-sm"
-                />
+              <FieldRow label="nome_estabelecimento" hint="fixo">
+                <div className="flex items-center gap-2 h-9 px-3 rounded-md border border-slate-200 bg-slate-50">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                  <span className="text-sm font-medium text-slate-700">{NOME_ESTABELECIMENTO_FIXO}</span>
+                </div>
               </FieldRow>
             </div>
 
@@ -563,21 +555,6 @@ export default function ErpOrcamentoForm() {
                 </SelectTrigger>
                 <SelectContent className="max-h-56">
                   {TITULO_CONTRATO_OPTIONS.map((opt) => (
-                    <SelectItem key={opt} value={opt} className="text-sm">
-                      {opt}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FieldRow>
-
-            <FieldRow label="nome_estabelecimento" required>
-              <Select value={form.nome_estabelecimento} onValueChange={(v) => set("nome_estabelecimento", v)}>
-                <SelectTrigger className="text-sm">
-                  <SelectValue placeholder="Selecione o estabelecimento..." />
-                </SelectTrigger>
-                <SelectContent className="max-h-56">
-                  {NOME_ESTABELECIMENTO_OPTIONS.map((opt) => (
                     <SelectItem key={opt} value={opt} className="text-sm">
                       {opt}
                     </SelectItem>
@@ -813,9 +790,9 @@ export default function ErpOrcamentoForm() {
                   { field: "agente_venda_id", ok: !!erpAgenteVendaId, note: "do seu perfil de agente" },
                   { field: "contratante_pessoa", ok: !!form.contratante_pessoa, note: "código ERP do cliente" },
                   { field: "cpf", ok: !!form.cpf, note: "CPF do contratante" },
-                  { field: "tipo_pedido", ok: !!form.tipo_pedido, note: "ORÇAMENTO ou REPRESENTANTE" },
                   { field: "titulo_contrato", ok: !!form.titulo_contrato, note: "plano selecionado" },
-                  { field: "nome_estabelecimento", ok: !!form.nome_estabelecimento, note: "filial ERP" },
+                  { field: "tipo_pedido", ok: true, note: `fixo: ${TIPO_PEDIDO_FIXO}` },
+                  { field: "nome_estabelecimento", ok: true, note: `fixo: ${NOME_ESTABELECIMENTO_FIXO}` },
                 ].map((item) => (
                   <li key={item.field} className="flex items-center gap-2 text-xs">
                     {item.ok ? (
