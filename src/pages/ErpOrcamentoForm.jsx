@@ -23,19 +23,23 @@ import {
   FileText,
   Phone,
   Mail,
-  Hash,
   Building2,
   CreditCard,
-  Calendar,
   MessageSquare,
   Send,
   FlaskConical,
-  ChevronRight,
   AlertCircle,
   Copy,
   Check,
   RefreshCw,
   Info,
+  MapPin,
+  Package,
+  Users,
+  UserPlus,
+  DollarSign,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -61,62 +65,6 @@ const TITULO_CONTRATO_OPTIONS = [
   "EXPLORER CALLCENTER",
 ];
 
-const NOME_ESTABELECIMENTO_OPTIONS = [
-  "ALPHAVILLE - SP",
-  "AMERICANA",
-  "ARARAS",
-  "ARTUR NOGUEIRA - GULLO",
-  "BOM PASTOR PARTICIPAÇÕES S.A.",
-  "BP CALL CENTER",
-  "CACONDE-SP",
-  "CAMPINAS - CAMPO GRANDE",
-  "CAMPINAS - CNPA",
-  "CAMPINAS - JD GUARANI",
-  "CAMPINAS - OURO VERDE",
-  "CNCC - BOM PASTOR CEMITERIOS",
-  "CNIB - BOM PASTOR BENEFICIOS",
-  "CNSF - BOM PASTOR SERVIÇOS FUNERAIS",
-  "CONCHAL",
-  "COSMOPOLIS - 9 DE JULHO",
-  "COSMOPOLIS - BELA VISTA",
-  "ENG. COELHO - CNPA",
-  "ENG COELHO - GULLO",
-  "FRANCISCO MORATO - GERSON ME",
-  "GULLO - LIMEIRA",
-  "HORTOLANDIA - REM CAMPINEIRO",
-  "IRACEMAPOLIS",
-  "JAGUARIUNA",
-  "JD AMANDA - HORTOLANDIA",
-  "JUNDIAI",
-  "LIMEIRA - BP CONVENIOS",
-  "LIMEIRA - CNPA",
-  "MG - ANDRADAS",
-  "MG - BOTELHOS",
-  "MG - CALDAS",
-  "MG - CAMPESTRE",
-  "MG - COHAB",
-  "MG - GUAXUPE",
-  "MG - MACHADO",
-  "MG - POÇOS DE CALDAS",
-  "MG - STA RITA DE CALDAS",
-  "MOGI GUACU",
-  "NOVA ODESSA",
-  "OLCL - CAMPO LIMPO",
-  "OLCL - FRANCO DA ROCHA",
-  "PAULINIA",
-  "PINHAL",
-  "SÃO JOSÉ DO RIO PARDO",
-  "SAO PAULO - BRASILANDIA",
-  "SAO PAULO - JACANA",
-  "SAO PAULO - PERUS",
-  "SP - DIVINOLANDIA",
-  "SP - VARZEA PAULISTA",
-  "STA BARBARA - CENTRO",
-  "STA BARBARA - CIDADE NOVA",
-  "STO ANT DE POSSE",
-  "SUMARE",
-];
-
 const PLANO_PAGAMENTO_OPTIONS = [
   "BOLETO 6 - GALAX",
   "BOLETO CEF LEGADO",
@@ -131,20 +79,57 @@ const PLANO_PAGAMENTO_OPTIONS = [
   "PIX",
 ];
 
+const NUMERO_PARCELAS_OPTIONS = ["1", "3", "6", "12"];
+
+const PARENTESCO_OPTIONS = [
+  { value: "C", label: "C — Cônjuge" },
+  { value: "F", label: "F — Filho/Filha" },
+  { value: "M", label: "M — Mãe" },
+  { value: "P", label: "P — Pai" },
+  { value: "S", label: "S — Sogro/Sogra" },
+  { value: "D", label: "D — Dependente" },
+];
+
+const SEXO_OPTIONS = [
+  { value: "F", label: "Feminino" },
+  { value: "M", label: "Masculino" },
+];
+
 const TIPO_PEDIDO_FIXO = "ORÇAMENTO";
 const NOME_ESTABELECIMENTO_FIXO = "LIMEIRA - CNPA";
 
 const DEFAULT_FORM = {
+  // Contratante
   contratante_pessoa: "",
   cpf: "",
   pessoa_contato: "",
+  un_rg: "",
   telefone: "",
   email_contato: "",
   whatsapp_do_cliente: "",
-  agente_venda_id: "",
+  // Endereço
+  un_codigo_postal: "",
+  un_lougradouro: "",
+  un_numero_lougradouro: "",
+  un_complemento_lougradouro: "",
+  un_bairro: "",
+  un_cidade: "",
+  // Plano
   titulo_contrato: "",
+  produtos: "",
+  // Pagamento
   plano_pagamento: "",
+  numero_parcelas: "",
   observacoes: "",
+  // Beneficiário
+  usua_cpf: "",
+  usua_nome_completo: "",
+  usua_data_nascimento: "",
+  usua_sexo: "",
+  usua_parentesco: "",
+  usua_telefone: "",
+  usua_produtos: "",
+  usua_papeis: "",
 };
 
 function formatCpfMask(v) {
@@ -155,27 +140,51 @@ function formatCpfMask(v) {
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
 }
 
-function SectionCard({ icon: Icon, title, color = "violet", children }) {
+function formatCepMask(v) {
+  const d = v.replace(/\D/g, "").slice(0, 8);
+  if (d.length <= 5) return d;
+  return `${d.slice(0, 5)}-${d.slice(5)}`;
+}
+
+function SectionCard({ icon: Icon, title, color = "violet", badge, collapsible, defaultOpen = true, children }) {
+  const [open, setOpen] = useState(defaultOpen);
   const colorMap = {
     violet: "from-violet-500 to-purple-600",
     blue: "from-blue-500 to-indigo-600",
     emerald: "from-emerald-500 to-teal-600",
     amber: "from-amber-500 to-orange-500",
     rose: "from-rose-500 to-pink-600",
+    sky: "from-sky-500 to-cyan-600",
+    indigo: "from-indigo-500 to-violet-600",
   };
   return (
     <Card className="border border-slate-200 shadow-sm overflow-hidden">
-      <CardHeader className="pb-3 pt-4 px-5">
-        <CardTitle className="flex items-center gap-2.5 text-sm font-semibold text-slate-700">
-          <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${colorMap[color]} flex items-center justify-center flex-shrink-0`}>
-            <Icon className="w-3.5 h-3.5 text-white" />
+      <CardHeader
+        className={cn("pb-3 pt-4 px-5", collapsible && "cursor-pointer select-none")}
+        onClick={collapsible ? () => setOpen((o) => !o) : undefined}
+      >
+        <CardTitle className="flex items-center justify-between gap-2.5 text-sm font-semibold text-slate-700">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${colorMap[color]} flex items-center justify-center flex-shrink-0`}>
+              <Icon className="w-3.5 h-3.5 text-white" />
+            </div>
+            {title}
+            {badge && (
+              <Badge className="text-xs bg-slate-100 text-slate-500 border-slate-200 font-normal">
+                {badge}
+              </Badge>
+            )}
           </div>
-          {title}
+          {collapsible && (
+            open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />
+          )}
         </CardTitle>
       </CardHeader>
-      <CardContent className="px-5 pb-5 pt-0 space-y-3">
-        {children}
-      </CardContent>
+      {open && (
+        <CardContent className="px-5 pb-5 pt-0 space-y-3">
+          {children}
+        </CardContent>
+      )}
     </Card>
   );
 }
@@ -186,9 +195,7 @@ function FieldRow({ label, required, hint, children }) {
       <div className="flex items-center gap-1.5">
         <Label className="text-xs font-medium text-slate-600">{label}</Label>
         {required && <span className="text-violet-500 text-xs">*</span>}
-        {hint && (
-          <span className="text-xs text-slate-400 font-normal">— {hint}</span>
-        )}
+        {hint && <span className="text-xs text-slate-400 font-normal">— {hint}</span>}
       </div>
       {children}
     </div>
@@ -218,8 +225,6 @@ function JsonPreview({ payload }) {
     if (typeof val === "string")
       return <JsonToken type="string" value={`"${val}"`} />;
     if (typeof val === "object") {
-      const pad = "  ".repeat(indent + 1);
-      const closePad = "  ".repeat(indent);
       const entries = Object.entries(val);
       if (!entries.length)
         return (
@@ -236,12 +241,10 @@ function JsonPreview({ payload }) {
               <JsonToken type="key" value={`"${k}"`} />
               <JsonToken type="punct" value=": " />
               {renderValue(v, indent + 1)}
-              {i < entries.length - 1 && (
-                <JsonToken type="punct" value="," />
-              )}
+              {i < entries.length - 1 && <JsonToken type="punct" value="," />}
             </div>
           ))}
-          <div>{closePad}</div>
+          <div />
           <JsonToken type="punct" value="}" />
         </>
       );
@@ -259,6 +262,7 @@ function JsonPreview({ payload }) {
 export default function ErpOrcamentoForm() {
   const [form, setForm] = useState(DEFAULT_FORM);
   const [cpfLookupState, setCpfLookupState] = useState(null);
+  const [cepLookupState, setCepLookupState] = useState(null);
   const [response, setResponse] = useState(null);
   const [copied, setCopied] = useState(false);
 
@@ -268,22 +272,45 @@ export default function ErpOrcamentoForm() {
   });
 
   const currentAgent = user?.agent;
-  const erpAgenteVendaId = currentAgent?.erp_agente_venda_id ?? currentAgent?.erpAgenteVendaId ?? null;
+  const erpAgenteVendaId =
+    currentAgent?.erp_agente_venda_id ?? currentAgent?.erpAgenteVendaId ?? null;
 
   const payload = useMemo(() => {
     const p = {
       tipo_pedido: TIPO_PEDIDO_FIXO,
       nome_estabelecimento: NOME_ESTABELECIMENTO_FIXO,
+      agente_venda_id: erpAgenteVendaId ? Number(erpAgenteVendaId) : undefined,
+      // Contratante
       contratante_pessoa: form.contratante_pessoa || undefined,
       cpf: form.cpf || undefined,
       pessoa_contato: form.pessoa_contato || undefined,
+      un_rg: form.un_rg || undefined,
       telefone: form.telefone || undefined,
       email_contato: form.email_contato || undefined,
       whatsapp_do_cliente: form.whatsapp_do_cliente || undefined,
-      agente_venda_id: erpAgenteVendaId ? Number(erpAgenteVendaId) : undefined,
+      // Endereço
+      un_codigo_postal: form.un_codigo_postal ? form.un_codigo_postal.replace(/\D/g, "") : undefined,
+      un_lougradouro: form.un_lougradouro || undefined,
+      un_numero_lougradouro: form.un_numero_lougradouro || undefined,
+      un_complemento_lougradouro: form.un_complemento_lougradouro || undefined,
+      un_bairro: form.un_bairro || undefined,
+      un_cidade: form.un_cidade || undefined,
+      // Plano
       titulo_contrato: form.titulo_contrato || undefined,
+      produtos: form.produtos || undefined,
+      // Pagamento
       plano_pagamento: form.plano_pagamento || undefined,
+      numero_parcelas: form.numero_parcelas || undefined,
       observacoes: form.observacoes || undefined,
+      // Beneficiário
+      usua_cpf: form.usua_cpf || undefined,
+      usua_nome_completo: form.usua_nome_completo || undefined,
+      usua_data_nascimento: form.usua_data_nascimento || undefined,
+      usua_sexo: form.usua_sexo || undefined,
+      usua_parentesco: form.usua_parentesco || undefined,
+      usua_telefone: form.usua_telefone || undefined,
+      usua_produtos: form.usua_produtos || undefined,
+      usua_papeis: form.usua_papeis || undefined,
     };
     return Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
   }, [form, erpAgenteVendaId]);
@@ -303,6 +330,7 @@ export default function ErpOrcamentoForm() {
         ...f,
         contratante_pessoa: data.pessoa,
         cpf: data.cpf,
+        pessoa_contato: f.pessoa_contato || data.nome || "",
       }));
     },
     onError: (err) => {
@@ -310,9 +338,33 @@ export default function ErpOrcamentoForm() {
     },
   });
 
+  const lookupCepMutation = useMutation({
+    mutationFn: async (cep) => {
+      const raw = cep.replace(/\D/g, "");
+      const r = await fetch(`https://viacep.com.br/ws/${raw}/json/`);
+      const data = await r.json();
+      if (data.erro) throw new Error("CEP não encontrado");
+      return data;
+    },
+    onSuccess: (data) => {
+      setCepLookupState({ status: "found" });
+      setForm((f) => ({
+        ...f,
+        un_lougradouro: (data.logradouro || "").toUpperCase(),
+        un_bairro: (data.bairro || "").toUpperCase(),
+        un_cidade: data.localidade
+          ? `${data.localidade.toUpperCase()} - ${data.uf.toUpperCase()}`
+          : f.un_cidade,
+      }));
+    },
+    onError: (err) => {
+      setCepLookupState({ status: "notfound", error: err.message });
+    },
+  });
+
   const submitMutation = useMutation({
     mutationFn: async () => {
-      const r = await fetch("/api/erp/orcamento", {
+      const r = await fetch("/api/erp/pre-proposta", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -323,12 +375,9 @@ export default function ErpOrcamentoForm() {
       const data = await r.json();
       return { ok: r.ok, status: r.status, data };
     },
-    onSuccess: (result) => {
-      setResponse(result);
-    },
-    onError: (err) => {
-      setResponse({ ok: false, status: 500, data: { error: err.message } });
-    },
+    onSuccess: (result) => setResponse(result),
+    onError: (err) =>
+      setResponse({ ok: false, status: 500, data: { error: err.message } }),
   });
 
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
@@ -340,6 +389,13 @@ export default function ErpOrcamentoForm() {
     lookupCpfMutation.mutate(form.cpf);
   };
 
+  const handleCepLookup = () => {
+    const raw = form.un_codigo_postal.replace(/\D/g, "");
+    if (raw.length !== 8) return;
+    setCepLookupState({ status: "loading" });
+    lookupCepMutation.mutate(raw);
+  };
+
   const handleCopyPayload = () => {
     navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
     setCopied(true);
@@ -349,17 +405,38 @@ export default function ErpOrcamentoForm() {
   const handleReset = () => {
     setForm(DEFAULT_FORM);
     setCpfLookupState(null);
+    setCepLookupState(null);
     setResponse(null);
   };
+
+  const hasBeneficiario = !!(
+    form.usua_cpf ||
+    form.usua_nome_completo ||
+    form.usua_data_nascimento ||
+    form.usua_sexo ||
+    form.usua_parentesco
+  );
 
   const requiredFilled =
     !!form.contratante_pessoa &&
     !!form.cpf &&
+    !!form.pessoa_contato &&
+    !!form.telefone &&
     !!form.titulo_contrato &&
     !!erpAgenteVendaId;
 
+  const missingRequired = [
+    !erpAgenteVendaId && "agente_venda_id",
+    !form.contratante_pessoa && "contratante_pessoa (faça o lookup do CPF)",
+    !form.cpf && "cpf",
+    !form.pessoa_contato && "pessoa_contato (nome do contratante)",
+    !form.telefone && "telefone",
+    !form.titulo_contrato && "titulo_contrato",
+  ].filter(Boolean);
+
   return (
     <div className="min-h-screen bg-slate-50">
+      {/* Header */}
       <div className="bg-gradient-to-br from-violet-600 via-purple-600 to-fuchsia-700 px-6 py-8 shadow-lg">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -372,13 +449,13 @@ export default function ErpOrcamentoForm() {
                   Orçamento ERP
                 </h1>
                 <Badge className="bg-amber-400/20 text-amber-200 border-amber-400/30 text-xs font-semibold">
-                  MODO DE TESTE
+                  PRÉ-PROPOSTA
                 </Badge>
               </div>
               <p className="text-violet-200 text-sm mt-1">
-                Preencha os campos e visualize o payload que será enviado ao{" "}
+                Preencha os campos e envie via{" "}
                 <code className="bg-white/10 px-1 rounded text-violet-100 font-mono text-xs">
-                  POST /OrcamentoSgprcUsuario
+                  POST /PrePropostaUsuarioSgprc
                 </code>
               </p>
             </div>
@@ -393,16 +470,17 @@ export default function ErpOrcamentoForm() {
             </Button>
           </div>
 
+          {/* Status bar */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
             {[
               {
-                label: "Seu erp_agente_venda_id",
+                label: "agente_venda_id",
                 value: erpAgenteVendaId ? `#${erpAgenteVendaId}` : "Não configurado",
                 ok: !!erpAgenteVendaId,
               },
               {
                 label: "contratante_pessoa",
-                value: form.contratante_pessoa || "Aguardando lookup",
+                value: form.contratante_pessoa || "Aguardando CPF",
                 ok: !!form.contratante_pessoa,
               },
               {
@@ -432,45 +510,48 @@ export default function ErpOrcamentoForm() {
         </div>
       </div>
 
+      {/* Body */}
       <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
+        {/* Left column — form */}
         <div className="space-y-4">
+
+          {/* 1. Agente */}
           <SectionCard icon={User} title="Agente de Venda" color="violet">
-            <div className="grid grid-cols-1 gap-3">
-              <FieldRow label="erp_agente_venda_id" hint="Preenchido automaticamente do seu perfil">
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={erpAgenteVendaId ?? ""}
-                    readOnly
-                    placeholder="Não configurado — registre o agente no ERP primeiro"
-                    className={cn(
-                      "bg-slate-50 border-slate-200 text-slate-600 text-sm font-mono",
-                      !erpAgenteVendaId && "text-red-400 border-red-200 bg-red-50"
-                    )}
-                  />
-                  {erpAgenteVendaId ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                  ) : (
-                    <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+            <FieldRow label="erp_agente_venda_id" hint="Preenchido automaticamente do seu perfil">
+              <div className="flex items-center gap-2">
+                <Input
+                  value={erpAgenteVendaId ?? ""}
+                  readOnly
+                  placeholder="Não configurado"
+                  className={cn(
+                    "bg-slate-50 border-slate-200 text-slate-600 text-sm font-mono",
+                    !erpAgenteVendaId && "text-red-400 border-red-200 bg-red-50"
                   )}
-                </div>
-                {!erpAgenteVendaId && (
-                  <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-                    <Info className="w-3 h-3" />
-                    Configure seu agente no ERP em Configurações → Agentes
-                  </p>
+                />
+                {erpAgenteVendaId ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
                 )}
-              </FieldRow>
-            </div>
+              </div>
+              {!erpAgenteVendaId && (
+                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                  <Info className="w-3 h-3" />
+                  Configure seu agente no ERP em Configurações → Agentes
+                </p>
+              )}
+            </FieldRow>
           </SectionCard>
 
-          <SectionCard icon={Search} title="Busca do Cliente (CPF)" color="blue">
-            <FieldRow label="CPF do Contratante" required hint="Digite e clique em Consultar">
+          {/* 2. Contratante */}
+          <SectionCard icon={Search} title="Contratante" color="blue">
+            {/* CPF lookup */}
+            <FieldRow label="CPF do Contratante" required hint="Consulte para obter o código do ERP">
               <div className="flex gap-2">
                 <Input
                   value={form.cpf}
                   onChange={(e) => {
-                    const masked = formatCpfMask(e.target.value);
-                    set("cpf", masked);
+                    set("cpf", formatCpfMask(e.target.value));
                     if (cpfLookupState) setCpfLookupState(null);
                   }}
                   placeholder="000.000.000-00"
@@ -479,7 +560,10 @@ export default function ErpOrcamentoForm() {
                 />
                 <Button
                   onClick={handleCpfLookup}
-                  disabled={form.cpf.replace(/\D/g, "").length !== 11 || lookupCpfMutation.isPending}
+                  disabled={
+                    form.cpf.replace(/\D/g, "").length !== 11 ||
+                    lookupCpfMutation.isPending
+                  }
                   className="bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0 px-4"
                 >
                   {lookupCpfMutation.isPending ? (
@@ -493,7 +577,7 @@ export default function ErpOrcamentoForm() {
             </FieldRow>
 
             {cpfLookupState?.status === "found" && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 space-y-2">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 space-y-1">
                 <div className="flex items-center gap-1.5 text-emerald-700 font-semibold text-xs">
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   Pessoa encontrada no ERP
@@ -510,7 +594,6 @@ export default function ErpOrcamentoForm() {
                 </div>
               </div>
             )}
-
             {cpfLookupState?.status === "notfound" && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                 <div className="flex items-center gap-1.5 text-red-600 font-semibold text-xs">
@@ -520,18 +603,159 @@ export default function ErpOrcamentoForm() {
               </div>
             )}
 
-            {cpfLookupState?.status === "found" && (
-              <FieldRow label="contratante_pessoa (preenchido automaticamente)">
+            <div className="grid grid-cols-2 gap-3">
+              <FieldRow label="contratante_pessoa" hint="código ERP">
                 <Input
                   value={form.contratante_pessoa}
                   onChange={(e) => set("contratante_pessoa", e.target.value.toUpperCase())}
-                  className="font-mono text-sm bg-emerald-50 border-emerald-200"
+                  placeholder="Preenchido pelo lookup"
+                  className={cn(
+                    "font-mono text-sm",
+                    form.contratante_pessoa ? "bg-emerald-50 border-emerald-200" : "bg-slate-50"
+                  )}
                 />
               </FieldRow>
-            )}
+              <FieldRow label="RG" hint="un_rg">
+                <Input
+                  value={form.un_rg}
+                  onChange={(e) => set("un_rg", e.target.value.toUpperCase())}
+                  placeholder="00.000.000-0"
+                  className="text-sm"
+                />
+              </FieldRow>
+            </div>
+
+            <FieldRow label="Nome / Pessoa de Contato" required hint="pessoa_contato">
+              <Input
+                value={form.pessoa_contato}
+                onChange={(e) => set("pessoa_contato", e.target.value.toUpperCase())}
+                placeholder="Nome completo do contratante"
+                className="text-sm"
+              />
+            </FieldRow>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FieldRow label="Telefone" required hint="telefone">
+                <Input
+                  value={form.telefone}
+                  onChange={(e) => set("telefone", e.target.value)}
+                  placeholder="(19) 99999-0000"
+                  className="text-sm"
+                />
+              </FieldRow>
+              <FieldRow label="WhatsApp" hint="whatsapp_do_cliente">
+                <Input
+                  value={form.whatsapp_do_cliente}
+                  onChange={(e) => set("whatsapp_do_cliente", e.target.value)}
+                  placeholder="5519999990000"
+                  className="text-sm"
+                />
+              </FieldRow>
+            </div>
+
+            <FieldRow label="E-mail" hint="email_contato">
+              <Input
+                type="email"
+                value={form.email_contato}
+                onChange={(e) => set("email_contato", e.target.value)}
+                placeholder="cliente@email.com"
+                className="text-sm"
+              />
+            </FieldRow>
           </SectionCard>
 
-          <SectionCard icon={FileText} title="Dados do Orçamento" color="violet">
+          {/* 3. Endereço */}
+          <SectionCard icon={MapPin} title="Endereço" color="sky" badge="opcional" collapsible defaultOpen>
+            <FieldRow label="CEP" hint="Consulte para preencher automaticamente">
+              <div className="flex gap-2">
+                <Input
+                  value={form.un_codigo_postal}
+                  onChange={(e) => {
+                    set("un_codigo_postal", formatCepMask(e.target.value));
+                    if (cepLookupState) setCepLookupState(null);
+                  }}
+                  placeholder="00000-000"
+                  className="font-mono text-sm"
+                  maxLength={9}
+                />
+                <Button
+                  onClick={handleCepLookup}
+                  disabled={
+                    form.un_codigo_postal.replace(/\D/g, "").length !== 8 ||
+                    lookupCepMutation.isPending
+                  }
+                  className="bg-sky-600 hover:bg-sky-700 text-white flex-shrink-0 px-4"
+                >
+                  {lookupCepMutation.isPending ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Search className="w-3.5 h-3.5" />
+                  )}
+                  <span className="ml-1.5 text-sm">Buscar CEP</span>
+                </Button>
+              </div>
+              {cepLookupState?.status === "found" && (
+                <p className="text-xs text-emerald-600 flex items-center gap-1 mt-1">
+                  <CheckCircle2 className="w-3 h-3" /> Endereço preenchido automaticamente
+                </p>
+              )}
+              {cepLookupState?.status === "notfound" && (
+                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                  <XCircle className="w-3 h-3" /> {cepLookupState.error}
+                </p>
+              )}
+            </FieldRow>
+
+            <FieldRow label="Logradouro" hint="un_lougradouro">
+              <Input
+                value={form.un_lougradouro}
+                onChange={(e) => set("un_lougradouro", e.target.value.toUpperCase())}
+                placeholder="RUA, AVENIDA, etc."
+                className="text-sm"
+              />
+            </FieldRow>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FieldRow label="Número" hint="un_numero_lougradouro">
+                <Input
+                  value={form.un_numero_lougradouro}
+                  onChange={(e) => set("un_numero_lougradouro", e.target.value.toUpperCase())}
+                  placeholder="123"
+                  className="text-sm"
+                />
+              </FieldRow>
+              <FieldRow label="Complemento" hint="un_complemento_lougradouro">
+                <Input
+                  value={form.un_complemento_lougradouro}
+                  onChange={(e) => set("un_complemento_lougradouro", e.target.value.toUpperCase())}
+                  placeholder="APTO 10"
+                  className="text-sm"
+                />
+              </FieldRow>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FieldRow label="Bairro" hint="un_bairro">
+                <Input
+                  value={form.un_bairro}
+                  onChange={(e) => set("un_bairro", e.target.value.toUpperCase())}
+                  placeholder="CENTRO"
+                  className="text-sm"
+                />
+              </FieldRow>
+              <FieldRow label="Cidade — UF" hint="un_cidade">
+                <Input
+                  value={form.un_cidade}
+                  onChange={(e) => set("un_cidade", e.target.value.toUpperCase())}
+                  placeholder="LIMEIRA - SP"
+                  className="text-sm"
+                />
+              </FieldRow>
+            </div>
+          </SectionCard>
+
+          {/* 4. Plano */}
+          <SectionCard icon={Package} title="Plano / Produtos" color="violet">
             <div className="grid grid-cols-2 gap-3">
               <FieldRow label="tipo_pedido" hint="fixo">
                 <div className="flex items-center gap-2 h-9 px-3 rounded-md border border-slate-200 bg-slate-50">
@@ -539,16 +763,15 @@ export default function ErpOrcamentoForm() {
                   <span className="text-sm font-medium text-slate-700">{TIPO_PEDIDO_FIXO}</span>
                 </div>
               </FieldRow>
-
               <FieldRow label="nome_estabelecimento" hint="fixo">
                 <div className="flex items-center gap-2 h-9 px-3 rounded-md border border-slate-200 bg-slate-50">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
-                  <span className="text-sm font-medium text-slate-700">{NOME_ESTABELECIMENTO_FIXO}</span>
+                  <span className="text-xs font-medium text-slate-700 truncate">{NOME_ESTABELECIMENTO_FIXO}</span>
                 </div>
               </FieldRow>
             </div>
 
-            <FieldRow label="titulo_contrato" required hint="Plano do cliente">
+            <FieldRow label="Título do Contrato / Plano" required hint="titulo_contrato">
               <Select value={form.titulo_contrato} onValueChange={(v) => set("titulo_contrato", v)}>
                 <SelectTrigger className="text-sm">
                   <SelectValue placeholder="Selecione o plano..." />
@@ -563,65 +786,54 @@ export default function ErpOrcamentoForm() {
               </Select>
             </FieldRow>
 
-            <FieldRow label="plano_pagamento">
-              <Select value={form.plano_pagamento} onValueChange={(v) => set("plano_pagamento", v)}>
-                <SelectTrigger className="text-sm">
-                  <SelectValue placeholder="Selecione o plano de pagamento..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {PLANO_PAGAMENTO_OPTIONS.map((opt) => (
-                    <SelectItem key={opt} value={opt} className="text-sm">
-                      {opt}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <FieldRow label="Produtos" hint="IDs separados por vírgula — produtos">
+              <Input
+                value={form.produtos}
+                onChange={(e) => set("produtos", e.target.value)}
+                placeholder="ex: 1234,5678"
+                className="text-sm font-mono"
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                IDs dos produtos disponíveis para seleção pelos beneficiários.
+              </p>
             </FieldRow>
           </SectionCard>
 
-          <SectionCard icon={Phone} title="Dados de Contato" color="emerald">
-            <div className="grid grid-cols-1 gap-3">
-              <FieldRow label="telefone">
-                <Input
-                  value={form.telefone}
-                  onChange={(e) => set("telefone", e.target.value)}
-                  placeholder="(11) 99999-0000"
-                  className="text-sm"
-                />
+          {/* 5. Pagamento */}
+          <SectionCard icon={DollarSign} title="Pagamento" color="emerald">
+            <div className="grid grid-cols-2 gap-3">
+              <FieldRow label="Plano de Pagamento" hint="plano_pagamento">
+                <Select value={form.plano_pagamento} onValueChange={(v) => set("plano_pagamento", v)}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PLANO_PAGAMENTO_OPTIONS.map((opt) => (
+                      <SelectItem key={opt} value={opt} className="text-sm">
+                        {opt}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </FieldRow>
 
-              <FieldRow label="email_contato">
-                <Input
-                  type="email"
-                  value={form.email_contato}
-                  onChange={(e) => set("email_contato", e.target.value)}
-                  placeholder="cliente@email.com"
-                  className="text-sm"
-                />
-              </FieldRow>
-
-              <FieldRow label="whatsapp_do_cliente">
-                <Input
-                  value={form.whatsapp_do_cliente}
-                  onChange={(e) => set("whatsapp_do_cliente", e.target.value)}
-                  placeholder="5511999990000"
-                  className="text-sm"
-                />
-              </FieldRow>
-
-              <FieldRow label="pessoa_contato" hint="Código ERP da pessoa de contato">
-                <Input
-                  value={form.pessoa_contato}
-                  onChange={(e) => set("pessoa_contato", e.target.value.toUpperCase())}
-                  placeholder="Código ERP (opcional)"
-                  className="text-sm font-mono"
-                />
+              <FieldRow label="Nº de Parcelas" hint="numero_parcelas">
+                <Select value={form.numero_parcelas} onValueChange={(v) => set("numero_parcelas", v)}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue placeholder="Parcelas..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NUMERO_PARCELAS_OPTIONS.map((opt) => (
+                      <SelectItem key={opt} value={opt} className="text-sm">
+                        {opt}x
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </FieldRow>
             </div>
-          </SectionCard>
 
-          <SectionCard icon={MessageSquare} title="Observações" color="amber">
-            <FieldRow label="observacoes">
+            <FieldRow label="Observações" hint="observacoes">
               <Textarea
                 value={form.observacoes}
                 onChange={(e) => set("observacoes", e.target.value)}
@@ -632,6 +844,111 @@ export default function ErpOrcamentoForm() {
             </FieldRow>
           </SectionCard>
 
+          {/* 6. Beneficiário */}
+          <SectionCard
+            icon={UserPlus}
+            title="Beneficiário"
+            color="rose"
+            badge="opcional"
+            collapsible
+            defaultOpen={false}
+          >
+            <p className="text-xs text-slate-500 -mt-1 mb-2">
+              Preencha os dados do beneficiário principal (usua_*). Apenas um por proposta.
+            </p>
+
+            <FieldRow label="CPF do Beneficiário" hint="usua_cpf">
+              <Input
+                value={form.usua_cpf}
+                onChange={(e) => set("usua_cpf", formatCpfMask(e.target.value))}
+                placeholder="000.000.000-00"
+                className="font-mono text-sm"
+                maxLength={14}
+              />
+            </FieldRow>
+
+            <FieldRow label="Nome Completo" hint="usua_nome_completo">
+              <Input
+                value={form.usua_nome_completo}
+                onChange={(e) => set("usua_nome_completo", e.target.value.toUpperCase())}
+                placeholder="NOME COMPLETO DO BENEFICIÁRIO"
+                className="text-sm"
+              />
+            </FieldRow>
+
+            <div className="grid grid-cols-3 gap-3">
+              <FieldRow label="Data de Nascimento" hint="usua_data_nascimento">
+                <Input
+                  type="date"
+                  value={form.usua_data_nascimento}
+                  onChange={(e) => set("usua_data_nascimento", e.target.value)}
+                  className="text-sm"
+                />
+              </FieldRow>
+
+              <FieldRow label="Sexo" hint="usua_sexo">
+                <Select value={form.usua_sexo} onValueChange={(v) => set("usua_sexo", v)}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue placeholder="Sexo..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SEXO_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value} className="text-sm">
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FieldRow>
+
+              <FieldRow label="Parentesco" hint="usua_parentesco">
+                <Select value={form.usua_parentesco} onValueChange={(v) => set("usua_parentesco", v)}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue placeholder="Grau..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PARENTESCO_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value} className="text-sm">
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FieldRow>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FieldRow label="Telefone do Beneficiário" hint="usua_telefone">
+                <Input
+                  value={form.usua_telefone}
+                  onChange={(e) => set("usua_telefone", e.target.value)}
+                  placeholder="(19) 99999-0000"
+                  className="text-sm"
+                />
+              </FieldRow>
+              <FieldRow label="Papel" hint="usua_papeis">
+                <Select value={form.usua_papeis} onValueChange={(v) => set("usua_papeis", v)}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue placeholder="Papel..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="B" className="text-sm">B — Beneficiário</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FieldRow>
+            </div>
+
+            <FieldRow label="Produtos do Beneficiário" hint="IDs separados por vírgula — usua_produtos">
+              <Input
+                value={form.usua_produtos}
+                onChange={(e) => set("usua_produtos", e.target.value)}
+                placeholder="ex: 1234"
+                className="text-sm font-mono"
+              />
+            </FieldRow>
+          </SectionCard>
+
+          {/* Submit */}
           <Button
             onClick={() => submitMutation.mutate()}
             disabled={!requiredFilled || submitMutation.isPending}
@@ -650,11 +967,9 @@ export default function ErpOrcamentoForm() {
             ) : (
               <>
                 <Send className="w-4 h-4 mr-2" />
-                Enviar para o ERP
+                Enviar Pré-Proposta ao ERP
                 {!requiredFilled && (
-                  <span className="ml-2 text-xs opacity-75">
-                    (preencha os campos obrigatórios *)
-                  </span>
+                  <span className="ml-2 text-xs opacity-75">(campos obrigatórios faltando)</span>
                 )}
               </>
             )}
@@ -666,20 +981,14 @@ export default function ErpOrcamentoForm() {
                 <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                 <span>
                   Campos obrigatórios em falta:{" "}
-                  {[
-                    !erpAgenteVendaId && "agente_venda_id",
-                    !form.contratante_pessoa && "contratante_pessoa (faça o lookup do CPF)",
-                    !form.cpf && "cpf",
-                    !form.titulo_contrato && "titulo_contrato",
-                  ]
-                    .filter(Boolean)
-                    .join(", ")}
+                  {missingRequired.join(", ")}
                 </span>
               </p>
             </div>
           )}
         </div>
 
+        {/* Right column — payload preview + response */}
         <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
           <Card className="border border-slate-200 shadow-sm overflow-hidden">
             <CardHeader className="pb-3 pt-4 px-5 bg-slate-900 border-b border-slate-700">
@@ -689,7 +998,7 @@ export default function ErpOrcamentoForm() {
                   <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
                   <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
                   <span className="text-slate-300 text-xs font-mono ml-2">
-                    POST /OrcamentoSgprcUsuario
+                    POST /PrePropostaUsuarioSgprc
                   </span>
                 </div>
                 <Button
@@ -708,12 +1017,15 @@ export default function ErpOrcamentoForm() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="bg-slate-900 px-5 py-4 max-h-[480px] overflow-auto">
+              <div className="bg-slate-900 px-5 py-4 max-h-[520px] overflow-auto">
                 <JsonPreview payload={payload} />
               </div>
               <div className="bg-slate-800 px-5 py-2 border-t border-slate-700">
                 <span className="text-xs text-slate-400 font-mono">
                   {Object.keys(payload).length} campos preenchidos
+                  {hasBeneficiario && (
+                    <span className="ml-3 text-rose-400">+ beneficiário</span>
+                  )}
                 </span>
               </div>
             </CardContent>
@@ -733,78 +1045,66 @@ export default function ErpOrcamentoForm() {
                   {response.ok ? (
                     <>
                       <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span className="text-emerald-700 font-semibold">
-                        Orçamento criado com sucesso!
+                      <span className="text-emerald-700">
+                        Proposta criada com sucesso!
                       </span>
-                      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-300 text-xs ml-auto">
-                        HTTP {response.status}
+                      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs">
+                        {response.status}
                       </Badge>
                     </>
                   ) : (
                     <>
                       <XCircle className="w-4 h-4 text-red-600" />
-                      <span className="text-red-700 font-semibold">
-                        Erro ao criar orçamento
-                      </span>
-                      <Badge className="bg-red-100 text-red-700 border-red-300 text-xs ml-auto">
-                        HTTP {response.status}
+                      <span className="text-red-700">Erro ao enviar</span>
+                      <Badge className="bg-red-100 text-red-700 border-red-200 text-xs">
+                        {response.status}
                       </Badge>
                     </>
                   )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-5 pb-4 pt-0">
-                <div
-                  className={cn(
-                    "rounded-lg p-3 font-mono text-xs overflow-auto max-h-48",
-                    response.ok ? "bg-emerald-100" : "bg-red-100"
-                  )}
-                >
-                  <pre className={response.ok ? "text-emerald-800" : "text-red-800"}>
-                    {JSON.stringify(response.data, null, 2)}
-                  </pre>
-                </div>
+                <pre className="text-xs font-mono bg-white/60 rounded-lg p-3 overflow-auto max-h-48 text-slate-700 whitespace-pre-wrap">
+                  {JSON.stringify(response.data, null, 2)}
+                </pre>
                 {response.ok && response.data?.pedido && (
-                  <div className="mt-3 flex items-center gap-2 bg-emerald-100 rounded-lg px-3 py-2">
-                    <Hash className="w-3.5 h-3.5 text-emerald-600" />
-                    <span className="text-xs text-emerald-700">
-                      Pedido ERP:{" "}
-                      <strong className="font-semibold text-emerald-800 font-mono">
-                        #{response.data.pedido}
-                      </strong>
-                    </span>
+                  <div className="mt-2 p-2 bg-emerald-100 rounded-lg text-xs text-emerald-800 font-semibold">
+                    Nº do Pedido ERP: {response.data.pedido}
                   </div>
                 )}
               </CardContent>
             </Card>
           )}
 
-          <Card className="border border-violet-100 bg-violet-50">
-            <CardContent className="px-4 py-3">
-              <p className="text-xs font-semibold text-violet-700 mb-2 flex items-center gap-1.5">
+          {/* Field reference */}
+          <Card className="border border-slate-200 shadow-sm">
+            <CardHeader className="pb-2 pt-4 px-5">
+              <CardTitle className="text-xs font-semibold text-slate-600 flex items-center gap-2">
                 <Info className="w-3.5 h-3.5" />
-                Campos obrigatórios identificados
-              </p>
-              <ul className="space-y-1">
-                {[
-                  { field: "agente_venda_id", ok: !!erpAgenteVendaId, note: "do seu perfil de agente" },
-                  { field: "contratante_pessoa", ok: !!form.contratante_pessoa, note: "código ERP do cliente" },
-                  { field: "cpf", ok: !!form.cpf, note: "CPF do contratante" },
-                  { field: "titulo_contrato", ok: !!form.titulo_contrato, note: "plano selecionado" },
-                  { field: "tipo_pedido", ok: true, note: `fixo: ${TIPO_PEDIDO_FIXO}` },
-                  { field: "nome_estabelecimento", ok: true, note: `fixo: ${NOME_ESTABELECIMENTO_FIXO}` },
-                ].map((item) => (
-                  <li key={item.field} className="flex items-center gap-2 text-xs">
-                    {item.ok ? (
-                      <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0" />
-                    ) : (
-                      <div className="w-3 h-3 rounded-full border-2 border-slate-300 flex-shrink-0" />
-                    )}
-                    <code className="font-mono text-violet-700 font-medium">{item.field}</code>
-                    <span className="text-slate-500">{item.note}</span>
-                  </li>
-                ))}
-              </ul>
+                Referência de campos
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-5 pb-4 pt-0 space-y-2">
+              {[
+                { group: "Fixos", items: ["tipo_pedido = ORÇAMENTO", "nome_estabelecimento = LIMEIRA - CNPA"] },
+                { group: "Auto (perfil)", items: ["agente_venda_id"] },
+                { group: "Obrigatórios *", items: ["contratante_pessoa", "cpf", "pessoa_contato", "telefone", "titulo_contrato"] },
+                { group: "Contratante", items: ["un_rg", "email_contato", "whatsapp_do_cliente"] },
+                { group: "Endereço", items: ["un_codigo_postal", "un_lougradouro", "un_numero_lougradouro", "un_complemento_lougradouro", "un_bairro", "un_cidade"] },
+                { group: "Pagamento", items: ["plano_pagamento", "numero_parcelas", "observacoes"] },
+                { group: "Beneficiário (usua_*)", items: ["usua_cpf", "usua_nome_completo", "usua_data_nascimento", "usua_sexo", "usua_parentesco", "usua_telefone", "usua_produtos", "usua_papeis"] },
+              ].map(({ group, items }) => (
+                <div key={group}>
+                  <p className="text-xs font-semibold text-slate-500 mb-1">{group}</p>
+                  <div className="flex flex-wrap gap-1">
+                    {items.map((item) => (
+                      <code key={item} className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono">
+                        {item}
+                      </code>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </CardContent>
           </Card>
         </div>

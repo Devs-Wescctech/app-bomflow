@@ -313,6 +313,31 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
   }
 });
 
+// POST /api/erp/pre-proposta
+// Cria uma proposta completa (header + endereço + produto + 1 beneficiário) via POST /PrePropostaUsuarioSgprc
+router.post('/pre-proposta', authMiddleware, async (req, res) => {
+  const token = getToken(res);
+  if (!token) return;
+  try {
+    const payload = req.body;
+    console.log('[ERP Proxy] POST /pre-proposta payload:', JSON.stringify(payload));
+    const r = await fetch(`${ERP_BASE}/PrePropostaUsuarioSgprc`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) return res.status(r.status).json(data);
+    return res.json(data);
+  } catch (err) {
+    console.error('[ERP Proxy] POST /pre-proposta error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/erp/canais-venda
 // Retorna os canais de venda disponíveis no ERP (API_CANAL_VENDAS)
 // Retorno: [{ titulo_contrato: string, id: number }]
