@@ -330,7 +330,7 @@ export default function Agents() {
   const createAgentMutation = useMutation({
     mutationFn: (data) => base44.entities.Agent.create(data),
     /* MODIFICADO — chama ERP após criar agente no BomFlow */
-    onSuccess: async (novoAgente) => {
+    onSuccess: async (novoAgente, variables) => {
       const finalizar = () => {
         queryClient.invalidateQueries({ queryKey: ['agents'] });
         setIsDialogOpen(false);
@@ -396,18 +396,21 @@ export default function Agents() {
             }
 
             // Registra agente no canal de vendas do ERP (INSERT em pessoas_contratos)
-            // Usa o ID interno da Pessoa — disponível tanto para pessoa recém-criada
-            // (criada.id) quanto para pessoa já existente (erpPessoaResult.id).
-            if (pessoaInternalId && formData.canalVendaId) {
+            // Usa `variables` (dados do mutate) em vez de `formData` para evitar
+            // stale-closure — variables é imutável e capturado no momento do submit.
+            const canalVendaId    = variables?.canalVendaId    ?? null;
+            const canalVendaGrupoId = variables?.canalVendaGrupoId ?? null;
+            console.log('[createAgent] canal check — pessoaInternalId:', pessoaInternalId, 'canalVendaId:', canalVendaId);
+            if (pessoaInternalId && canalVendaId) {
               try {
                 setCreatingStep('erp_canal');
                 await registrarCanalErp({
                   agentId: novoAgente.id,
                   pessoaId: pessoaInternalId,
-                  contratoId: formData.canalVendaId,
-                  grupoId: formData.canalVendaGrupoId || null,
+                  contratoId: canalVendaId,
+                  grupoId: canalVendaGrupoId || null,
                 });
-                console.log(`[createAgent] Agente ${novoAgente.id} registrado no canal ERP ${formData.canalVendaId}`);
+                console.log(`[createAgent] Agente ${novoAgente.id} registrado no canal ERP ${canalVendaId}`);
               } catch (canalErr) {
                 console.warn('[createAgent] Falha ao registrar canal ERP:', canalErr.message);
                 toast.warning(
@@ -415,8 +418,10 @@ export default function Agents() {
                   { duration: 10000 }
                 );
               }
-            } else if (formData.canalVendaId && !pessoaInternalId) {
+            } else if (canalVendaId && !pessoaInternalId) {
               console.warn('[createAgent] Canal configurado mas pessoaInternalId indisponível — vínculo ERP omitido.');
+            } else if (!canalVendaId) {
+              console.log('[createAgent] Nenhum canal de vendas selecionado — INSERT em pessoas_contratos omitido.');
             }
 
             toast.success('Agente criado e usuário ERP vinculado com sucesso!');
