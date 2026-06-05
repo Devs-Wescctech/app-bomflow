@@ -3,3 +3,4 @@
 - [ERP Usuarios API](erp-usuarios-api.md) — acesso_todos_estabelecimentos é read-only via API REST (POST/PUT retornam 200 mas ignoram); só seta pela tela web do ERP.
 - [ERP API fields](erp-api-fields.md) — GET API_CADASTRO_PESSOAS uses `nome_titular`/`id`; POST /Pessoas uses `pessoa` (not `id`) as the code for user creation.
 - [ERP user creation email conflict](erp-user-creation-email.md) — POST /Usuarios "e-mail já utilizado" is triggered by sending `ativo`; omit it to pass the check. A separate salvarFuncoesUsuario NPE then surfaces on synthetic API-created pessoas.
+- [ERP DB pessoas_contratos](erp-db-pessoas-contratos.md) — INSERT direto no banco ERP para vincular agente ao canal de vendas; detalhes da tabela, sequence e campos.

@@ -266,6 +266,7 @@ export default function Agents() {
     workUnit: "",
     canalVenda: "",
     canalVendaId: null,
+    canalVendaGrupoId: null,
     erpAgentId: "",
     erpLogin: "",
     erpEmail: "",
@@ -650,6 +651,7 @@ export default function Agents() {
       workUnit: "",
       canalVenda: "",
       canalVendaId: null,
+      canalVendaGrupoId: null,
       erpAgentId: "",
       erpLogin: "",
       erpEmail: "",
@@ -772,6 +774,7 @@ export default function Agents() {
       workUnit: agent.workUnit || "",
       canalVenda: agent.canalVenda || "",
       canalVendaId: agent.canalVendaId || null,
+      canalVendaGrupoId: agent.canalVendaGrupoId || null,
       erpAgentId: agent.erpAgentId != null ? String(agent.erpAgentId) : "",
       erpLogin: generateErpLogin(agent.name || ""),
       erpEmail: "",
@@ -935,6 +938,7 @@ export default function Agents() {
       ...formDataToSave,
       erpAgentId: formData.erpAgentId ? Number(formData.erpAgentId) : null,
       canalVendaId: formData.canalVendaId ? Number(formData.canalVendaId) : null,
+      canalVendaGrupoId: formData.canalVendaGrupoId ? Number(formData.canalVendaGrupoId) : null,
       supervisorId: formData.supervisorId && formData.supervisorId !== "none" ? formData.supervisorId : null,
       permissions: normalizePermissions(formData.permissions)
     };
@@ -2023,7 +2027,8 @@ export default function Agents() {
                     setFormData({
                       ...formData,
                       canalVendaId: e.target.value ? Number(e.target.value) : null,
-                      canalVenda: selected?.titulo_contrato || ""
+                      canalVenda: selected?.titulo_contrato || "",
+                      canalVendaGrupoId: selected?.grupo_id ? Number(selected.grupo_id) : null
                     });
                   }}
                   className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"

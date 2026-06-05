@@ -4,6 +4,7 @@ import { createCrudRouter } from '../utils/crud.js';
 import { authMiddleware, optionalAuth } from '../middleware/auth.js';
 import { loadAgentMiddleware, requireRole } from '../middleware/permissions.js';
 import { query, pool } from '../config/database.js';
+import { registerAgentInCanal } from '../services/erpDbService.js';
 import { 
   notifyLeadAssigned, 
   notifyLeadStageChanged, 
@@ -518,7 +519,7 @@ router.get('/agents', authMiddleware, async (req, res) => {
              photo_url, permissions, level, online, capacity, working_hours, 
              queue_ids, work_unit, role, must_reset_password, erp_agent_id,
              whatsapp_access_token, whatsapp_token_expires_at,
-             canal_venda, canal_venda_id,
+             canal_venda, canal_venda_id, canal_venda_grupo_id, erp_agente_venda_id,
              created_at, updated_at
       FROM agents 
       ORDER BY created_at DESC 
@@ -543,7 +544,7 @@ router.get('/agents/:id', authMiddleware, async (req, res) => {
              queue_ids, work_unit, role, must_reset_password, erp_agent_id,
              whatsapp_access_token, whatsapp_token_expires_at,
              whatsapp_channel_token,
-             canal_venda, canal_venda_id,
+             canal_venda, canal_venda_id, canal_venda_grupo_id, erp_agente_venda_id,
              created_at, updated_at
       FROM agents WHERE id = $1
     `, [id]);
@@ -608,7 +609,32 @@ router.post('/agents', authMiddleware, async (req, res) => {
     const result = await query(sql, values);
     const agent = result.rows[0];
     delete agent.password_hash;
-    
+
+    // Registrar agente no canal de vendas do ERP (pessoas_contratos)
+    // Só executa se os três campos necessários estiverem presentes
+    const erpPessoaId     = agent.erp_agent_id;
+    const erpContratoId   = agent.canal_venda_id;
+    const erpGrupoId      = agent.canal_venda_grupo_id;
+
+    if (erpPessoaId && erpContratoId) {
+      try {
+        const erpAgenteVendaId = await registerAgentInCanal(
+          Number(erpPessoaId),
+          Number(erpContratoId),
+          erpGrupoId ? Number(erpGrupoId) : null
+        );
+        await query(
+          'UPDATE agents SET erp_agente_venda_id = $1 WHERE id = $2',
+          [erpAgenteVendaId, agent.id]
+        );
+        agent.erp_agente_venda_id = erpAgenteVendaId;
+        console.log(`[POST /agents] erp_agente_venda_id ${erpAgenteVendaId} salvo para agente ${agent.id}`);
+      } catch (erpErr) {
+        console.error(`[POST /agents] Falha ao registrar agente no ERP (pessoas_contratos):`, erpErr.message);
+        agent.erp_warning = 'Agente criado no Bom Flow, mas o vínculo com o canal de vendas do ERP falhou. Verifique manualmente.';
+      }
+    }
+
     res.status(201).json(convertKeysToCamel(agent));
   } catch (error) {
     console.error('Error creating agent:', error);
@@ -699,7 +725,7 @@ router.post('/agents/filter', authMiddleware, async (req, res) => {
       SELECT id, name, cpf, email, agent_type, team_id, skills, active, 
              photo_url, permissions, level, online, capacity, working_hours, 
              queue_ids, work_unit, role, erp_agent_id,
-             canal_venda, canal_venda_id,
+             canal_venda, canal_venda_id, canal_venda_grupo_id, erp_agente_venda_id,
              created_at, updated_at
       FROM agents
     `;
