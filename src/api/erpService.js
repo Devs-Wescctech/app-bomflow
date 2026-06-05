@@ -140,6 +140,22 @@ export async function buscarHistoricoIndicacoes(cpf) {
   return response.json();
 }
 
+export async function registrarCanalErp({ agentId, pessoaId, contratoId, grupoId }) {
+  const response = await fetch('/api/erp/registrar-canal', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify({ agentId, pessoaId, contratoId, grupoId }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error || 'Erro ao registrar agente no canal de vendas do ERP');
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
 export async function buscarCanaisVenda() {
   const response = await fetch('/api/erp/canais-venda', {
     headers: getAuthHeaders(),

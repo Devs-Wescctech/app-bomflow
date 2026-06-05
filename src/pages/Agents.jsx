@@ -9,7 +9,7 @@ import { Plus, Edit, Trash2, UserCheck, UserX, Activity, Upload, Loader2, Messag
 import { canManageAgents, isSupervisorType } from "@/components/utils/permissions.jsx";
 /* NOVO — integração ERP */
 import { createPessoaErp, createUsuarioErp, getPessoaByErp } from "@/api/erpClient";
-import { buscarCanaisVenda } from "@/api/erpService";
+import { buscarCanaisVenda, registrarCanalErp } from "@/api/erpService";
 import {
   Dialog,
   DialogContent,

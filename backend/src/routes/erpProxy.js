@@ -1,5 +1,7 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
+import { registerAgentInCanal } from '../services/erpDbService.js';
+import { query } from '../config/database.js';
 
 const router = express.Router();
 
@@ -223,6 +225,38 @@ router.post('/usuario', authMiddleware, async (req, res) => {
     return res.json(resposta);
   } catch (err) {
     console.error('[ERP Proxy] POST /usuario error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/erp/registrar-canal
+// Registra o agente no canal de vendas do ERP (INSERT em pessoas_contratos).
+// Deve ser chamado APÓS a criação da Pessoa+Usuário no ERP, quando o id interno
+// da Pessoa (pessoaId) já está disponível no frontend.
+// body: { agentId, pessoaId, contratoId, grupoId }
+router.post('/registrar-canal', authMiddleware, async (req, res) => {
+  const { agentId, pessoaId, contratoId, grupoId } = req.body;
+
+  if (!agentId || !pessoaId || !contratoId) {
+    return res.status(400).json({ error: 'agentId, pessoaId e contratoId são obrigatórios.' });
+  }
+
+  try {
+    const erpAgenteVendaId = await registerAgentInCanal(
+      Number(pessoaId),
+      Number(contratoId),
+      grupoId ? Number(grupoId) : null
+    );
+
+    await query(
+      'UPDATE agents SET erp_agente_venda_id = $1 WHERE id = $2',
+      [erpAgenteVendaId, agentId]
+    );
+
+    console.log(`[ERP /registrar-canal] agente ${agentId} → erp_agente_venda_id ${erpAgenteVendaId}`);
+    return res.json({ erpAgenteVendaId });
+  } catch (err) {
+    console.error('[ERP Proxy] POST /registrar-canal error:', err.message);
     return res.status(500).json({ error: err.message });
   }
 });

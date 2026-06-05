@@ -610,31 +610,6 @@ router.post('/agents', authMiddleware, async (req, res) => {
     const agent = result.rows[0];
     delete agent.password_hash;
 
-    // Registrar agente no canal de vendas do ERP (pessoas_contratos)
-    // Só executa se os três campos necessários estiverem presentes
-    const erpPessoaId     = agent.erp_agent_id;
-    const erpContratoId   = agent.canal_venda_id;
-    const erpGrupoId      = agent.canal_venda_grupo_id;
-
-    if (erpPessoaId && erpContratoId) {
-      try {
-        const erpAgenteVendaId = await registerAgentInCanal(
-          Number(erpPessoaId),
-          Number(erpContratoId),
-          erpGrupoId ? Number(erpGrupoId) : null
-        );
-        await query(
-          'UPDATE agents SET erp_agente_venda_id = $1 WHERE id = $2',
-          [erpAgenteVendaId, agent.id]
-        );
-        agent.erp_agente_venda_id = erpAgenteVendaId;
-        console.log(`[POST /agents] erp_agente_venda_id ${erpAgenteVendaId} salvo para agente ${agent.id}`);
-      } catch (erpErr) {
-        console.error(`[POST /agents] Falha ao registrar agente no ERP (pessoas_contratos):`, erpErr.message);
-        agent.erp_warning = 'Agente criado no Bom Flow, mas o vínculo com o canal de vendas do ERP falhou. Verifique manualmente.';
-      }
-    }
-
     res.status(201).json(convertKeysToCamel(agent));
   } catch (error) {
     console.error('Error creating agent:', error);
