@@ -344,6 +344,9 @@ export default function Agents() {
         if (deveVincularErp) {
           try {
             let codigoPessoa = erpPessoaCode;
+            // ID interno da Pessoa no ERP (PK numérica ~300M) — necessário para pessoas_contratos
+            let pessoaInternalId = erpPessoaResult?.id || null;
+
             // Se CPF não estava no ERP, cria a pessoa primeiro
             if (!codigoPessoa) {
               if (erpPessoaResult?.notFound) {
@@ -355,6 +358,7 @@ export default function Agents() {
                   situacao: "A",
                 });
                 codigoPessoa = String(criada.pessoa || "");
+                pessoaInternalId = criada.id || null; // ex: 302505993
                 setErpPessoaCode(codigoPessoa);
               } else {
                 toast.error(
@@ -390,6 +394,31 @@ export default function Agents() {
             if (erpUserId) {
               await base44.entities.Agent.update(novoAgente.id, { erpAgentId: erpUserId });
             }
+
+            // Registra agente no canal de vendas do ERP (INSERT em pessoas_contratos)
+            // Usa o ID interno da Pessoa — disponível tanto para pessoa recém-criada
+            // (criada.id) quanto para pessoa já existente (erpPessoaResult.id).
+            if (pessoaInternalId && formData.canalVendaId) {
+              try {
+                setCreatingStep('erp_canal');
+                await registrarCanalErp({
+                  agentId: novoAgente.id,
+                  pessoaId: pessoaInternalId,
+                  contratoId: formData.canalVendaId,
+                  grupoId: formData.canalVendaGrupoId || null,
+                });
+                console.log(`[createAgent] Agente ${novoAgente.id} registrado no canal ERP ${formData.canalVendaId}`);
+              } catch (canalErr) {
+                console.warn('[createAgent] Falha ao registrar canal ERP:', canalErr.message);
+                toast.warning(
+                  `Agente criado, mas o vínculo com o canal de vendas ERP falhou: ${canalErr.message}`,
+                  { duration: 10000 }
+                );
+              }
+            } else if (formData.canalVendaId && !pessoaInternalId) {
+              console.warn('[createAgent] Canal configurado mas pessoaInternalId indisponível — vínculo ERP omitido.');
+            }
+
             toast.success('Agente criado e usuário ERP vinculado com sucesso!');
           } catch (erpError) {
             console.error('ERRO createUsuarioErp debug:', erpError);
@@ -2410,9 +2439,10 @@ export default function Agents() {
           <SheetFooter className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
             {(() => {
               const CREATE_STEPS = [
-                { key: 'agent',       label: 'Criando agente no sistema...' },
-                { key: 'erp_pessoa',  label: 'Registrando no ERP...'        },
-                { key: 'erp_usuario', label: 'Criando acesso ao ERP...'     },
+                { key: 'agent',       label: 'Criando agente no sistema...'          },
+                { key: 'erp_pessoa',  label: 'Registrando no ERP...'                 },
+                { key: 'erp_usuario', label: 'Criando acesso ao ERP...'              },
+                { key: 'erp_canal',   label: 'Vinculando ao canal de vendas ERP...'  },
               ];
               const isBusy = creatingStep !== null || updateAgentMutation.isPending;
               const stepIdx = CREATE_STEPS.findIndex(s => s.key === creatingStep);
