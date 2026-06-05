@@ -189,13 +189,12 @@ function SectionCard({ icon: Icon, title, color = "violet", badge, collapsible, 
   );
 }
 
-function FieldRow({ label, required, hint, children }) {
+function FieldRow({ label, required, children }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-1.5">
         <Label className="text-xs font-medium text-slate-600">{label}</Label>
         {required && <span className="text-violet-500 text-xs">*</span>}
-        {hint && <span className="text-xs text-slate-400 font-normal">— {hint}</span>}
       </div>
       {children}
     </div>
@@ -274,6 +273,7 @@ export default function ErpOrcamentoForm() {
   const currentAgent = user?.agent;
   const erpAgenteVendaId =
     currentAgent?.erp_agente_venda_id ?? currentAgent?.erpAgenteVendaId ?? null;
+  const agenteName = currentAgent?.name ?? currentAgent?.nome ?? null;
 
   const payload = useMemo(() => {
     const p = {
@@ -517,14 +517,14 @@ export default function ErpOrcamentoForm() {
 
           {/* 1. Agente */}
           <SectionCard icon={User} title="Agente de Venda" color="violet">
-            <FieldRow label="erp_agente_venda_id" hint="Preenchido automaticamente do seu perfil">
+            <FieldRow label="Agente">
               <div className="flex items-center gap-2">
                 <Input
-                  value={erpAgenteVendaId ?? ""}
+                  value={agenteName ?? erpAgenteVendaId ?? ""}
                   readOnly
                   placeholder="Não configurado"
                   className={cn(
-                    "bg-slate-50 border-slate-200 text-slate-600 text-sm font-mono",
+                    "bg-slate-50 border-slate-200 text-slate-600 text-sm",
                     !erpAgenteVendaId && "text-red-400 border-red-200 bg-red-50"
                   )}
                 />
@@ -546,7 +546,7 @@ export default function ErpOrcamentoForm() {
           {/* 2. Contratante */}
           <SectionCard icon={Search} title="Contratante" color="blue">
             {/* CPF lookup */}
-            <FieldRow label="CPF do Contratante" required hint="Consulte para obter o código do ERP">
+            <FieldRow label="CPF do Contratante" required>
               <div className="flex gap-2">
                 <Input
                   value={form.cpf}
@@ -604,7 +604,7 @@ export default function ErpOrcamentoForm() {
             )}
 
             <div className="grid grid-cols-2 gap-3">
-              <FieldRow label="contratante_pessoa" hint="código ERP">
+              <FieldRow label="Contratante">
                 <Input
                   value={form.contratante_pessoa}
                   onChange={(e) => set("contratante_pessoa", e.target.value.toUpperCase())}
@@ -615,7 +615,7 @@ export default function ErpOrcamentoForm() {
                   )}
                 />
               </FieldRow>
-              <FieldRow label="RG" hint="un_rg">
+              <FieldRow label="RG">
                 <Input
                   value={form.un_rg}
                   onChange={(e) => set("un_rg", e.target.value.toUpperCase())}
@@ -625,7 +625,7 @@ export default function ErpOrcamentoForm() {
               </FieldRow>
             </div>
 
-            <FieldRow label="Nome / Pessoa de Contato" required hint="pessoa_contato">
+            <FieldRow label="Nome do Contratante" required>
               <Input
                 value={form.pessoa_contato}
                 onChange={(e) => set("pessoa_contato", e.target.value.toUpperCase())}
@@ -635,7 +635,7 @@ export default function ErpOrcamentoForm() {
             </FieldRow>
 
             <div className="grid grid-cols-2 gap-3">
-              <FieldRow label="Telefone" required hint="telefone">
+              <FieldRow label="Telefone" required>
                 <Input
                   value={form.telefone}
                   onChange={(e) => set("telefone", e.target.value)}
@@ -643,7 +643,7 @@ export default function ErpOrcamentoForm() {
                   className="text-sm"
                 />
               </FieldRow>
-              <FieldRow label="WhatsApp" hint="whatsapp_do_cliente">
+              <FieldRow label="WhatsApp">
                 <Input
                   value={form.whatsapp_do_cliente}
                   onChange={(e) => set("whatsapp_do_cliente", e.target.value)}
@@ -653,7 +653,7 @@ export default function ErpOrcamentoForm() {
               </FieldRow>
             </div>
 
-            <FieldRow label="E-mail" hint="email_contato">
+            <FieldRow label="E-mail">
               <Input
                 type="email"
                 value={form.email_contato}
@@ -666,7 +666,7 @@ export default function ErpOrcamentoForm() {
 
           {/* 3. Endereço */}
           <SectionCard icon={MapPin} title="Endereço" color="sky" badge="opcional" collapsible defaultOpen>
-            <FieldRow label="CEP" hint="Consulte para preencher automaticamente">
+            <FieldRow label="CEP">
               <div className="flex gap-2">
                 <Input
                   value={form.un_codigo_postal}
@@ -706,7 +706,7 @@ export default function ErpOrcamentoForm() {
               )}
             </FieldRow>
 
-            <FieldRow label="Logradouro" hint="un_lougradouro">
+            <FieldRow label="Logradouro">
               <Input
                 value={form.un_lougradouro}
                 onChange={(e) => set("un_lougradouro", e.target.value.toUpperCase())}
@@ -716,7 +716,7 @@ export default function ErpOrcamentoForm() {
             </FieldRow>
 
             <div className="grid grid-cols-2 gap-3">
-              <FieldRow label="Número" hint="un_numero_lougradouro">
+              <FieldRow label="Número">
                 <Input
                   value={form.un_numero_lougradouro}
                   onChange={(e) => set("un_numero_lougradouro", e.target.value.toUpperCase())}
@@ -724,7 +724,7 @@ export default function ErpOrcamentoForm() {
                   className="text-sm"
                 />
               </FieldRow>
-              <FieldRow label="Complemento" hint="un_complemento_lougradouro">
+              <FieldRow label="Complemento">
                 <Input
                   value={form.un_complemento_lougradouro}
                   onChange={(e) => set("un_complemento_lougradouro", e.target.value.toUpperCase())}
@@ -735,7 +735,7 @@ export default function ErpOrcamentoForm() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <FieldRow label="Bairro" hint="un_bairro">
+              <FieldRow label="Bairro">
                 <Input
                   value={form.un_bairro}
                   onChange={(e) => set("un_bairro", e.target.value.toUpperCase())}
@@ -743,7 +743,7 @@ export default function ErpOrcamentoForm() {
                   className="text-sm"
                 />
               </FieldRow>
-              <FieldRow label="Cidade — UF" hint="un_cidade">
+              <FieldRow label="Cidade — UF">
                 <Input
                   value={form.un_cidade}
                   onChange={(e) => set("un_cidade", e.target.value.toUpperCase())}
@@ -757,13 +757,13 @@ export default function ErpOrcamentoForm() {
           {/* 4. Plano */}
           <SectionCard icon={Package} title="Plano / Produtos" color="violet">
             <div className="grid grid-cols-2 gap-3">
-              <FieldRow label="tipo_pedido" hint="fixo">
+              <FieldRow label="Tipo de Pedido">
                 <div className="flex items-center gap-2 h-9 px-3 rounded-md border border-slate-200 bg-slate-50">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
                   <span className="text-sm font-medium text-slate-700">{TIPO_PEDIDO_FIXO}</span>
                 </div>
               </FieldRow>
-              <FieldRow label="nome_estabelecimento" hint="fixo">
+              <FieldRow label="Estabelecimento">
                 <div className="flex items-center gap-2 h-9 px-3 rounded-md border border-slate-200 bg-slate-50">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
                   <span className="text-xs font-medium text-slate-700 truncate">{NOME_ESTABELECIMENTO_FIXO}</span>
@@ -771,7 +771,7 @@ export default function ErpOrcamentoForm() {
               </FieldRow>
             </div>
 
-            <FieldRow label="Título do Contrato / Plano" required hint="titulo_contrato">
+            <FieldRow label="Título do Contrato / Plano" required>
               <Select value={form.titulo_contrato} onValueChange={(v) => set("titulo_contrato", v)}>
                 <SelectTrigger className="text-sm">
                   <SelectValue placeholder="Selecione o plano..." />
@@ -786,7 +786,7 @@ export default function ErpOrcamentoForm() {
               </Select>
             </FieldRow>
 
-            <FieldRow label="Produtos" hint="IDs separados por vírgula — produtos">
+            <FieldRow label="Produtos">
               <Input
                 value={form.produtos}
                 onChange={(e) => set("produtos", e.target.value)}
@@ -802,7 +802,7 @@ export default function ErpOrcamentoForm() {
           {/* 5. Pagamento */}
           <SectionCard icon={DollarSign} title="Pagamento" color="emerald">
             <div className="grid grid-cols-2 gap-3">
-              <FieldRow label="Plano de Pagamento" hint="plano_pagamento">
+              <FieldRow label="Plano de Pagamento">
                 <Select value={form.plano_pagamento} onValueChange={(v) => set("plano_pagamento", v)}>
                   <SelectTrigger className="text-sm">
                     <SelectValue placeholder="Selecione..." />
@@ -817,7 +817,7 @@ export default function ErpOrcamentoForm() {
                 </Select>
               </FieldRow>
 
-              <FieldRow label="Nº de Parcelas" hint="numero_parcelas">
+              <FieldRow label="Nº de Parcelas">
                 <Select value={form.numero_parcelas} onValueChange={(v) => set("numero_parcelas", v)}>
                   <SelectTrigger className="text-sm">
                     <SelectValue placeholder="Parcelas..." />
@@ -833,7 +833,7 @@ export default function ErpOrcamentoForm() {
               </FieldRow>
             </div>
 
-            <FieldRow label="Observações" hint="observacoes">
+            <FieldRow label="Observações">
               <Textarea
                 value={form.observacoes}
                 onChange={(e) => set("observacoes", e.target.value)}
@@ -857,7 +857,7 @@ export default function ErpOrcamentoForm() {
               Preencha os dados do beneficiário principal (usua_*). Apenas um por proposta.
             </p>
 
-            <FieldRow label="CPF do Beneficiário" hint="usua_cpf">
+            <FieldRow label="CPF do Beneficiário">
               <Input
                 value={form.usua_cpf}
                 onChange={(e) => set("usua_cpf", formatCpfMask(e.target.value))}
@@ -867,7 +867,7 @@ export default function ErpOrcamentoForm() {
               />
             </FieldRow>
 
-            <FieldRow label="Nome Completo" hint="usua_nome_completo">
+            <FieldRow label="Nome Completo">
               <Input
                 value={form.usua_nome_completo}
                 onChange={(e) => set("usua_nome_completo", e.target.value.toUpperCase())}
@@ -877,7 +877,7 @@ export default function ErpOrcamentoForm() {
             </FieldRow>
 
             <div className="grid grid-cols-3 gap-3">
-              <FieldRow label="Data de Nascimento" hint="usua_data_nascimento">
+              <FieldRow label="Data de Nascimento">
                 <Input
                   type="date"
                   value={form.usua_data_nascimento}
@@ -886,7 +886,7 @@ export default function ErpOrcamentoForm() {
                 />
               </FieldRow>
 
-              <FieldRow label="Sexo" hint="usua_sexo">
+              <FieldRow label="Sexo">
                 <Select value={form.usua_sexo} onValueChange={(v) => set("usua_sexo", v)}>
                   <SelectTrigger className="text-sm">
                     <SelectValue placeholder="Sexo..." />
@@ -901,7 +901,7 @@ export default function ErpOrcamentoForm() {
                 </Select>
               </FieldRow>
 
-              <FieldRow label="Parentesco" hint="usua_parentesco">
+              <FieldRow label="Parentesco">
                 <Select value={form.usua_parentesco} onValueChange={(v) => set("usua_parentesco", v)}>
                   <SelectTrigger className="text-sm">
                     <SelectValue placeholder="Grau..." />
@@ -918,7 +918,7 @@ export default function ErpOrcamentoForm() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <FieldRow label="Telefone do Beneficiário" hint="usua_telefone">
+              <FieldRow label="Telefone do Beneficiário">
                 <Input
                   value={form.usua_telefone}
                   onChange={(e) => set("usua_telefone", e.target.value)}
@@ -926,7 +926,7 @@ export default function ErpOrcamentoForm() {
                   className="text-sm"
                 />
               </FieldRow>
-              <FieldRow label="Papel" hint="usua_papeis">
+              <FieldRow label="Papel">
                 <Select value={form.usua_papeis} onValueChange={(v) => set("usua_papeis", v)}>
                   <SelectTrigger className="text-sm">
                     <SelectValue placeholder="Papel..." />
@@ -938,7 +938,7 @@ export default function ErpOrcamentoForm() {
               </FieldRow>
             </div>
 
-            <FieldRow label="Produtos do Beneficiário" hint="IDs separados por vírgula — usua_produtos">
+            <FieldRow label="Produtos do Beneficiário">
               <Input
                 value={form.usua_produtos}
                 onChange={(e) => set("usua_produtos", e.target.value)}
