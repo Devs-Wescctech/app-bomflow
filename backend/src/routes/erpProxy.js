@@ -261,6 +261,58 @@ router.post('/registrar-canal', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/erp/lookup-cpf?cpf=xxx
+// Busca o código ERP de uma pessoa pelo CPF (contratante_pessoa para orçamentos)
+router.get('/lookup-cpf', authMiddleware, async (req, res) => {
+  const token = getToken(res);
+  if (!token) return;
+  const { cpf } = req.query;
+  if (!cpf) return res.status(400).json({ error: 'CPF obrigatório.' });
+  try {
+    const formatted = formatCpf(cpf);
+    const url = `${ERP_BASE}/API_CADASTRO_PESSOAS?cpf=${encodeURIComponent(formatted)}`;
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) return res.status(r.status).json(data);
+    const results = data?.results || data?.data || (Array.isArray(data) ? data : []);
+    if (!results.length) return res.status(404).json({ error: 'Pessoa não encontrada no ERP para este CPF.' });
+    const p = results[0];
+    return res.json({
+      pessoa: String(p.id || p.pessoa || ''),
+      nome: p.nome_titular || p.nome_completo || '',
+      cpf: p.cpf || formatted,
+    });
+  } catch (err) {
+    console.error('[ERP Proxy] GET /lookup-cpf error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/erp/orcamento
+// Cria um orçamento no ERP via POST /OrcamentoSgprcUsuario
+router.post('/orcamento', authMiddleware, async (req, res) => {
+  const token = getToken(res);
+  if (!token) return;
+  try {
+    const payload = req.body;
+    console.log('[ERP Proxy] POST /orcamento payload:', JSON.stringify(payload));
+    const r = await fetch(`${ERP_BASE}/OrcamentoSgprcUsuario`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) return res.status(r.status).json(data);
+    return res.json(data);
+  } catch (err) {
+    console.error('[ERP Proxy] POST /orcamento error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/erp/canais-venda
 // Retorna os canais de venda disponíveis no ERP (API_CANAL_VENDAS)
 // Retorno: [{ titulo_contrato: string, id: number }]

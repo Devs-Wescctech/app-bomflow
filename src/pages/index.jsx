@@ -212,6 +212,7 @@ import SalesUpsellWonReport from "./SalesUpsellWonReport";
 import SalesUpsellTasks from "./SalesUpsellTasks";
 import SalesUpsellAgenda from "./SalesUpsellAgenda";
 import UpsellLeadGenerator from "./UpsellLeadGenerator";
+import ErpOrcamentoForm from "./ErpOrcamentoForm";
 import ReferralWonReport from "./ReferralWonReport";
 
 import Login from "./Login";
@@ -427,6 +428,7 @@ const PAGES = {
     SalesUpsellTasks: SalesUpsellTasks,
     SalesUpsellAgenda: SalesUpsellAgenda,
     UpsellLeadGenerator: UpsellLeadGenerator,
+    ErpOrcamentoForm: ErpOrcamentoForm,
     ReferralWonReport: ReferralWonReport,
     
 }
