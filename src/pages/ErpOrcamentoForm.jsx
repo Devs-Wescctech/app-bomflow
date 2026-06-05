@@ -427,7 +427,7 @@ export default function ErpOrcamentoForm() {
 
   const missingRequired = [
     !erpAgenteVendaId && "agente_venda_id",
-    !form.contratante_pessoa && "contratante_pessoa (faça o lookup do CPF)",
+    !form.contratante_pessoa && "Contratante Pessoa (faça o lookup do CPF)",
     !form.cpf && "cpf",
     !form.pessoa_contato && "pessoa_contato (nome do contratante)",
     !form.telefone && "telefone",
@@ -479,7 +479,7 @@ export default function ErpOrcamentoForm() {
                 ok: !!erpAgenteVendaId,
               },
               {
-                label: "contratante_pessoa",
+                label: "Contratante Pessoa",
                 value: form.contratante_pessoa || "Aguardando CPF",
                 ok: !!form.contratante_pessoa,
               },
@@ -588,7 +588,7 @@ export default function ErpOrcamentoForm() {
                     <p className="font-semibold text-slate-800 truncate">{cpfLookupState.nome}</p>
                   </div>
                   <div>
-                    <span className="text-slate-500">contratante_pessoa</span>
+                    <span className="text-slate-500">Contratante Pessoa</span>
                     <p className="font-semibold text-slate-800 font-mono">{cpfLookupState.pessoa}</p>
                   </div>
                 </div>
