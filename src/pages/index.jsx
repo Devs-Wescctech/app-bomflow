@@ -675,6 +675,7 @@ function PagesContent() {
                 <Route path="/SalesUpsellTasks" element={<SalesUpsellTasks />} />
                 <Route path="/SalesUpsellAgenda" element={<SalesUpsellAgenda />} />
                 <Route path="/UpsellLeadGenerator" element={<UpsellLeadGenerator />} />
+                <Route path="/ErpOrcamentoForm" element={<ErpOrcamentoForm />} />
                 <Route path="/ReferralWonReport" element={<ReferralWonReport />} />
                 
             </Routes>
