@@ -608,7 +608,7 @@ export default function ErpOrcamentoForm() {
                 <Input
                   value={form.contratante_pessoa}
                   onChange={(e) => set("contratante_pessoa", e.target.value.toUpperCase())}
-                  placeholder="Preenchido pelo lookup"
+                  placeholder=""
                   className={cn(
                     "font-mono text-sm",
                     form.contratante_pessoa ? "bg-emerald-50 border-emerald-200" : "bg-slate-50"
