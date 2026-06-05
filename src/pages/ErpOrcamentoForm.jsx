@@ -604,7 +604,7 @@ export default function ErpOrcamentoForm() {
             )}
 
             <div className="grid grid-cols-2 gap-3">
-              <FieldRow label="Contratante">
+              <FieldRow label="Contratante Pessoa">
                 <Input
                   value={form.contratante_pessoa}
                   onChange={(e) => set("contratante_pessoa", e.target.value.toUpperCase())}
