@@ -81,6 +81,19 @@ const PLANO_PAGAMENTO_OPTIONS = [
 
 const NUMERO_PARCELAS_OPTIONS = ["1", "3", "6", "12"];
 
+function isValidCelularBR(value) {
+  const digits = value.replace(/\D/g, "");
+  // Com código do país: 55 + DDD(2) + 9 + 8 = 13 dígitos
+  if (digits.length === 13 && digits.startsWith("55")) {
+    return digits[4] === "9";
+  }
+  // Sem código do país: DDD(2) + 9 + 8 = 11 dígitos
+  if (digits.length === 11) {
+    return digits[2] === "9";
+  }
+  return false;
+}
+
 const PARENTESCO_OPTIONS = [
   { value: "C", label: "C — Cônjuge" },
   { value: "F", label: "F — Filho/Filha" },
@@ -264,6 +277,7 @@ export default function ErpOrcamentoForm() {
   const [cepLookupState, setCepLookupState] = useState(null);
   const [response, setResponse] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [whatsAppError, setWhatsAppError] = useState("");
 
   const { data: user } = useQuery({
     queryKey: ["currentUser"],
@@ -644,12 +658,30 @@ export default function ErpOrcamentoForm() {
                 />
               </FieldRow>
               <FieldRow label="WhatsApp">
-                <Input
-                  value={form.whatsapp_do_cliente}
-                  onChange={(e) => set("whatsapp_do_cliente", e.target.value)}
-                  placeholder="5519999990000"
-                  className="text-sm"
-                />
+                <div className="space-y-1">
+                  <Input
+                    value={form.whatsapp_do_cliente}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, "");
+                      set("whatsapp_do_cliente", raw);
+                      if (raw.length === 0) {
+                        setWhatsAppError("");
+                      } else if (!isValidCelularBR(raw)) {
+                        setWhatsAppError("Número inválido — informe um celular (ex: 5519912345678)");
+                      } else {
+                        setWhatsAppError("");
+                      }
+                    }}
+                    placeholder="5519912345678"
+                    maxLength={13}
+                    className={cn("text-sm font-mono", whatsAppError ? "border-red-400 focus-visible:ring-red-400" : "")}
+                  />
+                  {whatsAppError && (
+                    <p className="text-xs text-red-500 flex items-center gap-1">
+                      <span>⚠</span> {whatsAppError}
+                    </p>
+                  )}
+                </div>
               </FieldRow>
             </div>
 
@@ -951,10 +983,10 @@ export default function ErpOrcamentoForm() {
           {/* Submit */}
           <Button
             onClick={() => submitMutation.mutate()}
-            disabled={!requiredFilled || submitMutation.isPending}
+            disabled={!requiredFilled || !!whatsAppError || submitMutation.isPending}
             className={cn(
               "w-full h-12 text-sm font-semibold shadow-lg transition-all",
-              requiredFilled
+              requiredFilled && !whatsAppError
                 ? "bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white shadow-violet-200"
                 : "bg-slate-200 text-slate-400 cursor-not-allowed"
             )}
