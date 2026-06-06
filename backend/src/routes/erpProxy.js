@@ -360,4 +360,26 @@ router.get('/canais-venda', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/erp/produtos
+// Retorna os produtos disponíveis no ERP (API_MV_API_PRODUTOS)
+// Retorno: [{ id: number, nome: string, ... }]
+router.get('/produtos', authMiddleware, async (req, res) => {
+  const token = getToken(res);
+  if (!token) return;
+
+  try {
+    const url = `${ERP_BASE}/API_MV_API_PRODUTOS`;
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) return res.status(response.status).json(data);
+    const results = data?.results || data?.data || (Array.isArray(data) ? data : []);
+    return res.json(results);
+  } catch (err) {
+    console.error('[ERP Proxy] GET /produtos error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

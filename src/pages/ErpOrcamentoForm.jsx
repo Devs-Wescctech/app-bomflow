@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,7 +40,9 @@ import {
   DollarSign,
   ChevronDown,
   ChevronUp,
+  X,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 
 const TITULO_CONTRATO_OPTIONS = [
@@ -279,10 +281,36 @@ export default function ErpOrcamentoForm() {
   const [copied, setCopied] = useState(false);
   const [whatsAppError, setWhatsAppError] = useState("");
 
+  const [produtosSearch, setProdutosSearch] = useState("");
+  const [produtosOpen, setProdutosOpen] = useState(false);
+  const produtosRef = useRef(null);
+
   const { data: user } = useQuery({
     queryKey: ["currentUser"],
     queryFn: () => base44.auth.me(),
   });
+
+  const { data: erpProdutos = [], isLoading: loadingProdutos } = useQuery({
+    queryKey: ["erpProdutos"],
+    queryFn: async () => {
+      const res = await fetch("/api/erp/produtos", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!res.ok) throw new Error("Erro ao buscar produtos do ERP");
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 10,
+  });
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (produtosRef.current && !produtosRef.current.contains(e.target)) {
+        setProdutosOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const currentAgent = user?.agent;
   const erpAgenteVendaId =
@@ -819,15 +847,119 @@ export default function ErpOrcamentoForm() {
             </FieldRow>
 
             <FieldRow label="Produtos">
-              <Input
-                value={form.produtos}
-                onChange={(e) => set("produtos", e.target.value)}
-                placeholder="ex: 1234,5678"
-                className="text-sm font-mono"
-              />
-              <p className="text-xs text-slate-400 mt-1">
-                IDs dos produtos disponíveis para seleção pelos beneficiários.
-              </p>
+              {(() => {
+                const selectedIds = form.produtos
+                  ? form.produtos.split(",").map(s => s.trim()).filter(Boolean)
+                  : [];
+
+                const selectedProdutos = erpProdutos.filter(p =>
+                  selectedIds.includes(String(p.id))
+                );
+
+                const filteredProdutos = erpProdutos.filter(p => {
+                  const nome = (p.nome || p.descricao || p.name || "").toLowerCase();
+                  return nome.includes(produtosSearch.toLowerCase());
+                });
+
+                const toggleProduto = (id) => {
+                  const idStr = String(id);
+                  const current = form.produtos
+                    ? form.produtos.split(",").map(s => s.trim()).filter(Boolean)
+                    : [];
+                  const next = current.includes(idStr)
+                    ? current.filter(x => x !== idStr)
+                    : [...current, idStr];
+                  set("produtos", next.join(","));
+                };
+
+                return (
+                  <div className="space-y-2" ref={produtosRef}>
+                    {/* Trigger */}
+                    <button
+                      type="button"
+                      onClick={() => setProdutosOpen(o => !o)}
+                      className={cn(
+                        "w-full flex items-center justify-between px-3 h-9 rounded-md border text-sm bg-white",
+                        produtosOpen ? "border-violet-400 ring-1 ring-violet-300" : "border-slate-200 hover:border-slate-300"
+                      )}
+                    >
+                      <span className="text-slate-500 truncate">
+                        {selectedIds.length === 0
+                          ? "Selecione os produtos..."
+                          : `${selectedIds.length} produto(s) selecionado(s)`}
+                      </span>
+                      <ChevronDown className={cn("w-4 h-4 text-slate-400 flex-shrink-0 transition-transform", produtosOpen && "rotate-180")} />
+                    </button>
+
+                    {/* Dropdown */}
+                    {produtosOpen && (
+                      <div className="border border-slate-200 rounded-md shadow-lg bg-white z-50 max-h-56 flex flex-col">
+                        <div className="p-2 border-b border-slate-100">
+                          <Input
+                            value={produtosSearch}
+                            onChange={e => setProdutosSearch(e.target.value)}
+                            placeholder="Buscar produto..."
+                            className="h-7 text-xs"
+                            autoFocus
+                          />
+                        </div>
+                        <div className="overflow-y-auto flex-1">
+                          {loadingProdutos ? (
+                            <div className="flex items-center justify-center py-4 gap-2 text-slate-400 text-xs">
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando...
+                            </div>
+                          ) : filteredProdutos.length === 0 ? (
+                            <p className="text-xs text-slate-400 text-center py-4">Nenhum produto encontrado</p>
+                          ) : (
+                            filteredProdutos.map(p => {
+                              const nome = p.nome || p.descricao || p.name || `Produto #${p.id}`;
+                              const checked = selectedIds.includes(String(p.id));
+                              return (
+                                <label
+                                  key={p.id}
+                                  className="flex items-center gap-2 px-3 py-2 hover:bg-violet-50 cursor-pointer"
+                                >
+                                  <Checkbox
+                                    checked={checked}
+                                    onCheckedChange={() => toggleProduto(p.id)}
+                                    className="border-violet-300 data-[state=checked]:bg-violet-600"
+                                  />
+                                  <span className="text-sm text-slate-700 flex-1">{nome}</span>
+                                  <span className="text-xs text-slate-400 font-mono">{p.id}</span>
+                                </label>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Chips dos selecionados */}
+                    {selectedProdutos.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {selectedProdutos.map(p => {
+                          const nome = p.nome || p.descricao || p.name || `#${p.id}`;
+                          return (
+                            <span
+                              key={p.id}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 text-xs font-medium"
+                            >
+                              {nome}
+                              <button
+                                type="button"
+                                onClick={() => toggleProduto(p.id)}
+                                className="hover:text-violet-900"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </FieldRow>
           </SectionCard>
 
