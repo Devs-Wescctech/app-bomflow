@@ -293,11 +293,18 @@ export default function ErpOrcamentoForm() {
   const { data: erpProdutos = [], isLoading: loadingProdutos } = useQuery({
     queryKey: ["erpProdutos"],
     queryFn: async () => {
+      const token = localStorage.getItem("token") || localStorage.getItem("accessToken");
       const res = await fetch("/api/erp/produtos", {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error("Erro ao buscar produtos do ERP");
-      return res.json();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.error("[ERP Produtos] Erro HTTP", res.status, err);
+        throw new Error(err.error || "Erro ao buscar produtos do ERP");
+      }
+      const data = await res.json();
+      console.log("[ERP Produtos] resposta:", data?.length ?? data);
+      return data;
     },
     staleTime: 1000 * 60 * 10,
   });
@@ -856,8 +863,13 @@ export default function ErpOrcamentoForm() {
                   selectedIds.includes(String(p.id))
                 );
 
-                const filteredProdutos = erpProdutos.filter(p => {
-                  const nome = (p.nome || p.descricao || p.name || "").toLowerCase();
+                // Filtra por plano selecionado, depois por busca de texto
+                const produtosDoPLano = form.titulo_contrato
+                  ? erpProdutos.filter(p => p.titulo_contrato === form.titulo_contrato)
+                  : erpProdutos;
+
+                const filteredProdutos = produtosDoPLano.filter(p => {
+                  const nome = (p.descricao || p.nome || p.name || "").toLowerCase();
                   return nome.includes(produtosSearch.toLowerCase());
                 });
 

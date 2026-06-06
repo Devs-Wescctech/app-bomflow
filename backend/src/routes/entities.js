@@ -44,6 +44,11 @@ pool.query(`
 `).then(() => console.log('[Migration] leads_upsell ERP columns OK'))
   .catch(e => console.error('[Migration] leads_upsell ERP columns error:', e.message));
 
+pool.query(`
+  ALTER TABLE activities_upsell ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES agents(id);
+`).then(() => console.log('[Migration] activities_upsell.created_by OK'))
+  .catch(e => console.error('[Migration] activities_upsell.created_by error:', e.message));
+
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }

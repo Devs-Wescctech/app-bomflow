@@ -283,7 +283,7 @@ export default function SalesUpsellTasks() {
   const novoLeads = useMemo(() => {
     if (!privileged) return [];
     const agentType = currentAgent?.agent_type || currentAgent?.agentType;
-    const isFullAdmin = user?.role === 'admin' || agentType === 'admin' || agentType === 'upsell_admin';
+    const isFullAdmin = user?.role === 'admin' || agentType === 'admin' || agentType === 'upsell_admin' || privileged;
     let visibleLeads = leads;
     if (!isFullAdmin && currentAgent) {
       const visibleAgs = getVisibleAgents(agents, currentAgent);

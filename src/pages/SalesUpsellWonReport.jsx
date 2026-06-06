@@ -140,13 +140,13 @@ export default function SalesUpsellWonReport() {
       }
 
       if (dateRange?.from) {
-        const d = new Date(lead.convertedAt || lead.converted_at || lead.updatedAt || lead.updated_at);
+        const d = new Date(lead.concludedAt || lead.concluded_at || lead.convertedAt || lead.converted_at || lead.updatedAt || lead.updated_at);
         const start = new Date(dateRange.from);
         start.setHours(0, 0, 0, 0);
         if (d < start) return false;
       }
       if (dateRange?.to) {
-        const d = new Date(lead.convertedAt || lead.converted_at || lead.updatedAt || lead.updated_at);
+        const d = new Date(lead.concludedAt || lead.concluded_at || lead.convertedAt || lead.converted_at || lead.updatedAt || lead.updated_at);
         const end = new Date(dateRange.to);
         end.setHours(23, 59, 59, 999);
         if (d > end) return false;
@@ -216,7 +216,7 @@ export default function SalesUpsellWonReport() {
           team?.name || '',
           territory?.name || '',
           lead.createdAt ? format(new Date(lead.createdAt), 'dd/MM/yyyy', { locale: ptBR }) : '',
-          (lead.convertedAt || lead.converted_at) ? format(new Date(lead.convertedAt || lead.converted_at), 'dd/MM/yyyy', { locale: ptBR }) : '',
+          (lead.concludedAt || lead.concluded_at || lead.convertedAt || lead.converted_at) ? format(new Date(lead.concludedAt || lead.concluded_at || lead.convertedAt || lead.converted_at), 'dd/MM/yyyy', { locale: ptBR }) : '',
         ];
       }),
     ].map(row => row.join(';')).join('\n');

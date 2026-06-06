@@ -329,8 +329,8 @@ export function isUpsellPrivileged(user, agent) {
 export function filterMenuItems(agent, menuItems, user = null) {
   const agentType = agent?.agent_type || agent?.agentType;
 
-  // JWT admin without an agent record: show all items
-  if (user?.role === 'admin' && !agentType) {
+  // JWT admin always gets full menu regardless of agent type
+  if (user?.role === 'admin') {
     return menuItems.filter(item => !item.salesOnly);
   }
 
