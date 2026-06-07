@@ -924,15 +924,13 @@ export default function ErpOrcamentoForm() {
                   const next = current.includes(idStr)
                     ? current.filter(x => x !== idStr)
                     : [...current, idStr];
-                  // Auto-preenche usua_produtos com o ID numérico do primeiro produto selecionado
-                  const nextObjs = erpProdutos.filter(p => next.includes(String(p.id)));
-                  const firstId = nextObjs[0]
-                    ? String(nextObjs[0].produto_id || nextObjs[0].id)
-                    : "";
                   setForm(f => ({
                     ...f,
                     produtos: next.join(","),
-                    usua_produtos: firstId || f.usua_produtos,
+                    // usua_produtos NÃO é auto-preenchido com produto_id:
+                    // são campos de semântica diferente. usua_produtos é o ID
+                    // de beneficiário no módulo SGPRC_USUARIO — deve ser preenchido
+                    // manualmente pelo usuário quando necessário.
                   }));
                 };
 
