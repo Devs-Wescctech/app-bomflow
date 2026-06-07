@@ -355,7 +355,7 @@ router.post('/pre-proposta', authMiddleware, async (req, res) => {
   if (!token) return;
   try {
     const payload = req.body;
-    console.log('[ERP Proxy] POST /pre-proposta payload:', JSON.stringify(payload));
+    console.log('[ERP pre-proposta] payload enviado ao ERP:', JSON.stringify(payload, null, 2));
     const r = await fetch(`${ERP_BASE}/PrePropostaUsuarioSgprc`, {
       method: 'POST',
       headers: {
@@ -365,6 +365,8 @@ router.post('/pre-proposta', authMiddleware, async (req, res) => {
       body: JSON.stringify(payload),
     });
     const data = await r.json().catch(() => ({}));
+    console.log('[ERP pre-proposta] status HTTP:', r.status);
+    console.log('[ERP pre-proposta] resposta ERP completa:', JSON.stringify(data, null, 2));
     if (!r.ok) return res.status(r.status).json(data);
     return res.json(data);
   } catch (err) {
@@ -410,6 +412,11 @@ router.get('/produtos', authMiddleware, async (req, res) => {
     const data = await response.json();
     if (!response.ok) return res.status(response.status).json(data);
     const results = data?.results || data?.data || (Array.isArray(data) ? data : []);
+    if (results.length > 0) {
+      console.log('[ERP /produtos] total:', results.length);
+      console.log('[ERP /produtos] campos do 1º produto:', Object.keys(results[0]));
+      console.log('[ERP /produtos] 1º produto completo:', JSON.stringify(results[0], null, 2));
+    }
     return res.json(results);
   } catch (err) {
     console.error('[ERP Proxy] GET /produtos error:', err.message);
