@@ -304,15 +304,7 @@ export default function ErpOrcamentoForm() {
       }
       const data = await res.json();
       console.log("[ERP Produtos] resposta:", data?.length ?? data);
-      // Deduplica por id — a API do ERP pode retornar entradas repetidas
-      const seen = new Set();
-      const unique = (Array.isArray(data) ? data : []).filter(p => {
-        const key = String(p.id);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-      return unique;
+      return data;
     },
     staleTime: 1000 * 60 * 10,
   });
@@ -867,9 +859,17 @@ export default function ErpOrcamentoForm() {
                   ? form.produtos.split(",").map(s => s.trim()).filter(Boolean)
                   : [];
 
-                const selectedProdutos = erpProdutos.filter(p =>
-                  selectedIds.includes(String(p.id))
-                );
+                // Deduplicar por nome — o ERP pode retornar múltiplas entradas
+                // com o mesmo id/nome para o mesmo produto
+                const seenNames = new Set();
+                const selectedProdutos = erpProdutos
+                  .filter(p => selectedIds.includes(String(p.id)))
+                  .filter(p => {
+                    const nome = (p.nome || p.descricao || p.name || String(p.id)).trim();
+                    if (seenNames.has(nome)) return false;
+                    seenNames.add(nome);
+                    return true;
+                  });
 
                 // Filtra por plano selecionado, depois por busca de texto
                 const produtosDoPLano = form.titulo_contrato
