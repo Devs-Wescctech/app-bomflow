@@ -283,18 +283,31 @@ export default function SalesUpsellTasks() {
   const novoLeads = useMemo(() => {
     if (!privileged) return [];
     const agentType = currentAgent?.agent_type || currentAgent?.agentType;
-    const isFullAdmin = user?.role === 'admin' || agentType === 'admin' || agentType === 'upsell_admin' || privileged;
+    const isFullAdmin = user?.role === 'admin' || agentType === 'admin' || agentType === 'upsell_admin';
     let visibleLeads = leads;
+    let taskSourceActivities = tasks;
     if (!isFullAdmin && currentAgent) {
-      const visibleAgs = getVisibleAgents(agents, currentAgent);
-      const visibleAgentIds = new Set(visibleAgs.map(a => a.id));
+      const myId = currentAgent.id;
+      const teamIds = new Set([
+        myId,
+        ...agents
+          .filter(a => {
+            const sid = a.supervisorId || a.supervisor_id;
+            return sid && String(sid) === String(myId);
+          })
+          .map(a => a.id),
+      ]);
       visibleLeads = leads.filter(l => {
         const aid = l.agentId || l.agent_id;
-        return aid != null && visibleAgentIds.has(aid);
+        return aid != null && teamIds.has(aid);
+      });
+      taskSourceActivities = tasks.filter(t => {
+        const assignee = t.assignedTo || t.assigned_to;
+        return teamIds.has(assignee) || teamIds.has(t.createdBy || t.created_by);
       });
     }
     const leadIdsWithTasks = new Set(
-      tasks
+      taskSourceActivities
         .map(t => t.leadId || t.lead_id)
         .filter(id => id != null)
         .map(String)

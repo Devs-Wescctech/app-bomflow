@@ -365,8 +365,8 @@ export function filterMenuItems(agent, menuItems, user = null) {
       return true;
     })
     .map(item => {
-      // Admin sees all sub-items
-      if (isAdmin) return item;
+      // Admin or any *_admin module-admin sees all sub-items within their accessible modules
+      if (isAdmin || agentType?.endsWith('_admin')) return item;
       
       // If no sub-items, return as-is
       if (!item.items || item.items.length === 0) return item;
