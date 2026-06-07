@@ -262,7 +262,12 @@ router.post('/registrar-canal', authMiddleware, async (req, res) => {
 });
 
 // GET /api/erp/lookup-cpf?cpf=xxx
-// Busca o código ERP de uma pessoa pelo CPF (contratante_pessoa para orçamentos)
+// Busca o código ERP de uma pessoa pelo CPF (contratante_pessoa para orçamentos).
+//
+// IMPORTANTE: API_CADASTRO_PESSOAS retorna `id` = ID do contrato (ex: 55569514),
+// NÃO o código Pessoa do ERP. O endpoint PrePropostaUsuarioSgprc rejeita esse valor.
+// A rota correta para obter o código Pessoa é GET /Pessoas?cpf=, que retorna o
+// campo `pessoa` (código alfanumérico, ex: "2606501").
 router.get('/lookup-cpf', authMiddleware, async (req, res) => {
   const token = getToken(res);
   if (!token) return;
@@ -270,15 +275,43 @@ router.get('/lookup-cpf', authMiddleware, async (req, res) => {
   if (!cpf) return res.status(400).json({ error: 'CPF obrigatório.' });
   try {
     const formatted = formatCpf(cpf);
-    const url = `${ERP_BASE}/API_CADASTRO_PESSOAS?cpf=${encodeURIComponent(formatted)}`;
-    const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) return res.status(r.status).json(data);
-    const results = data?.results || data?.data || (Array.isArray(data) ? data : []);
-    if (!results.length) return res.status(404).json({ error: 'Pessoa não encontrada no ERP para este CPF.' });
-    const p = results[0];
+
+    // Passo 1: busca o código Pessoa via GET /Pessoas?cpf= (retorna campo `pessoa`)
+    const pessoasUrl = `${ERP_BASE}/Pessoas?cpf=${encodeURIComponent(formatted)}`;
+    const pessoasR = await fetch(pessoasUrl, { headers: { Authorization: `Bearer ${token}` } });
+    const pessoasData = await pessoasR.json().catch(() => ({}));
+    console.log('[ERP lookup-cpf] GET /Pessoas status:', pessoasR.status);
+    console.log('[ERP lookup-cpf] GET /Pessoas resposta (primeiros):', JSON.stringify(pessoasData).substring(0, 400));
+
+    if (pessoasR.ok) {
+      const results = pessoasData?.results || pessoasData?.data || (Array.isArray(pessoasData) ? pessoasData : []);
+      if (results.length) {
+        const p = results[0];
+        // `pessoa` é o código ERP alfanumérico exigido pelo PrePropostaUsuarioSgprc
+        const pessoaCodigo = p.pessoa || p.codigo || String(p.id || '');
+        const nome = p.nome_completo || p.nome_titular || p.nome || '';
+        console.log('[ERP lookup-cpf] código Pessoa encontrado:', pessoaCodigo, '| nome:', nome);
+        return res.json({ pessoa: pessoaCodigo, nome, cpf: p.cpf || formatted });
+      }
+    }
+
+    // Passo 2: fallback para API_CADASTRO_PESSOAS (clientes com contrato)
+    const cadastroUrl = `${ERP_BASE}/API_CADASTRO_PESSOAS?cpf=${encodeURIComponent(formatted)}`;
+    const cadastroR = await fetch(cadastroUrl, { headers: { Authorization: `Bearer ${token}` } });
+    const cadastroData = await cadastroR.json().catch(() => ({}));
+    console.log('[ERP lookup-cpf] fallback API_CADASTRO_PESSOAS status:', cadastroR.status);
+
+    if (!cadastroR.ok) return res.status(cadastroR.status).json(cadastroData);
+    const cadastroResults = cadastroData?.results || cadastroData?.data || (Array.isArray(cadastroData) ? cadastroData : []);
+    if (!cadastroResults.length) return res.status(404).json({ error: 'Pessoa não encontrada no ERP para este CPF.' });
+
+    const p = cadastroResults[0];
+    // API_CADASTRO_PESSOAS: `id` = ID do contrato. Tenta retornar `pessoa` se existir,
+    // senão usa `id` como fallback (pode ser rejeitado pelo ERP em orçamentos).
+    const pessoaCodigo = p.pessoa || String(p.id || '');
+    console.log('[ERP lookup-cpf] fallback código:', pessoaCodigo, '| campo pessoa presente:', !!p.pessoa);
     return res.json({
-      pessoa: String(p.id || p.pessoa || ''),
+      pessoa: pessoaCodigo,
       nome: p.nome_titular || p.nome_completo || '',
       cpf: p.cpf || formatted,
     });
