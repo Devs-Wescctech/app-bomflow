@@ -17,11 +17,12 @@ Returns an array. Each element (results[0]) has:
 ## GET /Pessoas?cpf=XXX (lookup for orçamentos)
 
 Returns an array. Each element has:
-- `id` — numeric **Pessoa ID** (ex: 150) — **use this as `contratante_pessoa` in PrePropostaUsuarioSgprc**
+- `pessoa` — ERP Pessoa code (ex: "2") — **use this as `contratante_pessoa` in PrePropostaUsuarioSgprc**
+- `id` — numeric internal record ID (ex: 150) — NOT the right value for orçamentos
 - `nome_completo` (or `nome`)
 - `cpf`
 
-**Why:** `API_CADASTRO_PESSOAS` `id` (ex: 55569514) is the contract record ID — ERP rejects it in orçamentos with "Valor inválido para o campo Contratante". The correct value is `id` from `GET /Pessoas` (ex: 150), which is the internal Pessoa record ID.
+**Why:** Both `API_CADASTRO_PESSOAS.id` (55569514 = contract record ID) and `GET /Pessoas.id` (150 = internal Pessoa record ID) are rejected by the ERP with "Valor inválido para o campo Contratante". The correct value is `pessoa` from `GET /Pessoas` (ex: "2"), which is the ERP Pessoa code.
 
 ## POST /Pessoas (create new Pessoa)
 
