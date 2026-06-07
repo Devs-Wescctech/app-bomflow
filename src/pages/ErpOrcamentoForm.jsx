@@ -377,7 +377,7 @@ export default function ErpOrcamentoForm() {
       preco_informado: firstProduto?.preco_informado ?? undefined,
       // Pagamento
       plano_pagamento: form.plano_pagamento || undefined,
-      numero_parcelas: form.numero_parcelas || undefined,
+      numero_parcelas: form.numero_parcelas ? Number(form.numero_parcelas) : undefined,
       observacoes: form.observacoes || undefined,
       // Beneficiário
       usua_cpf: form.usua_cpf || undefined,
@@ -453,7 +453,11 @@ export default function ErpOrcamentoForm() {
         body: JSON.stringify(payload),
       });
       const data = await r.json();
-      return { ok: r.ok, status: r.status, data };
+      // O ERP pode retornar HTTP 200 mas com um objeto de erro no body
+      // quando há problema de permissão em algum bloco interno (ex: SGPRC_USUARIO).
+      // Nesse caso marcamos como erro parcial para exibir aviso correto.
+      const erpBodyError = r.ok && data?.error ? data.error : null;
+      return { ok: r.ok, status: r.status, data, erpBodyError };
     },
     onSuccess: (result) => setResponse(result),
     onError: (err) =>
@@ -1259,14 +1263,34 @@ export default function ErpOrcamentoForm() {
             <Card
               className={cn(
                 "border shadow-sm overflow-hidden",
-                response.ok
-                  ? "border-emerald-200 bg-emerald-50"
-                  : "border-red-200 bg-red-50"
+                !response.ok
+                  ? "border-red-200 bg-red-50"
+                  : response.erpBodyError
+                  ? "border-amber-200 bg-amber-50"
+                  : "border-emerald-200 bg-emerald-50"
               )}
             >
               <CardHeader className="pb-2 pt-4 px-5">
                 <CardTitle className="flex items-center gap-2 text-sm">
-                  {response.ok ? (
+                  {!response.ok ? (
+                    <>
+                      <XCircle className="w-4 h-4 text-red-600" />
+                      <span className="text-red-700">Erro ao enviar</span>
+                      <Badge className="bg-red-100 text-red-700 border-red-200 text-xs">
+                        {response.status}
+                      </Badge>
+                    </>
+                  ) : response.erpBodyError ? (
+                    <>
+                      <AlertCircle className="w-4 h-4 text-amber-600" />
+                      <span className="text-amber-700">
+                        Orçamento criado com erro de permissão no ERP
+                      </span>
+                      <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs">
+                        {response.status}
+                      </Badge>
+                    </>
+                  ) : (
                     <>
                       <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                       <span className="text-emerald-700">
@@ -1276,23 +1300,32 @@ export default function ErpOrcamentoForm() {
                         {response.status}
                       </Badge>
                     </>
-                  ) : (
-                    <>
-                      <XCircle className="w-4 h-4 text-red-600" />
-                      <span className="text-red-700">Erro ao enviar</span>
-                      <Badge className="bg-red-100 text-red-700 border-red-200 text-xs">
-                        {response.status}
-                      </Badge>
-                    </>
                   )}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="px-5 pb-4 pt-0">
+              <CardContent className="px-5 pb-4 pt-0 space-y-2">
+                {response.erpBodyError && (
+                  <div className="bg-amber-100 border border-amber-300 rounded-lg p-3 text-xs text-amber-800 space-y-1">
+                    <p className="font-semibold flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                      Bloco sem permissão: <code className="font-mono">{response.data?.block}</code>
+                    </p>
+                    <p>
+                      O usuário <code className="font-mono">{response.data?.user}</code> (conta de serviço do token ERP)
+                      não tem acesso a esse bloco. O orçamento foi criado mas o fechamento ficou incompleto.
+                    </p>
+                    <p className="font-semibold">
+                      Ação necessária: no ERP admin, conceda ao usuário{" "}
+                      <code className="font-mono">{response.data?.user}</code> permissão para o bloco{" "}
+                      <code className="font-mono">{response.data?.block}</code>.
+                    </p>
+                  </div>
+                )}
                 <pre className="text-xs font-mono bg-white/60 rounded-lg p-3 overflow-auto max-h-48 text-slate-700 whitespace-pre-wrap">
                   {JSON.stringify(response.data, null, 2)}
                 </pre>
-                {response.ok && response.data?.pedido && (
-                  <div className="mt-2 p-2 bg-emerald-100 rounded-lg text-xs text-emerald-800 font-semibold">
+                {response.ok && !response.erpBodyError && response.data?.pedido && (
+                  <div className="p-2 bg-emerald-100 rounded-lg text-xs text-emerald-800 font-semibold">
                     Nº do Pedido ERP: {response.data.pedido}
                   </div>
                 )}
