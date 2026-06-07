@@ -304,7 +304,15 @@ export default function ErpOrcamentoForm() {
       }
       const data = await res.json();
       console.log("[ERP Produtos] resposta:", data?.length ?? data);
-      return data;
+      // Deduplica por id — a API do ERP pode retornar entradas repetidas
+      const seen = new Set();
+      const unique = (Array.isArray(data) ? data : []).filter(p => {
+        const key = String(p.id);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      return unique;
     },
     staleTime: 1000 * 60 * 10,
   });
