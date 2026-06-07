@@ -287,10 +287,12 @@ router.get('/lookup-cpf', authMiddleware, async (req, res) => {
       const results = pessoasData?.results || pessoasData?.data || (Array.isArray(pessoasData) ? pessoasData : []);
       if (results.length) {
         const p = results[0];
-        // `pessoa` é o código ERP alfanumérico exigido pelo PrePropostaUsuarioSgprc
-        const pessoaCodigo = p.pessoa || p.codigo || String(p.id || '');
+        // GET /Pessoas retorna `id` = ID interno da Pessoa (ex: 150) que é o valor
+        // aceito por PrePropostaUsuarioSgprc como `contratante_pessoa`.
+        // NÃO confundir com API_CADASTRO_PESSOAS cujo `id` é o ID do contrato (ex: 55569514).
+        const pessoaCodigo = String(p.id || p.pessoa || p.codigo || '');
         const nome = p.nome_completo || p.nome_titular || p.nome || '';
-        console.log('[ERP lookup-cpf] código Pessoa encontrado:', pessoaCodigo, '| nome:', nome);
+        console.log('[ERP lookup-cpf] GET /Pessoas → id:', p.id, '| pessoa:', p.pessoa, '| usando:', pessoaCodigo, '| nome:', nome);
         return res.json({ pessoa: pessoaCodigo, nome, cpf: p.cpf || formatted });
       }
     }

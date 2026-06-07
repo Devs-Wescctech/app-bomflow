@@ -7,12 +7,21 @@ description: Actual field names returned by the Bom Pastor ERP API endpoints use
 
 Returns an array. Each element (results[0]) has:
 - `nome_titular` — person's full name (NOT `nome_completo`)
-- `id` — numeric contract record ID (NOT the ERP Pessoa code)
+- `id` — numeric **contract record ID** (ex: 55569514) — NOT the ERP Pessoa ID, NOT the ERP Pessoa code
 - `contrato` — contract number
 - `cpf` — formatted as "000.000.000-00"
 - Other contract fields (cidade, rua, cep, etc.)
 
-**Important:** This endpoint is for contract/customer lookup only. It does NOT return the ERP "Pessoa" code used for user creation.
+**Important:** This endpoint is for contract/customer lookup only. It does NOT return the ERP "Pessoa" code used for user creation, nor the Pessoa ID used for orçamentos.
+
+## GET /Pessoas?cpf=XXX (lookup for orçamentos)
+
+Returns an array. Each element has:
+- `id` — numeric **Pessoa ID** (ex: 150) — **use this as `contratante_pessoa` in PrePropostaUsuarioSgprc**
+- `nome_completo` (or `nome`)
+- `cpf`
+
+**Why:** `API_CADASTRO_PESSOAS` `id` (ex: 55569514) is the contract record ID — ERP rejects it in orçamentos with "Valor inválido para o campo Contratante". The correct value is `id` from `GET /Pessoas` (ex: 150), which is the internal Pessoa record ID.
 
 ## POST /Pessoas (create new Pessoa)
 
@@ -46,6 +55,7 @@ Do NOT send `ativo`: it triggers the Pessoa email-collision validation and block
 
 ## How to apply
 
-- Frontend uses `nome_titular` (GET) to auto-fill agent name.
-- On save: `criada.pessoa || criada.id` (prefer `pessoa`) for the codigo passed to createUsuarioErp.
+- Frontend uses `nome_titular` (API_CADASTRO_PESSOAS) or `nome_completo` (GET /Pessoas) to auto-fill name.
+- For **orçamentos** (`contratante_pessoa`): use `id` from `GET /Pessoas?cpf=` (ex: 150). The `/api/erp/lookup-cpf` route does this — tries GET /Pessoas first, falls back to API_CADASTRO_PESSOAS.
+- For **createUsuario** (`pessoa` field): use `criada.pessoa` from POST /Pessoas response.
 - `erpAgentId` stored from `result?.id || result?.usuario` (user creation response).
