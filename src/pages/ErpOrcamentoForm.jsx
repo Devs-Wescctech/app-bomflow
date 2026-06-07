@@ -113,6 +113,20 @@ const SEXO_OPTIONS = [
 const TIPO_PEDIDO_FIXO = "ORÇAMENTO";
 const NOME_ESTABELECIMENTO_FIXO = "LIMEIRA - CNPA";
 
+// Deriva o login ERP a partir do e-mail do agente logado.
+// Padrão: user.{local}.{domínio_sem_tld}
+// Ex: teste3@bomflow.com → user.teste3.bomflow
+function erpLoginFromEmail(email) {
+  if (!email) return undefined;
+  const atIdx = email.indexOf('@');
+  if (atIdx < 0) return undefined;
+  const local = email.slice(0, atIdx).toLowerCase().trim();
+  const domain = email.slice(atIdx + 1);
+  const domainPart = domain.replace(/\.[^.]+$/, '').toLowerCase().trim();
+  if (!local || !domainPart) return undefined;
+  return `user.${local}.${domainPart}`;
+}
+
 const DEFAULT_FORM = {
   // Contratante
   contratante_pessoa: "",
@@ -325,10 +339,23 @@ export default function ErpOrcamentoForm() {
   const agenteName = currentAgent?.name ?? currentAgent?.nome ?? null;
 
   const payload = useMemo(() => {
+    // Resolve o primeiro produto selecionado para extrair preco_informado e produto_id
+    const selectedIds = form.produtos
+      ? form.produtos.split(",").map(s => s.trim()).filter(Boolean)
+      : [];
+    const firstProduto = erpProdutos.find(p => selectedIds.includes(String(p.id))) || null;
+    const produtoIdNumerico = firstProduto
+      ? Number(firstProduto.produto_id || firstProduto.id)
+      : undefined;
+
     const p = {
       tipo_pedido: TIPO_PEDIDO_FIXO,
       nome_estabelecimento: NOME_ESTABELECIMENTO_FIXO,
       agente_venda_id: erpAgenteVendaId ? Number(erpAgenteVendaId) : undefined,
+      // Usuário que está criando o orçamento — necessário para que o ERP use
+      // as permissões corretas no bloco SGPRC_USUARIO.CAD_ORCAMENTO_SGPRC_USUARIO_FECHAMENTO.
+      // Sem este campo o ERP usa acesso.api (dono do token de serviço) e rejeita o fechamento.
+      usuario_inclusao: user?.email ? erpLoginFromEmail(user.email) : undefined,
       // Contratante
       contratante_pessoa: form.contratante_pessoa || undefined,
       cpf: form.cpf || undefined,
@@ -344,9 +371,10 @@ export default function ErpOrcamentoForm() {
       un_complemento_lougradouro: form.un_complemento_lougradouro || undefined,
       un_bairro: form.un_bairro || undefined,
       un_cidade: form.un_cidade || undefined,
-      // Plano
+      // Plano — produto_id enviado como número (não como string CSV)
       titulo_contrato: form.titulo_contrato || undefined,
-      produtos: form.produtos || undefined,
+      produtos: produtoIdNumerico,
+      preco_informado: firstProduto?.preco_informado ?? undefined,
       // Pagamento
       plano_pagamento: form.plano_pagamento || undefined,
       numero_parcelas: form.numero_parcelas || undefined,
@@ -358,11 +386,14 @@ export default function ErpOrcamentoForm() {
       usua_sexo: form.usua_sexo || undefined,
       usua_parentesco: form.usua_parentesco || undefined,
       usua_telefone: form.usua_telefone || undefined,
-      usua_produtos: form.usua_produtos || undefined,
+      // usua_produtos: ID numérico do produto para o beneficiário (auto-preenchido, editável)
+      usua_produtos: form.usua_produtos
+        ? (isNaN(Number(form.usua_produtos)) ? form.usua_produtos : Number(form.usua_produtos))
+        : undefined,
       usua_papeis: form.usua_papeis || undefined,
     };
     return Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
-  }, [form, erpAgenteVendaId]);
+  }, [form, erpAgenteVendaId, erpProdutos, user]);
 
   const lookupCpfMutation = useMutation({
     mutationFn: async (cpf) => {
@@ -889,7 +920,16 @@ export default function ErpOrcamentoForm() {
                   const next = current.includes(idStr)
                     ? current.filter(x => x !== idStr)
                     : [...current, idStr];
-                  set("produtos", next.join(","));
+                  // Auto-preenche usua_produtos com o ID numérico do primeiro produto selecionado
+                  const nextObjs = erpProdutos.filter(p => next.includes(String(p.id)));
+                  const firstId = nextObjs[0]
+                    ? String(nextObjs[0].produto_id || nextObjs[0].id)
+                    : "";
+                  setForm(f => ({
+                    ...f,
+                    produtos: next.join(","),
+                    usua_produtos: firstId || f.usua_produtos,
+                  }));
                 };
 
                 return (
@@ -1271,10 +1311,11 @@ export default function ErpOrcamentoForm() {
             <CardContent className="px-5 pb-4 pt-0 space-y-2">
               {[
                 { group: "Fixos", items: ["tipo_pedido = ORÇAMENTO", "nome_estabelecimento = LIMEIRA - CNPA"] },
-                { group: "Auto (perfil)", items: ["agente_venda_id"] },
+                { group: "Auto (perfil)", items: ["agente_venda_id", "usuario_inclusao"] },
                 { group: "Obrigatórios *", items: ["contratante_pessoa", "cpf", "pessoa_contato", "telefone", "titulo_contrato"] },
                 { group: "Contratante", items: ["un_rg", "email_contato", "whatsapp_do_cliente"] },
                 { group: "Endereço", items: ["un_codigo_postal", "un_lougradouro", "un_numero_lougradouro", "un_complemento_lougradouro", "un_bairro", "un_cidade"] },
+                { group: "Plano / Produto", items: ["titulo_contrato", "produtos (produto_id numérico)", "preco_informado"] },
                 { group: "Pagamento", items: ["plano_pagamento", "numero_parcelas", "observacoes"] },
                 { group: "Beneficiário (usua_*)", items: ["usua_cpf", "usua_nome_completo", "usua_data_nascimento", "usua_sexo", "usua_parentesco", "usua_telefone", "usua_produtos", "usua_papeis"] },
               ].map(({ group, items }) => (

@@ -21,6 +21,20 @@ function getToken(res) {
   return token;
 }
 
+// Deriva o login ERP a partir do e-mail do agente logado.
+// Padrão: user.{local}.{domínio_sem_tld}
+// Ex: teste3@bomflow.com → user.teste3.bomflow
+function erpLoginFromEmail(email) {
+  if (!email) return undefined;
+  const atIdx = email.indexOf('@');
+  if (atIdx < 0) return undefined;
+  const local = email.slice(0, atIdx).toLowerCase().trim();
+  const domain = email.slice(atIdx + 1);
+  const domainPart = domain.replace(/\.[^.]+$/, '').toLowerCase().trim();
+  if (!local || !domainPart) return undefined;
+  return `user.${local}.${domainPart}`;
+}
+
 // Normaliza um CPF para o formato que o ERP usa/exige (000.000.000-00).
 // A view API_CADASTRO_PESSOAS só encontra a pessoa com o CPF formatado
 // (com dígitos puros retorna 0), então padronizamos aqui.
@@ -354,7 +368,16 @@ router.post('/pre-proposta', authMiddleware, async (req, res) => {
   const token = getToken(res);
   if (!token) return;
   try {
-    const payload = req.body;
+    const payload = { ...req.body };
+
+    // Injeta usuario_inclusao a partir do e-mail do agente autenticado se não vier no body.
+    // O campo diz ao ERP quem criou o orçamento; sem ele o ERP usa o dono do token
+    // (acesso.api) que não tem permissão para o bloco SGPRC_USUARIO.CAD_ORCAMENTO_SGPRC_USUARIO_FECHAMENTO.
+    if (!payload.usuario_inclusao && req.user?.email) {
+      const login = erpLoginFromEmail(req.user.email);
+      if (login) payload.usuario_inclusao = login;
+    }
+
     console.log('[ERP pre-proposta] payload enviado ao ERP:', JSON.stringify(payload, null, 2));
     const r = await fetch(`${ERP_BASE}/PrePropostaUsuarioSgprc`, {
       method: 'POST',
