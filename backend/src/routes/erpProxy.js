@@ -357,16 +357,17 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       produtos: produtoId,
       preco_informado: precoInformado,
       prazo_pagamento_id: planoPagamentoId,
-      usua_nome_completo,
-      usua_cpf,
-      usua_data_nascimento,
-      usua_sexo,
-      usua_parentesco,
-      usua_telefone,
+      beneficiarios: beneficiariosRaw,
+      usua_produtos,
+      usua_papeis,
       ...headerPayload
     } = payload;
 
+    // Suporta até 15 beneficiários enviados como array
+    const beneficiarios = Array.isArray(beneficiariosRaw) ? beneficiariosRaw.slice(0, 15) : [];
+
     console.log('[ERP /orcamento] payload enviado ao ERP:', JSON.stringify(headerPayload, null, 2));
+    console.log(`[ERP /orcamento] beneficiários recebidos: ${beneficiarios.length}`);
     const r = await fetch(`${ERP_BASE}/OrcamentoSgprcUsuario`, {
       method: 'POST',
       headers: {
@@ -381,22 +382,11 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
     if (!r.ok) return res.status(r.status).json(data);
     if (data?.block || data?.error) return res.json(data);
 
-    // Pedido criado — agora insere produto e beneficiário via DB direto
+    // Pedido criado — agora insere produto e beneficiários via DB direto
     const pedidoInternalId = data?.id;
     let dbResult = null;
     if (pedidoInternalId && produtoId) {
       try {
-        const beneficiarios = [];
-        if (usua_nome_completo) {
-          beneficiarios.push({
-            nome: usua_nome_completo,
-            cpf: usua_cpf || null,
-            dataNascimento: usua_data_nascimento || null,
-            sexo: usua_sexo || null,
-            parentesco: usua_parentesco || null,
-            telefone: usua_telefone || null,
-          });
-        }
         dbResult = await addItemsToPedido(Number(pedidoInternalId), {
           produtoId: Number(produtoId),
           preco: Number(precoInformado) || 0,

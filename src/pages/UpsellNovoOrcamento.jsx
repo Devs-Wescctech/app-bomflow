@@ -250,7 +250,6 @@ export default function UpsellNovoOrcamento() {
       ? Number(produtoSelecionado.produto_id || produtoSelecionado.id)
       : undefined;
     const precoNum = form.preco_informado ? Number(form.preco_informado) : undefined;
-    const benef = beneficiarios[0] || {};
 
     const p = {
       tipo_pedido: "ORÇAMENTO",
@@ -282,14 +281,16 @@ export default function UpsellNovoOrcamento() {
       dia_vencimento: form.dia_vencimento ? Number(form.dia_vencimento) : undefined,
       prazo_pagamento_id: 1643483,
       observacoes: form.observacoes || undefined,
-      usua_cpf: benef.usua_cpf || undefined,
-      usua_nome_completo: benef.usua_nome_completo || undefined,
-      usua_data_nascimento: benef.usua_data_nascimento || undefined,
-      usua_sexo: benef.usua_sexo || undefined,
-      usua_parentesco: benef.usua_parentesco || undefined,
-      usua_telefone: benef.usua_telefone || undefined,
-      usua_produtos: produtoIdNum,
-      usua_papeis: "B",
+      beneficiarios: beneficiarios
+        .filter(b => b.usua_nome_completo?.trim())
+        .map(b => ({
+          nome: b.usua_nome_completo.trim(),
+          cpf: b.usua_cpf || null,
+          dataNascimento: b.usua_data_nascimento || null,
+          sexo: b.usua_sexo || null,
+          parentesco: b.usua_parentesco || null,
+          telefone: b.usua_telefone || null,
+        })),
     };
     return Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
   }, [form, produtoSelecionado, beneficiarios, erpAgenteVendaId, user]);
@@ -366,6 +367,10 @@ export default function UpsellNovoOrcamento() {
   const handleBack = () => setStep((s) => Math.max(s - 1, 1));
 
   const addBeneficiario = () => {
+    if (beneficiarios.length >= 15) {
+      toast.error("Limite de 15 beneficiários atingido");
+      return;
+    }
     setBeneficiarios((b) => [...b, { ...EMPTY_BENEFICIARIO }]);
     setOpenBenef((o) => [...o, true]);
   };
