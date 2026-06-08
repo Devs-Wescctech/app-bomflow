@@ -32,8 +32,14 @@ O bloco FECHAMENTO precisa **listar o objeto SGPRC_USUARIO** (= view `v_usuarios
 
 **Token-por-agente NÃO resolve sozinho:** agentes criados pelo fluxo CRM têm **ZERO funções** (NPE em salvarFuncoesUsuario nos pessoas sintéticos). Logo precisariam de token novo em `tokens_acesso` + provisionamento de funções por agente — pesado.
 
-**Correção mínima (recomendada):** conceder ao acesso.api (usuario_id 55367753) a função **47270776 (VENDEDOR_EXPLORER)** — 1 linha em `funcoes_usuarios`. O código atual passa a funcionar **sem mudança**. `usuario_inclusao_id` continua = acesso.api (serviço), mas `agente_venda_id` já fica correto (atribuição de comissão preservada).
+**Correção (validada por comparação):** existem DUAS combinações que liberam o objeto SGPRC_USUARIO:
+- `VENDEDOR_EXPLORER` (47270776) **sozinha** (ex.: agente cauan 47197098), OU
+- `VENDEDOR` (2094535) **+ `Usuário do sistema` (198859503)** (ex.: Leonardo 95744209, Maria 87732325).
 
-**Why:** super_usuario não basta; o ACL do objeto SGPRC_USUARIO vem das funções. Empiricamente, ter a função do canal é o discriminador entre sucesso/falha.
+A `VENDEDOR` (2094535) **SOZINHA NÃO basta** (testado: admin deu só ela ao acesso.api e o FECHAMENTO continuou negando). A função-base **`Usuário do sistema` (198859503)** ("agrupa direitos comuns a todos os usuários") é que carrega o direito de listar SGPRC_USUARIO. Contas de serviço (acesso.api) nascem SEM ela.
+
+Logo, para o acesso.api (que já tem VENDEDOR): **adicionar `Usuário do sistema` (198859503)** OU trocar para `VENDEDOR_EXPLORER` (47270776). Grupos NÃO são fator (todos só no próprio grupo pessoal tipo 'U'). `regras_alcada` vazias para esses usuários.
+
+**Why:** super_usuario não basta; o ACL do objeto SGPRC_USUARIO vem das funções, e a base `Usuário do sistema` é o discriminador real entre VENDEDOR-que-funciona e VENDEDOR-que-falha.
 
 **How to apply:** preferir conceder a função pela tela web do ERP (admin, sem write direto no banco) OU INSERT contido em `funcoes_usuarios`. Validar com 1 orçamento de teste controlado (lembrar: gera título PIX R$60 e esqueleto — limpar depois).
