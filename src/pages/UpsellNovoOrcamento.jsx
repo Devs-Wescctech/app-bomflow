@@ -24,6 +24,12 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
+const BOM_PET_BENEF_PRODUTO_ID = 76719;
+const isBomPet = (produto) => {
+  if (!produto) return false;
+  return (produto.descricao || produto.titulo_contrato || "").toUpperCase().includes("BOM PET");
+};
+
 const TITULO_CONTRATO_OPTIONS = [
   "BOM CORP", "BOM PASTOR", "BOM PASTOR - BOM AUTO",
   "BOM PASTOR - BOM DESCANSO FAMILIA", "BOM PASTOR - BOM MED",
@@ -204,13 +210,6 @@ export default function UpsellNovoOrcamento() {
     () => erpProdutos.find((p) => String(p.id) === String(form.produto_id) || String(p.produto_id) === String(form.produto_id)) || null,
     [erpProdutos, form.produto_id]
   );
-
-  // Produto 76719 é usado exclusivamente para registrar beneficiários BOM PET
-  const BOM_PET_BENEF_PRODUTO_ID = 76719;
-  const isBomPet = (produto) => {
-    if (!produto) return false;
-    return (produto.descricao || produto.titulo_contrato || "").toUpperCase().includes("BOM PET");
-  };
 
   const lookupCpfMutation = useMutation({
     mutationFn: async (cpf) => {
