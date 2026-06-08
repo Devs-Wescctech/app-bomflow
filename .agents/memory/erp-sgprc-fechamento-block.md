@@ -42,6 +42,14 @@ O bloco FECHAMENTO precisa **listar o objeto SGPRC_USUARIO** (= view `v_usuarios
 
 **Vínculo de canal NÃO é o bloqueador do FECHAMENTO:** acesso.api tem **zero** linhas em `pessoas_contratos` (os agentes OK têm 1 → contrato `47194354`, tipo_vinculo `2094514`), mas o cabeçalho do orçamento cria normal com `agente_venda_id` correto; o erro é só na listagem do objeto SGPRC_USUARIO (= função). Vínculo de canal importa para atribuição de venda, não para o FECHAMENTO.
 
-**Why:** super_usuario não basta; o ACL do objeto SGPRC_USUARIO vem das funções. O par mínimo que funciona é `VENDEDOR` + `Usuário do sistema` (combo b) OU `VENDEDOR_EXPLORER` sozinho (combo a). Grupos NÃO são fator (todos só no grupo pessoal tipo 'U'); `regras_alcada` vazias.
+**FUNÇÃO NÃO É O BLOQUEADOR (provado):** após adicionar VENDEDOR, o acesso.api ficou com `2094535 + 198859503 + 251861329` = **superconjunto** das funções do leonardo (que fecha OK) — e o FECHAMENTO **continuou falhando**. Logo não é permissão por função. Além disso `198859503` e `251861329` têm `todos_usuarios='S'` (universais). As funções são todas `tipo_funcao='Chave de acesso'` (tipo 24858).
 
-**Status:** correção aplicada; **validação empírica pendente** (1 orçamento de teste pelo formulário → conferir se `pedidos.situacao` sai de 'M'). Lembrar: gera título PIX R$60 e esqueleto — limpar depois junto com o lixo 303339373 / 303065872–303065941.
+**ACL NÃO ESTÁ NO BANCO:** `usuarios_sistemas` vazia p/ todos; `regras_permissoes_acesso` e `regras_acesso_gerais` vazias; view do objeto `v_usuarios_sistemas_sgprc` = `SELECT id, usuario_id, pessoa_id, 0 AS contrato_id FROM usuarios` (sem filtro). A checagem "access to list records" é feita na **camada de aplicação (Etherum/ERP)**, não consultável via SQL.
+
+**DISCRIMINADOR REAL = VÍNCULO DE CANAL (`pessoas_contratos`):** por eliminação, a única diferença concreta entre acesso.api e leonardo/maria/cauan era o vínculo de canal. Todos os OK têm 1 linha em pessoas_contratos → contrato `47194354`, tipo_vinculo `2094514`, grupo_id `47196960` (grupo COMPARTILHADO do canal, não pessoal). acesso.api tinha ZERO. As funções são família "CANAL DE VENDA" → sem vínculo a um canal, a app não dá contexto de canal no fechamento.
+
+**CORREÇÃO FINAL APLICADA:** INSERT em `pessoas_contratos` replicando leonardo p/ acesso.api (pessoa 55367480): contrato 47194354, tipo_vinculo 2094514, grupo_id 47196960, ativo S, titular N, id via `nextval('pk_sequence')`. **Reverter:** `DELETE FROM pessoas_contratos WHERE id = 303360015`. (Função VENDEDOR reverter: `DELETE FROM funcoes_usuarios WHERE id = 303357294`.)
+
+**Why:** o conjunto de permissões "CANAL DE VENDA" só ganha contexto quando o usuário é membro do canal (pessoas_contratos). Função sozinha não basta; precisa da combinação função + vínculo de canal — exatamente o que todo agente OK tem.
+
+**Status:** acesso.api agora idêntico ao leonardo (funções + vínculo de canal). **Validação empírica pendente** (1 orçamento de teste pelo formulário → conferir se `pedidos.situacao` sai de 'M'). Lembrar: gera título PIX R$60 e esqueleto — limpar depois junto com o lixo 303339373 / 303065872–303065941.
