@@ -400,7 +400,6 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
         dbResult = await addItemsToPedido(Number(pedidoInternalId), {
           produtoId: Number(produtoId),
           preco: Number(precoInformado) || 0,
-          planoPagamentoId: planoPagamentoId ? Number(planoPagamentoId) : 1643483,
           beneficiarios,
         });
         console.log('[ERP /orcamento] DB inserts OK:', JSON.stringify(dbResult));

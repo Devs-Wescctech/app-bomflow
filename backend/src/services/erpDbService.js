@@ -106,32 +106,34 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
     const {
       produtoId,
       preco,
-      planoPagamentoId = 1643483,
       beneficiarios = [],
     } = opts;
 
     const precoNum = Number(preco) || 0;
 
     // 1. INSERT itens_pedidos
+    // Casts explícitos necessários: preco/preco_lista = double precision,
+    // valor_unitario_item/valor_total_item = numeric. Sem o cast, o pg-driver
+    // deduz tipos inconsistentes para o mesmo parâmetro e lança erro.
     const itemRes = await client.query(
       `INSERT INTO itens_pedidos (
          id, pedido_id, sequencia, sub_item, produto_id,
-         quantidade, preco, situacao, plano_pagamento_id, indice,
+         quantidade, preco, situacao, indice,
          preco_lista, valor_unitario_item, valor_total_item,
          quantidade_pendente, quantidade_temporaria, quantidade_temporaria_faturar,
          quantidade_carregar, quantidade_cancelada, quantidade_faturar,
          quantidade_faturada, qtde_cancelada_faturamento, comissao_item,
-         quantidade_acima_pedido, atualizar_consumo, tipo_produto_id
+         quantidade_acima_pedido, atualizar_consumo
        ) VALUES (
          nextval('pk_sequence'), $1, 1, 1, $2,
-         1, $3, 'P', $4, 1,
-         $3, $3, $3,
+         1, $3::double precision, 'P', 1,
+         $3::double precision, $3::numeric, $3::numeric,
          1, 1, 1,
          1, 0, 1,
          0, 0, 0,
-         0, 'S', 23261
+         0, 'S'
        ) RETURNING id`,
-      [pedidoInternalId, produtoId, precoNum, planoPagamentoId]
+      [pedidoInternalId, produtoId, precoNum]
     );
     const itemId = Number(itemRes.rows[0].id);
     console.log(`[erpDbService] itens_pedidos inserido id=${itemId} pedido=${pedidoInternalId} produto=${produtoId} preco=${precoNum}`);
