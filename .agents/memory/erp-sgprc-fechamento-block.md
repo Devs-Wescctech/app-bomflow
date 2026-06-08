@@ -52,4 +52,12 @@ O bloco FECHAMENTO precisa **listar o objeto SGPRC_USUARIO** (= view `v_usuarios
 
 **Why:** o conjunto de permissões "CANAL DE VENDA" só ganha contexto quando o usuário é membro do canal (pessoas_contratos). Função sozinha não basta; precisa da combinação função + vínculo de canal — exatamente o que todo agente OK tem.
 
-**Status:** acesso.api agora idêntico ao leonardo (funções + vínculo de canal). **Validação empírica pendente** (1 orçamento de teste pelo formulário → conferir se `pedidos.situacao` sai de 'M'). Lembrar: gera título PIX R$60 e esqueleto — limpar depois junto com o lixo 303339373 / 303065872–303065941.
+**CANAL TAMBÉM NÃO BASTOU:** com função VENDEDOR + vínculo de canal idênticos ao leonardo, o FECHAMENTO continuou falhando (pedido 303360529 saiu 'M'). Todas as tabelas de permissão estão VAZIAS (`permissoes_acesso_registros`=0, `regras_permissoes_acesso`=0, `regras_acesso_gerais`=0). Todas as operações SGPRC_USUARIO têm `politica_acesso='R'` uniforme (inclusive INSERT, que o acesso.api consegue) → política não discrimina.
+
+**DISCRIMINADOR REAL = `usuarios.menu_id` (forte):** comparação campo-a-campo da linha `usuarios`: leonardo (FUNCIONA) é `super_usuario='N'` com `menu_id=47271722` (MENU_VENDEDOR_EXPLORER, contém item "Orçamento"). Os 3 donos de token (rafael, ariel, acesso.api) são `super_usuario='S'` e via REST não fecham — ou seja, **super NÃO fura a checagem no contexto REST**. acesso.api tinha `menu_id=NULL`. No Etherum o acesso a interfaces/operações de usuário não-super vem do MENU. Sem menu → "does not have access to list records from object". Tabelas-chave: `menus`, `itens_menus` (item→interface via interface_id/sub_menu_id). Interface do fechamento = `interface_id=45795` (operação CUSTOM `FECHAR_ORCAMENTO` id 6814).
+
+**CORREÇÃO 3 APLICADA (a mais promissora):** `UPDATE usuarios SET menu_id=47271722 WHERE id=55367753`. **Reverter:** `UPDATE usuarios SET menu_id=NULL WHERE id=55367753`. Agora acesso.api espelha leonardo em função + canal + menu (só difere em super_usuario S vs N, que só adiciona).
+
+**Reverts acumulados (se nada funcionar, limpar tudo):** `UPDATE usuarios SET menu_id=NULL WHERE id=55367753;` `DELETE FROM pessoas_contratos WHERE id=303360015;` `DELETE FROM funcoes_usuarios WHERE id=303357294;`
+
+**Status:** validação empírica pendente (1 orçamento de teste → `pedidos.situacao` sai de 'M'?). Se ESTA também falhar, a conclusão por eliminação é que a checagem é da camada de aplicação/admin do ERP (Etherum) NÃO escrevível via SQL → exige ação do admin/fornecedor do ERP. Lixo a limpar: pedidos 'M' por acesso.api (303339373, 303358213, 303360529, 303065872–303065941).
