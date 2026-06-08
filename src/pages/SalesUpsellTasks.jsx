@@ -289,21 +289,23 @@ export default function SalesUpsellTasks() {
     if (!isFullAdmin && currentAgent) {
       const myId = currentAgent.id;
       const teamIds = new Set([
-        myId,
+        String(myId),
         ...agents
           .filter(a => {
             const sid = a.supervisorId || a.supervisor_id;
             return sid && String(sid) === String(myId);
           })
-          .map(a => a.id),
+          .map(a => String(a.id)),
       ]);
       visibleLeads = leads.filter(l => {
         const aid = l.agentId || l.agent_id;
-        return aid != null && teamIds.has(aid);
+        return aid != null && teamIds.has(String(aid));
       });
       taskSourceActivities = tasks.filter(t => {
         const assignee = t.assignedTo || t.assigned_to;
-        return teamIds.has(assignee) || teamIds.has(t.createdBy || t.created_by);
+        const creator = t.createdBy || t.created_by;
+        return (assignee != null && teamIds.has(String(assignee))) ||
+               (creator != null && teamIds.has(String(creator)));
       });
     }
     const leadIdsWithTasks = new Set(

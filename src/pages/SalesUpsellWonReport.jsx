@@ -154,7 +154,7 @@ export default function SalesUpsellWonReport() {
 
       if (selectedAgent) {
         const agentId = lead.agentId || lead.agent_id;
-        if (agentId !== selectedAgent) return false;
+        if (String(agentId) !== String(selectedAgent)) return false;
       }
 
       if (selectedTeam) {

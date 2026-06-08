@@ -57,6 +57,15 @@ const SEXO_OPTIONS = [
   { value: "M", label: "Masculino" },
 ];
 
+const ESTADO_CIVIL_OPTIONS = [
+  "SOLTEIRO", "CASADO", "DIVORCIADO", "VIUVO", "SEPARADO", "UNIAO ESTAVEL",
+];
+
+const PROFISSAO_OPTIONS = [
+  "MEDICO", "ENFERMEIRO", "PROFESSOR", "ADVOGADO", "ENGENHEIRO",
+  "COMERCIANTE", "AUTONOMO", "APOSENTADO", "DO LAR", "OUTRO",
+];
+
 const STEPS = [
   { id: 1, label: "Contratante", icon: User },
   { id: 2, label: "Endereço", icon: MapPin },
@@ -137,8 +146,12 @@ export default function UpsellNovoOrcamento() {
     pessoa_contato: "",
     un_rg: "",
     telefone: "",
+    celular: "",
     email_contato: "",
     whatsapp_do_cliente: "",
+    sexo: "",
+    estado_civil: "",
+    profissao: "",
     un_codigo_postal: "",
     un_lougradouro: "",
     un_numero_lougradouro: "",
@@ -249,8 +262,12 @@ export default function UpsellNovoOrcamento() {
       pessoa_contato: form.pessoa_contato || undefined,
       un_rg: form.un_rg || undefined,
       telefone: form.telefone || undefined,
+      celular: form.celular || undefined,
       email_contato: form.email_contato || undefined,
       whatsapp_do_cliente: form.whatsapp_do_cliente || undefined,
+      sexo: form.sexo || undefined,
+      estado_civil: form.estado_civil || undefined,
+      profissao: form.profissao || undefined,
       un_codigo_postal: form.un_codigo_postal ? form.un_codigo_postal.replace(/\D/g, "") : undefined,
       un_lougradouro: form.un_lougradouro || undefined,
       un_numero_lougradouro: form.un_numero_lougradouro || undefined,
@@ -602,6 +619,68 @@ function Step1({ form, set, cpfLookup, setCpfLookup, lookupCpfMutation }) {
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1">
+          <Label>Celular <span className="text-red-500">*</span></Label>
+          <Input
+            value={form.celular}
+            onChange={(e) => set("celular", e.target.value)}
+            placeholder="(51) 99999-9999"
+          />
+          <p className="text-xs text-slate-400">Campo obrigatório no fechamento ERP</p>
+        </div>
+        <div className="space-y-1">
+          <Label>Telefone</Label>
+          <Input
+            value={form.telefone}
+            onChange={(e) => set("telefone", e.target.value)}
+            placeholder="(51) 3333-3333"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div className="space-y-1">
+          <Label>Sexo <span className="text-red-500">*</span></Label>
+          <Select value={form.sexo} onValueChange={(v) => set("sexo", v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione..." />
+            </SelectTrigger>
+            <SelectContent>
+              {SEXO_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label>Estado civil <span className="text-red-500">*</span></Label>
+          <Select value={form.estado_civil} onValueChange={(v) => set("estado_civil", v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione..." />
+            </SelectTrigger>
+            <SelectContent>
+              {ESTADO_CIVIL_OPTIONS.map((opt) => (
+                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label>Profissão <span className="text-red-500">*</span></Label>
+          <Select value={form.profissao} onValueChange={(v) => set("profissao", v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione..." />
+            </SelectTrigger>
+            <SelectContent>
+              {PROFISSAO_OPTIONS.map((opt) => (
+                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1">
           <Label>E-mail</Label>
           <Input
             type="email"
@@ -618,6 +697,11 @@ function Step1({ form, set, cpfLookup, setCpfLookup, lookupCpfMutation }) {
             placeholder="(51) 99999-9999"
           />
         </div>
+      </div>
+
+      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 flex items-start gap-2">
+        <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+        <span>Celular, Sexo, Estado civil e Profissão são campos obrigatórios no fechamento do ERP. Preencha-os para evitar erro de validação.</span>
       </div>
     </div>
   );
