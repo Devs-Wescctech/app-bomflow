@@ -23,11 +23,17 @@ description: Why orçamento creation via the ERP REST API stops at the SGPRC_USU
 - **Estabelecimento**: `LIMEIRA - CNPA` (fixo) é o correto segundo o usuário — não é problema de acesso a estabelecimento.
 - **`contratante_pessoa`**: usa o campo `pessoa` (ex "2") do GET /Pessoas, não o `id` — correto.
 
-## Causa provável (arquitetural)
-O bloco FECHAMENTO dispara quando há dados de beneficiário (`usua_*`). A API REST do ERP (Bearer token) **não executa esse bloco de escrita** — a mensagem "does not has access to list records" é o sintoma genérico dessa limitação.
+## CAUSA RAIZ CONFIRMADA (resolvida)
+O ERP REST roda no **contexto do dono do token**. Tokens ficam em `tokens_acesso` (cols: id, token, pessoa_id, usuario_id, data_inclusao, data_expiracao). O `ERP_AUTH_TOKEN` pertence a `usuario_id=55367753` (acesso.api). Só existem **3 tokens** no ERP inteiro.
 
-**Evidência forte:** o próprio codebase já contorna a API REST escrevendo **direto no banco do ERP** (`backend/src/services/erpDbService.js`, `registerAgentInCanal` → INSERT em `pessoas_contratos` usando ERP_DB_HOST/USER/PASSWORD). Ou seja, já existe precedente de que escritas no ERP são feitas por INSERT direto, não pela API REST. Há também o secret ausente `ERP_SESSION_ID`, sugerindo que algumas operações exigem sessão web, não Bearer token.
+O bloco FECHAMENTO precisa **listar o objeto SGPRC_USUARIO** (= view `v_usuarios_sistemas_sgprc` = `SELECT * FROM usuarios`). Quem libera isso são as **funções** (`funcoes_sistemas`, ligadas via `funcoes_usuarios.funcao_id`), **NÃO** o `super_usuario` nem o token sozinho.
 
-**Why:** depois de esgotar todas as variações de payload e confirmar super admin + estabelecimento corretos, o erro nunca muda — indica limitação do canal de escrita (REST), não dos dados.
+**Evidência decisiva:** cruzando as funções dos 11 criadores de orçamentos OK no canal 47194339, a função dominante é **47270776 = CANAL DE VENDA.VENDEDOR_EXPLORER (9/11)**; demais usam variações de CANAL DE VENDA (VENDEDOR 2094535, GESTOR 2094672, SUPERVISORES_EXPLORER 47975159). O acesso.api tem **só** a função `251861329 = API_ETHERUM` — nenhuma de CANAL DE VENDA → por isso o FECHAMENTO nega.
 
-**How to apply:** se for preciso gravar o orçamento completo (com produto/valor/beneficiário) no ERP, as opções reais são (a) o time do ERP habilitar o bloco FECHAMENTO via API REST/documentar os campos exigidos, ou (b) replicar a escrita via INSERT direto no banco (como `registrar-canal` faz) — decisão que exige conhecimento do schema de orçamento/SGPRC_USUARIO e aval do usuário. Não insistir em mais variações de payload na API REST.
+**Token-por-agente NÃO resolve sozinho:** agentes criados pelo fluxo CRM têm **ZERO funções** (NPE em salvarFuncoesUsuario nos pessoas sintéticos). Logo precisariam de token novo em `tokens_acesso` + provisionamento de funções por agente — pesado.
+
+**Correção mínima (recomendada):** conceder ao acesso.api (usuario_id 55367753) a função **47270776 (VENDEDOR_EXPLORER)** — 1 linha em `funcoes_usuarios`. O código atual passa a funcionar **sem mudança**. `usuario_inclusao_id` continua = acesso.api (serviço), mas `agente_venda_id` já fica correto (atribuição de comissão preservada).
+
+**Why:** super_usuario não basta; o ACL do objeto SGPRC_USUARIO vem das funções. Empiricamente, ter a função do canal é o discriminador entre sucesso/falha.
+
+**How to apply:** preferir conceder a função pela tela web do ERP (admin, sem write direto no banco) OU INSERT contido em `funcoes_usuarios`. Validar com 1 orçamento de teste controlado (lembrar: gera título PIX R$60 e esqueleto — limpar depois).
