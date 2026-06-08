@@ -24,7 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-const BOM_PET_BENEF_PRODUTO_ID = 76719;
+const BOM_PET_BENEF_PRODUTO_ID = 55482373;
 const isBomPet = (produto) => {
   if (!produto) return false;
   return (produto.descricao || produto.titulo_contrato || "").toUpperCase().includes("BOM PET");
