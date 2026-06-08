@@ -1,6 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { registerAgentInCanal } from '../services/erpDbService.js';
+import { registerAgentInCanal, addItemsToPedido } from '../services/erpDbService.js';
 import { query } from '../config/database.js';
 
 const router = express.Router();
@@ -351,20 +351,66 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       if (login) payload.usuario_inclusao = login;
     }
 
-    console.log('[ERP /orcamento] payload enviado ao ERP:', JSON.stringify(payload, null, 2));
+    // Extrai campos de produto e beneficiários antes de enviar ao ERP
+    // (a API REST só salva o cabeçalho; produto/pessoas são inseridos via DB)
+    const {
+      produtos: produtoId,
+      preco_informado: precoInformado,
+      prazo_pagamento_id: planoPagamentoId,
+      usua_nome_completo,
+      usua_cpf,
+      usua_data_nascimento,
+      usua_sexo,
+      usua_parentesco,
+      usua_telefone,
+      ...headerPayload
+    } = payload;
+
+    console.log('[ERP /orcamento] payload enviado ao ERP:', JSON.stringify(headerPayload, null, 2));
     const r = await fetch(`${ERP_BASE}/OrcamentoSgprcUsuario`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(headerPayload),
     });
     const data = await r.json().catch(() => ({}));
     console.log('[ERP /orcamento] status HTTP:', r.status);
     console.log('[ERP /orcamento] resposta ERP completa:', JSON.stringify(data, null, 2));
     if (!r.ok) return res.status(r.status).json(data);
-    return res.json(data);
+    if (data?.block || data?.error) return res.json(data);
+
+    // Pedido criado — agora insere produto e beneficiário via DB direto
+    const pedidoInternalId = data?.id;
+    let dbResult = null;
+    if (pedidoInternalId && produtoId) {
+      try {
+        const beneficiarios = [];
+        if (usua_nome_completo) {
+          beneficiarios.push({
+            nome: usua_nome_completo,
+            cpf: usua_cpf || null,
+            dataNascimento: usua_data_nascimento || null,
+            sexo: usua_sexo || null,
+            parentesco: usua_parentesco || null,
+            telefone: usua_telefone || null,
+          });
+        }
+        dbResult = await addItemsToPedido(Number(pedidoInternalId), {
+          produtoId: Number(produtoId),
+          preco: Number(precoInformado) || 0,
+          planoPagamentoId: planoPagamentoId ? Number(planoPagamentoId) : 1643483,
+          beneficiarios,
+        });
+        console.log('[ERP /orcamento] DB inserts OK:', JSON.stringify(dbResult));
+      } catch (dbErr) {
+        console.error('[ERP /orcamento] DB insert falhou (cabeçalho salvo):', dbErr.message);
+        return res.json({ ...data, dbWarning: `Pedido criado mas produto/beneficiário não vinculados: ${dbErr.message}` });
+      }
+    }
+
+    return res.json({ ...data, dbInserted: dbResult || null });
   } catch (err) {
     console.error('[ERP Proxy] POST /orcamento error:', err.message);
     return res.status(500).json({ error: err.message });

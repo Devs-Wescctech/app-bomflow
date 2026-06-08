@@ -70,3 +70,121 @@ export async function registerAgentInCanal(pessoaId, contratoId, grupoId) {
   console.log(`[erpDbService] Agente ${pessoaId} registrado no canal ${contratoId} — agente_venda_id: ${newId}`);
   return newId;
 }
+
+/**
+ * Adiciona produto(s) e beneficiário(s) a um pedido ERP já criado via OrcamentoSgprcUsuario.
+ * A API REST só salva o cabeçalho; produtos e pessoas ficam em tabelas separadas e precisam
+ * de INSERT direto (mesmo padrão de registerAgentInCanal).
+ *
+ * Estrutura inserida:
+ *   itens_pedidos          → o item-produto do pedido
+ *   pedidos_pessoas        → beneficiário (titular da venda — parentesco D/F/etc.)
+ *   pedidos_pessoas_produtos → vínculo item ↔ beneficiário
+ *   pedidos (UPDATE)       → valor_total e valor_mercadorias recalculados
+ *
+ * @param {number} pedidoInternalId  - pedidos.id retornado pela API (ex: 303390469)
+ * @param {object} opts
+ *   @param {number}  opts.produtoId          - produto_id numérico do ERP
+ *   @param {number}  opts.preco              - preço unitário
+ *   @param {number}  [opts.planoPagamentoId] - plano_pagamento_id (default 1643483)
+ *   @param {Array}   [opts.beneficiarios]    - lista de objetos beneficiário
+ *     @param {string} benef.nome
+ *     @param {string} [benef.cpf]
+ *     @param {string} [benef.dataNascimento]  - 'YYYY-MM-DD'
+ *     @param {string} [benef.sexo]            - 'M'/'F'
+ *     @param {string} [benef.parentesco]      - 'D','F','C', etc.
+ *     @param {string} [benef.telefone]
+ * @returns {Promise<{ itemId: number, pessoaIds: number[] }>}
+ */
+export async function addItemsToPedido(pedidoInternalId, opts = {}) {
+  const db = getPool();
+  const client = await db.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const {
+      produtoId,
+      preco,
+      planoPagamentoId = 1643483,
+      beneficiarios = [],
+    } = opts;
+
+    const precoNum = Number(preco) || 0;
+
+    // 1. INSERT itens_pedidos
+    const itemRes = await client.query(
+      `INSERT INTO itens_pedidos (
+         id, pedido_id, sequencia, sub_item, produto_id,
+         quantidade, preco, situacao, plano_pagamento_id, indice,
+         preco_lista, valor_unitario_item, valor_total_item,
+         quantidade_pendente, quantidade_temporaria, quantidade_temporaria_faturar,
+         quantidade_carregar, quantidade_cancelada, quantidade_faturar,
+         quantidade_faturada, qtde_cancelada_faturamento, comissao_item,
+         quantidade_acima_pedido, atualizar_consumo, tipo_produto_id
+       ) VALUES (
+         nextval('pk_sequence'), $1, 1, 1, $2,
+         1, $3, 'P', $4, 1,
+         $3, $3, $3,
+         1, 1, 1,
+         1, 0, 1,
+         0, 0, 0,
+         0, 'S', 23261
+       ) RETURNING id`,
+      [pedidoInternalId, produtoId, precoNum, planoPagamentoId]
+    );
+    const itemId = Number(itemRes.rows[0].id);
+    console.log(`[erpDbService] itens_pedidos inserido id=${itemId} pedido=${pedidoInternalId} produto=${produtoId} preco=${precoNum}`);
+
+    // 2. INSERT pedidos_pessoas + pedidos_pessoas_produtos para cada beneficiário
+    const pessoaIds = [];
+    for (let i = 0; i < beneficiarios.length; i++) {
+      const b = beneficiarios[i];
+      const pessoaRes = await client.query(
+        `INSERT INTO pedidos_pessoas (
+           id, pedido_id, nome_pessoa, cpf, data_nascimento, sexo, telefone, parentesco
+         ) VALUES (
+           nextval('pk_sequence'), $1, $2, $3, $4, $5, $6, $7
+         ) RETURNING id`,
+        [
+          pedidoInternalId,
+          b.nome || null,
+          b.cpf || null,
+          b.dataNascimento || null,
+          b.sexo || null,
+          b.telefone || null,
+          b.parentesco || null,
+        ]
+      );
+      const pessoaId = Number(pessoaRes.rows[0].id);
+      pessoaIds.push(pessoaId);
+      console.log(`[erpDbService] pedidos_pessoas inserido id=${pessoaId} nome=${b.nome} parentesco=${b.parentesco}`);
+
+      await client.query(
+        `INSERT INTO pedidos_pessoas_produtos (
+           id, pedido_id, item_pedido_id, sequencia, titular_id, aprovado
+         ) VALUES (
+           nextval('pk_sequence'), $1, $2, $3, $4, 'N'
+         )`,
+        [pedidoInternalId, itemId, i + 1, pessoaId]
+      );
+      console.log(`[erpDbService] pedidos_pessoas_produtos inserido pedido=${pedidoInternalId} item=${itemId} pessoa=${pessoaId}`);
+    }
+
+    // 3. UPDATE pedidos.valor_total e valor_mercadorias
+    await client.query(
+      `UPDATE pedidos SET valor_total = $1, valor_mercadorias = $1 WHERE id = $2`,
+      [precoNum, pedidoInternalId]
+    );
+    console.log(`[erpDbService] pedidos valor_total atualizado para ${precoNum} (id=${pedidoInternalId})`);
+
+    await client.query('COMMIT');
+    return { itemId, pessoaIds };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('[erpDbService] addItemsToPedido ROLLBACK:', err.message);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
