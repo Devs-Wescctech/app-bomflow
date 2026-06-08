@@ -107,11 +107,12 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
       produtoId,
       preco,
       beneficiarios = [],
+      beneficiarioProdutoId = null,
     } = opts;
 
     const precoNum = Number(preco) || 0;
 
-    // 1. INSERT itens_pedidos
+    // 1. INSERT itens_pedidos — produto principal (sequencia 1)
     // Casts explícitos necessários: preco/preco_lista = double precision,
     // valor_unitario_item/valor_total_item = numeric. Sem o cast, o pg-driver
     // deduz tipos inconsistentes para o mesmo parâmetro e lança erro.
@@ -137,6 +138,34 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
     );
     const itemId = Number(itemRes.rows[0].id);
     console.log(`[erpDbService] itens_pedidos inserido id=${itemId} pedido=${pedidoInternalId} produto=${produtoId} preco=${precoNum}`);
+
+    // 1b. Se o produto dos beneficiários é diferente (ex: BOM PET → 76719),
+    //     insere um segundo item com preço 0 e sequencia 2.
+    let benefItemId = itemId;
+    if (beneficiarioProdutoId && Number(beneficiarioProdutoId) !== Number(produtoId)) {
+      const benefItemRes = await client.query(
+        `INSERT INTO itens_pedidos (
+           id, pedido_id, sequencia, sub_item, produto_id,
+           quantidade, preco, situacao, indice,
+           preco_lista, valor_unitario_item, valor_total_item,
+           quantidade_pendente, quantidade_temporaria, quantidade_temporaria_faturar,
+           quantidade_carregar, quantidade_cancelada, quantidade_faturar,
+           quantidade_faturada, qtde_cancelada_faturamento, comissao_item,
+           quantidade_acima_pedido, atualizar_consumo
+         ) VALUES (
+           nextval('pk_sequence'), $1, 2, 1, $2,
+           1, 0::double precision, 'P', 2,
+           0::double precision, 0::numeric, 0::numeric,
+           1, 1, 1,
+           1, 0, 1,
+           0, 0, 0,
+           0, 'S'
+         ) RETURNING id`,
+        [pedidoInternalId, Number(beneficiarioProdutoId)]
+      );
+      benefItemId = Number(benefItemRes.rows[0].id);
+      console.log(`[erpDbService] itens_pedidos beneficiário inserido id=${benefItemId} produto=${beneficiarioProdutoId} (BOM PET)`);
+    }
 
     // 2. INSERT pedidos_pessoas + pedidos_pessoas_produtos para cada beneficiário
     const pessoaIds = [];
@@ -168,9 +197,9 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
          ) VALUES (
            nextval('pk_sequence'), $1, $2, $3, $4, 'N'
          )`,
-        [pedidoInternalId, itemId, i + 1, pessoaId]
+        [pedidoInternalId, benefItemId, i + 1, pessoaId]
       );
-      console.log(`[erpDbService] pedidos_pessoas_produtos inserido pedido=${pedidoInternalId} item=${itemId} pessoa=${pessoaId}`);
+      console.log(`[erpDbService] pedidos_pessoas_produtos inserido pedido=${pedidoInternalId} item=${benefItemId} pessoa=${pessoaId}`);
     }
 
     // 3. UPDATE pedidos.valor_total e valor_mercadorias

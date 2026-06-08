@@ -205,6 +205,13 @@ export default function UpsellNovoOrcamento() {
     [erpProdutos, form.produto_id]
   );
 
+  // Produto 76719 é usado exclusivamente para registrar beneficiários BOM PET
+  const BOM_PET_BENEF_PRODUTO_ID = 76719;
+  const isBomPet = (produto) => {
+    if (!produto) return false;
+    return (produto.descricao || produto.titulo_contrato || "").toUpperCase().includes("BOM PET");
+  };
+
   const lookupCpfMutation = useMutation({
     mutationFn: async (cpf) => {
       const r = await fetch(`/api/erp/lookup-cpf?cpf=${encodeURIComponent(cpf)}`, {
@@ -281,6 +288,7 @@ export default function UpsellNovoOrcamento() {
       dia_vencimento: form.dia_vencimento ? Number(form.dia_vencimento) : undefined,
       prazo_pagamento_id: 1643483,
       observacoes: form.observacoes || undefined,
+      beneficiario_produto_id: isBomPet(produtoSelecionado) ? BOM_PET_BENEF_PRODUTO_ID : undefined,
       beneficiarios: beneficiarios
         .filter(b => b.usua_nome_completo?.trim())
         .map(b => ({
@@ -1047,7 +1055,11 @@ function Step5({ beneficiarios, openBenef, produtoSelecionado, setBenef, toggleB
 
               {produtoSelecionado && (
                 <p className="text-xs text-slate-400">
-                  Produto do beneficiário: {produtoSelecionado.descricao || produtoSelecionado.titulo_contrato} (preenchido automaticamente)
+                  Produto do beneficiário:{" "}
+                  {isBomPet(produtoSelecionado)
+                    ? "BOM PET SAÚDE - NOME DO PET (76719)"
+                    : (produtoSelecionado.descricao || produtoSelecionado.titulo_contrato)}{" "}
+                  (preenchido automaticamente)
                 </p>
               )}
             </CardContent>

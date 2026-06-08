@@ -358,6 +358,7 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       preco_informado: precoInformado,
       prazo_pagamento_id: planoPagamentoId,
       beneficiarios: beneficiariosRaw,
+      beneficiario_produto_id: beneficiarioProdutoId,
       usua_produtos,
       usua_papeis,
       ...headerPayload
@@ -391,6 +392,7 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
           produtoId: Number(produtoId),
           preco: Number(precoInformado) || 0,
           beneficiarios,
+          beneficiarioProdutoId: beneficiarioProdutoId ? Number(beneficiarioProdutoId) : null,
         });
         console.log('[ERP /orcamento] DB inserts OK:', JSON.stringify(dbResult));
       } catch (dbErr) {
