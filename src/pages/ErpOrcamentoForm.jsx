@@ -149,6 +149,7 @@ const DEFAULT_FORM = {
   // Pagamento
   plano_pagamento: "",
   numero_parcelas: "",
+  dia_vencimento: "10",
   observacoes: "",
   // Beneficiário
   usua_cpf: "",
@@ -375,9 +376,13 @@ export default function ErpOrcamentoForm() {
       titulo_contrato: form.titulo_contrato || undefined,
       produtos: produtoIdNumerico,
       preco_informado: firstProduto?.preco_informado ?? undefined,
-      // Pagamento
+      // Pagamento — dia_vencimento e prazo_pagamento_id estão presentes em todos
+      // os pedidos aprovados no ERP (100% da amostra). prazo_pagamento_id=1643483
+      // é o único valor observado. dia_vencimento típico é 10 ou 5.
       plano_pagamento: form.plano_pagamento || undefined,
       numero_parcelas: form.numero_parcelas ? Number(form.numero_parcelas) : undefined,
+      dia_vencimento: form.dia_vencimento ? Number(form.dia_vencimento) : undefined,
+      prazo_pagamento_id: 1643483,
       observacoes: form.observacoes || undefined,
       // Beneficiário
       usua_cpf: form.usua_cpf || undefined,
@@ -1027,7 +1032,7 @@ export default function ErpOrcamentoForm() {
 
           {/* 5. Pagamento */}
           <SectionCard icon={DollarSign} title="Pagamento" color="emerald">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <FieldRow label="Plano de Pagamento">
                 <Select value={form.plano_pagamento} onValueChange={(v) => set("plano_pagamento", v)}>
                   <SelectTrigger className="text-sm">
@@ -1056,6 +1061,19 @@ export default function ErpOrcamentoForm() {
                     ))}
                   </SelectContent>
                 </Select>
+              </FieldRow>
+
+              <FieldRow label="Dia de Vencimento">
+                <Input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={form.dia_vencimento}
+                  onChange={(e) => set("dia_vencimento", e.target.value)}
+                  placeholder="ex: 10"
+                  className="text-sm font-mono"
+                />
+                <p className="text-xs text-slate-400 mt-0.5">Padrão ERP: 5 ou 10</p>
               </FieldRow>
             </div>
 
@@ -1347,7 +1365,7 @@ export default function ErpOrcamentoForm() {
                 { group: "Contratante", items: ["un_rg", "email_contato", "whatsapp_do_cliente"] },
                 { group: "Endereço", items: ["un_codigo_postal", "un_lougradouro", "un_numero_lougradouro", "un_complemento_lougradouro", "un_bairro", "un_cidade"] },
                 { group: "Plano / Produto", items: ["titulo_contrato", "produtos (produto_id numérico)", "preco_informado"] },
-                { group: "Pagamento", items: ["plano_pagamento", "numero_parcelas", "observacoes"] },
+                { group: "Pagamento", items: ["plano_pagamento", "numero_parcelas", "dia_vencimento (padrão 10)", "prazo_pagamento_id (fixo 1643483)", "observacoes"] },
                 { group: "Beneficiário (usua_*)", items: ["usua_cpf", "usua_nome_completo", "usua_data_nascimento", "usua_sexo", "usua_parentesco", "usua_telefone", "usua_produtos", "usua_papeis"] },
               ].map(({ group, items }) => (
                 <div key={group}>

@@ -38,3 +38,22 @@ Implementado em `erpProxy.js` (injeta automaticamente do `req.user.email` se nã
 
 - `usua_produtos` deve ser o `produto_id` numérico — auto-preenchido ao selecionar produto na seção Plano.
 - `usua_produtos` no payload é coerced para Number se o valor for numérico.
+
+## Campos ausentes descobertos em 2026-06-08 (hipótese payload incompleto)
+
+Comparando nosso payload com pedidos aprovados reais no DB do ERP, dois campos aparecem em **100% dos aprovados** e nunca enviamos:
+
+| campo | tipo | valor observado | adicionado ao payload? |
+|---|---|---|---|
+| `dia_vencimento` | integer | 10 (maioria) ou 5 | ✅ sim (editável, default 10) |
+| `prazo_pagamento_id` | bigint | **sempre 1643483** | ✅ sim (fixo) |
+
+Também existe `condicao_pagamento_id` no schema mas é NULL em todos os aprovados → não obrigatório.
+
+**Hipótese:** o ERP pode retornar erro genérico "User does not has access..." quando o payload está incompleto para o FECHAMENTO, mesmo que o real problema seja validação e não permissão. Teste 1: enviar com `dia_vencimento + prazo_pagamento_id` → observar se a mensagem muda.
+
+## Problema de formato no usuario_inclusao para vendedores nativos ERP
+
+Vendedores nativos do ERP (ex: leonardo) têm login `firstname.lastname` (ex: `leonardo.silva`). Nossa derivação gera `user.firstname.domain` — formato INCORRETO para eles. Contas `user.*` criadas pelo BomFlow existem no ERP mas têm **zero funções** e nunca criaram um pedido aprovado. O campo `usuario_inclusao` provavelmente não troca o contexto de permissão do token (isso confirma o diagnóstico de camada de sessão).
+
+**Why:** todos os pedidos aprovados (situacao='A') têm usuario_inclusao_id de contas com login `firstname.lastname`, nunca de contas `user.*`.
