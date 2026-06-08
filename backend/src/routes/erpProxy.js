@@ -343,8 +343,15 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
   const token = getToken(res);
   if (!token) return;
   try {
-    const payload = req.body;
-    console.log('[ERP Proxy] POST /orcamento payload:', JSON.stringify(payload));
+    const payload = { ...req.body };
+
+    // Injeta usuario_inclusao a partir do e-mail do agente autenticado se não vier no body.
+    if (!payload.usuario_inclusao && req.user?.email) {
+      const login = erpLoginFromEmail(req.user.email);
+      if (login) payload.usuario_inclusao = login;
+    }
+
+    console.log('[ERP /orcamento] payload enviado ao ERP:', JSON.stringify(payload, null, 2));
     const r = await fetch(`${ERP_BASE}/OrcamentoSgprcUsuario`, {
       method: 'POST',
       headers: {
@@ -354,6 +361,8 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       body: JSON.stringify(payload),
     });
     const data = await r.json().catch(() => ({}));
+    console.log('[ERP /orcamento] status HTTP:', r.status);
+    console.log('[ERP /orcamento] resposta ERP completa:', JSON.stringify(data, null, 2));
     if (!r.ok) return res.status(r.status).json(data);
     return res.json(data);
   } catch (err) {

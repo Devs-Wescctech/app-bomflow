@@ -296,7 +296,7 @@ export default function UpsellNovoOrcamento() {
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      const r = await fetch("/api/erp/pre-proposta", {
+      const r = await fetch("/api/erp/orcamento", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -312,12 +312,12 @@ export default function UpsellNovoOrcamento() {
         setSubmitResult({ type: "error", message: data?.error || "Erro desconhecido" });
         return;
       }
-      if (data?.block === "SGPRC_USUARIO.CAD_ORCAMENTO_SGPRC_USUARIO_FECHAMENTO") {
-        setSubmitResult({ type: "partial", data });
+      if (data?.block) {
+        setSubmitResult({ type: "error", message: data.error || `Bloco: ${data.block}`, data });
         return;
       }
-      if (data?.error || data?.block) {
-        setSubmitResult({ type: "error", message: data.error || `Bloco: ${data.block}`, data });
+      if (data?.error) {
+        setSubmitResult({ type: "error", message: data.error, data });
         return;
       }
       setSubmitResult({ type: "success", data });
