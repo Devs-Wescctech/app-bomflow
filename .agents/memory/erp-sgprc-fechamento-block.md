@@ -60,4 +60,10 @@ O bloco FECHAMENTO precisa **listar o objeto SGPRC_USUARIO** (= view `v_usuarios
 
 **Reverts acumulados (se nada funcionar, limpar tudo):** `UPDATE usuarios SET menu_id=NULL WHERE id=55367753;` `DELETE FROM pessoas_contratos WHERE id=303360015;` `DELETE FROM funcoes_usuarios WHERE id=303357294;`
 
-**Status:** validação empírica pendente (1 orçamento de teste → `pedidos.situacao` sai de 'M'?). Se ESTA também falhar, a conclusão por eliminação é que a checagem é da camada de aplicação/admin do ERP (Etherum) NÃO escrevível via SQL → exige ação do admin/fornecedor do ERP. Lixo a limpar: pedidos 'M' por acesso.api (303339373, 303358213, 303360529, 303065872–303065941).
+**MENU TAMBÉM FALHOU → CONCLUSÃO DEFINITIVA:** com função+canal+menu idênticos ao leonardo, FECHAMENTO ainda nega. Prova final em `operacoes_funcoes`: a função `2094535` (VENDEDOR) concede explicitamente a operação `6814` FECHAR_ORCAMENTO (op_funcao id 26471) — e o acesso.api JÁ TEM a 2094535. Ou seja, **toda concessão gravável da operação já existe** no acesso.api e o ERP ainda nega.
+
+**ROOT CAUSE (definitivo):** o bloqueio NÃO está em tabela gravável do banco. É da camada de execução/sessão do ERP (Etherum). Hipótese mais provável: **sessão web vs token REST** — operações "list records from object" precisam de contexto de sessão (estabelecimento/canal/escopo) estabelecido no login web; o token REST não tem esse contexto. Os usuários "que funcionam" (leonardo/cauan/maria) criam pelo WEB, não via token REST. Nenhum dos 3 donos de token (todos super) fecha via REST.
+
+**SOLUÇÃO REAL (fora do nosso código):** admin/fornecedor do ERP (Bom Pastor/Etherum) precisa conceder ao token acesso.api acesso ao bloco SGPRC_USUARIO.CAD_ORCAMENTO_SGPRC_USUARIO_FECHAMENTO **no contexto API**, ou habilitar contexto de sessão para o token. Dados p/ passar ao admin: user acesso.api (id 55367753), interface 45795, ops 6810/6812/6814. Alternativas: token de vendedor real com sessão; ou fluxo 2 etapas (cria rascunho via API + fecha manual no web).
+
+**NÃO INSISTIR em writes de DB.** 3 writes falharam (função 303357294, canal 303360015, menu). Reverts: `UPDATE usuarios SET menu_id=NULL WHERE id=55367753;` `DELETE FROM pessoas_contratos WHERE id=303360015;` `DELETE FROM funcoes_usuarios WHERE id=303357294;`. Lixo (pedidos 'M' por acesso.api): 303339373, 303358213, 303360529, 303065872–303065941.
