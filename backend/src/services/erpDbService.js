@@ -219,3 +219,84 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
     client.release();
   }
 }
+
+/**
+ * Finaliza um pedido ERP recém-criado preenchendo campos que a API REST ignora:
+ *   - endereco_id   → busca o endereço do contratante por CEP (fallback: primeiro endereço físico)
+ *   - dia_vencimento
+ *   - email_contato
+ *
+ * @param {number} pedidoInternalId  - pedidos.id
+ * @param {object} opts
+ *   @param {number|null}  [opts.diaVencimento]
+ *   @param {string|null}  [opts.emailContato]
+ *   @param {string|null}  [opts.codigoPostal]   - CEP para localizar o endereço do contratante
+ */
+export async function finalizeOrcamentoDB(pedidoInternalId, opts = {}) {
+  const db = getPool();
+  const { diaVencimento = null, emailContato = null, codigoPostal = null } = opts;
+
+  try {
+    // 1. Localiza o pessoa_id do contratante (linha com pessoa_id IS NOT NULL)
+    const ppRes = await db.query(
+      `SELECT pessoa_id FROM pedidos_pessoas WHERE pedido_id = $1 AND pessoa_id IS NOT NULL LIMIT 1`,
+      [pedidoInternalId]
+    );
+    const pessoaId = ppRes.rows[0]?.pessoa_id ? Number(ppRes.rows[0].pessoa_id) : null;
+    console.log(`[erpDbService] finalizeOrcamento pedido=${pedidoInternalId} contratante_pessoa_id=${pessoaId}`);
+
+    // 2. Localiza o endereco_id: primeiro tenta pelo CEP, depois qualquer endereço físico
+    let enderecoId = null;
+    if (pessoaId) {
+      const cepClean = codigoPostal ? codigoPostal.replace(/\D/g, '') : null;
+
+      if (cepClean) {
+        const byZip = await db.query(
+          `SELECT id FROM enderecos
+           WHERE pessoa_id = $1
+             AND REPLACE(REPLACE(codigo_postal, '-', ''), ' ', '') = $2
+             AND ativo = 'S'
+           ORDER BY id DESC LIMIT 1`,
+          [pessoaId, cepClean]
+        );
+        if (byZip.rows.length > 0) enderecoId = Number(byZip.rows[0].id);
+      }
+
+      if (!enderecoId) {
+        const anyPhysical = await db.query(
+          `SELECT id FROM enderecos
+           WHERE pessoa_id = $1
+             AND codigo_postal IS NOT NULL
+             AND ativo = 'S'
+           ORDER BY id DESC LIMIT 1`,
+          [pessoaId]
+        );
+        if (anyPhysical.rows.length > 0) enderecoId = Number(anyPhysical.rows[0].id);
+      }
+    }
+    console.log(`[erpDbService] finalizeOrcamento endereco_id=${enderecoId}`);
+
+    // 3. UPDATE pedidos com os campos que a API REST ignora
+    const updates = [];
+    const params = [];
+    let idx = 1;
+
+    if (enderecoId) { updates.push(`endereco_id = $${idx++}`); params.push(enderecoId); }
+    if (diaVencimento != null) { updates.push(`dia_vencimento = $${idx++}`); params.push(Number(diaVencimento)); }
+    if (emailContato) { updates.push(`email_contato = $${idx++}`); params.push(emailContato); }
+
+    if (updates.length > 0) {
+      params.push(pedidoInternalId);
+      await db.query(
+        `UPDATE pedidos SET ${updates.join(', ')} WHERE id = $${idx}`,
+        params
+      );
+      console.log(`[erpDbService] finalizeOrcamento UPDATE OK: ${updates.join(', ')} (pedido id=${pedidoInternalId})`);
+    }
+
+    return { enderecoId, diaVencimento, emailContato };
+  } catch (err) {
+    console.error('[erpDbService] finalizeOrcamentoDB erro (não crítico):', err.message);
+    return null;
+  }
+}

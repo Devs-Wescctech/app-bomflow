@@ -1,6 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { registerAgentInCanal, addItemsToPedido } from '../services/erpDbService.js';
+import { registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB } from '../services/erpDbService.js';
 import { query } from '../config/database.js';
 
 const router = express.Router();
@@ -398,6 +398,16 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       } catch (dbErr) {
         console.error('[ERP /orcamento] DB insert falhou (cabeçalho salvo):', dbErr.message);
         return res.json({ ...data, dbWarning: `Pedido criado mas produto/beneficiário não vinculados: ${dbErr.message}` });
+      }
+
+      // Preenche campos ignorados pela API REST: endereco_id, dia_vencimento, email_contato
+      const finalizeResult = await finalizeOrcamentoDB(Number(pedidoInternalId), {
+        diaVencimento: headerPayload.dia_vencimento ?? null,
+        emailContato: headerPayload.email_contato ?? null,
+        codigoPostal: headerPayload.un_codigo_postal ?? null,
+      });
+      if (finalizeResult) {
+        console.log('[ERP /orcamento] finalizeOrcamento OK:', JSON.stringify(finalizeResult));
       }
     }
 
