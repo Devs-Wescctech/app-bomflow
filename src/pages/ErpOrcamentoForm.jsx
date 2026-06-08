@@ -308,7 +308,7 @@ export default function ErpOrcamentoForm() {
   const { data: erpProdutos = [], isLoading: loadingProdutos } = useQuery({
     queryKey: ["erpProdutos"],
     queryFn: async () => {
-      const token = localStorage.getItem("token") || localStorage.getItem("accessToken");
+      const token = localStorage.getItem("accessToken");
       const res = await fetch("/api/erp/produtos", {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -403,7 +403,7 @@ export default function ErpOrcamentoForm() {
   const lookupCpfMutation = useMutation({
     mutationFn: async (cpf) => {
       const r = await fetch(`/api/erp/lookup-cpf?cpf=${encodeURIComponent(cpf)}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        headers: { Authorization: `Bearer ${localStorage.getItem("accessToken")}` },
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || "Erro ao buscar CPF no ERP");
@@ -453,7 +453,7 @@ export default function ErpOrcamentoForm() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
         },
         body: JSON.stringify(payload),
       });
