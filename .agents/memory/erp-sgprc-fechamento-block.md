@@ -36,10 +36,12 @@ O bloco FECHAMENTO precisa **listar o objeto SGPRC_USUARIO** (= view `v_usuarios
 - `VENDEDOR_EXPLORER` (47270776) **sozinha** (ex.: agente cauan 47197098), OU
 - `VENDEDOR` (2094535) **+ `Usuário do sistema` (198859503)** (ex.: Leonardo 95744209, Maria 87732325).
 
-A `VENDEDOR` (2094535) **SOZINHA NÃO basta** (testado: admin deu só ela ao acesso.api e o FECHAMENTO continuou negando). A função-base **`Usuário do sistema` (198859503)** ("agrupa direitos comuns a todos os usuários") é que carrega o direito de listar SGPRC_USUARIO. Contas de serviço (acesso.api) nascem SEM ela.
+**ESTADO REAL no banco (fonte da verdade, conferido):** o acesso.api tinha `198859503` (Usuário do sistema) + `251861329` (API_ETHERUM) — ou seja, **já tinha a metade `Usuário do sistema`** e estava FALTANDO o `VENDEDOR` (2094535). (Notas anteriores diziam o inverso — estavam erradas; NÃO há rastro de VENDEDOR concedido pelo admin no banco.)
 
-Logo, para o acesso.api (que já tem VENDEDOR): **adicionar `Usuário do sistema` (198859503)** OU trocar para `VENDEDOR_EXPLORER` (47270776). Grupos NÃO são fator (todos só no próprio grupo pessoal tipo 'U'). `regras_alcada` vazias para esses usuários.
+**CORREÇÃO APLICADA:** INSERT contido em `funcoes_usuarios` adicionando `VENDEDOR` (2094535) ao acesso.api (55367753). Id gerado via `nextval('pk_sequence')` (mesmo gerador do ERP, usado em `registerAgentInCanal`). Resultado: acesso.api agora tem `2094535, 198859503, 251861329` = idêntico a Leonardo/Maria (combo b). **Para reverter:** `DELETE FROM funcoes_usuarios WHERE id = 303357294`.
 
-**Why:** super_usuario não basta; o ACL do objeto SGPRC_USUARIO vem das funções, e a base `Usuário do sistema` é o discriminador real entre VENDEDOR-que-funciona e VENDEDOR-que-falha.
+**Vínculo de canal NÃO é o bloqueador do FECHAMENTO:** acesso.api tem **zero** linhas em `pessoas_contratos` (os agentes OK têm 1 → contrato `47194354`, tipo_vinculo `2094514`), mas o cabeçalho do orçamento cria normal com `agente_venda_id` correto; o erro é só na listagem do objeto SGPRC_USUARIO (= função). Vínculo de canal importa para atribuição de venda, não para o FECHAMENTO.
 
-**How to apply:** preferir conceder a função pela tela web do ERP (admin, sem write direto no banco) OU INSERT contido em `funcoes_usuarios`. Validar com 1 orçamento de teste controlado (lembrar: gera título PIX R$60 e esqueleto — limpar depois).
+**Why:** super_usuario não basta; o ACL do objeto SGPRC_USUARIO vem das funções. O par mínimo que funciona é `VENDEDOR` + `Usuário do sistema` (combo b) OU `VENDEDOR_EXPLORER` sozinho (combo a). Grupos NÃO são fator (todos só no grupo pessoal tipo 'U'); `regras_alcada` vazias.
+
+**Status:** correção aplicada; **validação empírica pendente** (1 orçamento de teste pelo formulário → conferir se `pedidos.situacao` sai de 'M'). Lembrar: gera título PIX R$60 e esqueleto — limpar depois junto com o lixo 303339373 / 303065872–303065941.
