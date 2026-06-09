@@ -6499,6 +6499,35 @@ router.post('/commission-perspectiva/report/send', authMiddleware, loadAgentMidd
   }
 });
 
+router.get('/commission-perspectiva/sem-registro-erp', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT
+        r.id,
+        r.referred_name,
+        r.referred_cpf,
+        r.referrer_name,
+        r.referrer_cpf,
+        r.stage,
+        r.updated_at,
+        a.name AS vendedor_name
+      FROM referrals r
+      LEFT JOIN agents a ON a.id = r.agent_id
+      WHERE r.stage = 'fechado_ganho'
+        AND r.referred_cpf IS NOT NULL AND r.referred_cpf != ''
+        AND NOT EXISTS (
+          SELECT 1 FROM erp_perspectivas_negocios p
+          WHERE p.cpf_indicado IS NOT DISTINCT FROM r.referred_cpf
+        )
+      ORDER BY r.updated_at DESC
+    `);
+    res.json({ records: result.rows });
+  } catch (error) {
+    console.error('[Perspectiva SemRegistroERP] Erro:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/commission-perspectiva/report/test', authMiddleware, loadAgentMiddleware, requireRole('admin', 'supervisor'), async (req, res) => {
   try {
     const settings = await getEmailSettings();

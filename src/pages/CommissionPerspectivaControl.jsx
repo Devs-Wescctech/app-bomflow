@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   DollarSign, RefreshCw, CheckCircle, Clock,
-  Package, ArrowLeft, Users, Calendar, FileText, ShieldX, Send
+  Package, ArrowLeft, Users, Calendar, FileText, ShieldX, Send, AlertTriangle
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -221,6 +221,13 @@ export default function CommissionPerspectivaControl() {
   });
   const corretorCpfs = new Set((corretorData?.cpfs || []).map(c => String(c).replace(/\D/g, '')));
 
+  const { data: semRegistroData, isLoading: loadingSemRegistro } = useQuery({
+    queryKey: ['commission-perspectiva-sem-registro-erp'],
+    queryFn: () => fetchWithAuth('/api/functions/commission-perspectiva/sem-registro-erp'),
+    staleTime: 60000,
+  });
+  const semRegistroRecords = semRegistroData?.records || [];
+
   const groupedByIndicator = {};
   for (const r of records.filter(r => r.status_pagamento === 'elegivel')) {
     const key = r.cpf_indicador || r.nome_indicador || 'unknown';
@@ -337,6 +344,20 @@ export default function CommissionPerspectivaControl() {
           onClick={() => setActiveTab('grouped')}
         >
           <Users className="w-4 h-4 mr-1" /> Por Indicador
+        </Button>
+        <Button
+          variant={activeTab === 'alertas' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setActiveTab('alertas')}
+          className={semRegistroRecords.length > 0 ? 'text-amber-700' : ''}
+        >
+          <AlertTriangle className="w-4 h-4 mr-1" />
+          Alertas
+          {semRegistroRecords.length > 0 && (
+            <span className="ml-1 bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5 leading-none">
+              {semRegistroRecords.length}
+            </span>
+          )}
         </Button>
       </div>
 
@@ -591,6 +612,67 @@ export default function CommissionPerspectivaControl() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'alertas' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              Indicações fechado_ganho sem registro ERP
+            </CardTitle>
+            <p className="text-sm text-gray-500 mt-1">
+              Estas indicações estão em <strong>fechado_ganho</strong> no CRM mas o CPF do indicado ainda não consta em <code className="text-xs bg-gray-100 px-1 rounded">erp_perspectivas_negocios</code>. Elas estão fora do fluxo de validação de pagamento automático.
+            </p>
+          </CardHeader>
+          <CardContent>
+            {loadingSemRegistro ? (
+              <div className="text-center py-8 text-gray-500">Carregando...</div>
+            ) : semRegistroRecords.length === 0 ? (
+              <div className="text-center py-8 text-green-600">
+                <CheckCircle className="w-12 h-12 mx-auto mb-3 text-green-400" />
+                <p className="font-medium">Tudo sincronizado</p>
+                <p className="text-sm text-gray-500 mt-1">Nenhuma indicação fechado_ganho fora do fluxo ERP.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <div className="mb-3 p-3 rounded-lg bg-amber-50 border border-amber-200 flex items-center gap-2 text-sm text-amber-800">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  <span>{semRegistroRecords.length} indicação(ões) fora do fluxo. Execute "Gerar Lote Semanal" ou aguarde o cron de sincronização para inserir automaticamente.</span>
+                </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left">
+                      <th className="py-2 px-3">Indicado</th>
+                      <th className="py-2 px-3">CPF Indicado</th>
+                      <th className="py-2 px-3">Indicador</th>
+                      <th className="py-2 px-3">Vendedor</th>
+                      <th className="py-2 px-3">Última atualização</th>
+                      <th className="py-2 px-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {semRegistroRecords.map((r) => (
+                      <tr key={r.id} className="border-b hover:bg-amber-50">
+                        <td className="py-2 px-3 font-medium">{r.referred_name || '-'}</td>
+                        <td className="py-2 px-3 font-mono text-xs">{r.referred_cpf || '-'}</td>
+                        <td className="py-2 px-3">
+                          <div>{r.referrer_name || '-'}</div>
+                          <div className="text-xs text-gray-400">{r.referrer_cpf || ''}</div>
+                        </td>
+                        <td className="py-2 px-3 text-xs text-gray-600">{r.vendedor_name || '-'}</td>
+                        <td className="py-2 px-3 text-xs">{safeFormatDate(r.updated_at)}</td>
+                        <td className="py-2 px-3">
+                          <Badge className="bg-amber-100 text-amber-800 text-xs">Sem registro ERP</Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </CardContent>
