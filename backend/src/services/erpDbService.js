@@ -139,10 +139,19 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
     const itemId = Number(itemRes.rows[0].id);
     console.log(`[erpDbService] itens_pedidos inserido id=${itemId} pedido=${pedidoInternalId} produto=${produtoId} preco=${precoNum}`);
 
-    // 1b. Se o produto dos beneficiários é diferente (ex: BOM PET → 76719),
-    //     insere um segundo item com preço 0 e sequencia 2.
+    // 1b. Se o produto dos beneficiários é diferente (ex: BOM PET → item "NOME DO PET"),
+    //     insere um segundo item com preço 0 e sequencia 2. A QUANTIDADE deste item
+    //     deve ser igual ao número de beneficiários (pets): o ERP valida no Fechamento
+    //     que (pessoas vinculadas ao item) == (quantidade do item).
     let benefItemId = itemId;
-    if (beneficiarioProdutoId && Number(beneficiarioProdutoId) !== Number(produtoId)) {
+    const isBomPetPath = beneficiarioProdutoId && Number(beneficiarioProdutoId) !== Number(produtoId);
+    if (isBomPetPath) {
+      // BOM PET sem pets resultaria em mismatch garantido no Fechamento (item NOME DO PET
+      // com quantidade > 0 e nenhuma pessoa vinculada). Aborta a transação com erro claro.
+      if (beneficiarios.length === 0) {
+        throw new Error('BOM PET exige ao menos um pet (beneficiário) informado.');
+      }
+      const petQty = beneficiarios.length;
       const benefItemRes = await client.query(
         `INSERT INTO itens_pedidos (
            id, pedido_id, sequencia, sub_item, produto_id,
@@ -154,17 +163,41 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
            quantidade_acima_pedido, atualizar_consumo
          ) VALUES (
            nextval('pk_sequence'), $1, 2, 1, $2,
-           1, 0::double precision, 'P', 2,
+           $3::numeric, 0::double precision, 'P', 2,
            0::double precision, 0::numeric, 0::numeric,
-           1, 1, 1,
-           1, 0, 1,
+           $3::numeric, $3::numeric, $3::numeric,
+           $3::numeric, 0, $3::numeric,
            0, 0, 0,
            0, 'S'
          ) RETURNING id`,
-        [pedidoInternalId, Number(beneficiarioProdutoId)]
+        [pedidoInternalId, Number(beneficiarioProdutoId), petQty]
       );
       benefItemId = Number(benefItemRes.rows[0].id);
-      console.log(`[erpDbService] itens_pedidos beneficiário inserido id=${benefItemId} produto=${beneficiarioProdutoId} (BOM PET)`);
+      console.log(`[erpDbService] itens_pedidos beneficiário inserido id=${benefItemId} produto=${beneficiarioProdutoId} qtd=${petQty} (BOM PET)`);
+
+      // 1c. Vincula o CONTRATANTE (titular) ao item principal. O ERP exige 1 pessoa
+      //     no "cartão" do plano; reaproveita a linha do contratante (pessoa_id NOT NULL)
+      //     já inserida automaticamente pela API ao criar o pedido (não duplica pessoa).
+      const contrRes = await client.query(
+        `SELECT id FROM pedidos_pessoas WHERE pedido_id = $1 AND pessoa_id IS NOT NULL ORDER BY id LIMIT 1`,
+        [pedidoInternalId]
+      );
+      const contratanteId = contrRes.rows[0]?.id ? Number(contrRes.rows[0].id) : null;
+      if (contratanteId) {
+        await client.query(
+          `INSERT INTO pedidos_pessoas_produtos (
+             id, pedido_id, item_pedido_id, sequencia, titular_id, aprovado
+           ) VALUES (
+             nextval('pk_sequence'), $1, $2, 1, $3, 'N'
+           )`,
+          [pedidoInternalId, itemId, contratanteId]
+        );
+        console.log(`[erpDbService] pedidos_pessoas_produtos contratante vinculado ao item principal item=${itemId} titular=${contratanteId} (BOM PET)`);
+      } else {
+        // Sem contratante vinculado, o item principal fica com 0 pessoas e o ERP rejeita
+        // no Fechamento. Aborta a transação para não gerar pedido inconsistente.
+        throw new Error(`BOM PET: contratante (pessoa_id) não encontrado para o pedido ${pedidoInternalId}; não foi possível vincular o titular ao item principal.`);
+      }
     }
 
     // 2. INSERT pedidos_pessoas + pedidos_pessoas_produtos para cada beneficiário
