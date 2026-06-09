@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
@@ -89,6 +89,20 @@ const NOME_ESTABELECIMENTO_FIXO = "LIMEIRA - CNPA";
 // Produtos cujo nome contém "NOME DO PET" são planos de pet, atrelados aos beneficiários (não ao titular).
 function isPetProduto(prod) {
   return /NOME DO PET/i.test(prod?.descricao || prod?.titulo_contrato || "");
+}
+
+// BOM AUTO: produtos de "DADOS DO CONDUTOR" e "DADOS DO VEÍCULO" também são produtos de beneficiário
+// (não do titular). Cada um vira um card fixo de beneficiário no Step 5.
+function isCondutorProduto(prod) {
+  return /DADOS DO CONDUTOR/i.test(prod?.descricao || prod?.titulo_contrato || "");
+}
+function isVeiculoProduto(prod) {
+  return /DADOS DO VE[IÍ]CULO/i.test(prod?.descricao || prod?.titulo_contrato || "");
+}
+
+// Um produto é "de beneficiário" (não do titular) se for pet, condutor ou veículo.
+function isProdutoBeneficiario(prod) {
+  return isPetProduto(prod) || isCondutorProduto(prod) || isVeiculoProduto(prod);
 }
 
 function erpLoginFromEmail(email) {
@@ -190,7 +204,10 @@ export default function UpsellNovoOrcamento() {
   const setTituloContrato = (v) => {
     set("titulo_contrato", v);
     setProdutosSel([]);
-    setBeneficiarios((bs) => bs.map((b) => ({ ...b, usua_produtos: "" })));
+    // Troca de título reinicia os beneficiários (os produtos disponíveis mudam).
+    // Para BOM AUTO os dois cards fixos (condutor/veículo) são montados pelo efeito abaixo.
+    setBeneficiarios([{ ...EMPTY_BENEFICIARIO }]);
+    setOpenBenef([true]);
   };
 
   const { data: user, isLoading: loadingUser } = useQuery({
@@ -242,42 +259,54 @@ export default function UpsellNovoOrcamento() {
     });
   }, [erpProdutos, form.titulo_contrato]);
 
-  // Produtos cujo nome contém "NOME DO PET" são produtos de BENEFICIÁRIO (pet): não aparecem na
-  // seleção do titular (Step 3) e sim como opção de produto de cada beneficiário (Step 5).
+  // Produtos de BENEFICIÁRIO (pet, condutor ou veículo): não aparecem na seleção do titular (Step 3)
+  // e sim como produto fixo de cada beneficiário (Step 5).
   const produtosTitular = useMemo(
-    () => produtosFiltrados.filter((p) => !isPetProduto(p)),
+    () => produtosFiltrados.filter((p) => !isProdutoBeneficiario(p)),
     [produtosFiltrados]
   );
-  const produtosPet = useMemo(
-    () => produtosFiltrados.filter((p) => isPetProduto(p)),
+  const produtosBeneficiario = useMemo(
+    () => produtosFiltrados.filter((p) => isProdutoBeneficiario(p)),
     [produtosFiltrados]
   );
+
+  // BOM AUTO: produtos específicos de condutor e veículo, e flag do modo.
+  const produtoCondutor = useMemo(
+    () => produtosFiltrados.find((p) => isCondutorProduto(p)) || null,
+    [produtosFiltrados]
+  );
+  const produtoVeiculo = useMemo(
+    () => produtosFiltrados.find((p) => isVeiculoProduto(p)) || null,
+    [produtosFiltrados]
+  );
+  // BOM AUTO exige os dois produtos (condutor E veículo) — garante exatamente dois cards fixos.
+  const isBomAuto = !!(produtoCondutor && produtoVeiculo);
 
   // Quantidade de pessoas vinculadas a um produto = (titular incluído ? 1 : 0) + beneficiários atribuídos a ele.
   const qtyForProduto = (produtoId, incluirTitular) =>
     (incluirTitular ? 1 : 0) +
     beneficiarios.filter((b) => b.usua_nome_completo?.trim() && String(b.usua_produtos) === String(produtoId)).length;
 
-  // Itens de pet: produtos "NOME DO PET" referenciados por algum beneficiário nomeado. Não são
-  // escolhidos no Step 3 (titular); entram como item próprio, com preço padrão do ERP e sem titular.
-  const petItens = useMemo(() => {
+  // Itens de beneficiário: produtos pet/condutor/veículo referenciados por algum beneficiário nomeado.
+  // Não são escolhidos no Step 3 (titular); entram como item próprio, com preço padrão do ERP e sem titular.
+  const benefItens = useMemo(() => {
     const refs = new Set(
       beneficiarios
         .filter((b) => b.usua_nome_completo?.trim() && b.usua_produtos)
         .map((b) => String(b.usua_produtos))
     );
-    return produtosPet
+    return produtosBeneficiario
       .filter((p) => refs.has(String(p.id)))
       .map((p) => ({
         produto_id: String(p.id),
         preco: p.preco_informado !== undefined ? String(p.preco_informado) : "0",
         incluir_titular: false,
-        is_pet: true,
+        is_beneficiario: true,
       }));
-  }, [beneficiarios, produtosPet]);
+  }, [beneficiarios, produtosBeneficiario]);
 
-  // Lista completa de itens do orçamento = produtos do titular (Step 3) + itens de pet (Step 5).
-  const itensSel = useMemo(() => [...produtosSel, ...petItens], [produtosSel, petItens]);
+  // Lista completa de itens do orçamento = produtos do titular (Step 3) + itens de beneficiário (Step 5).
+  const itensSel = useMemo(() => [...produtosSel, ...benefItens], [produtosSel, benefItens]);
 
   const produtosResumo = useMemo(
     () =>
@@ -301,15 +330,37 @@ export default function UpsellNovoOrcamento() {
     [produtosResumo]
   );
 
-  // Opções de produto para cada beneficiário (Step 5): SOMENTE produtos de pet ("NOME DO PET").
+  // Opções de produto para cada beneficiário (Step 5): produtos de beneficiário (pet/condutor/veículo).
   const opcoesBenefProduto = useMemo(
     () =>
-      produtosPet.map((p) => ({
+      produtosBeneficiario.map((p) => ({
         produto_id: String(p.id),
         descricao: p.descricao || p.titulo_contrato || `Produto ${p.id}`,
       })),
-    [produtosPet]
+    [produtosBeneficiario]
   );
+
+  // BOM AUTO: monta exatamente dois cards fixos de beneficiário (um para o produto "DADOS DO CONDUTOR"
+  // e outro para "DADOS DO VEÍCULO"), com o produto pré-preenchido e bloqueado. Roda uma única vez por
+  // título/produtos (o ref evita sobrescrever os dados que o vendedor já digitou).
+  const bomAutoSetupRef = useRef("");
+  useEffect(() => {
+    if (!isBomAuto) {
+      bomAutoSetupRef.current = "";
+      return;
+    }
+    const condId = produtoCondutor ? String(produtoCondutor.id) : "";
+    const veicId = produtoVeiculo ? String(produtoVeiculo.id) : "";
+    if (!condId && !veicId) return; // produtos ainda não carregaram
+    const key = `${form.titulo_contrato}|${condId}|${veicId}`;
+    if (bomAutoSetupRef.current === key) return;
+    const cards = [];
+    if (produtoCondutor) cards.push({ ...EMPTY_BENEFICIARIO, usua_produtos: condId });
+    if (produtoVeiculo) cards.push({ ...EMPTY_BENEFICIARIO, usua_produtos: veicId });
+    setBeneficiarios(cards);
+    setOpenBenef(cards.map(() => true));
+    bomAutoSetupRef.current = key;
+  }, [isBomAuto, produtoCondutor, produtoVeiculo, form.titulo_contrato]);
 
   const toggleProduto = (prod) => {
     setProdutosSel((list) => {
@@ -508,7 +559,7 @@ export default function UpsellNovoOrcamento() {
       if (!form.titulo_contrato) { toast.error("Selecione o título do contrato"); return false; }
       if (produtosSel.length === 0) { toast.error("Selecione ao menos um produto"); return false; }
       // Produtos de pet têm preço padrão do ERP; a validação de preço vale só para os produtos do titular.
-      const semPreco = produtosResumo.find((p) => !p.is_pet && !(Number(p.preco) > 0));
+      const semPreco = produtosResumo.find((p) => !p.is_beneficiario && !(Number(p.preco) > 0));
       if (semPreco) { toast.error(`Informe um preço válido para "${semPreco.descricao}"`); return false; }
     }
     if (step === 4) {
@@ -519,6 +570,13 @@ export default function UpsellNovoOrcamento() {
       }
     }
     if (step === 5) {
+      // BOM AUTO: os dois cards fixos (condutor e veículo) precisam ter o nome preenchido.
+      if (isBomAuto) {
+        const semNome = beneficiarios.find((b) => !b.usua_nome_completo?.trim());
+        if (semNome) {
+          toast.error("Preencha o nome nos dois cards (condutor e veículo)"); return false;
+        }
+      }
       // Beneficiário com nome precisa estar atribuído a um produto válido (titular ou pet).
       const semProduto = beneficiarios.find(
         (b) => b.usua_nome_completo?.trim() && !opcoesBenefProduto.some((p) => String(p.produto_id) === String(b.usua_produtos))
@@ -658,6 +716,7 @@ export default function UpsellNovoOrcamento() {
                   toggleBenef={toggleBenef}
                   addBeneficiario={addBeneficiario}
                   removeBeneficiario={removeBeneficiario}
+                  isBomAuto={isBomAuto}
                 />
               )}
               {step === 6 && (
@@ -1187,16 +1246,22 @@ function Step4({ form, set, planosPagamento, loadingPlanos, planoSelecionado }) 
   );
 }
 
-function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, setBenef, toggleBenef, addBeneficiario, removeBeneficiario }) {
+function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, setBenef, toggleBenef, addBeneficiario, removeBeneficiario, isBomAuto }) {
+  const descProduto = (produtoId) =>
+    opcoesBenefProduto.find((p) => String(p.produto_id) === String(produtoId))?.descricao || "";
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">
-          {beneficiarios.length} beneficiário(s) — cada um deve ser atribuído a um produto/plano
+          {isBomAuto
+            ? "BOM AUTO — preencha os dados do condutor e do veículo (produtos definidos automaticamente)"
+            : `${beneficiarios.length} beneficiário(s) — cada um deve ser atribuído a um produto/plano`}
         </p>
-        <Button type="button" variant="outline" size="sm" onClick={addBeneficiario} className="text-violet-600 border-violet-200 hover:bg-violet-50">
-          <Plus className="w-4 h-4 mr-1" /> Adicionar beneficiário
-        </Button>
+        {!isBomAuto && (
+          <Button type="button" variant="outline" size="sm" onClick={addBeneficiario} className="text-violet-600 border-violet-200 hover:bg-violet-50">
+            <Plus className="w-4 h-4 mr-1" /> Adicionar beneficiário
+          </Button>
+        )}
       </div>
 
       {beneficiarios.map((b, i) => (
@@ -1208,17 +1273,17 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, s
             <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-violet-500" />
               <span className="font-medium text-sm text-slate-700">
-                {b.usua_nome_completo || `Beneficiário ${i + 1}`}
+                {b.usua_nome_completo || (isBomAuto ? descProduto(b.usua_produtos) || `Beneficiário ${i + 1}` : `Beneficiário ${i + 1}`)}
                 {b.usua_parentesco && (
                   <Badge variant="secondary" className="ml-2 text-xs">
                     {PARENTESCO_OPTIONS.find((p) => p.value === b.usua_parentesco)?.label || b.usua_parentesco}
                   </Badge>
                 )}
               </span>
-              {i === 0 && <Badge className="bg-violet-100 text-violet-700 text-xs">Principal</Badge>}
+              {!isBomAuto && i === 0 && <Badge className="bg-violet-100 text-violet-700 text-xs">Principal</Badge>}
             </div>
             <div className="flex items-center gap-2">
-              {i > 0 && (
+              {!isBomAuto && i > 0 && (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); removeBeneficiario(i); }}
@@ -1301,7 +1366,11 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, s
 
               <div className="space-y-1">
                 <Label className="text-xs">Produto / plano <span className="text-red-500">*</span></Label>
-                {opcoesBenefProduto.length === 0 ? (
+                {isBomAuto ? (
+                  <div className="h-9 flex items-center px-3 rounded-md border border-slate-200 bg-slate-50 text-sm text-slate-600">
+                    {descProduto(b.usua_produtos) || "—"}
+                  </div>
+                ) : opcoesBenefProduto.length === 0 ? (
                   <p className="text-xs text-amber-600 flex items-center gap-1">
                     <AlertCircle className="w-3 h-3" /> Selecione ao menos um produto no passo "Plano"
                   </p>
