@@ -24,12 +24,6 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-const BOM_PET_BENEF_PRODUTO_ID = 55482373;
-const isBomPet = (produto) => {
-  if (!produto) return false;
-  return (produto.descricao || produto.titulo_contrato || "").toUpperCase().includes("BOM PET");
-};
-
 // Formata um número como celular brasileiro: (XX) 9XXXX-XXXX
 const formatMobilePhone = (v) => {
   const d = (v || "").replace(/\D/g, "").slice(0, 11);
@@ -154,6 +148,9 @@ export default function UpsellNovoOrcamento() {
   const [beneficiarios, setBeneficiarios] = useState([{ ...EMPTY_BENEFICIARIO }]);
   const [openBenef, setOpenBenef] = useState([true]);
   const [submitResult, setSubmitResult] = useState(null);
+  // Múltiplos produtos por orçamento (modelo fiel ao ERP): cada produto vira um item/cartão.
+  // produto_id guarda o `id` do produto da lista do ERP; preco editável; incluir_titular vincula o titular ao item.
+  const [produtosSel, setProdutosSel] = useState([]);
 
   const [form, setForm] = useState({
     contratante_pessoa: "",
@@ -174,8 +171,6 @@ export default function UpsellNovoOrcamento() {
     un_bairro: "",
     un_cidade: "",
     titulo_contrato: "",
-    produto_id: "",
-    preco_informado: "",
     plano_pagamento_id: "",
     plano_pagamento: "",
     quantidade_parcelas: "",
@@ -234,10 +229,59 @@ export default function UpsellNovoOrcamento() {
     });
   }, [erpProdutos, form.titulo_contrato]);
 
-  const produtoSelecionado = useMemo(
-    () => erpProdutos.find((p) => String(p.id) === String(form.produto_id) || String(p.produto_id) === String(form.produto_id)) || null,
-    [erpProdutos, form.produto_id]
+  // Quantidade de pessoas vinculadas a um produto = (titular incluído ? 1 : 0) + beneficiários atribuídos a ele.
+  const qtyForProduto = (produtoId, incluirTitular) =>
+    (incluirTitular ? 1 : 0) +
+    beneficiarios.filter((b) => b.usua_nome_completo?.trim() && String(b.usua_produtos) === String(produtoId)).length;
+
+  const produtosResumo = useMemo(
+    () =>
+      produtosSel.map((ps) => {
+        const prod = produtosFiltrados.find((p) => String(p.id) === String(ps.produto_id)) ||
+          erpProdutos.find((p) => String(p.id) === String(ps.produto_id));
+        const quantidade = qtyForProduto(ps.produto_id, ps.incluir_titular);
+        const preco = Number(ps.preco) || 0;
+        return {
+          ...ps,
+          descricao: prod?.descricao || prod?.titulo_contrato || `Produto ${ps.produto_id}`,
+          quantidade,
+          total: preco * quantidade,
+        };
+      }),
+    [produtosSel, produtosFiltrados, erpProdutos, beneficiarios]
   );
+
+  const grandTotal = useMemo(
+    () => produtosResumo.reduce((acc, p) => acc + p.total, 0),
+    [produtosResumo]
+  );
+
+  const toggleProduto = (prod) => {
+    setProdutosSel((list) => {
+      const exists = list.some((p) => String(p.produto_id) === String(prod.id));
+      if (exists) {
+        // ao remover o produto, limpa a atribuição dos beneficiários que apontavam para ele
+        setBeneficiarios((bs) =>
+          bs.map((b) => (String(b.usua_produtos) === String(prod.id) ? { ...b, usua_produtos: "" } : b))
+        );
+        return list.filter((p) => String(p.produto_id) !== String(prod.id));
+      }
+      return [
+        ...list,
+        {
+          produto_id: String(prod.id),
+          preco: prod.preco_informado !== undefined ? String(prod.preco_informado) : "",
+          incluir_titular: true,
+        },
+      ];
+    });
+  };
+
+  const setProdutoField = (produtoId, field, value) => {
+    setProdutosSel((list) =>
+      list.map((p) => (String(p.produto_id) === String(produtoId) ? { ...p, [field]: value } : p))
+    );
+  };
 
   const lookupCpfMutation = useMutation({
     mutationFn: async (cpf) => {
@@ -280,10 +324,28 @@ export default function UpsellNovoOrcamento() {
   });
 
   const payload = useMemo(() => {
-    const produtoIdNum = produtoSelecionado
-      ? Number(produtoSelecionado.produto_id || produtoSelecionado.id)
-      : undefined;
-    const precoNum = form.preco_informado ? Number(form.preco_informado) : undefined;
+    // Cada produto selecionado vira um item; quantidade = nº de pessoas vinculadas (titular + beneficiários atribuídos).
+    const itens = produtosSel.map((ps) => {
+      const prod = produtosFiltrados.find((p) => String(p.id) === String(ps.produto_id)) ||
+        erpProdutos.find((p) => String(p.id) === String(ps.produto_id));
+      const produtoIdNum = prod ? Number(prod.produto_id || prod.id) : Number(ps.produto_id);
+      const beneficiariosDoItem = beneficiarios
+        .filter((b) => b.usua_nome_completo?.trim() && String(b.usua_produtos) === String(ps.produto_id))
+        .map((b) => ({
+          nome: b.usua_nome_completo.trim(),
+          cpf: b.usua_cpf || null,
+          dataNascimento: b.usua_data_nascimento || null,
+          sexo: b.usua_sexo || null,
+          parentesco: b.usua_parentesco || null,
+          telefone: b.usua_telefone || null,
+        }));
+      return {
+        produtoId: produtoIdNum,
+        preco: Number(ps.preco) || 0,
+        incluirTitular: !!ps.incluir_titular,
+        beneficiarios: beneficiariosDoItem,
+      };
+    });
 
     const p = {
       tipo_pedido: "ORÇAMENTO",
@@ -308,28 +370,16 @@ export default function UpsellNovoOrcamento() {
       un_bairro: form.un_bairro || undefined,
       un_cidade: form.un_cidade || undefined,
       titulo_contrato: form.titulo_contrato || undefined,
-      produtos: produtoIdNum,
-      preco_informado: precoNum,
+      itens: itens.length ? itens : undefined,
       plano_pagamento: planoSelecionado?.plano_pagamento || form.plano_pagamento || undefined,
       numero_parcelas: planoSelecionado?.numero_parcelas != null ? Number(planoSelecionado.numero_parcelas) : undefined,
       quantidade_parcelas: form.quantidade_parcelas ? Number(form.quantidade_parcelas) : undefined,
       dia_vencimento: form.dia_vencimento ? Number(form.dia_vencimento) : undefined,
       prazo_pagamento_id: form.plano_pagamento_id ? Number(form.plano_pagamento_id) : undefined,
       observacoes: form.observacoes || undefined,
-      beneficiario_produto_id: isBomPet(produtoSelecionado) ? BOM_PET_BENEF_PRODUTO_ID : undefined,
-      beneficiarios: beneficiarios
-        .filter(b => b.usua_nome_completo?.trim())
-        .map(b => ({
-          nome: b.usua_nome_completo.trim(),
-          cpf: b.usua_cpf || null,
-          dataNascimento: b.usua_data_nascimento || null,
-          sexo: b.usua_sexo || null,
-          parentesco: b.usua_parentesco || null,
-          telefone: b.usua_telefone || null,
-        })),
     };
     return Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
-  }, [form, produtoSelecionado, planoSelecionado, beneficiarios, erpAgenteVendaId, user]);
+  }, [form, produtosSel, produtosFiltrados, erpProdutos, planoSelecionado, beneficiarios, erpAgenteVendaId, user]);
 
   const submitMutation = useMutation({
     mutationFn: async () => {
@@ -401,8 +451,9 @@ export default function UpsellNovoOrcamento() {
     }
     if (step === 3) {
       if (!form.titulo_contrato) { toast.error("Selecione o título do contrato"); return false; }
-      if (!form.produto_id) { toast.error("Selecione o produto"); return false; }
-      if (!form.preco_informado) { toast.error("Preço informado obrigatório"); return false; }
+      if (produtosSel.length === 0) { toast.error("Selecione ao menos um produto"); return false; }
+      const semPreco = produtosResumo.find((p) => !(Number(p.preco) > 0));
+      if (semPreco) { toast.error(`Informe um preço válido para "${semPreco.descricao}"`); return false; }
     }
     if (step === 4) {
       if (!form.plano_pagamento_id) { toast.error("Selecione o plano de pagamento"); return false; }
@@ -412,8 +463,17 @@ export default function UpsellNovoOrcamento() {
       }
     }
     if (step === 5) {
-      if (beneficiarios.length === 0 || !beneficiarios[0].usua_nome_completo.trim()) {
-        toast.error("Adicione pelo menos um beneficiário com nome"); return false;
+      // Beneficiário com nome precisa estar atribuído a um produto selecionado.
+      const semProduto = beneficiarios.find(
+        (b) => b.usua_nome_completo?.trim() && !produtosSel.some((p) => String(p.produto_id) === String(b.usua_produtos))
+      );
+      if (semProduto) {
+        toast.error(`Selecione o produto/plano de "${semProduto.usua_nome_completo.trim()}"`); return false;
+      }
+      // Todo produto precisa de ao menos uma pessoa (titular ou beneficiário), senão o fechamento falha no ERP.
+      const vazio = produtosResumo.find((p) => p.quantidade < 1);
+      if (vazio) {
+        toast.error(`O produto "${vazio.descricao}" precisa de ao menos uma pessoa (titular ou beneficiário)`); return false;
       }
     }
     return true;
@@ -522,7 +582,11 @@ export default function UpsellNovoOrcamento() {
                   form={form}
                   set={set}
                   produtosFiltrados={produtosFiltrados}
-                  produtoSelecionado={produtoSelecionado}
+                  produtosSel={produtosSel}
+                  produtosResumo={produtosResumo}
+                  grandTotal={grandTotal}
+                  toggleProduto={toggleProduto}
+                  setProdutoField={setProdutoField}
                   loadingProdutos={loadingProdutos}
                 />
               )}
@@ -531,7 +595,7 @@ export default function UpsellNovoOrcamento() {
                 <Step5
                   beneficiarios={beneficiarios}
                   openBenef={openBenef}
-                  produtoSelecionado={produtoSelecionado}
+                  produtosResumo={produtosResumo}
                   setBenef={setBenef}
                   toggleBenef={toggleBenef}
                   addBeneficiario={addBeneficiario}
@@ -542,7 +606,8 @@ export default function UpsellNovoOrcamento() {
                 <Step6
                   form={form}
                   beneficiarios={beneficiarios}
-                  produtoSelecionado={produtoSelecionado}
+                  produtosResumo={produtosResumo}
+                  grandTotal={grandTotal}
                   payload={payload}
                   currentAgent={currentAgent}
                   user={user}
@@ -861,7 +926,10 @@ function Step2({ form, set, cepLookup, setCepLookup, lookupCepMutation }) {
   );
 }
 
-function Step3({ form, set, produtosFiltrados, produtoSelecionado, loadingProdutos }) {
+function Step3({ form, set, produtosFiltrados, produtosSel, produtosResumo, grandTotal, toggleProduto, setProdutoField, loadingProdutos }) {
+  const isSelected = (id) => produtosSel.some((p) => String(p.produto_id) === String(id));
+  const resumoById = (id) => produtosResumo.find((p) => String(p.produto_id) === String(id));
+
   return (
     <div className="space-y-4">
       <div className="space-y-1">
@@ -882,7 +950,11 @@ function Step3({ form, set, produtosFiltrados, produtoSelecionado, loadingProdut
       </div>
 
       <div className="space-y-1">
-        <Label>Produto <span className="text-red-500">*</span></Label>
+        <Label>Produtos / planos <span className="text-red-500">*</span></Label>
+        <p className="text-xs text-slate-400">
+          Marque um ou mais produtos. Cada produto vira um item do orçamento. A quantidade de cada item é
+          o número de pessoas vinculadas (titular + beneficiários).
+        </p>
         {loadingProdutos ? (
           <div className="flex items-center gap-2 text-sm text-slate-500 p-2">
             <Loader2 className="w-4 h-4 animate-spin" /> Carregando produtos do ERP...
@@ -894,45 +966,91 @@ function Step3({ form, set, produtosFiltrados, produtoSelecionado, loadingProdut
             <AlertCircle className="w-3 h-3" /> Nenhum produto encontrado para este título
           </p>
         ) : (
-          <Select
-            value={String(form.produto_id)}
-            onValueChange={(v) => {
-              set("produto_id", v);
-              const prod = produtosFiltrados.find((p) => String(p.id) === v || String(p.produto_id) === v);
-              if (prod?.preco_informado !== undefined) set("preco_informado", String(prod.preco_informado));
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione o produto..." />
-            </SelectTrigger>
-            <SelectContent>
-              {produtosFiltrados.map((p) => (
-                <SelectItem key={p.id} value={String(p.id)}>
+          <div className="max-h-72 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+            {produtosFiltrados.map((p) => (
+              <label
+                key={p.id}
+                className={cn(
+                  "flex items-center gap-3 p-2.5 cursor-pointer hover:bg-slate-50 transition-colors",
+                  isSelected(p.id) && "bg-violet-50"
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 accent-violet-600 flex-shrink-0"
+                  checked={isSelected(p.id)}
+                  onChange={() => toggleProduto(p)}
+                />
+                <span className="text-sm text-slate-700 flex-1">
                   {p.descricao || p.titulo_contrato || `Produto ${p.id}`}
-                  {p.preco_informado !== undefined && ` — R$ ${Number(p.preco_informado).toFixed(2)}`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+                </span>
+                {p.preco_informado !== undefined && (
+                  <span className="text-xs text-slate-400">R$ {Number(p.preco_informado).toFixed(2)}</span>
+                )}
+              </label>
+            ))}
+          </div>
         )}
       </div>
 
-      <div className="space-y-1">
-        <Label>Preço informado <span className="text-red-500">*</span></Label>
-        <Input
-          type="number"
-          min="0"
-          step="0.01"
-          value={form.preco_informado}
-          onChange={(e) => set("preco_informado", e.target.value)}
-          placeholder="0.00"
-        />
-        {produtoSelecionado && (
+      {produtosSel.length > 0 && (
+        <div className="space-y-2">
+          <Label>Itens selecionados</Label>
+          {produtosSel.map((ps) => {
+            const r = resumoById(ps.produto_id) || { descricao: ps.produto_id, quantidade: 0, total: 0 };
+            return (
+              <Card key={ps.produto_id} className="border-violet-200">
+                <CardContent className="p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-slate-700">{r.descricao}</span>
+                    <button
+                      type="button"
+                      onClick={() => toggleProduto({ id: ps.produto_id })}
+                      className="text-red-400 hover:text-red-600 p-1 rounded flex-shrink-0"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 items-end">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Preço unitário <span className="text-red-500">*</span></Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={ps.preco}
+                        onChange={(e) => setProdutoField(ps.produto_id, "preco", e.target.value)}
+                        placeholder="0.00"
+                        className="h-9"
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 pb-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 accent-violet-600"
+                        checked={!!ps.incluir_titular}
+                        onChange={(e) => setProdutoField(ps.produto_id, "incluir_titular", e.target.checked)}
+                      />
+                      <span className="text-xs text-slate-600">Incluir titular neste item</span>
+                    </label>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-slate-100">
+                    <span>Qtd. (pessoas): <strong className="text-slate-700">{r.quantidade}</strong></span>
+                    <span>Total do item: <strong className="text-slate-700">R$ {r.total.toFixed(2)}</strong></span>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+          <div className="flex items-center justify-between p-3 bg-violet-50 border border-violet-200 rounded-lg">
+            <span className="text-sm font-medium text-violet-700">Total do orçamento</span>
+            <span className="text-base font-bold text-violet-700">R$ {grandTotal.toFixed(2)}</span>
+          </div>
           <p className="text-xs text-slate-400">
-            Preço ERP: R$ {Number(produtoSelecionado.preco_informado || 0).toFixed(2)} — pode ser editado
+            A quantidade é atualizada conforme você atribui beneficiários a cada produto no passo "Beneficiários".
           </p>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1011,12 +1129,12 @@ function Step4({ form, set, planosPagamento, loadingPlanos, planoSelecionado }) 
   );
 }
 
-function Step5({ beneficiarios, openBenef, produtoSelecionado, setBenef, toggleBenef, addBeneficiario, removeBeneficiario }) {
+function Step5({ beneficiarios, openBenef, produtosResumo, setBenef, toggleBenef, addBeneficiario, removeBeneficiario }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">
-          {beneficiarios.length} beneficiário(s) — apenas o primeiro será enviado ao ERP
+          {beneficiarios.length} beneficiário(s) — cada um deve ser atribuído a um produto/plano
         </p>
         <Button type="button" variant="outline" size="sm" onClick={addBeneficiario} className="text-violet-600 border-violet-200 hover:bg-violet-50">
           <Plus className="w-4 h-4 mr-1" /> Adicionar beneficiário
@@ -1123,15 +1241,30 @@ function Step5({ beneficiarios, openBenef, produtoSelecionado, setBenef, toggleB
                 />
               </div>
 
-              {produtoSelecionado && (
-                <p className="text-xs text-slate-400">
-                  Produto do beneficiário:{" "}
-                  {isBomPet(produtoSelecionado)
-                    ? "BOM PET SAÚDE - NOME DO PET (76719)"
-                    : (produtoSelecionado.descricao || produtoSelecionado.titulo_contrato)}{" "}
-                  (preenchido automaticamente)
-                </p>
-              )}
+              <div className="space-y-1">
+                <Label className="text-xs">Produto / plano <span className="text-red-500">*</span></Label>
+                {produtosResumo.length === 0 ? (
+                  <p className="text-xs text-amber-600 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" /> Selecione ao menos um produto no passo "Plano"
+                  </p>
+                ) : (
+                  <Select
+                    value={b.usua_produtos ? String(b.usua_produtos) : ""}
+                    onValueChange={(v) => setBenef(i, "usua_produtos", v)}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Selecione o produto deste beneficiário..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {produtosResumo.map((p) => (
+                        <SelectItem key={p.produto_id} value={String(p.produto_id)}>
+                          {p.descricao}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
             </CardContent>
           )}
         </Card>
@@ -1140,9 +1273,10 @@ function Step5({ beneficiarios, openBenef, produtoSelecionado, setBenef, toggleB
   );
 }
 
-function Step6({ form, beneficiarios, produtoSelecionado, payload, currentAgent, user }) {
-  const benef = beneficiarios[0] || {};
-  const parentesco = PARENTESCO_OPTIONS.find((p) => p.value === benef.usua_parentesco)?.label || benef.usua_parentesco;
+function Step6({ form, beneficiarios, produtosResumo, grandTotal, payload, currentAgent, user }) {
+  const beneficiariosValidos = beneficiarios.filter((b) => b.usua_nome_completo?.trim());
+  const descricaoProduto = (id) =>
+    produtosResumo.find((p) => String(p.produto_id) === String(id))?.descricao || "—";
 
   return (
     <div className="space-y-5">
@@ -1169,11 +1303,26 @@ function Step6({ form, beneficiarios, produtoSelecionado, payload, currentAgent,
         <ReviewRow label="Cidade" value={form.un_cidade} />
       </ReviewSection>
 
-      <ReviewSection title="Plano e Produto" icon={Package}>
+      <ReviewSection title="Plano e Produtos" icon={Package}>
         <ReviewRow label="Título" value={form.titulo_contrato} />
-        <ReviewRow label="Produto" value={produtoSelecionado ? (produtoSelecionado.descricao || produtoSelecionado.titulo_contrato) : form.produto_id} />
-        <ReviewRow label="Preço" value={form.preco_informado ? `R$ ${Number(form.preco_informado).toFixed(2)}` : "-"} />
       </ReviewSection>
+      <div className="space-y-1 -mt-2">
+        {produtosResumo.map((p) => (
+          <div key={p.produto_id} className="flex items-center justify-between text-xs bg-slate-50 rounded px-2 py-1.5">
+            <span className="text-slate-700 truncate mr-2">
+              {p.descricao}
+              {p.incluir_titular && <span className="text-violet-500"> · titular</span>}
+            </span>
+            <span className="text-slate-500 whitespace-nowrap">
+              R$ {(Number(p.preco) || 0).toFixed(2)} × {p.quantidade} = <strong className="text-slate-700">R$ {p.total.toFixed(2)}</strong>
+            </span>
+          </div>
+        ))}
+        <div className="flex items-center justify-between text-xs font-semibold text-violet-700 px-2 py-1.5">
+          <span>Total</span>
+          <span>R$ {grandTotal.toFixed(2)}</span>
+        </div>
+      </div>
 
       <ReviewSection title="Pagamento" icon={CreditCard}>
         <ReviewRow label="Plano" value={form.plano_pagamento} />
@@ -1181,14 +1330,30 @@ function Step6({ form, beneficiarios, produtoSelecionado, payload, currentAgent,
         <ReviewRow label="Vencimento" value={`Dia ${form.dia_vencimento}`} />
       </ReviewSection>
 
-      <ReviewSection title={`Beneficiários (${beneficiarios.length})`} icon={Users}>
-        <ReviewRow label="Nome" value={benef.usua_nome_completo || "-"} />
-        {benef.usua_data_nascimento && <ReviewRow label="Nascimento" value={benef.usua_data_nascimento} />}
-        {benef.usua_parentesco && <ReviewRow label="Parentesco" value={parentesco} />}
-        {beneficiarios.length > 1 && (
-          <p className="text-xs text-amber-600 mt-1">+ {beneficiarios.length - 1} beneficiário(s) adicional(is) — apenas o principal é enviado ao ERP</p>
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-600 border-b pb-1">
+          <Users className="w-4 h-4 text-violet-500" />
+          {`Beneficiários (${beneficiariosValidos.length})`}
+        </div>
+        {beneficiariosValidos.length === 0 ? (
+          <p className="text-xs text-slate-400">Nenhum beneficiário informado (orçamento somente do titular).</p>
+        ) : (
+          <div className="space-y-1">
+            {beneficiariosValidos.map((b, i) => {
+              const parentesco = PARENTESCO_OPTIONS.find((p) => p.value === b.usua_parentesco)?.label || b.usua_parentesco;
+              return (
+                <div key={i} className="flex items-center justify-between text-xs bg-slate-50 rounded px-2 py-1.5">
+                  <span className="text-slate-700 truncate mr-2">
+                    {b.usua_nome_completo}
+                    {parentesco && <span className="text-slate-400"> · {parentesco}</span>}
+                  </span>
+                  <span className="text-slate-500 whitespace-nowrap truncate max-w-[50%]">{descricaoProduto(b.usua_produtos)}</span>
+                </div>
+              );
+            })}
+          </div>
         )}
-      </ReviewSection>
+      </div>
 
       <div className="p-3 bg-slate-50 rounded-lg text-xs space-y-1 text-slate-500">
         <p className="font-medium text-slate-600">Campos automáticos no payload:</p>

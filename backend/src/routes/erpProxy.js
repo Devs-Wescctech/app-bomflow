@@ -351,30 +351,41 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       if (login) payload.usuario_inclusao = login;
     }
 
-    // Extrai campos de produto e beneficiários antes de enviar ao ERP
-    // (a API REST só salva o cabeçalho; produto/pessoas são inseridos via DB)
+    // Extrai itens (múltiplos produtos) e campos de pagamento antes de enviar ao ERP
+    // (a API REST só salva o cabeçalho; produtos/pessoas são inseridos via DB)
     const {
-      produtos: produtoId,
-      preco_informado: precoInformado,
+      itens: itensRaw,
       prazo_pagamento_id: planoPagamentoId,
       quantidade_parcelas: quantidadeParcelas,
-      beneficiarios: beneficiariosRaw,
-      beneficiario_produto_id: beneficiarioProdutoId,
       usua_produtos,
       usua_papeis,
       ...headerPayload
     } = payload;
 
-    // Suporta até 15 beneficiários enviados como array
-    const beneficiarios = Array.isArray(beneficiariosRaw) ? beneficiariosRaw.slice(0, 15) : [];
+    // Normaliza os itens: cada item = um produto com seus beneficiários (até 15 por item).
+    const itens = Array.isArray(itensRaw)
+      ? itensRaw.map((it) => ({
+          produtoId: Number(it.produtoId),
+          preco: Number(it.preco) || 0,
+          incluirTitular: !!it.incluirTitular,
+          beneficiarios: Array.isArray(it.beneficiarios) ? it.beneficiarios.slice(0, 15) : [],
+        }))
+      : [];
 
-    // Produto é obrigatório. A API REST salva apenas o cabeçalho; o produto e os
-    // beneficiários são gravados via DB direto logo depois. Sem um produto válido o
-    // orçamento ficaria incompleto no ERP. Valida ANTES de criar o cabeçalho para
-    // não deixar um orçamento órfão no ERP.
-    const produtoIdNum = Number(produtoId);
-    if (!produtoIdNum || Number.isNaN(produtoIdNum)) {
-      return res.status(400).json({ error: 'Produto obrigatório: selecione um produto válido antes de enviar o orçamento.' });
+    // Ao menos um item válido é obrigatório. A API REST salva apenas o cabeçalho; os produtos
+    // e beneficiários são gravados via DB direto logo depois. Sem itens válidos o orçamento
+    // ficaria incompleto no ERP. Valida ANTES de criar o cabeçalho para não deixar órfão.
+    if (itens.length === 0) {
+      return res.status(400).json({ error: 'Produto obrigatório: selecione ao menos um produto antes de enviar o orçamento.' });
+    }
+    const itemInvalido = itens.find((it) => !it.produtoId || Number.isNaN(it.produtoId));
+    if (itemInvalido) {
+      return res.status(400).json({ error: 'Há um produto inválido na seleção. Revise os produtos do orçamento.' });
+    }
+    // Cada item precisa de ao menos uma pessoa (titular ou beneficiário), senão o Fechamento falha.
+    const itemSemPessoa = itens.find((it) => (it.incluirTitular ? 1 : 0) + it.beneficiarios.length < 1);
+    if (itemSemPessoa) {
+      return res.status(400).json({ error: 'Cada produto precisa de ao menos uma pessoa vinculada (titular ou beneficiário).' });
     }
 
     // Plano de pagamento é obrigatório: o fluxo do orçamento Upsell sempre termina com o
@@ -386,7 +397,7 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
     }
 
     console.log('[ERP /orcamento] payload enviado ao ERP:', JSON.stringify(headerPayload, null, 2));
-    console.log(`[ERP /orcamento] beneficiários recebidos: ${beneficiarios.length}`);
+    console.log(`[ERP /orcamento] itens recebidos: ${itens.length} | beneficiários totais: ${itens.reduce((a, it) => a + it.beneficiarios.length, 0)}`);
     const r = await fetch(`${ERP_BASE}/OrcamentoSgprcUsuario`, {
       method: 'POST',
       headers: {
@@ -416,12 +427,7 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
 
     let dbResult = null;
     try {
-      dbResult = await addItemsToPedido(Number(pedidoInternalId), {
-        produtoId: produtoIdNum,
-        preco: Number(precoInformado) || 0,
-        beneficiarios,
-        beneficiarioProdutoId: beneficiarioProdutoId ? Number(beneficiarioProdutoId) : null,
-      });
+      dbResult = await addItemsToPedido(Number(pedidoInternalId), { itens });
       console.log('[ERP /orcamento] DB inserts OK:', JSON.stringify(dbResult));
     } catch (dbErr) {
       // O cabeçalho já existe no ERP, mas produto/beneficiários falharam (rollback do DB).
