@@ -46,7 +46,7 @@ Comparando nosso payload com pedidos aprovados reais no DB do ERP, dois campos a
 | campo | tipo | valor observado | adicionado ao payload? |
 |---|---|---|---|
 | `dia_vencimento` | integer | 10 (maioria) ou 5 | ✅ sim (editável, default 10) |
-| `prazo_pagamento_id` | bigint | **sempre 1643483** | ✅ sim (fixo) |
+| `prazo_pagamento_id` | bigint | (antes fixo) | ✅ agora vem do plano escolhido pelo vendedor — ver [erp-fechamento-pagamento](erp-fechamento-pagamento.md) |
 
 Também existe `condicao_pagamento_id` no schema mas é NULL em todos os aprovados → não obrigatório.
 

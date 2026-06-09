@@ -5,5 +5,6 @@
 - [ERP user creation email conflict](erp-user-creation-email.md) — POST /Usuarios "e-mail já utilizado" is triggered by sending `ativo`; omit it to pass the check. A separate salvarFuncoesUsuario NPE then surfaces on synthetic API-created pessoas.
 - [ERP DB pessoas_contratos](erp-db-pessoas-contratos.md) — INSERT direto no banco ERP para vincular agente ao canal de vendas; detalhes da tabela, sequence e campos.
 - [ERP Orçamento payload](erp-orcamento-payload.md) — usuario_inclusao obrigatório (derivado do email); produtos como número; preco_informado do objeto produto.
+- [ERP Fechamento + Pagamento](erp-fechamento-pagamento.md) — orçamento M→I + guia modos_pagamentos via DB direto; id==pedido_id; plano escolhido da lista; para em "I".
 - [ERP Fechamento pessoas/item](erp-fechamento-pessoas-por-item.md) — Fechamento valida pessoas vinculadas por item == quantidade do item; API de criação não roda essa regra.
 - [ERP SGPRC FECHAMENTO](erp-sgprc-fechamento-block.md) — PrePropostaUsuarioSgprc falha no bloco FECHAMENTO via REST mesmo com super admin; escrita real no ERP é por INSERT direto no banco.

@@ -41,14 +41,6 @@ const TITULO_CONTRATO_OPTIONS = [
   "EXPLORER CALLCENTER",
 ];
 
-const PLANO_PAGAMENTO_OPTIONS = [
-  "BOLETO", "BOLETO - PARCELA UNICA", "BOLETO - DIGITAL GALAX", "CARNE",
-  "CARTÃO DE CREDITO", "CARTÃO DE CRÉDITO - 12 - CIELO",
-  "CARTÃO DE CREDITO - GALAX", "CARTÃO DE CREDITO - VINDI", "CPFL", "PIX",
-];
-
-const NUMERO_PARCELAS_OPTIONS = ["1", "3", "6", "12"];
-
 const PARENTESCO_OPTIONS = [
   { value: "P", label: "Pai" },
   { value: "M", label: "Mãe" },
@@ -167,8 +159,9 @@ export default function UpsellNovoOrcamento() {
     titulo_contrato: "",
     produto_id: "",
     preco_informado: "",
+    plano_pagamento_id: "",
     plano_pagamento: "",
-    numero_parcelas: "",
+    quantidade_parcelas: "",
     dia_vencimento: "10",
     observacoes: "",
   });
@@ -197,6 +190,24 @@ export default function UpsellNovoOrcamento() {
     staleTime: 1000 * 60 * 10,
     enabled: !!canAccess,
   });
+
+  const { data: planosPagamento = [], isLoading: loadingPlanos } = useQuery({
+    queryKey: ["erpPlanosPagamento"],
+    queryFn: async () => {
+      const res = await fetch("/api/erp/planos-pagamento", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("accessToken")}` },
+      });
+      if (!res.ok) throw new Error("Erro ao buscar planos de pagamento do ERP");
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 10,
+    enabled: !!canAccess,
+  });
+
+  const planoSelecionado = useMemo(
+    () => planosPagamento.find((p) => String(p.id) === String(form.plano_pagamento_id)) || null,
+    [planosPagamento, form.plano_pagamento_id]
+  );
 
   const produtosFiltrados = useMemo(() => {
     if (!form.titulo_contrato) return [];
@@ -282,10 +293,11 @@ export default function UpsellNovoOrcamento() {
       titulo_contrato: form.titulo_contrato || undefined,
       produtos: produtoIdNum,
       preco_informado: precoNum,
-      plano_pagamento: form.plano_pagamento || undefined,
-      numero_parcelas: form.numero_parcelas ? Number(form.numero_parcelas) : undefined,
+      plano_pagamento: planoSelecionado?.plano_pagamento || form.plano_pagamento || undefined,
+      numero_parcelas: planoSelecionado?.numero_parcelas != null ? Number(planoSelecionado.numero_parcelas) : undefined,
+      quantidade_parcelas: form.quantidade_parcelas ? Number(form.quantidade_parcelas) : undefined,
       dia_vencimento: form.dia_vencimento ? Number(form.dia_vencimento) : undefined,
-      prazo_pagamento_id: 1643483,
+      prazo_pagamento_id: form.plano_pagamento_id ? Number(form.plano_pagamento_id) : undefined,
       observacoes: form.observacoes || undefined,
       beneficiario_produto_id: isBomPet(produtoSelecionado) ? BOM_PET_BENEF_PRODUTO_ID : undefined,
       beneficiarios: beneficiarios
@@ -300,7 +312,7 @@ export default function UpsellNovoOrcamento() {
         })),
     };
     return Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
-  }, [form, produtoSelecionado, beneficiarios, erpAgenteVendaId, user]);
+  }, [form, produtoSelecionado, planoSelecionado, beneficiarios, erpAgenteVendaId, user]);
 
   const submitMutation = useMutation({
     mutationFn: async () => {
@@ -373,8 +385,11 @@ export default function UpsellNovoOrcamento() {
       if (!form.preco_informado) { toast.error("Preço informado obrigatório"); return false; }
     }
     if (step === 4) {
-      if (!form.plano_pagamento) { toast.error("Selecione o plano de pagamento"); return false; }
-      if (!form.numero_parcelas) { toast.error("Selecione o número de parcelas"); return false; }
+      if (!form.plano_pagamento_id) { toast.error("Selecione o plano de pagamento"); return false; }
+      const qtd = Number(form.quantidade_parcelas);
+      if (!form.quantidade_parcelas || Number.isNaN(qtd) || qtd < 1) {
+        toast.error("Informe uma quantidade de parcelas válida"); return false;
+      }
     }
     if (step === 5) {
       if (beneficiarios.length === 0 || !beneficiarios[0].usua_nome_completo.trim()) {
@@ -486,7 +501,7 @@ export default function UpsellNovoOrcamento() {
                   loadingProdutos={loadingProdutos}
                 />
               )}
-              {step === 4 && <Step4 form={form} set={set} />}
+              {step === 4 && <Step4 form={form} set={set} planosPagamento={planosPagamento} loadingPlanos={loadingPlanos} planoSelecionado={planoSelecionado} />}
               {step === 5 && (
                 <Step5
                   beneficiarios={beneficiarios}
@@ -896,36 +911,44 @@ function Step3({ form, set, produtosFiltrados, produtoSelecionado, loadingProdut
   );
 }
 
-function Step4({ form, set }) {
+function Step4({ form, set, planosPagamento, loadingPlanos, planoSelecionado }) {
   return (
     <div className="space-y-4">
       <div className="space-y-1">
         <Label>Plano de pagamento <span className="text-red-500">*</span></Label>
-        <Select value={form.plano_pagamento} onValueChange={(v) => set("plano_pagamento", v)}>
+        <Select
+          value={form.plano_pagamento_id}
+          onValueChange={(v) => {
+            set("plano_pagamento_id", v);
+            const p = planosPagamento.find((pl) => String(pl.id) === String(v));
+            set("plano_pagamento", p?.plano_pagamento || "");
+          }}
+          disabled={loadingPlanos}
+        >
           <SelectTrigger>
-            <SelectValue placeholder="Selecione..." />
+            <SelectValue placeholder={loadingPlanos ? "Carregando planos..." : "Selecione..."} />
           </SelectTrigger>
           <SelectContent>
-            {PLANO_PAGAMENTO_OPTIONS.map((opt) => (
-              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+            {planosPagamento.map((p) => (
+              <SelectItem key={p.id} value={String(p.id)}>{p.plano_pagamento}</SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {planoSelecionado?.numero_parcelas != null && (
+          <p className="text-xs text-slate-500">Número de parcelas do plano: <strong>{planoSelecionado.numero_parcelas}</strong></p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1">
-          <Label>Nº de parcelas <span className="text-red-500">*</span></Label>
-          <Select value={form.numero_parcelas} onValueChange={(v) => set("numero_parcelas", v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione..." />
-            </SelectTrigger>
-            <SelectContent>
-              {NUMERO_PARCELAS_OPTIONS.map((opt) => (
-                <SelectItem key={opt} value={opt}>{opt}x</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Label>Quantidade de parcelas <span className="text-red-500">*</span></Label>
+          <Input
+            type="number"
+            min="1"
+            value={form.quantidade_parcelas}
+            onChange={(e) => set("quantidade_parcelas", e.target.value)}
+            placeholder="Ex: 12"
+          />
         </div>
         <div className="space-y-1">
           <Label>Dia de vencimento</Label>
@@ -949,9 +972,8 @@ function Step4({ form, set }) {
         />
       </div>
 
-      <div className="p-3 bg-slate-50 rounded-lg text-xs text-slate-500 space-y-1">
-        <p className="font-medium text-slate-600">Campos fixos (enviados automaticamente):</p>
-        <p>prazo_pagamento_id: 1643483</p>
+      <div className="p-3 bg-violet-50 border border-violet-200 rounded-lg text-xs text-violet-700 space-y-1">
+        <p className="font-medium">Após o envio, o orçamento será fechado automaticamente (situação "I") e o pagamento registrado no ERP. A aprovação (situação "A") continua manual.</p>
       </div>
     </div>
   );
@@ -1123,7 +1145,7 @@ function Step6({ form, beneficiarios, produtoSelecionado, payload, currentAgent,
 
       <ReviewSection title="Pagamento" icon={CreditCard}>
         <ReviewRow label="Plano" value={form.plano_pagamento} />
-        <ReviewRow label="Parcelas" value={form.numero_parcelas ? `${form.numero_parcelas}x` : "-"} />
+        <ReviewRow label="Qtd. parcelas" value={form.quantidade_parcelas ? `${form.quantidade_parcelas}x` : "-"} />
         <ReviewRow label="Vencimento" value={`Dia ${form.dia_vencimento}`} />
       </ReviewSection>
 
@@ -1140,7 +1162,8 @@ function Step6({ form, beneficiarios, produtoSelecionado, payload, currentAgent,
         <p className="font-medium text-slate-600">Campos automáticos no payload:</p>
         <p>tipo_pedido: ORÇAMENTO | nome_estabelecimento: LIMEIRA - CNPA</p>
         <p>agente_venda_id: {currentAgent?.erp_agente_venda_id || "—"} | usuario_inclusao: {user?.email ? `user.${user.email.split("@")[0]}.${user.email.split("@")[1]?.replace(/\.[^.]+$/, "")}` : "—"}</p>
-        <p>prazo_pagamento_id: 1643483 | usua_papeis: B</p>
+        <p>prazo_pagamento_id: {form.plano_pagamento_id || "—"} | usua_papeis: B</p>
+        <p className="text-violet-600">Fechamento automático: situação "M" → "I" + registro de pagamento</p>
       </div>
     </div>
   );
@@ -1181,6 +1204,11 @@ function SubmitResult({ result, onReset }) {
               )}
               {result.data?.numero_pedido && (
                 <p className="text-sm text-slate-500">Número: <strong>{result.data.numero_pedido}</strong></p>
+              )}
+              {result.data?.fechamento?.situacao && (
+                <p className="text-sm text-violet-600 mt-1">
+                  Fechado na situação <strong>"{result.data.fechamento.situacao}"</strong> com pagamento registrado.
+                </p>
               )}
             </div>
             <Button

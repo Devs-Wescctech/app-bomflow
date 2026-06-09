@@ -6,7 +6,7 @@ description: Detalhes do INSERT direto no banco do ERP para vincular agente ao c
 # Regra
 Ao criar um agente no Bom Flow com `erp_agent_id` + `canal_venda_id`, o backend insere automaticamente em `pessoas_contratos` no banco PostgreSQL do ERP, gerando o `erp_agente_venda_id`.
 
-**Why:** A API REST do ERP não expõe endpoint para criar o vínculo pessoa × canal de venda. O acesso direto ao banco (rede interna 172.16.0.36:5432) é a única forma de automatizar.
+**Why:** A API REST do ERP não expõe endpoint para criar o vínculo pessoa × canal de venda. O acesso direto ao banco (rede interna, host/porta nos secrets `ERP_DB_HOST`/`ERP_DB_PORT`) é a única forma de automatizar.
 
 **How to apply:** Ver `backend/src/services/erpDbService.js` — função `registerAgentInCanal(pessoaId, contratoId, grupoId)`.
 
@@ -30,4 +30,4 @@ Ao criar um agente no Bom Flow com `erp_agent_id` + `canal_venda_id`, o backend 
 Faz SELECT por `(pessoa_id, contrato_id)` antes de inserir. Não há UNIQUE constraint — só PK no `id`. Se já existir, retorna o id existente sem duplicar.
 
 # Credenciais
-Secrets: `ERP_DB_HOST` (172.16.0.36), `ERP_DB_PORT` (5432), `ERP_DB_NAME` (andriotti), `ERP_DB_USER`, `ERP_DB_PASSWORD`.
+Todos via secrets do ambiente (nunca hardcode os valores): `ERP_DB_HOST`, `ERP_DB_PORT`, `ERP_DB_NAME`, `ERP_DB_USER`, `ERP_DB_PASSWORD`.

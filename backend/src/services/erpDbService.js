@@ -333,3 +333,138 @@ export async function finalizeOrcamentoDB(pedidoInternalId, opts = {}) {
     return null;
   }
 }
+
+/**
+ * Lista os planos de pagamento ativos e válidos do ERP (planos_pagamentos).
+ * Usado para popular o dropdown de "Plano de pagamento" no orçamento.
+ *
+ * @returns {Promise<Array<{id:number, plano_pagamento:string, numero_parcelas:number, dia_vencimento:number|null}>>}
+ */
+export async function getPlanosPagamento() {
+  const db = getPool();
+  const res = await db.query(
+    `SELECT id, plano_pagamento, numero_parcelas, dia_vencimento
+       FROM planos_pagamentos
+      WHERE ativo = 'S' AND valido = 'S'
+      ORDER BY plano_pagamento`
+  );
+  return res.rows.map((r) => ({
+    id: Number(r.id),
+    plano_pagamento: r.plano_pagamento,
+    numero_parcelas: r.numero_parcelas != null ? Number(r.numero_parcelas) : null,
+    dia_vencimento: r.dia_vencimento != null ? Number(r.dia_vencimento) : null,
+  }));
+}
+
+/**
+ * Replica o processo manual feito no ERP após o orçamento estar completo:
+ *   1. Fechamento: muda a situação do pedido de "M" para "I" e preenche os campos
+ *      fiscais/derivados que o ERP calcula nessa transição (valor_saldo,
+ *      valor_total_pedido, data de emissão para análise, campos de ICMS/IPI zerados).
+ *   2. Pagamento: insere o registro em modos_pagamentos (id == pedido_id, padrão do ERP)
+ *      com o plano escolhido e a quantidade de parcelas digitada, e aponta
+ *      pedidos.modo_pagamento_id de volta para ele.
+ *
+ * NÃO avança para "A" (aprovação) — isso continua sendo manual no ERP.
+ *
+ * @param {number} pedidoInternalId - pedidos.id
+ * @param {object} opts
+ *   @param {number}      opts.planoPagamentoId   - planos_pagamentos.id escolhido
+ *   @param {number|null} [opts.quantidadeParcelas] - quantidade digitada pelo vendedor
+ * @returns {Promise<{ situacao:string, modoPagamentoId:number, planoPagamentoId:number, numeroParcelas:number|null }>}
+ */
+export async function applyFechamentoEPagamento(pedidoInternalId, opts = {}) {
+  const db = getPool();
+  const client = await db.connect();
+
+  const { planoPagamentoId, quantidadeParcelas = null } = opts;
+  const planoId = Number(planoPagamentoId);
+  if (!planoId || Number.isNaN(planoId)) {
+    throw new Error('Plano de pagamento obrigatório para o fechamento.');
+  }
+
+  try {
+    await client.query('BEGIN');
+
+    // Garante que o pedido existe e está em estado fechável (situação "M").
+    const pedRes = await client.query(
+      `SELECT id, situacao, valor_total FROM pedidos WHERE id = $1 FOR UPDATE`,
+      [pedidoInternalId]
+    );
+    if (pedRes.rows.length === 0) {
+      throw new Error(`Pedido ${pedidoInternalId} não encontrado para fechamento.`);
+    }
+    const pedido = pedRes.rows[0];
+    // Só fecha pedidos que estão de fato na etapa de orçamento ("M"). Isso evita
+    // transicionar indevidamente pedidos já aprovados/cancelados/em outro estado.
+    if (pedido.situacao !== 'M') {
+      throw new Error(`Pedido ${pedidoInternalId} não está em estado fechável (situação atual: "${pedido.situacao}", esperado "M").`);
+    }
+    const valorTotal = Number(pedido.valor_total) || 0;
+
+    // Número de parcelas do plano (informativo no cabeçalho).
+    const planoRes = await client.query(
+      `SELECT numero_parcelas FROM planos_pagamentos WHERE id = $1`,
+      [planoId]
+    );
+    if (planoRes.rows.length === 0) {
+      throw new Error(`Plano de pagamento ${planoId} não encontrado.`);
+    }
+    const planoNumeroParcelas = planoRes.rows[0].numero_parcelas != null
+      ? Number(planoRes.rows[0].numero_parcelas)
+      : null;
+
+    // 1. Fechamento (M → I) + campos derivados/fiscais que o ERP preenche nessa etapa.
+    await client.query(
+      `UPDATE pedidos SET
+         situacao = 'I',
+         prazo_pagamento_id = $2,
+         modo_pagamento_id = $1,
+         numero_parcelas = COALESCE($3, numero_parcelas),
+         valor_total_pedido = $4::numeric,
+         valor_saldo = $4::double precision,
+         data_emissao_pedido_analise = CURRENT_DATE,
+         valor_ipi = 0,
+         outros_valores = 0,
+         valor_total_base_icms_st = 0,
+         valor_total_icms_st = 0,
+         outros_valores_nao_influencia = 0,
+         valor_total_diferencial_icms = 0,
+         data_alteracao = NOW()
+       WHERE id = $1`,
+      [pedidoInternalId, planoId, planoNumeroParcelas, valorTotal]
+    );
+    console.log(`[erpDbService] fechamento OK pedido=${pedidoInternalId} situacao=I plano=${planoId} total=${valorTotal}`);
+
+    // 2. Pagamento — modos_pagamentos usa o MESMO id do pedido (padrão do ERP).
+    //    Idempotente: se já existir, atualiza o plano/parcelas.
+    const qtdParcelas = quantidadeParcelas != null && quantidadeParcelas !== ''
+      ? Number(quantidadeParcelas)
+      : null;
+    await client.query(
+      `INSERT INTO modos_pagamentos (id, pedido_id, plano_pagamento_id, quantidade_parcelas, recorrente)
+       VALUES ($1, $1, $2, $3, 'S')
+       ON CONFLICT (id) DO UPDATE SET
+         pedido_id = EXCLUDED.pedido_id,
+         plano_pagamento_id = EXCLUDED.plano_pagamento_id,
+         quantidade_parcelas = EXCLUDED.quantidade_parcelas,
+         recorrente = 'S'`,
+      [pedidoInternalId, planoId, qtdParcelas]
+    );
+    console.log(`[erpDbService] modos_pagamentos OK id=${pedidoInternalId} plano=${planoId} qtdParcelas=${qtdParcelas}`);
+
+    await client.query('COMMIT');
+    return {
+      situacao: 'I',
+      modoPagamentoId: Number(pedidoInternalId),
+      planoPagamentoId: planoId,
+      numeroParcelas: planoNumeroParcelas,
+    };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('[erpDbService] applyFechamentoEPagamento ROLLBACK:', err.message);
+    throw err;
+  } finally {
+    client.release();
+  }
+}

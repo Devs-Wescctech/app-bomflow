@@ -1,6 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB } from '../services/erpDbService.js';
+import { registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento } from '../services/erpDbService.js';
 import { query } from '../config/database.js';
 
 const router = express.Router();
@@ -357,6 +357,7 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       produtos: produtoId,
       preco_informado: precoInformado,
       prazo_pagamento_id: planoPagamentoId,
+      quantidade_parcelas: quantidadeParcelas,
       beneficiarios: beneficiariosRaw,
       beneficiario_produto_id: beneficiarioProdutoId,
       usua_produtos,
@@ -374,6 +375,14 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
     const produtoIdNum = Number(produtoId);
     if (!produtoIdNum || Number.isNaN(produtoIdNum)) {
       return res.status(400).json({ error: 'Produto obrigatório: selecione um produto válido antes de enviar o orçamento.' });
+    }
+
+    // Plano de pagamento é obrigatório: o fluxo do orçamento Upsell sempre termina com o
+    // Fechamento (situação "I") + registro do pagamento. Sem um plano válido o orçamento
+    // ficaria parado em "M". Valida ANTES de criar o cabeçalho para não gerar órfão no ERP.
+    const planoPagamentoIdNum = Number(planoPagamentoId);
+    if (!planoPagamentoIdNum || Number.isNaN(planoPagamentoIdNum)) {
+      return res.status(400).json({ error: 'Plano de pagamento obrigatório: selecione um plano antes de enviar o orçamento.' });
     }
 
     console.log('[ERP /orcamento] payload enviado ao ERP:', JSON.stringify(headerPayload, null, 2));
@@ -437,7 +446,33 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       console.log('[ERP /orcamento] finalizeOrcamento OK:', JSON.stringify(finalizeResult));
     }
 
-    return res.json({ ...data, dbInserted: dbResult });
+    // Fechamento (M → I) + registro da guia Pagamento (modos_pagamentos), replicando
+    // o processo manual do ERP. Só roda se um plano de pagamento foi escolhido.
+    let fechamentoResult = null;
+    const planoIdNum = Number(planoPagamentoId);
+    if (planoIdNum && !Number.isNaN(planoIdNum)) {
+      try {
+        fechamentoResult = await applyFechamentoEPagamento(Number(pedidoInternalId), {
+          planoPagamentoId: planoIdNum,
+          quantidadeParcelas: quantidadeParcelas ?? null,
+        });
+        console.log('[ERP /orcamento] fechamento+pagamento OK:', JSON.stringify(fechamentoResult));
+      } catch (fechErr) {
+        // O orçamento foi criado e está completo (produto/beneficiários gravados), mas o
+        // Fechamento/Pagamento falhou. Retorna ERRO REAL para o vendedor não tratar como
+        // sucesso — o orçamento ficou em "M" e precisa de ação manual no ERP.
+        console.error('[ERP /orcamento] fechamento+pagamento falhou:', fechErr.message);
+        return res.status(502).json({
+          error: `O orçamento ${numeroPedido ? `nº ${numeroPedido} ` : ''}foi criado no ERP, mas o Fechamento (situação "I") e o registro do pagamento NÃO foram concluídos (${fechErr.message}). O orçamento ficou em "M" e precisa ser fechado manualmente no ERP.`,
+          incomplete: true,
+          pedido: numeroPedido,
+          erpId: pedidoInternalId,
+          dbInserted: dbResult,
+        });
+      }
+    }
+
+    return res.json({ ...data, dbInserted: dbResult, fechamento: fechamentoResult });
   } catch (err) {
     console.error('[ERP Proxy] POST /orcamento error:', err.message);
     return res.status(500).json({ error: err.message });
@@ -498,6 +533,19 @@ router.get('/canais-venda', authMiddleware, async (req, res) => {
     return res.json(results);
   } catch (err) {
     console.error('[ERP Proxy] GET /canais-venda error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/erp/planos-pagamento
+// Retorna os planos de pagamento ativos e válidos do ERP (planos_pagamentos via DB)
+// Retorno: [{ id: number, plano_pagamento: string, numero_parcelas: number, dia_vencimento: number|null }]
+router.get('/planos-pagamento', authMiddleware, async (req, res) => {
+  try {
+    const planos = await getPlanosPagamento();
+    return res.json(planos);
+  } catch (err) {
+    console.error('[ERP Proxy] GET /planos-pagamento error:', err.message);
     return res.status(500).json({ error: err.message });
   }
 });
