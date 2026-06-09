@@ -317,15 +317,32 @@ export default function UpsellNovoOrcamento() {
     },
     onSuccess: ({ ok, data }) => {
       if (!ok) {
-        setSubmitResult({ type: "error", message: data?.error || "Erro desconhecido" });
+        setSubmitResult({ type: "error", message: data?.error || "Erro desconhecido", data });
+        toast.error(data?.error || "Erro ao enviar orçamento");
         return;
       }
       if (data?.block) {
         setSubmitResult({ type: "error", message: data.error || `Bloco: ${data.block}`, data });
+        toast.error(data.error || `Bloco: ${data.block}`);
         return;
       }
       if (data?.error) {
         setSubmitResult({ type: "error", message: data.error, data });
+        toast.error(data.error);
+        return;
+      }
+      // Defesa contra falha parcial silenciosa: o cabeçalho pode ter sido criado no ERP
+      // sem que produto/beneficiários fossem gravados. Nunca tratar como sucesso.
+      if (data?.dbWarning || data?.incomplete) {
+        const msg = data.dbWarning || "Orçamento criado no ERP, mas o produto/beneficiários NÃO foram vinculados. O orçamento está incompleto e precisa ser corrigido.";
+        setSubmitResult({ type: "error", message: msg, data });
+        toast.error(msg);
+        return;
+      }
+      if (!data?.dbInserted) {
+        const msg = "Orçamento criado, mas não foi possível confirmar a gravação do produto. Verifique no ERP antes de prosseguir.";
+        setSubmitResult({ type: "error", message: msg, data });
+        toast.error(msg);
         return;
       }
       setSubmitResult({ type: "success", data });

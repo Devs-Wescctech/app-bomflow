@@ -367,6 +367,15 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
     // Suporta até 15 beneficiários enviados como array
     const beneficiarios = Array.isArray(beneficiariosRaw) ? beneficiariosRaw.slice(0, 15) : [];
 
+    // Produto é obrigatório. A API REST salva apenas o cabeçalho; o produto e os
+    // beneficiários são gravados via DB direto logo depois. Sem um produto válido o
+    // orçamento ficaria incompleto no ERP. Valida ANTES de criar o cabeçalho para
+    // não deixar um orçamento órfão no ERP.
+    const produtoIdNum = Number(produtoId);
+    if (!produtoIdNum || Number.isNaN(produtoIdNum)) {
+      return res.status(400).json({ error: 'Produto obrigatório: selecione um produto válido antes de enviar o orçamento.' });
+    }
+
     console.log('[ERP /orcamento] payload enviado ao ERP:', JSON.stringify(headerPayload, null, 2));
     console.log(`[ERP /orcamento] beneficiários recebidos: ${beneficiarios.length}`);
     const r = await fetch(`${ERP_BASE}/OrcamentoSgprcUsuario`, {
@@ -385,33 +394,50 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
 
     // Pedido criado — agora insere produto e beneficiários via DB direto
     const pedidoInternalId = data?.id;
-    let dbResult = null;
-    if (pedidoInternalId && produtoId) {
-      try {
-        dbResult = await addItemsToPedido(Number(pedidoInternalId), {
-          produtoId: Number(produtoId),
-          preco: Number(precoInformado) || 0,
-          beneficiarios,
-          beneficiarioProdutoId: beneficiarioProdutoId ? Number(beneficiarioProdutoId) : null,
-        });
-        console.log('[ERP /orcamento] DB inserts OK:', JSON.stringify(dbResult));
-      } catch (dbErr) {
-        console.error('[ERP /orcamento] DB insert falhou (cabeçalho salvo):', dbErr.message);
-        return res.json({ ...data, dbWarning: `Pedido criado mas produto/beneficiário não vinculados: ${dbErr.message}` });
-      }
+    const numeroPedido = data?.pedido ?? data?.numero ?? null;
 
-      // Preenche campos ignorados pela API REST: endereco_id, dia_vencimento, email_contato
-      const finalizeResult = await finalizeOrcamentoDB(Number(pedidoInternalId), {
-        diaVencimento: headerPayload.dia_vencimento ?? null,
-        emailContato: headerPayload.email_contato ?? null,
-        codigoPostal: headerPayload.un_codigo_postal ?? null,
+    // Sem o id interno do pedido não há como vincular produto/beneficiários.
+    if (!pedidoInternalId) {
+      console.error('[ERP /orcamento] ERP não retornou id do pedido; produto não pôde ser vinculado:', JSON.stringify(data));
+      return res.status(502).json({
+        error: 'O ERP não retornou o identificador do orçamento, então o produto não pôde ser vinculado. Tente novamente.',
+        erpResponse: data,
       });
-      if (finalizeResult) {
-        console.log('[ERP /orcamento] finalizeOrcamento OK:', JSON.stringify(finalizeResult));
-      }
     }
 
-    return res.json({ ...data, dbInserted: dbResult || null });
+    let dbResult = null;
+    try {
+      dbResult = await addItemsToPedido(Number(pedidoInternalId), {
+        produtoId: produtoIdNum,
+        preco: Number(precoInformado) || 0,
+        beneficiarios,
+        beneficiarioProdutoId: beneficiarioProdutoId ? Number(beneficiarioProdutoId) : null,
+      });
+      console.log('[ERP /orcamento] DB inserts OK:', JSON.stringify(dbResult));
+    } catch (dbErr) {
+      // O cabeçalho já existe no ERP, mas produto/beneficiários falharam (rollback do DB).
+      // Retorna ERRO REAL (não 2xx) para que o vendedor seja notificado e o orçamento
+      // incompleto não passe despercebido. NÃO alteramos o ERP automaticamente.
+      console.error('[ERP /orcamento] DB insert falhou (cabeçalho salvo no ERP):', dbErr.message);
+      return res.status(502).json({
+        error: `O orçamento ${numeroPedido ? `nº ${numeroPedido} ` : ''}foi criado no ERP, mas o produto/beneficiários NÃO foram gravados (${dbErr.message}). O orçamento está INCOMPLETO no ERP e precisa ser corrigido manualmente.`,
+        incomplete: true,
+        pedido: numeroPedido,
+        erpId: pedidoInternalId,
+      });
+    }
+
+    // Preenche campos ignorados pela API REST: endereco_id, dia_vencimento, email_contato
+    const finalizeResult = await finalizeOrcamentoDB(Number(pedidoInternalId), {
+      diaVencimento: headerPayload.dia_vencimento ?? null,
+      emailContato: headerPayload.email_contato ?? null,
+      codigoPostal: headerPayload.un_codigo_postal ?? null,
+    });
+    if (finalizeResult) {
+      console.log('[ERP /orcamento] finalizeOrcamento OK:', JSON.stringify(finalizeResult));
+    }
+
+    return res.json({ ...data, dbInserted: dbResult });
   } catch (err) {
     console.error('[ERP Proxy] POST /orcamento error:', err.message);
     return res.status(500).json({ error: err.message });
