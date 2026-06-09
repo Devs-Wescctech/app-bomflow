@@ -163,8 +163,8 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
            quantidade_faturada, qtde_cancelada_faturamento, comissao_item,
            quantidade_acima_pedido, atualizar_consumo
          ) VALUES (
-           nextval('pk_sequence'), $1, $2, 1, $3,
-           $4::numeric, $5::double precision, 'P', $2,
+           nextval('pk_sequence'), $1, $2::integer, 1, $3,
+           $4::numeric, $5::double precision, 'P', $2::integer,
            $5::double precision, $5::numeric, $6::numeric,
            $4::numeric, $4::numeric, $4::numeric,
            $4::numeric, 0, $4::numeric,
