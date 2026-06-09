@@ -301,25 +301,15 @@ export default function UpsellNovoOrcamento() {
     [produtosResumo]
   );
 
-  // Opções de produto para cada beneficiário (Step 5): produtos do titular já selecionados +
-  // todos os produtos de pet disponíveis no título (mesmo que ainda não referenciados).
-  const opcoesBenefProduto = useMemo(() => {
-    const titulares = produtosSel.map((ps) => {
-      const prod = produtosFiltrados.find((p) => String(p.id) === String(ps.produto_id)) ||
-        erpProdutos.find((p) => String(p.id) === String(ps.produto_id));
-      return { produto_id: String(ps.produto_id), descricao: prod?.descricao || prod?.titulo_contrato || `Produto ${ps.produto_id}` };
-    });
-    const pets = produtosPet.map((p) => ({
-      produto_id: String(p.id),
-      descricao: p.descricao || p.titulo_contrato || `Produto ${p.id}`,
-    }));
-    const seen = new Set();
-    return [...titulares, ...pets].filter((o) => {
-      if (seen.has(o.produto_id)) return false;
-      seen.add(o.produto_id);
-      return true;
-    });
-  }, [produtosSel, produtosPet, produtosFiltrados, erpProdutos]);
+  // Opções de produto para cada beneficiário (Step 5): SOMENTE produtos de pet ("NOME DO PET").
+  const opcoesBenefProduto = useMemo(
+    () =>
+      produtosPet.map((p) => ({
+        produto_id: String(p.id),
+        descricao: p.descricao || p.titulo_contrato || `Produto ${p.id}`,
+      })),
+    [produtosPet]
+  );
 
   const toggleProduto = (prod) => {
     setProdutosSel((list) => {
