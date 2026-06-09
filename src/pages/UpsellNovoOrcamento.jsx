@@ -30,6 +30,23 @@ const isBomPet = (produto) => {
   return (produto.descricao || produto.titulo_contrato || "").toUpperCase().includes("BOM PET");
 };
 
+// Formata um número como celular brasileiro: (XX) 9XXXX-XXXX
+const formatMobilePhone = (v) => {
+  const d = (v || "").replace(/\D/g, "").slice(0, 11);
+  if (d.length <= 2) return d.length ? `(${d}` : "";
+  if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+};
+
+// Valida celular brasileiro: DDD (2 dígitos) + 9 dígitos começando com 9.
+const isMobilePhone = (v) => {
+  const d = (v || "").replace(/\D/g, "");
+  return d.length === 11 && d[2] === "9";
+};
+
+const DIA_VENCIMENTO_OPTIONS = ["01", "05", "10", "15", "20", "25"];
+const QUANTIDADE_PARCELAS_OPTIONS = Array.from({ length: 12 }, (_, i) => String(i + 1));
+
 const TITULO_CONTRATO_OPTIONS = [
   "BOM CORP", "BOM PASTOR", "BOM PASTOR - BOM AUTO",
   "BOM PASTOR - BOM DESCANSO FAMILIA", "BOM PASTOR - BOM MED",
@@ -371,6 +388,9 @@ export default function UpsellNovoOrcamento() {
       if (!cpfRaw || !isValidCpf(form.cpf)) { toast.error("CPF inválido"); return false; }
       if (!form.pessoa_contato.trim()) { toast.error("Nome completo obrigatório"); return false; }
       if (!form.telefone.trim()) { toast.error("Telefone obrigatório"); return false; }
+      if (form.celular.trim() && !isMobilePhone(form.celular)) {
+        toast.error("Celular deve ser um número de celular válido (DDD + 9 dígitos)"); return false;
+      }
     }
     if (step === 2) {
       if (form.un_codigo_postal.replace(/\D/g, "").length !== 8) { toast.error("CEP inválido (8 dígitos)"); return false; }
@@ -410,8 +430,13 @@ export default function UpsellNovoOrcamento() {
       toast.error("Limite de 15 beneficiários atingido");
       return;
     }
+    const newIndex = beneficiarios.length;
     setBeneficiarios((b) => [...b, { ...EMPTY_BENEFICIARIO }]);
     setOpenBenef((o) => [...o, true]);
+    // Direciona a tela para o novo card recém-adicionado, sem o usuário rolar manualmente.
+    setTimeout(() => {
+      document.getElementById(`benef-card-${newIndex}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
   };
 
   const removeBeneficiario = (i) => {
@@ -663,13 +688,14 @@ function Step1({ form, set, cpfLookup, setCpfLookup, lookupCpfMutation }) {
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1">
-          <Label>Celular <span className="text-red-500">*</span></Label>
+          <Label>Celular</Label>
           <Input
             value={form.celular}
-            onChange={(e) => set("celular", e.target.value)}
+            onChange={(e) => set("celular", formatMobilePhone(e.target.value))}
             placeholder="(51) 99999-9999"
+            maxLength={15}
           />
-          <p className="text-xs text-slate-400">Campo obrigatório no fechamento ERP</p>
+          <p className="text-xs text-slate-400">Opcional — somente celular (DDD + 9 dígitos)</p>
         </div>
         <div className="space-y-1">
           <Label>Telefone</Label>
@@ -942,23 +968,29 @@ function Step4({ form, set, planosPagamento, loadingPlanos, planoSelecionado }) 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1">
           <Label>Quantidade de parcelas <span className="text-red-500">*</span></Label>
-          <Input
-            type="number"
-            min="1"
-            value={form.quantidade_parcelas}
-            onChange={(e) => set("quantidade_parcelas", e.target.value)}
-            placeholder="Ex: 12"
-          />
+          <Select value={form.quantidade_parcelas} onValueChange={(v) => set("quantidade_parcelas", v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione..." />
+            </SelectTrigger>
+            <SelectContent>
+              {QUANTIDADE_PARCELAS_OPTIONS.map((q) => (
+                <SelectItem key={q} value={q}>{q}x</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-1">
           <Label>Dia de vencimento</Label>
-          <Input
-            type="number"
-            min="1"
-            max="28"
-            value={form.dia_vencimento}
-            onChange={(e) => set("dia_vencimento", e.target.value)}
-          />
+          <Select value={form.dia_vencimento} onValueChange={(v) => set("dia_vencimento", v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione..." />
+            </SelectTrigger>
+            <SelectContent>
+              {DIA_VENCIMENTO_OPTIONS.map((d) => (
+                <SelectItem key={d} value={String(Number(d))}>{d}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -992,7 +1024,7 @@ function Step5({ beneficiarios, openBenef, produtoSelecionado, setBenef, toggleB
       </div>
 
       {beneficiarios.map((b, i) => (
-        <Card key={i} className="border-slate-200">
+        <Card key={i} id={`benef-card-${i}`} className="border-slate-200">
           <div
             className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 rounded-t-lg"
             onClick={() => toggleBenef(i)}
