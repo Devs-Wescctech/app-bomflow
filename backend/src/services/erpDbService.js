@@ -414,7 +414,27 @@ export async function applyFechamentoEPagamento(pedidoInternalId, opts = {}) {
       ? Number(planoRes.rows[0].numero_parcelas)
       : null;
 
-    // 1. Fechamento (M → I) + campos derivados/fiscais que o ERP preenche nessa etapa.
+    // 1. Pagamento — modos_pagamentos usa o MESMO id do pedido (padrão do ERP).
+    //    DEVE vir ANTES do UPDATE em pedidos: pedidos.modo_pagamento_id tem FK
+    //    (fk_pedi_modpag_modo_pagamento) para modos_pagamentos.id, então a linha
+    //    de pagamento precisa existir antes de o pedido apontar para ela.
+    //    Idempotente: se já existir, atualiza o plano/parcelas.
+    const qtdParcelas = quantidadeParcelas != null && quantidadeParcelas !== ''
+      ? Number(quantidadeParcelas)
+      : null;
+    await client.query(
+      `INSERT INTO modos_pagamentos (id, pedido_id, plano_pagamento_id, quantidade_parcelas, recorrente)
+       VALUES ($1, $1, $2, $3, 'S')
+       ON CONFLICT (id) DO UPDATE SET
+         pedido_id = EXCLUDED.pedido_id,
+         plano_pagamento_id = EXCLUDED.plano_pagamento_id,
+         quantidade_parcelas = EXCLUDED.quantidade_parcelas,
+         recorrente = 'S'`,
+      [pedidoInternalId, planoId, qtdParcelas]
+    );
+    console.log(`[erpDbService] modos_pagamentos OK id=${pedidoInternalId} plano=${planoId} qtdParcelas=${qtdParcelas}`);
+
+    // 2. Fechamento (M → I) + campos derivados/fiscais que o ERP preenche nessa etapa.
     await client.query(
       `UPDATE pedidos SET
          situacao = 'I',
@@ -435,23 +455,6 @@ export async function applyFechamentoEPagamento(pedidoInternalId, opts = {}) {
       [pedidoInternalId, planoId, planoNumeroParcelas, valorTotal]
     );
     console.log(`[erpDbService] fechamento OK pedido=${pedidoInternalId} situacao=I plano=${planoId} total=${valorTotal}`);
-
-    // 2. Pagamento — modos_pagamentos usa o MESMO id do pedido (padrão do ERP).
-    //    Idempotente: se já existir, atualiza o plano/parcelas.
-    const qtdParcelas = quantidadeParcelas != null && quantidadeParcelas !== ''
-      ? Number(quantidadeParcelas)
-      : null;
-    await client.query(
-      `INSERT INTO modos_pagamentos (id, pedido_id, plano_pagamento_id, quantidade_parcelas, recorrente)
-       VALUES ($1, $1, $2, $3, 'S')
-       ON CONFLICT (id) DO UPDATE SET
-         pedido_id = EXCLUDED.pedido_id,
-         plano_pagamento_id = EXCLUDED.plano_pagamento_id,
-         quantidade_parcelas = EXCLUDED.quantidade_parcelas,
-         recorrente = 'S'`,
-      [pedidoInternalId, planoId, qtdParcelas]
-    );
-    console.log(`[erpDbService] modos_pagamentos OK id=${pedidoInternalId} plano=${planoId} qtdParcelas=${qtdParcelas}`);
 
     await client.query('COMMIT');
     return {

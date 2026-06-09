@@ -26,5 +26,8 @@ Depois de criar o orçamento (API REST cria o cabeçalho em situação "M"), o E
 # Campos fiscais no fechamento
 No UPDATE de fechamento, o ERP zera `valor_ipi`, `outros_valores`, `valor_total_base_icms_st`, `valor_total_icms_st`, `outros_valores_nao_influencia`, `valor_total_diferencial_icms`; seta `valor_total_pedido`/`valor_saldo` = valor_total, `data_emissao_pedido_analise = CURRENT_DATE`, `data_alteracao = NOW()`.
 
+# Ordem das gravações (FK)
+INSERT em `modos_pagamentos` SEMPRE antes do UPDATE em `pedidos`. Há FKs nas duas direções: `fk_pedi_modpag_modo_pagamento` (pedidos.modo_pagamento_id → modos_pagamentos.id) e `fk_modpag_pedi_pedido` (modos_pagamentos.pedido_id → pedidos.id). O pedido já existe (criado via REST), então o INSERT do pagamento passa; só depois o pedido pode apontar modo_pagamento_id = id. A ordem invertida dispara "violates foreign key constraint fk_pedi_modpag_modo_pagamento".
+
 # Tratamento de erro
 Tudo numa transação (BEGIN/COMMIT/ROLLBACK). Se o fechamento/pagamento falhar, o endpoint retorna 502 com `incomplete:true` (o orçamento ficou em "M") — falha visível, nunca silenciosa.
