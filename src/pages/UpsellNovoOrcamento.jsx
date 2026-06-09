@@ -86,6 +86,11 @@ const STEPS = [
 
 const NOME_ESTABELECIMENTO_FIXO = "LIMEIRA - CNPA";
 
+// Produtos cujo nome contém "NOME DO PET" são planos de pet, atrelados aos beneficiários (não ao titular).
+function isPetProduto(prod) {
+  return /NOME DO PET/i.test(prod?.descricao || prod?.titulo_contrato || "");
+}
+
 function erpLoginFromEmail(email) {
   if (!email) return undefined;
   const atIdx = email.indexOf("@");
@@ -180,6 +185,14 @@ export default function UpsellNovoOrcamento() {
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  // Ao trocar o título do contrato, os produtos disponíveis mudam — limpa seleção do titular e
+  // as atribuições de produto dos beneficiários para não vazar itens de um título anterior.
+  const setTituloContrato = (v) => {
+    set("titulo_contrato", v);
+    setProdutosSel([]);
+    setBeneficiarios((bs) => bs.map((b) => ({ ...b, usua_produtos: "" })));
+  };
+
   const { data: user, isLoading: loadingUser } = useQuery({
     queryKey: ["currentUser"],
     queryFn: () => base44.auth.me(),
@@ -229,14 +242,46 @@ export default function UpsellNovoOrcamento() {
     });
   }, [erpProdutos, form.titulo_contrato]);
 
+  // Produtos cujo nome contém "NOME DO PET" são produtos de BENEFICIÁRIO (pet): não aparecem na
+  // seleção do titular (Step 3) e sim como opção de produto de cada beneficiário (Step 5).
+  const produtosTitular = useMemo(
+    () => produtosFiltrados.filter((p) => !isPetProduto(p)),
+    [produtosFiltrados]
+  );
+  const produtosPet = useMemo(
+    () => produtosFiltrados.filter((p) => isPetProduto(p)),
+    [produtosFiltrados]
+  );
+
   // Quantidade de pessoas vinculadas a um produto = (titular incluído ? 1 : 0) + beneficiários atribuídos a ele.
   const qtyForProduto = (produtoId, incluirTitular) =>
     (incluirTitular ? 1 : 0) +
     beneficiarios.filter((b) => b.usua_nome_completo?.trim() && String(b.usua_produtos) === String(produtoId)).length;
 
+  // Itens de pet: produtos "NOME DO PET" referenciados por algum beneficiário nomeado. Não são
+  // escolhidos no Step 3 (titular); entram como item próprio, com preço padrão do ERP e sem titular.
+  const petItens = useMemo(() => {
+    const refs = new Set(
+      beneficiarios
+        .filter((b) => b.usua_nome_completo?.trim() && b.usua_produtos)
+        .map((b) => String(b.usua_produtos))
+    );
+    return produtosPet
+      .filter((p) => refs.has(String(p.id)))
+      .map((p) => ({
+        produto_id: String(p.id),
+        preco: p.preco_informado !== undefined ? String(p.preco_informado) : "0",
+        incluir_titular: false,
+        is_pet: true,
+      }));
+  }, [beneficiarios, produtosPet]);
+
+  // Lista completa de itens do orçamento = produtos do titular (Step 3) + itens de pet (Step 5).
+  const itensSel = useMemo(() => [...produtosSel, ...petItens], [produtosSel, petItens]);
+
   const produtosResumo = useMemo(
     () =>
-      produtosSel.map((ps) => {
+      itensSel.map((ps) => {
         const prod = produtosFiltrados.find((p) => String(p.id) === String(ps.produto_id)) ||
           erpProdutos.find((p) => String(p.id) === String(ps.produto_id));
         const quantidade = qtyForProduto(ps.produto_id, ps.incluir_titular);
@@ -248,13 +293,33 @@ export default function UpsellNovoOrcamento() {
           total: preco * quantidade,
         };
       }),
-    [produtosSel, produtosFiltrados, erpProdutos, beneficiarios]
+    [itensSel, produtosFiltrados, erpProdutos, beneficiarios]
   );
 
   const grandTotal = useMemo(
     () => produtosResumo.reduce((acc, p) => acc + p.total, 0),
     [produtosResumo]
   );
+
+  // Opções de produto para cada beneficiário (Step 5): produtos do titular já selecionados +
+  // todos os produtos de pet disponíveis no título (mesmo que ainda não referenciados).
+  const opcoesBenefProduto = useMemo(() => {
+    const titulares = produtosSel.map((ps) => {
+      const prod = produtosFiltrados.find((p) => String(p.id) === String(ps.produto_id)) ||
+        erpProdutos.find((p) => String(p.id) === String(ps.produto_id));
+      return { produto_id: String(ps.produto_id), descricao: prod?.descricao || prod?.titulo_contrato || `Produto ${ps.produto_id}` };
+    });
+    const pets = produtosPet.map((p) => ({
+      produto_id: String(p.id),
+      descricao: p.descricao || p.titulo_contrato || `Produto ${p.id}`,
+    }));
+    const seen = new Set();
+    return [...titulares, ...pets].filter((o) => {
+      if (seen.has(o.produto_id)) return false;
+      seen.add(o.produto_id);
+      return true;
+    });
+  }, [produtosSel, produtosPet, produtosFiltrados, erpProdutos]);
 
   const toggleProduto = (prod) => {
     setProdutosSel((list) => {
@@ -324,8 +389,8 @@ export default function UpsellNovoOrcamento() {
   });
 
   const payload = useMemo(() => {
-    // Cada produto selecionado vira um item; quantidade = nº de pessoas vinculadas (titular + beneficiários atribuídos).
-    const itens = produtosSel.map((ps) => {
+    // Cada produto (titular + pet) vira um item; quantidade = nº de pessoas vinculadas (titular + beneficiários atribuídos).
+    const itens = itensSel.map((ps) => {
       const prod = produtosFiltrados.find((p) => String(p.id) === String(ps.produto_id)) ||
         erpProdutos.find((p) => String(p.id) === String(ps.produto_id));
       const produtoIdNum = prod ? Number(prod.produto_id || prod.id) : Number(ps.produto_id);
@@ -379,7 +444,7 @@ export default function UpsellNovoOrcamento() {
       observacoes: form.observacoes || undefined,
     };
     return Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
-  }, [form, produtosSel, produtosFiltrados, erpProdutos, planoSelecionado, beneficiarios, erpAgenteVendaId, user]);
+  }, [form, itensSel, produtosFiltrados, erpProdutos, planoSelecionado, beneficiarios, erpAgenteVendaId, user]);
 
   const submitMutation = useMutation({
     mutationFn: async () => {
@@ -452,7 +517,8 @@ export default function UpsellNovoOrcamento() {
     if (step === 3) {
       if (!form.titulo_contrato) { toast.error("Selecione o título do contrato"); return false; }
       if (produtosSel.length === 0) { toast.error("Selecione ao menos um produto"); return false; }
-      const semPreco = produtosResumo.find((p) => !(Number(p.preco) > 0));
+      // Produtos de pet têm preço padrão do ERP; a validação de preço vale só para os produtos do titular.
+      const semPreco = produtosResumo.find((p) => !p.is_pet && !(Number(p.preco) > 0));
       if (semPreco) { toast.error(`Informe um preço válido para "${semPreco.descricao}"`); return false; }
     }
     if (step === 4) {
@@ -463,9 +529,9 @@ export default function UpsellNovoOrcamento() {
       }
     }
     if (step === 5) {
-      // Beneficiário com nome precisa estar atribuído a um produto selecionado.
+      // Beneficiário com nome precisa estar atribuído a um produto válido (titular ou pet).
       const semProduto = beneficiarios.find(
-        (b) => b.usua_nome_completo?.trim() && !produtosSel.some((p) => String(p.produto_id) === String(b.usua_produtos))
+        (b) => b.usua_nome_completo?.trim() && !opcoesBenefProduto.some((p) => String(p.produto_id) === String(b.usua_produtos))
       );
       if (semProduto) {
         toast.error(`Selecione o produto/plano de "${semProduto.usua_nome_completo.trim()}"`); return false;
@@ -581,7 +647,8 @@ export default function UpsellNovoOrcamento() {
                 <Step3
                   form={form}
                   set={set}
-                  produtosFiltrados={produtosFiltrados}
+                  setTituloContrato={setTituloContrato}
+                  produtosFiltrados={produtosTitular}
                   produtosSel={produtosSel}
                   produtosResumo={produtosResumo}
                   grandTotal={grandTotal}
@@ -596,6 +663,7 @@ export default function UpsellNovoOrcamento() {
                   beneficiarios={beneficiarios}
                   openBenef={openBenef}
                   produtosResumo={produtosResumo}
+                  opcoesBenefProduto={opcoesBenefProduto}
                   setBenef={setBenef}
                   toggleBenef={toggleBenef}
                   addBeneficiario={addBeneficiario}
@@ -926,7 +994,7 @@ function Step2({ form, set, cepLookup, setCepLookup, lookupCepMutation }) {
   );
 }
 
-function Step3({ form, set, produtosFiltrados, produtosSel, produtosResumo, grandTotal, toggleProduto, setProdutoField, loadingProdutos }) {
+function Step3({ form, set, setTituloContrato, produtosFiltrados, produtosSel, produtosResumo, grandTotal, toggleProduto, setProdutoField, loadingProdutos }) {
   const isSelected = (id) => produtosSel.some((p) => String(p.produto_id) === String(id));
   const resumoById = (id) => produtosResumo.find((p) => String(p.produto_id) === String(id));
 
@@ -936,7 +1004,7 @@ function Step3({ form, set, produtosFiltrados, produtosSel, produtosResumo, gran
         <Label>Título do contrato <span className="text-red-500">*</span></Label>
         <Select
           value={form.titulo_contrato}
-          onValueChange={(v) => set("titulo_contrato", v)}
+          onValueChange={(v) => setTituloContrato(v)}
         >
           <SelectTrigger>
             <SelectValue placeholder="Selecione o título..." />
@@ -1129,7 +1197,7 @@ function Step4({ form, set, planosPagamento, loadingPlanos, planoSelecionado }) 
   );
 }
 
-function Step5({ beneficiarios, openBenef, produtosResumo, setBenef, toggleBenef, addBeneficiario, removeBeneficiario }) {
+function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, setBenef, toggleBenef, addBeneficiario, removeBeneficiario }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -1243,7 +1311,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, setBenef, toggleBenef
 
               <div className="space-y-1">
                 <Label className="text-xs">Produto / plano <span className="text-red-500">*</span></Label>
-                {produtosResumo.length === 0 ? (
+                {opcoesBenefProduto.length === 0 ? (
                   <p className="text-xs text-amber-600 flex items-center gap-1">
                     <AlertCircle className="w-3 h-3" /> Selecione ao menos um produto no passo "Plano"
                   </p>
@@ -1256,7 +1324,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, setBenef, toggleBenef
                       <SelectValue placeholder="Selecione o produto deste beneficiário..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {produtosResumo.map((p) => (
+                      {opcoesBenefProduto.map((p) => (
                         <SelectItem key={p.produto_id} value={String(p.produto_id)}>
                           {p.descricao}
                         </SelectItem>
