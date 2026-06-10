@@ -8,3 +8,4 @@
 - [ERP Fechamento + Pagamento](erp-fechamento-pagamento.md) — orçamento M→I + guia modos_pagamentos via DB direto; id==pedido_id; plano escolhido da lista; para em "I".
 - [ERP Fechamento pessoas/item](erp-fechamento-pessoas-por-item.md) — Fechamento valida pessoas vinculadas por item == quantidade do item; API de criação não roda essa regra.
 - [ERP SGPRC FECHAMENTO](erp-sgprc-fechamento-block.md) — PrePropostaUsuarioSgprc falha no bloco FECHAMENTO via REST mesmo com super admin; escrita real no ERP é por INSERT direto no banco.
+- [ERP pedido CPF único](erp-pedido-cpf-unico.md) — ERP bloqueia mesmo CPF em pessoas diferentes no pedido (rollback total); dedup beneficiários por CPF reaproveitando a pessoa.

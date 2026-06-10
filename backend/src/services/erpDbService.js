@@ -118,10 +118,19 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
     // inserida automaticamente pela API ao criar o pedido. Reaproveitada (não duplica pessoa)
     // para vincular o titular aos itens marcados com incluirTitular.
     const contrRes = await client.query(
-      `SELECT id FROM pedidos_pessoas WHERE pedido_id = $1 AND pessoa_id IS NOT NULL ORDER BY id LIMIT 1`,
+      `SELECT id, cpf FROM pedidos_pessoas WHERE pedido_id = $1 AND pessoa_id IS NOT NULL ORDER BY id LIMIT 1`,
       [pedidoInternalId]
     );
     const contratanteId = contrRes.rows[0]?.id ? Number(contrRes.rows[0].id) : null;
+
+    // O ERP não permite o mesmo CPF em "pessoas diferentes" dentro do pedido. Mantemos um mapa
+    // CPF(normalizado) -> pedidos_pessoas.id já existente no pedido para reaproveitar a mesma
+    // pessoa (ex.: no BOM AUTO o condutor costuma ser o próprio titular/contratante) em vez de
+    // tentar inserir uma linha duplicada — o que dispara ROLLBACK de todo o pedido.
+    const onlyDigits = (s) => (s == null ? '' : String(s)).replace(/\D/g, '');
+    const cpfToPessoaId = new Map();
+    const contratanteCpf = onlyDigits(contrRes.rows[0]?.cpf);
+    if (contratanteCpf && contratanteId) cpfToPessoaId.set(contratanteCpf, contratanteId);
 
     const itemIds = [];
     const pessoaIds = [];
@@ -178,8 +187,11 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
       console.log(`[erpDbService] itens_pedidos inserido id=${itemId} pedido=${pedidoInternalId} produto=${produtoId} qtd=${quantidade} preco=${precoNum} total=${valorItem}`);
 
       // Vincula as pessoas do item: titular (se marcado) + cada beneficiário. A sequencia em
-      // pedidos_pessoas_produtos é incremental por item.
+      // pedidos_pessoas_produtos é incremental por item. linkedInItem evita vincular a MESMA
+      // pessoa duas vezes ao mesmo item (ex.: titular incluído e também como beneficiário com o
+      // mesmo CPF) — o que quebraria a regra do Fechamento (pessoas vinculadas == quantidade).
       let pessoaSeq = 1;
+      const linkedInItem = new Set();
 
       if (incluirTitular) {
         await client.query(
@@ -191,29 +203,47 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
           [pedidoInternalId, itemId, pessoaSeq, contratanteId]
         );
         console.log(`[erpDbService] pedidos_pessoas_produtos titular vinculado item=${itemId} titular=${contratanteId}`);
+        linkedInItem.add(contratanteId);
         pessoaSeq++;
       }
 
       for (const b of beneficiarios) {
-        const pessoaRes = await client.query(
-          `INSERT INTO pedidos_pessoas (
-             id, pedido_id, nome_pessoa, cpf, data_nascimento, sexo, telefone, parentesco
-           ) VALUES (
-             nextval('pk_sequence'), $1, $2, $3, $4, $5, $6, $7
-           ) RETURNING id`,
-          [
-            pedidoInternalId,
-            b.nome || null,
-            b.cpf || null,
-            b.dataNascimento || null,
-            b.sexo || null,
-            b.telefone || null,
-            b.parentesco || null,
-          ]
-        );
-        const pessoaId = Number(pessoaRes.rows[0].id);
-        pessoaIds.push(pessoaId);
-        console.log(`[erpDbService] pedidos_pessoas inserido id=${pessoaId} nome=${b.nome} parentesco=${b.parentesco}`);
+        const benefCpf = onlyDigits(b.cpf);
+        let pessoaId;
+        if (benefCpf && cpfToPessoaId.has(benefCpf)) {
+          // CPF já cadastrado neste pedido (ex.: condutor == titular). Reaproveita a pessoa
+          // existente para não duplicar CPF (o ERP bloqueia e faz rollback do pedido inteiro).
+          pessoaId = cpfToPessoaId.get(benefCpf);
+          console.log(`[erpDbService] beneficiário CPF já existente no pedido — reaproveitando pessoa=${pessoaId} (item=${itemId}, nome=${b.nome})`);
+        } else {
+          const pessoaRes = await client.query(
+            `INSERT INTO pedidos_pessoas (
+               id, pedido_id, nome_pessoa, cpf, data_nascimento, sexo, telefone, parentesco
+             ) VALUES (
+               nextval('pk_sequence'), $1, $2, $3, $4, $5, $6, $7
+             ) RETURNING id`,
+            [
+              pedidoInternalId,
+              b.nome || null,
+              b.cpf || null,
+              b.dataNascimento || null,
+              b.sexo || null,
+              b.telefone || null,
+              b.parentesco || null,
+            ]
+          );
+          pessoaId = Number(pessoaRes.rows[0].id);
+          pessoaIds.push(pessoaId);
+          if (benefCpf) cpfToPessoaId.set(benefCpf, pessoaId);
+          console.log(`[erpDbService] pedidos_pessoas inserido id=${pessoaId} nome=${b.nome} parentesco=${b.parentesco}`);
+        }
+
+        if (linkedInItem.has(pessoaId)) {
+          // Mesma pessoa já vinculada a este item (ex.: titular incluído + beneficiário com o
+          // mesmo CPF). Não duplica o vínculo; a quantidade do item é corrigida abaixo.
+          console.log(`[erpDbService] pessoa=${pessoaId} já vinculada ao item=${itemId} — vínculo duplicado ignorado`);
+          continue;
+        }
 
         await client.query(
           `INSERT INTO pedidos_pessoas_produtos (
@@ -224,7 +254,30 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
           [pedidoInternalId, itemId, pessoaSeq, pessoaId]
         );
         console.log(`[erpDbService] pedidos_pessoas_produtos inserido pedido=${pedidoInternalId} item=${itemId} pessoa=${pessoaId}`);
+        linkedInItem.add(pessoaId);
         pessoaSeq++;
+      }
+
+      // Se houve deduplicação de pessoas dentro do item, a quantidade real de vínculos é menor
+      // que a calculada. Corrige itens_pedidos para manter a regra do Fechamento
+      // (pessoas vinculadas == quantidade) e ajusta o valor do item e o total do pedido.
+      const realQty = linkedInItem.size;
+      if (realQty !== quantidade) {
+        const novoValorItem = precoNum * realQty;
+        valorTotal += novoValorItem - valorItem;
+        await client.query(
+          `UPDATE itens_pedidos SET
+             quantidade = $1::numeric,
+             quantidade_pendente = $1::numeric,
+             quantidade_temporaria = $1::numeric,
+             quantidade_temporaria_faturar = $1::numeric,
+             quantidade_carregar = $1::numeric,
+             quantidade_faturar = $1::numeric,
+             valor_total_item = $2::numeric
+           WHERE id = $3`,
+          [realQty, novoValorItem, itemId]
+        );
+        console.log(`[erpDbService] item=${itemId} quantidade ajustada de ${quantidade} para ${realQty} (dedup de pessoas); novo total=${novoValorItem}`);
       }
     }
 
