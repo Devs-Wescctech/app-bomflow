@@ -451,6 +451,37 @@ export default function UpsellNovoOrcamento() {
     [produtosBeneficiario]
   );
 
+  // BOM PET: o orçamento é "modo pet" quando o titular escolheu um plano BOM PET no passo "Plano"
+  // (ex.: "BOM PET (1 PET)", "BOM PET SAÚDE") e o contrato possui o produto de pet do beneficiário.
+  // Nesse modo, todo card de beneficiário já mostra os campos do pet e o produto de pet é atribuído
+  // automaticamente (o vendedor não precisa escolher o produto "NOME DO PET" manualmente).
+  const isBomPet = useMemo(() => {
+    if (isBomAuto) return false;
+    if (petProdutoIds.length === 0) return false;
+    return produtosSel.some((ps) => {
+      const prod =
+        produtosFiltrados.find((p) => String(p.id) === String(ps.produto_id)) ||
+        erpProdutos.find((p) => String(p.id) === String(ps.produto_id));
+      return prod && /BOM\s*PET/i.test(prod.descricao || prod.titulo_contrato || "");
+    });
+  }, [isBomAuto, petProdutoIds, produtosSel, produtosFiltrados, erpProdutos]);
+
+  // BOM PET: produto de pet (beneficiário) usado para vincular os pets, casando com o plano do titular
+  // — se o titular escolheu um plano "SAÚDE", usa o produto de pet "SAÚDE"; senão, o produto de pet padrão.
+  const petBenefProdutoId = useMemo(() => {
+    const petProds = produtosBeneficiario.filter((p) => isPetProduto(p));
+    if (petProds.length === 0) return "";
+    const titularSaude = produtosSel.some((ps) => {
+      const prod =
+        produtosFiltrados.find((p) => String(p.id) === String(ps.produto_id)) ||
+        erpProdutos.find((p) => String(p.id) === String(ps.produto_id));
+      const desc = prod ? `${prod.descricao || ""} ${prod.titulo_contrato || ""}` : "";
+      return /BOM\s*PET/i.test(desc) && /SA[UÚ]DE/i.test(desc);
+    });
+    const match = petProds.find((p) => /SA[UÚ]DE/i.test(p.descricao || "") === titularSaude);
+    return String((match || petProds[0]).id);
+  }, [produtosBeneficiario, produtosSel, produtosFiltrados, erpProdutos]);
+
   // BOM AUTO: monta exatamente dois cards fixos de beneficiário (um para o produto "DADOS DO CONDUTOR"
   // e outro para "DADOS DO VEÍCULO"), com o produto pré-preenchido e bloqueado. Roda uma única vez por
   // título/produtos (o ref evita sobrescrever os dados que o vendedor já digitou).
@@ -472,6 +503,29 @@ export default function UpsellNovoOrcamento() {
     setOpenBenef(cards.map(() => true));
     bomAutoSetupRef.current = key;
   }, [isBomAuto, produtoCondutor, produtoVeiculo, form.titulo_contrato]);
+
+  // BOM PET: ao entrar no modo pet (ou trocar o produto de pet do contrato/plano), atribui o produto
+  // de pet aos cards de beneficiário que ainda não apontam para um produto de pet. Assim os campos do
+  // pet aparecem assim que o beneficiário é adicionado, sem o vendedor escolher o produto manualmente.
+  useEffect(() => {
+    if (!isBomPet || !petBenefProdutoId) return;
+    setBeneficiarios((bs) => {
+      let changed = false;
+      const next = bs.map((b) => {
+        const cur = String(b.usua_produtos || "");
+        // já aponta para o produto de pet correto: não mexe
+        if (cur === String(petBenefProdutoId)) return b;
+        // card sem produto OU já é card de pet (variante antiga): atribui/migra o produto de pet
+        // correto preservando os dados já preenchidos do pet (só troca usua_produtos)
+        if (!cur || petProdutoIds.includes(cur)) {
+          changed = true;
+          return { ...b, usua_produtos: petBenefProdutoId };
+        }
+        return b;
+      });
+      return changed ? next : bs;
+    });
+  }, [isBomPet, petBenefProdutoId, petProdutoIds]);
 
   const toggleProduto = (prod) => {
     setProdutosSel((list) => {
@@ -738,7 +792,11 @@ export default function UpsellNovoOrcamento() {
       return;
     }
     const newIndex = beneficiarios.length;
-    setBeneficiarios((b) => [...b, { ...EMPTY_BENEFICIARIO }]);
+    // BOM PET: novo card já nasce vinculado ao produto de pet (campos do pet aparecem de imediato).
+    const novoBenef = isBomPet && petBenefProdutoId
+      ? { ...EMPTY_BENEFICIARIO, usua_produtos: petBenefProdutoId }
+      : { ...EMPTY_BENEFICIARIO };
+    setBeneficiarios((b) => [...b, novoBenef]);
     setOpenBenef((o) => [...o, true]);
     // Direciona a tela para o novo card recém-adicionado, sem o usuário rolar manualmente.
     setTimeout(() => {
@@ -897,6 +955,7 @@ export default function UpsellNovoOrcamento() {
                   addBeneficiario={addBeneficiario}
                   removeBeneficiario={removeBeneficiario}
                   isBomAuto={isBomAuto}
+                  isBomPet={isBomPet}
                   produtoVeiculoId={produtoVeiculo ? String(produtoVeiculo.id) : ""}
                   petProdutoIds={petProdutoIds}
                 />
@@ -1428,16 +1487,19 @@ function Step4({ form, set, planosPagamento, loadingPlanos, planoSelecionado }) 
   );
 }
 
-function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, setBenef, setVeiculoField, setPetField, toggleBenef, addBeneficiario, removeBeneficiario, isBomAuto, produtoVeiculoId, petProdutoIds = [] }) {
+function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, setBenef, setVeiculoField, setPetField, toggleBenef, addBeneficiario, removeBeneficiario, isBomAuto, isBomPet = false, produtoVeiculoId, petProdutoIds = [] }) {
   const descProduto = (produtoId) =>
     opcoesBenefProduto.find((p) => String(p.produto_id) === String(produtoId))?.descricao || "";
-  const isPetCard = (b) => petProdutoIds.includes(String(b.usua_produtos));
+  // Em modo BOM PET todo card é de pet; fora dele, só os cards atribuídos a um produto de pet.
+  const isPetCard = (b) => isBomPet || petProdutoIds.includes(String(b.usua_produtos));
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">
           {isBomAuto
             ? "BOM AUTO — preencha os dados do condutor e do veículo (produtos definidos automaticamente)"
+            : isBomPet
+            ? `BOM PET — preencha os dados de cada pet (plano definido no passo "Plano")`
             : `${beneficiarios.length} beneficiário(s) — cada um deve ser atribuído a um produto/plano`}
         </p>
         {!isBomAuto && (
@@ -1456,14 +1518,14 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, s
             <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-violet-500" />
               <span className="font-medium text-sm text-slate-700">
-                {b.usua_nome_completo || (isBomAuto ? descProduto(b.usua_produtos) || `Beneficiário ${i + 1}` : `Beneficiário ${i + 1}`)}
+                {b.usua_nome_completo || (isBomAuto ? descProduto(b.usua_produtos) || `Beneficiário ${i + 1}` : isBomPet ? `Pet ${i + 1}` : `Beneficiário ${i + 1}`)}
                 {b.usua_parentesco && (
                   <Badge variant="secondary" className="ml-2 text-xs">
                     {PARENTESCO_OPTIONS.find((p) => p.value === b.usua_parentesco)?.label || b.usua_parentesco}
                   </Badge>
                 )}
               </span>
-              {!isBomAuto && i === 0 && <Badge className="bg-violet-100 text-violet-700 text-xs">Principal</Badge>}
+              {!isBomAuto && !isBomPet && i === 0 && <Badge className="bg-violet-100 text-violet-700 text-xs">Principal</Badge>}
             </div>
             <div className="flex items-center gap-2">
               {!isBomAuto && i > 0 && (
@@ -1735,7 +1797,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, s
 
               <div className="space-y-1">
                 <Label className="text-xs">Produto / plano <span className="text-red-500">*</span></Label>
-                {isBomAuto ? (
+                {isBomAuto || (isBomPet && isPetCard(b)) ? (
                   <div className="h-9 flex items-center px-3 rounded-md border border-slate-200 bg-slate-50 text-sm text-slate-600">
                     {descProduto(b.usua_produtos) || "—"}
                   </div>
