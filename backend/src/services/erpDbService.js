@@ -434,7 +434,7 @@ export async function applyFechamentoEPagamento(pedidoInternalId, opts = {}) {
 
     // Garante que o pedido existe e está em estado fechável (situação "M").
     const pedRes = await client.query(
-      `SELECT id, situacao, valor_total FROM pedidos WHERE id = $1 FOR UPDATE`,
+      `SELECT id, situacao, valor_total, cliente_id FROM pedidos WHERE id = $1 FOR UPDATE`,
       [pedidoInternalId]
     );
     if (pedRes.rows.length === 0) {
@@ -447,6 +447,33 @@ export async function applyFechamentoEPagamento(pedidoInternalId, opts = {}) {
       throw new Error(`Pedido ${pedidoInternalId} não está em estado fechável (situação atual: "${pedido.situacao}", esperado "M").`);
     }
     const valorTotal = Number(pedido.valor_total) || 0;
+
+    // DATA DE ADMISSÃO (obrigatória para o Fechamento). O ERP tem uma trigger em "pedidos"
+    // que bloqueia a transição M→'I' se o contratante (pedidos.cliente_id) não possuir um
+    // documento de admissão (documentos_pessoas com tipo_documento_id=2657422). Clientes novos
+    // não têm esse registro. Inserimos a data de HOJE (formato DD/MM/YYYY; a trigger de
+    // documentos_pessoas exige data não futura e no máximo 20 dias atrás, então "hoje" é válido).
+    // Idempotente: clientes que já têm a data de admissão não são alterados.
+    const clienteId = pedido.cliente_id != null ? Number(pedido.cliente_id) : null;
+    if (clienteId) {
+      // INSERT ... WHERE NOT EXISTS em statement único: idempotente e seguro sob concorrência
+      // (não cria duplicata se outra transação já tiver inserido a admissão deste cliente).
+      const admIns = await client.query(
+        `INSERT INTO documentos_pessoas (id, pessoa_id, tipo_documento_id, documento, pesquisa)
+         SELECT nextval('pk_sequence'), $1, 2657422,
+                to_char(CURRENT_DATE, 'DD/MM/YYYY'), to_char(CURRENT_DATE, 'DDMMYYYY')
+         WHERE NOT EXISTS (
+           SELECT 1 FROM documentos_pessoas
+           WHERE tipo_documento_id = 2657422 AND pessoa_id = $1
+         )`,
+        [clienteId]
+      );
+      if (admIns.rowCount > 0) {
+        console.log(`[erpDbService] data de admissão (hoje) inserida para cliente novo pessoa_id=${clienteId} pedido=${pedidoInternalId}`);
+      }
+    } else {
+      console.warn(`[erpDbService] pedido=${pedidoInternalId} sem cliente_id; não foi possível garantir a data de admissão antes do fechamento.`);
+    }
 
     // Número de parcelas do plano (informativo no cabeçalho).
     const planoRes = await client.query(
