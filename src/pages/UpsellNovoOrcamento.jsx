@@ -93,6 +93,46 @@ const VEICULO_COR_OPTIONS = [
   "OUTRO",
 ];
 
+// BOM PET — tipos de pet mais comuns + "OUTRO" (descreve livre).
+const PET_TIPO_OPTIONS = [
+  "CACHORRO", "GATO", "PÁSSARO", "PEIXE", "HAMSTER", "COELHO",
+  "TARTARUGA", "RÉPTIL", "OUTRO",
+];
+
+// BOM PET — raças de cachorro mais comuns no Brasil + "SRD" e "OUTROS".
+const PET_RACA_CACHORRO_OPTIONS = [
+  "SRD", "LABRADOR", "GOLDEN RETRIEVER", "POODLE", "SHIH TZU", "LULU DA POMERANIA",
+  "YORKSHIRE", "PINSCHER", "ROTTWEILER", "PASTOR ALEMÃO", "PUG", "BEAGLE",
+  "DACHSHUND", "MALTÊS", "CHIHUAHUA", "BORDER COLLIE", "PIT BULL", "BOXER",
+  "BULLDOG FRANCÊS", "BULLDOG INGLÊS", "COCKER SPANIEL", "DÁLMATA", "SCHNAUZER",
+  "AKITA", "HUSKY SIBERIANO", "OUTROS",
+];
+
+// BOM PET — raças de gato mais comuns no Brasil + "SRD" e "OUTROS".
+const PET_RACA_GATO_OPTIONS = [
+  "SRD", "PERSA", "SIAMÊS", "MAINE COON", "ANGORÁ", "RAGDOLL", "BENGAL",
+  "SPHYNX", "BRITISH SHORTHAIR", "EXÓTICO", "AZUL RUSSO", "OUTROS",
+];
+
+// BOM PET — opção de raça para tipos sem lista específica (pássaro, peixe etc.).
+const PET_RACA_GENERICA_OPTIONS = ["SRD", "OUTROS"];
+
+// BOM PET — cores de pet mais comuns + "OUTRO".
+const PET_COR_OPTIONS = [
+  "PRETO", "BRANCO", "MARROM", "CARAMELO", "CINZA", "DOURADO", "BEGE",
+  "TIGRADO", "MALHADO", "BRANCO E PRETO", "BRANCO E DOURADO", "OUTRO",
+];
+
+// BOM PET — portes de pet.
+const PET_PORTE_OPTIONS = ["MICRO", "PEQUENO", "MÉDIO", "GRANDE", "GIGANTE"];
+
+// BOM PET: lista de opções de raça conforme o tipo de pet selecionado.
+function racasPorTipo(tipo) {
+  if (tipo === "CACHORRO") return PET_RACA_CACHORRO_OPTIONS;
+  if (tipo === "GATO") return PET_RACA_GATO_OPTIONS;
+  return PET_RACA_GENERICA_OPTIONS;
+}
+
 const STEPS = [
   { id: 1, label: "Contratante", icon: User },
   { id: 2, label: "Endereço", icon: MapPin },
@@ -139,6 +179,23 @@ function montarNomeVeiculo(b) {
   const placa = normalizaPlaca(b.veic_placa);
   const ano = (b.veic_ano || "").toString().trim();
   const partes = [modelo.trim().toUpperCase(), cor.trim().toUpperCase(), placa, ano];
+  if (partes.some((p) => !p)) return "";
+  return partes.join("/");
+}
+
+// BOM PET: monta o valor enviado ao ERP a partir dos campos do pet no formato
+// NOME/TIPO/RAÇA/COR/PORTE (ex.: ZARA/CACHORRO/LULU DA POMERANIA/BRANCO E DOURADO/PEQUENO).
+// Retorna "" se algum campo estiver vazio (mantém a validação de "nome obrigatório" coerente).
+function montarNomePet(b) {
+  const nome = (b.pet_nome || "").trim();
+  const tipo = (b.pet_tipo === "OUTRO" ? b.pet_tipo_outro : b.pet_tipo) || "";
+  const raca = (b.pet_raca === "OUTROS" ? b.pet_raca_outro : b.pet_raca) || "";
+  const cor = (b.pet_cor === "OUTRO" ? b.pet_cor_outro : b.pet_cor) || "";
+  const porte = (b.pet_porte || "").trim();
+  const partes = [
+    nome.toUpperCase(), tipo.trim().toUpperCase(), raca.trim().toUpperCase(),
+    cor.trim().toUpperCase(), porte.toUpperCase(),
+  ];
   if (partes.some((p) => !p)) return "";
   return partes.join("/");
 }
@@ -190,6 +247,15 @@ const EMPTY_BENEFICIARIO = {
   usua_parentesco: "",
   usua_telefone: "",
   usua_produtos: "",
+  // BOM PET (somente frontend; combinados em usua_nome_completo no formato NOME/TIPO/RAÇA/COR/PORTE)
+  pet_nome: "",
+  pet_tipo: "",
+  pet_tipo_outro: "",
+  pet_raca: "",
+  pet_raca_outro: "",
+  pet_cor: "",
+  pet_cor_outro: "",
+  pet_porte: "",
 };
 
 function useCanAccessOrcamento(user) {
@@ -375,6 +441,13 @@ export default function UpsellNovoOrcamento() {
         produto_id: String(p.id),
         descricao: p.descricao || p.titulo_contrato || `Produto ${p.id}`,
       })),
+    [produtosBeneficiario]
+  );
+
+  // BOM PET: ids dos produtos de pet — quando um beneficiário aponta para um deles,
+  // o card mostra os campos estruturados do pet (nome/tipo/raça/cor/porte).
+  const petProdutoIds = useMemo(
+    () => produtosBeneficiario.filter((p) => isPetProduto(p)).map((p) => String(p.id)),
     [produtosBeneficiario]
   );
 
@@ -630,6 +703,13 @@ export default function UpsellNovoOrcamento() {
           }
         }
       }
+      // BOM PET: cards atribuídos a um produto de pet exigem todos os campos (nome, tipo, raça, cor e porte).
+      const petIncompleto = beneficiarios.find(
+        (b) => petProdutoIds.includes(String(b.usua_produtos)) && !montarNomePet(b)
+      );
+      if (petIncompleto) {
+        toast.error("Preencha todos os dados do pet (nome, tipo, raça, cor e porte)"); return false;
+      }
       // Beneficiário com nome precisa estar atribuído a um produto válido (titular ou pet).
       const semProduto = beneficiarios.find(
         (b) => b.usua_nome_completo?.trim() && !opcoesBenefProduto.some((p) => String(p.produto_id) === String(b.usua_produtos))
@@ -672,7 +752,25 @@ export default function UpsellNovoOrcamento() {
   };
 
   const setBenef = (i, k, v) => {
-    setBeneficiarios((b) => b.map((benef, idx) => idx === i ? { ...benef, [k]: v } : benef));
+    setBeneficiarios((b) => b.map((benef, idx) => {
+      if (idx !== i) return benef;
+      // Ao trocar de um produto de pet para um não-pet, limpa os campos e o nome combinado do pet
+      // (evita que o formato NOME/TIPO/RAÇA/COR/PORTE vaze para um beneficiário comum).
+      if (k === "usua_produtos") {
+        const wasPet = petProdutoIds.includes(String(benef.usua_produtos));
+        const nowPet = petProdutoIds.includes(String(v));
+        if (wasPet && !nowPet) {
+          return {
+            ...benef,
+            usua_produtos: v,
+            usua_nome_completo: "",
+            pet_nome: "", pet_tipo: "", pet_tipo_outro: "",
+            pet_raca: "", pet_raca_outro: "", pet_cor: "", pet_cor_outro: "", pet_porte: "",
+          };
+        }
+      }
+      return { ...benef, [k]: v };
+    }));
   };
 
   // BOM AUTO (card do veículo): atualiza um campo do veículo e recalcula usua_nome_completo
@@ -683,6 +781,20 @@ export default function UpsellNovoOrcamento() {
         if (idx !== i) return benef;
         const merged = { ...benef, [k]: v };
         merged.usua_nome_completo = montarNomeVeiculo(merged);
+        return merged;
+      })
+    );
+  };
+
+  // BOM PET (card do pet): atualiza um campo do pet e recalcula usua_nome_completo
+  // (valor combinado NOME/TIPO/RAÇA/COR/PORTE enviado ao ERP). Trocar o tipo limpa a raça.
+  const setPetField = (i, k, v) => {
+    setBeneficiarios((b) =>
+      b.map((benef, idx) => {
+        if (idx !== i) return benef;
+        const merged = { ...benef, [k]: v };
+        if (k === "pet_tipo") { merged.pet_raca = ""; merged.pet_raca_outro = ""; }
+        merged.usua_nome_completo = montarNomePet(merged);
         return merged;
       })
     );
@@ -780,11 +892,13 @@ export default function UpsellNovoOrcamento() {
                   opcoesBenefProduto={opcoesBenefProduto}
                   setBenef={setBenef}
                   setVeiculoField={setVeiculoField}
+                  setPetField={setPetField}
                   toggleBenef={toggleBenef}
                   addBeneficiario={addBeneficiario}
                   removeBeneficiario={removeBeneficiario}
                   isBomAuto={isBomAuto}
                   produtoVeiculoId={produtoVeiculo ? String(produtoVeiculo.id) : ""}
+                  petProdutoIds={petProdutoIds}
                 />
               )}
               {step === 6 && (
@@ -1314,9 +1428,10 @@ function Step4({ form, set, planosPagamento, loadingPlanos, planoSelecionado }) 
   );
 }
 
-function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, setBenef, setVeiculoField, toggleBenef, addBeneficiario, removeBeneficiario, isBomAuto, produtoVeiculoId }) {
+function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, setBenef, setVeiculoField, setPetField, toggleBenef, addBeneficiario, removeBeneficiario, isBomAuto, produtoVeiculoId, petProdutoIds = [] }) {
   const descProduto = (produtoId) =>
     opcoesBenefProduto.find((p) => String(p.produto_id) === String(produtoId))?.descricao || "";
+  const isPetCard = (b) => petProdutoIds.includes(String(b.usua_produtos));
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -1438,6 +1553,107 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, s
                         inputMode="numeric"
                         maxLength={4}
                       />
+                    </div>
+                  </div>
+
+                  {b.usua_nome_completo && (
+                    <p className="text-xs text-slate-500">
+                      Será enviado ao ERP como: <span className="font-medium text-slate-700">{b.usua_nome_completo}</span>
+                    </p>
+                  )}
+                </>
+              ) : isPetCard(b) ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Nome do pet <span className="text-red-500">*</span></Label>
+                      <Input
+                        value={b.pet_nome || ""}
+                        onChange={(e) => setPetField(i, "pet_nome", e.target.value.toUpperCase())}
+                        placeholder="EX.: ZARA"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Tipo de pet <span className="text-red-500">*</span></Label>
+                      <Select value={b.pet_tipo || ""} onValueChange={(v) => setPetField(i, "pet_tipo", v)}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Selecione o tipo..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PET_TIPO_OPTIONS.map((o) => (
+                            <SelectItem key={o} value={o}>{o === "OUTRO" ? "Outro" : o}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {b.pet_tipo === "OUTRO" && (
+                        <Input
+                          className="mt-1"
+                          value={b.pet_tipo_outro || ""}
+                          onChange={(e) => setPetField(i, "pet_tipo_outro", e.target.value.toUpperCase())}
+                          placeholder="INFORME O TIPO"
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Raça <span className="text-red-500">*</span></Label>
+                      <Select value={b.pet_raca || ""} onValueChange={(v) => setPetField(i, "pet_raca", v)}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Selecione a raça..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {racasPorTipo(b.pet_tipo).map((o) => (
+                            <SelectItem key={o} value={o}>{o === "OUTROS" ? "Outros" : o}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {b.pet_raca === "OUTROS" && (
+                        <Input
+                          className="mt-1"
+                          value={b.pet_raca_outro || ""}
+                          onChange={(e) => setPetField(i, "pet_raca_outro", e.target.value.toUpperCase())}
+                          placeholder="INFORME A RAÇA"
+                        />
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Cor <span className="text-red-500">*</span></Label>
+                      <Select value={b.pet_cor || ""} onValueChange={(v) => setPetField(i, "pet_cor", v)}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Selecione a cor..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PET_COR_OPTIONS.map((o) => (
+                            <SelectItem key={o} value={o}>{o === "OUTRO" ? "Outro" : o}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {b.pet_cor === "OUTRO" && (
+                        <Input
+                          className="mt-1"
+                          value={b.pet_cor_outro || ""}
+                          onChange={(e) => setPetField(i, "pet_cor_outro", e.target.value.toUpperCase())}
+                          placeholder="INFORME A COR"
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Porte <span className="text-red-500">*</span></Label>
+                      <Select value={b.pet_porte || ""} onValueChange={(v) => setPetField(i, "pet_porte", v)}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Selecione o porte..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PET_PORTE_OPTIONS.map((o) => (
+                            <SelectItem key={o} value={o}>{o}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
 
