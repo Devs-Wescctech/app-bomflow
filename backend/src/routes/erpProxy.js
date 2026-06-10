@@ -1,6 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento } from '../services/erpDbService.js';
+import { registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB } from '../services/erpDbService.js';
 import { query } from '../config/database.js';
 
 const router = express.Router();
@@ -440,6 +440,27 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
         pedido: numeroPedido,
         erpId: pedidoInternalId,
       });
+    }
+
+    // Cria/corrige os contatos e o endereço físico do contratante que a API REST
+    // não grava corretamente para clientes novos (endereço some; telefone fica
+    // como "comercial"). Roda antes do finalize para o endereço novo (577) ser
+    // encontrado pelo CEP. Não crítico: best-effort, idempotente.
+    try {
+      const contatosResult = await ensureContatosEnderecoDB(Number(pedidoInternalId), {
+        telefone: headerPayload.telefone ?? null,
+        celular: headerPayload.celular ?? null,
+        emailContato: headerPayload.email_contato ?? null,
+        codigoPostal: headerPayload.un_codigo_postal ?? null,
+        logradouro: headerPayload.un_lougradouro ?? null,
+        numero: headerPayload.un_numero_lougradouro ?? null,
+        complemento: headerPayload.un_complemento_lougradouro ?? null,
+        bairro: headerPayload.un_bairro ?? null,
+        cidade: headerPayload.un_cidade ?? null,
+      });
+      console.log('[ERP /orcamento] contatos/endereço OK:', JSON.stringify(contatosResult));
+    } catch (contErr) {
+      console.error('[ERP /orcamento] contatos/endereço falhou (não crítico):', contErr.message);
     }
 
     // Preenche campos ignorados pela API REST: endereco_id, dia_vencimento, email_contato

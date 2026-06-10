@@ -8,5 +8,6 @@
 - [ERP Fechamento + Pagamento](erp-fechamento-pagamento.md) — orçamento M→I + guia modos_pagamentos via DB direto; id==pedido_id; plano escolhido da lista; para em "I".
 - [ERP Fechamento pessoas/item](erp-fechamento-pessoas-por-item.md) — Fechamento valida pessoas vinculadas por item == quantidade do item; API de criação não roda essa regra.
 - [ERP SGPRC FECHAMENTO](erp-sgprc-fechamento-block.md) — PrePropostaUsuarioSgprc falha no bloco FECHAMENTO via REST mesmo com super admin; escrita real no ERP é por INSERT direto no banco.
+- [ERP contatos/endereço orçamento](erp-contatos-endereco-orcamento.md) — REST OrcamentoSgprcUsuario grava telefone como comercial(573) e ignora endereço/celular/email; corrigir via INSERT em enderecos (tipos 565/566/577).
 - [ERP pedido CPF único](erp-pedido-cpf-unico.md) — ERP bloqueia mesmo CPF em pessoas diferentes no pedido (rollback total); dedup beneficiários por CPF reaproveitando a pessoa.
 - [ERP data de admissão](erp-data-admissao-fechamento.md) — Fechamento (M→I) exige documento de admissão (documentos_pessoas tipo 2657422) do cliente_id; cliente novo precisa inserir data de hoje.

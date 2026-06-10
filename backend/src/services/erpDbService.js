@@ -380,6 +380,205 @@ export async function finalizeOrcamentoDB(pedidoInternalId, opts = {}) {
   }
 }
 
+// Tipos de endereço/contato do ERP (todos vivem na tabela `enderecos`,
+// diferenciados por tipo_endereco_id).
+const TIPO_CELULAR = 565;
+const TIPO_EMAIL = 566;
+const TIPO_TELEFONE_COMERCIAL = 573;
+const TIPO_TELEFONE_RESIDENCIAL = 574;
+const TIPO_ENDERECO_RESIDENCIAL = 577;
+
+/**
+ * Detecta o tipo de telefone a partir dos dígitos:
+ *   - 11 dígitos com o "9" após o DDD  → Celular (565)
+ *   - caso contrário                    → Telefone residencial (574)
+ */
+function detectTipoTelefone(digits) {
+  if (digits && digits.length === 11 && digits[2] === '9') return TIPO_CELULAR;
+  return TIPO_TELEFONE_RESIDENCIAL;
+}
+
+const onlyDigits = (v) => (v ? String(v).replace(/\D/g, '') : '');
+
+/**
+ * Garante que o cliente (contratante) tenha, na tabela `enderecos` do ERP, os
+ * registros corretos que a API REST OrcamentoSgprcUsuario NÃO cria/cria errado
+ * para clientes novos:
+ *   - Endereço físico (tipo 577) a partir dos campos un_*.
+ *   - Telefone principal reclassificado (a API grava como "Telefone comercial"
+ *     573; aqui passa para Celular 565 ou Residencial 574, auto-detectado).
+ *   - Celular adicional (565) e E-mail (566), quando informados.
+ *
+ * Idempotente e seguro para clientes já existentes: só preenche o que falta e
+ * não duplica registros já presentes.
+ *
+ * @param {number} pedidoInternalId  - pedidos.id
+ * @param {object} data
+ *   @param {string|null} [data.telefone]
+ *   @param {string|null} [data.celular]
+ *   @param {string|null} [data.emailContato]
+ *   @param {string|null} [data.codigoPostal]
+ *   @param {string|null} [data.logradouro]
+ *   @param {string|null} [data.numero]
+ *   @param {string|null} [data.complemento]
+ *   @param {string|null} [data.bairro]
+ *   @param {string|null} [data.cidade]        - "CIDADE - UF" (igual a cidades.cidade)
+ */
+export async function ensureContatosEnderecoDB(pedidoInternalId, data = {}) {
+  const db = getPool();
+  const {
+    telefone = null,
+    celular = null,
+    emailContato = null,
+    codigoPostal = null,
+    logradouro = null,
+    numero = null,
+    complemento = null,
+    bairro = null,
+    cidade = null,
+  } = data;
+
+  const result = { enderecoCriado: false, telefoneReclassificado: false, celularCriado: false, emailCriado: false };
+
+  try {
+    // 1. Localiza o pessoa_id do contratante
+    const ppRes = await db.query(
+      `SELECT pessoa_id FROM pedidos_pessoas WHERE pedido_id = $1 AND pessoa_id IS NOT NULL LIMIT 1`,
+      [pedidoInternalId]
+    );
+    const pessoaId = ppRes.rows[0]?.pessoa_id ? Number(ppRes.rows[0].pessoa_id) : null;
+    if (!pessoaId) {
+      console.warn(`[erpDbService] ensureContatosEndereco: contratante não encontrado (pedido=${pedidoInternalId})`);
+      return result;
+    }
+    console.log(`[erpDbService] ensureContatosEndereco pedido=${pedidoInternalId} pessoa_id=${pessoaId}`);
+
+    // 2. Endereço físico residencial (577) — só cria se ainda não houver nenhum
+    if (logradouro) {
+      const exists577 = await db.query(
+        `SELECT 1 FROM enderecos WHERE pessoa_id = $1 AND tipo_endereco_id = $2 AND ativo = 'S' LIMIT 1`,
+        [pessoaId, TIPO_ENDERECO_RESIDENCIAL]
+      );
+      if (exists577.rows.length === 0) {
+        // Resolve cidade_id pelo nome ("CIDADE - UF" === cidades.cidade)
+        let cidadeId = null;
+        if (cidade) {
+          const cidRes = await db.query(
+            `SELECT id FROM cidades WHERE upper(cidade) = upper($1) LIMIT 1`,
+            [cidade]
+          );
+          if (cidRes.rows.length > 0) cidadeId = Number(cidRes.rows[0].id);
+          else console.warn(`[erpDbService] ensureContatosEndereco: cidade não encontrada "${cidade}" (endereço gravado sem cidade_id)`);
+        }
+        const cepDigits = onlyDigits(codigoPostal);
+        const cepFmt = cepDigits.length === 8 ? `${cepDigits.slice(0, 5)}-${cepDigits.slice(5)}` : (cepDigits || null);
+        await db.query(
+          `INSERT INTO enderecos (id, pessoa_id, sequencia, tipo_endereco_id, endereco, numero, complemento, codigo_postal, bairro, cidade_id, ativo, desconsiderar_inscricao_estadual)
+           VALUES (nextval('pk_sequence'), $1, 1, $2, $3, $4, $5, $6, $7, $8, 'S', 'N')`,
+          [pessoaId, TIPO_ENDERECO_RESIDENCIAL, logradouro, numero || null, complemento || null, cepFmt, bairro || null, cidadeId]
+        );
+        result.enderecoCriado = true;
+        console.log(`[erpDbService] ensureContatosEndereco: endereço físico (577) criado | cidade_id=${cidadeId} cep=${cepFmt}`);
+      }
+    }
+
+    // 3. Telefone principal — a API REST grava como comercial (573). Objetivo:
+    //    garantir exatamente UM registro ativo do número, no tipo correto (565/574),
+    //    sem duplicar e sem mexer em tipos legítimos (565/574 já existentes).
+    //    Só o tipo comercial (573) — que é o que a API gera errado — é convertido.
+    const telDigits = onlyDigits(telefone);
+    if (telDigits) {
+      const tipoTel = detectTipoTelefone(telDigits);
+      const matchRes = await db.query(
+        `SELECT id, tipo_endereco_id FROM enderecos
+          WHERE pessoa_id = $1 AND ativo = 'S'
+            AND tipo_endereco_id IN ($2, $3, $4)
+            AND regexp_replace(endereco, '\\D', '', 'g') = $5
+          ORDER BY id`,
+        [pessoaId, TIPO_CELULAR, TIPO_TELEFONE_COMERCIAL, TIPO_TELEFONE_RESIDENCIAL, telDigits]
+      );
+      const rows = matchRes.rows.map((r) => ({ id: Number(r.id), tipo: Number(r.tipo_endereco_id) }));
+      const hasTarget = rows.some((r) => r.tipo === tipoTel);
+      const comerciais = rows.filter((r) => r.tipo === TIPO_TELEFONE_COMERCIAL);
+
+      if (rows.length === 0) {
+        // Não existe nenhum registro com esse número → cria no tipo detectado.
+        await db.query(
+          `INSERT INTO enderecos (id, pessoa_id, sequencia, tipo_endereco_id, endereco, ativo, desconsiderar_inscricao_estadual)
+           VALUES (nextval('pk_sequence'), $1, 1, $2, $3, 'S', 'N')`,
+          [pessoaId, tipoTel, telDigits]
+        );
+        result.telefoneReclassificado = true;
+        console.log(`[erpDbService] ensureContatosEndereco: telefone ${telDigits} criado (tipo ${tipoTel})`);
+      } else if (hasTarget) {
+        // Já existe no tipo correto → desativa duplicatas comerciais (573) redundantes
+        // do mesmo número geradas pela API, sem tocar em registros legítimos.
+        if (comerciais.length > 0) {
+          await db.query(`UPDATE enderecos SET ativo = 'N' WHERE id = ANY($1)`, [comerciais.map((r) => r.id)]);
+          result.telefoneReclassificado = true;
+          console.log(`[erpDbService] ensureContatosEndereco: ${comerciais.length} registro(s) comercial(is) redundante(s) do telefone ${telDigits} desativado(s)`);
+        }
+      } else if (comerciais.length > 0) {
+        // Existem apenas registros comerciais (573) — converte UM para o tipo correto
+        // e desativa os demais comerciais duplicados do mesmo número.
+        const [keep, ...extras] = comerciais;
+        await db.query(`UPDATE enderecos SET tipo_endereco_id = $1 WHERE id = $2`, [tipoTel, keep.id]);
+        if (extras.length > 0) {
+          await db.query(`UPDATE enderecos SET ativo = 'N' WHERE id = ANY($1)`, [extras.map((r) => r.id)]);
+        }
+        result.telefoneReclassificado = true;
+        console.log(`[erpDbService] ensureContatosEndereco: telefone ${telDigits} reclassificado 573→${tipoTel}${extras.length ? ` (+${extras.length} dup desativada(s))` : ''}`);
+      }
+      // Demais casos: o número já existe em outro tipo legítimo (565/574 diferente do
+      // detectado) → não duplica nem altera o tipo escolhido pelo ERP/operador.
+    }
+
+    // 4. Celular adicional (565) — só se for um número diferente do telefone e não existir
+    const celDigits = onlyDigits(celular);
+    if (celDigits && celDigits !== telDigits) {
+      const existsCel = await db.query(
+        `SELECT 1 FROM enderecos
+          WHERE pessoa_id = $1 AND tipo_endereco_id = $2 AND ativo = 'S'
+            AND regexp_replace(endereco, '\\D', '', 'g') = $3 LIMIT 1`,
+        [pessoaId, TIPO_CELULAR, celDigits]
+      );
+      if (existsCel.rows.length === 0) {
+        await db.query(
+          `INSERT INTO enderecos (id, pessoa_id, sequencia, tipo_endereco_id, endereco, ativo, desconsiderar_inscricao_estadual)
+           VALUES (nextval('pk_sequence'), $1, 1, $2, $3, 'S', 'N')`,
+          [pessoaId, TIPO_CELULAR, celDigits]
+        );
+        result.celularCriado = true;
+        console.log(`[erpDbService] ensureContatosEndereco: celular ${celDigits} criado (tipo ${TIPO_CELULAR})`);
+      }
+    }
+
+    // 5. E-mail (566) — só se informado e ainda não existir
+    if (emailContato) {
+      const existsEmail = await db.query(
+        `SELECT 1 FROM enderecos
+          WHERE pessoa_id = $1 AND tipo_endereco_id = $2 AND ativo = 'S'
+            AND upper(endereco) = upper($3) LIMIT 1`,
+        [pessoaId, TIPO_EMAIL, emailContato]
+      );
+      if (existsEmail.rows.length === 0) {
+        await db.query(
+          `INSERT INTO enderecos (id, pessoa_id, sequencia, tipo_endereco_id, endereco, ativo, desconsiderar_inscricao_estadual)
+           VALUES (nextval('pk_sequence'), $1, 1, $2, $3, 'S', 'N')`,
+          [pessoaId, TIPO_EMAIL, emailContato]
+        );
+        result.emailCriado = true;
+        console.log(`[erpDbService] ensureContatosEndereco: e-mail criado (tipo ${TIPO_EMAIL})`);
+      }
+    }
+
+    return result;
+  } catch (err) {
+    console.error('[erpDbService] ensureContatosEnderecoDB erro (não crítico):', err.message);
+    return result;
+  }
+}
+
 /**
  * Lista os planos de pagamento ativos e válidos do ERP (planos_pagamentos).
  * Usado para popular o dropdown de "Plano de pagamento" no orçamento.
