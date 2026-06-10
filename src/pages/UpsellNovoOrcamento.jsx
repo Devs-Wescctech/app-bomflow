@@ -75,6 +75,24 @@ const PROFISSAO_OPTIONS = [
   "COMERCIANTE", "AUTONOMO", "APOSENTADO", "DO LAR", "OUTRO",
 ];
 
+// BOM AUTO — modelos de carro mais comuns no Brasil + "OUTRO" (digita livre).
+const VEICULO_MODELO_OPTIONS = [
+  "ONIX", "HB20", "POLO", "GOL", "ARGO", "MOBI", "KWID", "UNO", "CORSA", "PALIO",
+  "STRADA", "SAVEIRO", "TORO", "S10", "HILUX", "RANGER", "FRONTIER",
+  "COROLLA", "CIVIC", "CITY", "VERSA", "SENTRA", "CRUZE", "VIRTUS", "PRISMA",
+  "COMPASS", "RENEGADE", "CRETA", "KICKS", "TRACKER", "T-CROSS", "NIVUS", "DUSTER",
+  "PULSE", "FASTBACK", "FOX", "VOYAGE", "KA", "FIESTA", "ECOSPORT",
+  "SANDERO", "LOGAN", "C3", "C4 CACTUS", "208", "2008", "YARIS", "MERIVA",
+  "OUTRO",
+];
+
+// BOM AUTO — cores mais comuns + "OUTRO".
+const VEICULO_COR_OPTIONS = [
+  "PRETO", "BRANCO", "PRATA", "CINZA", "VERMELHO", "AZUL", "VERDE",
+  "AMARELO", "MARROM", "BEGE", "DOURADO", "LARANJA", "VINHO", "ROXO",
+  "OUTRO",
+];
+
 const STEPS = [
   { id: 1, label: "Contratante", icon: User },
   { id: 2, label: "Endereço", icon: MapPin },
@@ -103,6 +121,26 @@ function isVeiculoProduto(prod) {
 // Um produto é "de beneficiário" (não do titular) se for pet, condutor ou veículo.
 function isProdutoBeneficiario(prod) {
   return isPetProduto(prod) || isCondutorProduto(prod) || isVeiculoProduto(prod);
+}
+
+// Placa: aceita modelo antigo (AAA9999) e Mercosul (AAA9A99). Normaliza para alfanumérico maiúsculo.
+function normalizaPlaca(v) {
+  return (v || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7);
+}
+function placaValida(v) {
+  return /^[A-Z]{3}[0-9][0-9A-Z][0-9]{2}$/.test(normalizaPlaca(v));
+}
+
+// BOM AUTO: monta o valor enviado ao ERP a partir dos campos do veículo no formato MODELO/COR/PLACA/ANO.
+// Retorna "" se algum campo estiver vazio (mantém a validação de "nome obrigatório" coerente).
+function montarNomeVeiculo(b) {
+  const modelo = (b.veic_modelo === "OUTRO" ? b.veic_modelo_outro : b.veic_modelo) || "";
+  const cor = (b.veic_cor === "OUTRO" ? b.veic_cor_outro : b.veic_cor) || "";
+  const placa = normalizaPlaca(b.veic_placa);
+  const ano = (b.veic_ano || "").toString().trim();
+  const partes = [modelo.trim().toUpperCase(), cor.trim().toUpperCase(), placa, ano];
+  if (partes.some((p) => !p)) return "";
+  return partes.join("/");
 }
 
 function erpLoginFromEmail(email) {
@@ -570,11 +608,26 @@ export default function UpsellNovoOrcamento() {
       }
     }
     if (step === 5) {
-      // BOM AUTO: os dois cards fixos (condutor e veículo) precisam ter o nome preenchido.
+      // BOM AUTO: card do condutor exige nome; card do veículo exige modelo, cor, placa válida e ano (4 dígitos).
       if (isBomAuto) {
-        const semNome = beneficiarios.find((b) => !b.usua_nome_completo?.trim());
-        if (semNome) {
-          toast.error("Preencha o nome nos dois cards (condutor e veículo)"); return false;
+        const condId = produtoCondutor ? String(produtoCondutor.id) : "";
+        const veicId = produtoVeiculo ? String(produtoVeiculo.id) : "";
+        const cardCond = beneficiarios.find((b) => String(b.usua_produtos) === condId);
+        const cardVeic = beneficiarios.find((b) => String(b.usua_produtos) === veicId);
+        if (cardCond && !cardCond.usua_nome_completo?.trim()) {
+          toast.error("Preencha o nome do condutor"); return false;
+        }
+        if (cardVeic) {
+          const modelo = cardVeic.veic_modelo === "OUTRO" ? cardVeic.veic_modelo_outro : cardVeic.veic_modelo;
+          const cor = cardVeic.veic_cor === "OUTRO" ? cardVeic.veic_cor_outro : cardVeic.veic_cor;
+          if (!modelo?.trim()) { toast.error("Selecione ou informe o modelo do veículo"); return false; }
+          if (!cor?.trim()) { toast.error("Selecione ou informe a cor do veículo"); return false; }
+          if (!placaValida(cardVeic.veic_placa)) {
+            toast.error("Informe uma placa válida (ex.: ABC1D23 ou ABC1234)"); return false;
+          }
+          if (!/^\d{4}$/.test((cardVeic.veic_ano || "").toString().trim())) {
+            toast.error("Informe o ano do veículo com 4 dígitos"); return false;
+          }
         }
       }
       // Beneficiário com nome precisa estar atribuído a um produto válido (titular ou pet).
@@ -620,6 +673,19 @@ export default function UpsellNovoOrcamento() {
 
   const setBenef = (i, k, v) => {
     setBeneficiarios((b) => b.map((benef, idx) => idx === i ? { ...benef, [k]: v } : benef));
+  };
+
+  // BOM AUTO (card do veículo): atualiza um campo do veículo e recalcula usua_nome_completo
+  // (valor combinado MODELO/COR/PLACA/ANO enviado ao ERP).
+  const setVeiculoField = (i, k, v) => {
+    setBeneficiarios((b) =>
+      b.map((benef, idx) => {
+        if (idx !== i) return benef;
+        const merged = { ...benef, [k]: v };
+        merged.usua_nome_completo = montarNomeVeiculo(merged);
+        return merged;
+      })
+    );
   };
 
   const toggleBenef = (i) => setOpenBenef((o) => o.map((v, idx) => idx === i ? !v : v));
@@ -713,10 +779,12 @@ export default function UpsellNovoOrcamento() {
                   produtosResumo={produtosResumo}
                   opcoesBenefProduto={opcoesBenefProduto}
                   setBenef={setBenef}
+                  setVeiculoField={setVeiculoField}
                   toggleBenef={toggleBenef}
                   addBeneficiario={addBeneficiario}
                   removeBeneficiario={removeBeneficiario}
                   isBomAuto={isBomAuto}
+                  produtoVeiculoId={produtoVeiculo ? String(produtoVeiculo.id) : ""}
                 />
               )}
               {step === 6 && (
@@ -1246,7 +1314,7 @@ function Step4({ form, set, planosPagamento, loadingPlanos, planoSelecionado }) 
   );
 }
 
-function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, setBenef, toggleBenef, addBeneficiario, removeBeneficiario, isBomAuto }) {
+function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, setBenef, setVeiculoField, toggleBenef, addBeneficiario, removeBeneficiario, isBomAuto, produtoVeiculoId }) {
   const descProduto = (produtoId) =>
     opcoesBenefProduto.find((p) => String(p.produto_id) === String(produtoId))?.descricao || "";
   return (
@@ -1298,71 +1366,156 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, s
 
           {openBenef[i] && (
             <CardContent className="pt-0 pb-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">CPF</Label>
-                  <Input
-                    value={b.usua_cpf}
-                    onChange={(e) => setBenef(i, "usua_cpf", formatCpf(e.target.value))}
-                    placeholder="000.000.000-00"
-                    maxLength={14}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Nome completo <span className="text-red-500">*</span></Label>
-                  <Input
-                    value={b.usua_nome_completo}
-                    onChange={(e) => setBenef(i, "usua_nome_completo", e.target.value.toUpperCase())}
-                    placeholder="NOME COMPLETO"
-                  />
-                </div>
-              </div>
+              {isBomAuto && String(b.usua_produtos) === produtoVeiculoId ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Modelo do veículo <span className="text-red-500">*</span></Label>
+                      <Select
+                        value={b.veic_modelo || ""}
+                        onValueChange={(v) => setVeiculoField(i, "veic_modelo", v)}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Selecione o modelo..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {VEICULO_MODELO_OPTIONS.map((o) => (
+                            <SelectItem key={o} value={o}>{o === "OUTRO" ? "Outro" : o}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {b.veic_modelo === "OUTRO" && (
+                        <Input
+                          className="mt-1"
+                          value={b.veic_modelo_outro || ""}
+                          onChange={(e) => setVeiculoField(i, "veic_modelo_outro", e.target.value.toUpperCase())}
+                          placeholder="INFORME O MODELO"
+                        />
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Cor <span className="text-red-500">*</span></Label>
+                      <Select
+                        value={b.veic_cor || ""}
+                        onValueChange={(v) => setVeiculoField(i, "veic_cor", v)}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Selecione a cor..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {VEICULO_COR_OPTIONS.map((o) => (
+                            <SelectItem key={o} value={o}>{o === "OUTRO" ? "Outro" : o}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {b.veic_cor === "OUTRO" && (
+                        <Input
+                          className="mt-1"
+                          value={b.veic_cor_outro || ""}
+                          onChange={(e) => setVeiculoField(i, "veic_cor_outro", e.target.value.toUpperCase())}
+                          placeholder="INFORME A COR"
+                        />
+                      )}
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Data nascimento</Label>
-                  <Input
-                    type="date"
-                    value={b.usua_data_nascimento}
-                    onChange={(e) => setBenef(i, "usua_data_nascimento", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Sexo</Label>
-                  <Select value={b.usua_sexo} onValueChange={(v) => setBenef(i, "usua_sexo", v)}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Sexo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SEXO_OPTIONS.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Parentesco</Label>
-                  <Select value={b.usua_parentesco} onValueChange={(v) => setBenef(i, "usua_parentesco", v)}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Parentesco" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PARENTESCO_OPTIONS.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Placa <span className="text-red-500">*</span></Label>
+                      <Input
+                        value={b.veic_placa || ""}
+                        onChange={(e) => setVeiculoField(i, "veic_placa", normalizaPlaca(e.target.value))}
+                        placeholder="ABC1D23"
+                        maxLength={7}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Ano <span className="text-red-500">*</span></Label>
+                      <Input
+                        value={b.veic_ano || ""}
+                        onChange={(e) => setVeiculoField(i, "veic_ano", e.target.value.replace(/\D/g, "").slice(0, 4))}
+                        placeholder="2021"
+                        inputMode="numeric"
+                        maxLength={4}
+                      />
+                    </div>
+                  </div>
 
-              <div className="space-y-1">
-                <Label className="text-xs">Telefone</Label>
-                <Input
-                  value={b.usua_telefone}
-                  onChange={(e) => setBenef(i, "usua_telefone", e.target.value)}
-                  placeholder="(51) 99999-9999"
-                />
-              </div>
+                  {b.usua_nome_completo && (
+                    <p className="text-xs text-slate-500">
+                      Será enviado ao ERP como: <span className="font-medium text-slate-700">{b.usua_nome_completo}</span>
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">CPF</Label>
+                      <Input
+                        value={b.usua_cpf}
+                        onChange={(e) => setBenef(i, "usua_cpf", formatCpf(e.target.value))}
+                        placeholder="000.000.000-00"
+                        maxLength={14}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Nome completo <span className="text-red-500">*</span></Label>
+                      <Input
+                        value={b.usua_nome_completo}
+                        onChange={(e) => setBenef(i, "usua_nome_completo", e.target.value.toUpperCase())}
+                        placeholder="NOME COMPLETO"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Data nascimento</Label>
+                      <Input
+                        type="date"
+                        value={b.usua_data_nascimento}
+                        onChange={(e) => setBenef(i, "usua_data_nascimento", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Sexo</Label>
+                      <Select value={b.usua_sexo} onValueChange={(v) => setBenef(i, "usua_sexo", v)}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Sexo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SEXO_OPTIONS.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Parentesco</Label>
+                      <Select value={b.usua_parentesco} onValueChange={(v) => setBenef(i, "usua_parentesco", v)}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Parentesco" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PARENTESCO_OPTIONS.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs">Telefone</Label>
+                    <Input
+                      value={b.usua_telefone}
+                      onChange={(e) => setBenef(i, "usua_telefone", e.target.value)}
+                      placeholder="(51) 99999-9999"
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="space-y-1">
                 <Label className="text-xs">Produto / plano <span className="text-red-500">*</span></Label>
