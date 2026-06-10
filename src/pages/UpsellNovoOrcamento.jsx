@@ -1549,6 +1549,16 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, s
           )}
         </Card>
       ))}
+
+      {!isBomAuto && beneficiarios.length < 15 && (
+        <button
+          type="button"
+          onClick={addBeneficiario}
+          className="w-full flex items-center justify-center gap-1 py-3 rounded-lg border-2 border-dashed border-violet-200 text-violet-600 text-sm font-medium hover:bg-violet-50 hover:border-violet-300 transition-colors"
+        >
+          <Plus className="w-4 h-4" /> Adicionar beneficiário
+        </button>
+      )}
     </div>
   );
 }
