@@ -394,9 +394,12 @@ export async function generateManualProposalPDF(formData, lead, agent) {
       const stream = fs.createWriteStream(filePath);
       doc.pipe(stream);
 
-      const primaryColor = '#0066cc';
+      const primaryColor = '#1a56db';
+      const textDark = '#1e293b';
+      const textMid = '#374151';
+      const borderColor = '#cbd5e1';
 
-      const clientName = (formData.clientName || lead.nome_fantasia || lead.razao_social || lead.contact_name || 'Cliente').toString();
+      const clientName = (formData.clientName || lead.nome_fantasia || lead.razao_social || lead.contact_name || lead.name || 'Cliente').toString();
       const clientPhone = (formData.clientPhone || lead.phone || lead.contact_phone || '').toString();
       let productNames = [];
       if (Array.isArray(formData.products) && formData.products.length > 0) {
@@ -420,128 +423,171 @@ export async function generateManualProposalPDF(formData, lead, agent) {
 
       const pageWidth = doc.page.width;
       const pageHeight = doc.page.height;
-      const margin = 40;
+      const margin = 50;
       const contentWidth = pageWidth - margin * 2;
 
-      // ==================== HEADER ====================
-      const headerHeight = 110;
-      doc.rect(0, 0, pageWidth, headerHeight).fill(primaryColor);
+      // ==================== TOPO AZUL ====================
+      const topBarH = 8;
+      doc.rect(0, 0, pageWidth, topBarH).fill(primaryColor);
 
-      const lightColor = lightenColor(primaryColor, 30);
-      doc.rect(0, 0, pageWidth * 0.4, headerHeight)
-         .fill(`rgb(${lightColor.r}, ${lightColor.g}, ${lightColor.b})`);
+      // ==================== HEADER ====================
+      let currentY = topBarH + 28;
 
       if (fs.existsSync(LOGO_PATH)) {
         try {
-          doc.image(LOGO_PATH, margin, 25, { height: 55 });
-        } catch (e) {
-          console.log('Could not load logo:', e.message);
-        }
+          doc.image(LOGO_PATH, margin, currentY, { height: 44 });
+        } catch (e) { /* ignore */ }
       }
 
-      doc.fillColor('white')
-         .fontSize(26)
+      doc.fillColor(primaryColor)
+         .fontSize(22)
          .font('Helvetica-Bold')
-         .text('PROPOSTA COMERCIAL', margin, 38, { width: contentWidth, align: 'right' });
+         .text('PROPOSTA COMERCIAL', margin, currentY + 4, { width: contentWidth, align: 'right' });
+
+      currentY += 52;
+
+      doc.moveTo(margin, currentY)
+         .lineTo(margin + contentWidth, currentY)
+         .lineWidth(1)
+         .strokeColor(primaryColor)
+         .stroke();
+
+      currentY += 10;
 
       if (validUntilText) {
-        doc.fontSize(11)
+        doc.fillColor(textMid)
+           .fontSize(10)
            .font('Helvetica')
-           .text(`Proposta válida até: ${validUntilText}`, margin, 72, { width: contentWidth, align: 'right' });
+           .text(`Proposta válida até: ${validUntilText}`, margin, currentY, { width: contentWidth, align: 'right' });
+        currentY += 18;
       }
 
-      let currentY = headerHeight + 30;
+      currentY += 14;
 
-      const drawSectionTitle = (title) => {
-        doc.roundedRect(margin, currentY, contentWidth, 26, 4).fill(primaryColor);
-        doc.fillColor('white')
-           .fontSize(12)
-           .font('Helvetica-Bold')
-           .text(title, margin + 14, currentY + 8);
-        currentY += 26 + 14;
+      // ==================== HELPERS ====================
+      const drawSectionTitle = (title, withMarker = true) => {
+        if (withMarker) {
+          doc.rect(margin, currentY + 3, 6, 12).fill(primaryColor);
+          doc.fillColor(textDark)
+             .fontSize(11)
+             .font('Helvetica-Bold')
+             .text(title, margin + 14, currentY);
+        } else {
+          doc.fillColor(textDark)
+             .fontSize(11)
+             .font('Helvetica-Bold')
+             .text(title, margin, currentY);
+        }
+        currentY += 18;
+        doc.moveTo(margin, currentY)
+           .lineTo(margin + contentWidth, currentY)
+           .lineWidth(0.5)
+           .strokeColor(borderColor)
+           .stroke();
+        currentY += 12;
       };
 
       const drawField = (label, value, multiline = false) => {
-        doc.fillColor('#1e293b').fontSize(10).font('Helvetica-Bold');
-        doc.text(label, margin + 4, currentY);
-        currentY += 16;
-        doc.fillColor('#334155').fontSize(11).font('Helvetica');
-        const text = value && value.trim() ? value : '—';
-        const h = multiline ? doc.heightOfString(text, { width: contentWidth - 8 }) : 14;
-        doc.text(text, margin + 4, currentY, { width: contentWidth - 8 });
-        currentY += (multiline ? h : 14) + 16;
-        doc.moveTo(margin + 4, currentY - 8)
-           .lineTo(margin + contentWidth - 4, currentY - 8)
+        doc.fillColor('#64748b').fontSize(9).font('Helvetica-Bold');
+        doc.text(label.toUpperCase(), margin, currentY, { characterSpacing: 0.4 });
+        currentY += 14;
+        const displayValue = value && value.trim() ? value : '';
+        doc.fillColor(textDark).fontSize(11).font('Helvetica');
+        if (multiline) {
+          const h = displayValue ? doc.heightOfString(displayValue, { width: contentWidth }) : 14;
+          if (displayValue) doc.text(displayValue, margin, currentY, { width: contentWidth });
+          currentY += h + 6;
+        } else {
+          if (displayValue) doc.text(displayValue, margin, currentY, { width: contentWidth });
+          currentY += 16;
+        }
+        doc.moveTo(margin, currentY)
+           .lineTo(margin + contentWidth, currentY)
            .lineWidth(0.5)
-           .strokeColor('#e2e8f0')
+           .strokeColor(borderColor)
            .stroke();
+        currentY += 16;
       };
 
       // ==================== DADOS DO CLIENTE ====================
       drawSectionTitle('DADOS DO CLIENTE');
-      drawField('Nome do Cliente:', clientName);
-      drawField('Telefone:', clientPhone);
+      drawField('Nome do Cliente', clientName);
+      drawField('Telefone', clientPhone);
 
-      currentY += 8;
+      currentY += 6;
 
-      // ==================== SERVICO CONTRATADO ====================
+      // ==================== SERVIÇO CONTRATADO ====================
       drawSectionTitle('SERVIÇO CONTRATADO');
       const productsText = productNames.length > 0
-        ? productNames.map((n) => `• ${n}`).join('\n')
+        ? productNames.join('\n')
         : '';
-      drawField('Produtos / Serviços:', productsText, true);
-      drawField('Descrição resumida:', description, true);
+      drawField('Produtos / Serviços', productsText, true);
+      drawField('Descrição resumida', description, true);
 
-      currentY += 8;
+      currentY += 6;
 
       // ==================== VALORES ====================
       drawSectionTitle('VALORES');
-      doc.fillColor('#1e293b').fontSize(10).font('Helvetica-Bold');
-      doc.text('Valor do Plano:', margin + 4, currentY);
-      currentY += 18;
-      doc.fillColor(primaryColor).fontSize(22).font('Helvetica-Bold');
-      doc.text(planValue && planValue.trim() ? planValue : '—', margin + 4, currentY);
-      currentY += 36;
+      doc.fillColor('#64748b').fontSize(9).font('Helvetica-Bold');
+      doc.text('VALOR DO PLANO', margin, currentY, { characterSpacing: 0.4 });
+      currentY += 14;
+      doc.fillColor(primaryColor).fontSize(18).font('Helvetica-Bold');
+      doc.text(planValue && planValue.trim() ? planValue : '', margin, currentY);
+      currentY += 28;
+      doc.moveTo(margin, currentY)
+         .lineTo(margin + contentWidth, currentY)
+         .lineWidth(0.5)
+         .strokeColor(borderColor)
+         .stroke();
+      currentY += 16;
+
+      currentY += 6;
 
       // ==================== OBSERVACOES ====================
-      drawSectionTitle('OBSERVAÇÕES');
-      doc.fillColor('#334155').fontSize(11).font('Helvetica');
-      const obsText = observations && observations.trim() ? observations : '—';
-      doc.text(obsText, margin + 4, currentY, { width: contentWidth - 8 });
-      currentY += doc.heightOfString(obsText, { width: contentWidth - 8 }) + 30;
+      drawSectionTitle('OBSERVAÇÕES', false);
+      doc.fillColor(textMid).fontSize(10).font('Helvetica');
+      const obsText = observations && observations.trim() ? observations : '';
+      if (obsText) {
+        const obsH = doc.heightOfString(obsText, { width: contentWidth });
+        doc.text(obsText, margin, currentY, { width: contentWidth });
+        currentY += obsH + 16;
+      } else {
+        currentY += 16;
+      }
 
       // ==================== ASSINATURA ====================
-      const signatureY = Math.max(currentY + 40, pageHeight - 130);
-      const lineWidth = 260;
-      const lineX = pageWidth / 2 - lineWidth / 2;
-      doc.moveTo(lineX, signatureY)
-         .lineTo(lineX + lineWidth, signatureY)
+      const signatureY = Math.max(currentY + 40, pageHeight - 110);
+      const sigLineW = 240;
+      const sigLineX = pageWidth / 2 - sigLineW / 2;
+      doc.moveTo(sigLineX, signatureY)
+         .lineTo(sigLineX + sigLineW, signatureY)
          .lineWidth(1)
-         .strokeColor('#334155')
+         .strokeColor(textMid)
          .stroke();
-      doc.fillColor('#334155')
-         .fontSize(11)
+      doc.fillColor(textMid)
+         .fontSize(10)
          .font('Helvetica')
-         .text('Assinatura do Cliente', lineX, signatureY + 8, { width: lineWidth, align: 'center' });
+         .text('Assinatura do Cliente', sigLineX, signatureY + 7, { width: sigLineW, align: 'center' });
 
-      // ==================== FOOTER ====================
-      const footerY = pageHeight - 40;
+      // ==================== RODAPE ====================
+      const footerY = pageHeight - 32;
+      doc.rect(0, footerY - 8, pageWidth, 40).fill('#f8fafc');
       doc.fillColor('#94a3b8')
-         .fontSize(8)
+         .fontSize(7.5)
          .font('Helvetica')
-         .text(`Documento gerado em ${new Date().toLocaleDateString('pt-BR')} - Este documento é uma proposta comercial e não representa contrato.`,
-               margin, footerY, { align: 'center', width: contentWidth });
+         .text(
+           `Emitido em ${new Date().toLocaleDateString('pt-BR')} · Este documento é uma proposta comercial e não constitui contrato.`,
+           margin, footerY, { align: 'center', width: contentWidth }
+         );
+
+      // faixa rodapé
+      doc.rect(0, pageHeight - 8, pageWidth, 8).fill(primaryColor);
 
       doc.end();
 
       stream.on('finish', () => {
-        resolve({
-          filePath,
-          fileName,
-          publicUrl: `/proposals/${fileName}`
-        });
+        resolve({ filePath, fileName, publicUrl: `/proposals/${fileName}` });
       });
-
       stream.on('error', reject);
     } catch (error) {
       reject(error);
