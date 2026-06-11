@@ -8,6 +8,7 @@
 - [ERP Fechamento + Pagamento](erp-fechamento-pagamento.md) — orçamento M→I + guia modos_pagamentos via DB direto; id==pedido_id; plano escolhido da lista; para em "I".
 - [ERP Fechamento pessoas/item](erp-fechamento-pessoas-por-item.md) — Fechamento valida pessoas vinculadas por item == quantidade do item; API de criação não roda essa regra.
 - [ERP SGPRC FECHAMENTO](erp-sgprc-fechamento-block.md) — PrePropostaUsuarioSgprc falha no bloco FECHAMENTO via REST mesmo com super admin; escrita real no ERP é por INSERT direto no banco.
+- [COMBO condutor pareado](erp-combo-condutor-pareado.md) — título COMBO traz só "DADOS DO VEÍCULO" (sem condutor); isBomAuto deve usar só o condutor direto; pareie um card condutor pré-preenchido com titular p/ fechamento não sair em branco.
 - [Adesão veículo titular em branco](erp-adesao-veiculo-titular.md) — COMBO com veículo em situação 'I' mostra titular em branco na tela de Adesão; é estado-dependente (só A/P), não bug do nosso write.
 - [Upsell BOM PET orçamento](upsell-bompet-orcamento.md) — modo pet por descrição; produto beneficiário = pet/condutor/veículo/dependente-0,01 (some do Plano, vai p/ Beneficiários); dependente com preço real fica no titular.
 - [ERP contatos/endereço orçamento](erp-contatos-endereco-orcamento.md) — REST OrcamentoSgprcUsuario grava telefone como comercial(573) e ignora endereço/celular/email; corrigir via INSERT em enderecos (tipos 565/566/577).
