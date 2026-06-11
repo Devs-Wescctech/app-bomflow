@@ -93,8 +93,7 @@ export default function LeadPJDetail() {
     validUntil: "",
     clientName: "",
     clientPhone: "",
-    productId: "",
-    productName: "",
+    products: [],
     description: "",
     planValue: "",
     observations: "",
@@ -149,12 +148,19 @@ export default function LeadPJDetail() {
   useEffect(() => {
     if (!lead || proposalFormReady) return;
     const saved = lead.proposalData || {};
+    let savedProducts = [];
+    if (Array.isArray(saved.products) && saved.products.length > 0) {
+      savedProducts = saved.products
+        .map((p) => ({ id: String(p.id ?? ""), name: (p.name || "").toString() }))
+        .filter((p) => p.name);
+    } else if (saved.productName) {
+      savedProducts = [{ id: String(saved.productId || ""), name: saved.productName }];
+    }
     setProposalForm({
       validUntil: saved.validUntil || "",
       clientName: saved.clientName || lead.nomeFantasia || lead.razaoSocial || lead.contactName || "",
       clientPhone: saved.clientPhone || lead.phone || lead.contactPhone || "",
-      productId: saved.productId || "",
-      productName: saved.productName || "",
+      products: savedProducts,
       description: saved.description || "",
       planValue: saved.planValue || "",
       observations: saved.observations || "",
@@ -348,10 +354,19 @@ export default function LeadPJDetail() {
 
   const handleProductSelect = (productId) => {
     const produto = erpProdutos.find(p => String(p.id) === String(productId));
-    const productName = produto
-      ? (produto.nome || produto.descricao || produto.name || `Produto #${produto.id}`)
-      : "";
-    setProposalForm(prev => ({ ...prev, productId, productName }));
+    if (!produto) return;
+    const productName = produto.nome || produto.descricao || produto.name || `Produto #${produto.id}`;
+    setProposalForm(prev => {
+      if (prev.products.some(p => String(p.id) === String(productId))) return prev;
+      return { ...prev, products: [...prev.products, { id: String(productId), name: productName }] };
+    });
+  };
+
+  const handleProductRemove = (productId) => {
+    setProposalForm(prev => ({
+      ...prev,
+      products: prev.products.filter(p => String(p.id) !== String(productId)),
+    }));
   };
 
   const handleGenerateProposal = async () => {
@@ -1145,22 +1160,47 @@ export default function LeadPJDetail() {
                             Não foi possível carregar os produtos do ERP. Tente novamente mais tarde.
                           </div>
                         ) : (
-                          <Select
-                            value={proposalForm.productId ? String(proposalForm.productId) : undefined}
-                            onValueChange={handleProductSelect}
-                            disabled={loadingProdutos}
-                          >
-                            <SelectTrigger id="prop-product">
-                              <SelectValue placeholder={loadingProdutos ? 'Carregando produtos...' : 'Selecione um produto'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {erpProdutos.map((p) => (
-                                <SelectItem key={p.id} value={String(p.id)}>
-                                  {p.nome || p.descricao || p.name || `Produto #${p.id}`}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <>
+                            <Select
+                              value={undefined}
+                              onValueChange={handleProductSelect}
+                              disabled={loadingProdutos}
+                            >
+                              <SelectTrigger id="prop-product">
+                                <SelectValue placeholder={loadingProdutos ? 'Carregando produtos...' : 'Adicionar produto / serviço'} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {erpProdutos
+                                  .filter((p) => !proposalForm.products.some((sel) => String(sel.id) === String(p.id)))
+                                  .map((p) => (
+                                    <SelectItem key={p.id} value={String(p.id)}>
+                                      {p.nome || p.descricao || p.name || `Produto #${p.id}`}
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                            {proposalForm.products.length > 0 && (
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {proposalForm.products.map((p) => (
+                                  <Badge
+                                    key={p.id || p.name}
+                                    variant="secondary"
+                                    className="flex items-center gap-1 pl-3 pr-1 py-1"
+                                  >
+                                    <span>{p.name}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleProductRemove(p.id)}
+                                      className="rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 p-0.5"
+                                      aria-label={`Remover ${p.name}`}
+                                    >
+                                      <XCircle className="w-3.5 h-3.5" />
+                                    </button>
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
 

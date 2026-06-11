@@ -398,7 +398,14 @@ export async function generateManualProposalPDF(formData, lead, agent) {
 
       const clientName = (formData.clientName || lead.nome_fantasia || lead.razao_social || lead.contact_name || 'Cliente').toString();
       const clientPhone = (formData.clientPhone || lead.phone || lead.contact_phone || '').toString();
-      const productName = (formData.productName || '').toString();
+      let productNames = [];
+      if (Array.isArray(formData.products) && formData.products.length > 0) {
+        productNames = formData.products
+          .map((p) => (p && (p.name || p.productName) ? (p.name || p.productName).toString() : ''))
+          .filter((n) => n.trim());
+      } else if (formData.productName) {
+        productNames = [formData.productName.toString()];
+      }
       const description = (formData.description || '').toString();
       const planValue = (formData.planValue || '').toString();
       const observations = (formData.observations || '').toString();
@@ -479,7 +486,10 @@ export async function generateManualProposalPDF(formData, lead, agent) {
 
       // ==================== SERVICO CONTRATADO ====================
       drawSectionTitle('SERVIÇO CONTRATADO');
-      drawField('Produtos / Serviços:', productName, true);
+      const productsText = productNames.length > 0
+        ? productNames.map((n) => `• ${n}`).join('\n')
+        : '';
+      drawField('Produtos / Serviços:', productsText, true);
       drawField('Descrição resumida:', description, true);
 
       currentY += 8;
