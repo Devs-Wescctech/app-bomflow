@@ -406,6 +406,10 @@ export default function UpsellNovoOrcamento() {
       ),
     [produtosDependentePago, produtosSel]
   );
+  const dependentePagoIds = useMemo(
+    () => dependentePagoSelecionados.map((p) => String(p.id)),
+    [dependentePagoSelecionados]
+  );
 
   // BOM AUTO: produtos específicos de condutor e veículo, e flag do modo.
   const produtoCondutor = useMemo(
@@ -833,7 +837,12 @@ export default function UpsellNovoOrcamento() {
         const benefSemCpf = beneficiarios.find(
           (b) =>
             b.usua_nome_completo?.trim() &&
-            !(isBomPet || petProdutoIds.includes(String(b.usua_produtos))) &&
+            // Card é de pet (isento de CPF) só se for realmente pet — dependente pago (> 0,01) tem
+            // produto próprio e exige CPF mesmo quando o orçamento está em modo BOM PET.
+            !(
+              !dependentePagoIds.includes(String(b.usua_produtos)) &&
+              (isBomPet || petProdutoIds.includes(String(b.usua_produtos)))
+            ) &&
             !isValidCpf(b.usua_cpf || "")
         );
         if (benefSemCpf) {
@@ -1026,6 +1035,7 @@ export default function UpsellNovoOrcamento() {
                   isBomPet={isBomPet}
                   produtoVeiculoId={produtoVeiculo ? String(produtoVeiculo.id) : ""}
                   petProdutoIds={petProdutoIds}
+                  dependentePagoIds={dependentePagoIds}
                 />
               )}
               {step === 5 && <Step4 form={form} set={set} planosPagamento={planosPagamento} loadingPlanos={loadingPlanos} planoSelecionado={planoSelecionado} />}
@@ -1566,11 +1576,15 @@ function Step4({ form, set, planosPagamento, loadingPlanos, planoSelecionado }) 
   );
 }
 
-function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, setBenef, setVeiculoField, setPetField, toggleBenef, addBeneficiario, removeBeneficiario, isBomAuto, isBomPet = false, produtoVeiculoId, petProdutoIds = [] }) {
+function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, setBenef, setVeiculoField, setPetField, toggleBenef, addBeneficiario, removeBeneficiario, isBomAuto, isBomPet = false, produtoVeiculoId, petProdutoIds = [], dependentePagoIds = [] }) {
   const descProduto = (produtoId) =>
     opcoesBenefProduto.find((p) => String(p.produto_id) === String(produtoId))?.descricao || "";
   // Em modo BOM PET todo card é de pet; fora dele, só os cards atribuídos a um produto de pet.
-  const isPetCard = (b) => isBomPet || petProdutoIds.includes(String(b.usua_produtos));
+  // EXCEÇÃO: cards de dependente pago (produto DEPENDENTE > 0,01) nunca são de pet, mesmo em modo
+  // BOM PET — eles têm produto próprio e usam os campos comuns de beneficiário (CPF, nome, parentesco).
+  const isPetCard = (b) =>
+    !dependentePagoIds.includes(String(b.usua_produtos)) &&
+    (isBomPet || petProdutoIds.includes(String(b.usua_produtos)));
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -1597,7 +1611,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, s
             <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-violet-500" />
               <span className="font-medium text-sm text-slate-700">
-                {b.usua_nome_completo || (isBomAuto ? descProduto(b.usua_produtos) || `Beneficiário ${i + 1}` : isBomPet ? `Pet ${i + 1}` : `Beneficiário ${i + 1}`)}
+                {b.usua_nome_completo || (isBomAuto ? descProduto(b.usua_produtos) || `Beneficiário ${i + 1}` : isPetCard(b) ? `Pet ${i + 1}` : `Beneficiário ${i + 1}`)}
                 {b.usua_parentesco && (
                   <Badge variant="secondary" className="ml-2 text-xs">
                     {PARENTESCO_OPTIONS.find((p) => p.value === b.usua_parentesco)?.label || b.usua_parentesco}

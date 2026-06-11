@@ -73,3 +73,20 @@ pelo vendedor enquanto o conjunto não mudar; pula `isBomAuto`. No passo Plano o
 "Incluir titular" é escondido para esses itens (substituído por nota). Sem cobrança dupla:
 o produto fica só em `produtosSel`, nunca em `produtosBeneficiario`/`benefItens`; o payload
 manda beneficiários por item via `usua_produtos === produto_id`.
+
+### Dependente pago NÃO é card de pet (mesmo em modo BOM PET)
+Quando o orçamento está em modo BOM PET, `isPetCard = (b) => isBomPet || petProdutoIds.includes(...)`
+forçava TODO card a virar card de pet — inclusive o card auto-criado de dependente pago,
+que então mostrava campos de pet (nome/tipo/raça/cor/porte) com "Produto/plano = ESSENCIAL
+DEPENDENTES". Bug aparece só num orçamento que tem AO MESMO TEMPO um plano BOM PET e um
+produto dependente pago.
+
+**Why:** o card de dependente pago tem produto próprio (id do DEPENDENTE) e usa os campos
+COMUNS de beneficiário (CPF, nome, parentesco), nunca os de pet.
+
+**How to apply:** passar `dependentePagoIds` (ids selecionados) ao Step5 e excluí-los do
+`isPetCard`: `isPetCard = (b) => !dependentePagoIds.includes(id) && (isBomPet || petProdutoIds.includes(id))`.
+A MESMA exclusão precisa entrar na validação de CPF (o `!(isBomPet || petProdutoIds...)` pulava
+CPF de todos em modo BOM PET) e no título do card (`isPetCard(b)` em vez de `isBomPet` para o
+rótulo "Pet N" vs "Beneficiário N"). A regra de pet por `petProdutoIds.includes` (sem isBomPet)
+já exclui dependente naturalmente — só os pontos que usam `isBomPet` cru precisaram do ajuste.
