@@ -404,6 +404,10 @@ export async function generateManualProposalPDF(formData, lead, agent) {
       let productNames = [];
       if (Array.isArray(formData.products) && formData.products.length > 0) {
         productNames = formData.products
+          .filter((p) => {
+            const preco = parseFloat(p && p.price) || 0;
+            return Math.abs(preco - 0.01) >= 0.005;
+          })
           .map((p) => (p && (p.name || p.productName) ? (p.name || p.productName).toString() : ''))
           .filter((n) => n.trim());
       } else if (formData.productName) {

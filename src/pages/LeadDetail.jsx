@@ -420,18 +420,29 @@ export default function LeadDetail() {
   const handleProductSelect = (productId) => {
     const produto = erpProdutos.find(p => String(p.id) === String(productId));
     if (!produto) return;
+    const preco = parseFloat(produto.preco_informado) || 0;
+    if (Math.abs(preco - 0.01) < 0.005) return;
     const productName = produto.nome || produto.descricao || produto.name || `Produto #${produto.id}`;
     setProposalForm(prev => {
       if (prev.products.some(p => String(p.id) === String(productId))) return prev;
-      return { ...prev, products: [...prev.products, { id: String(productId), name: productName }] };
+      const newProducts = [...prev.products, { id: String(productId), name: productName, price: preco }];
+      const total = newProducts.reduce((sum, p) => sum + (parseFloat(p.price) || 0), 0);
+      const formatted = total > 0
+        ? `R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mês`
+        : '';
+      return { ...prev, products: newProducts, planValue: formatted };
     });
   };
 
   const handleProductRemove = (productId) => {
-    setProposalForm(prev => ({
-      ...prev,
-      products: prev.products.filter(p => String(p.id) !== String(productId)),
-    }));
+    setProposalForm(prev => {
+      const newProducts = prev.products.filter(p => String(p.id) !== String(productId));
+      const total = newProducts.reduce((sum, p) => sum + (parseFloat(p.price) || 0), 0);
+      const formatted = total > 0
+        ? `R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mês`
+        : '';
+      return { ...prev, products: newProducts, planValue: formatted };
+    });
   };
 
   const handleGenerateProposal = async () => {
@@ -1240,7 +1251,7 @@ export default function LeadDetail() {
                         ) : (
                           <>
                             <Select
-                              value={undefined}
+                              value=""
                               onValueChange={handleProductSelect}
                               disabled={loadingProdutos}
                             >
@@ -1249,7 +1260,11 @@ export default function LeadDetail() {
                               </SelectTrigger>
                               <SelectContent>
                                 {erpProdutos
-                                  .filter((p) => !proposalForm.products.some((sel) => String(sel.id) === String(p.id)))
+                                  .filter((p) => {
+                                    const preco = parseFloat(p.preco_informado) || 0;
+                                    if (Math.abs(preco - 0.01) < 0.005) return false;
+                                    return !proposalForm.products.some((sel) => String(sel.id) === String(p.id));
+                                  })
                                   .map((p) => (
                                     <SelectItem key={p.id} value={String(p.id)}>
                                       {p.nome || p.descricao || p.name || `Produto #${p.id}`}
