@@ -796,15 +796,19 @@ export default function UpsellNovoOrcamento() {
       }
     }
     if (step === 4) {
-      // BOM AUTO: card do condutor exige nome; card do veículo exige modelo, cor, placa válida e ano (4 dígitos).
+      // Condutor (só BOM AUTO) exige nome.
+      const veicId = produtoVeiculo ? String(produtoVeiculo.id) : "";
       if (isBomAuto) {
         const condId = produtoCondutor ? String(produtoCondutor.id) : "";
-        const veicId = produtoVeiculo ? String(produtoVeiculo.id) : "";
         const cardCond = beneficiarios.find((b) => String(b.usua_produtos) === condId);
-        const cardVeic = beneficiarios.find((b) => String(b.usua_produtos) === veicId);
         if (cardCond && !cardCond.usua_nome_completo?.trim()) {
           toast.error("Preencha o nome do condutor"); return false;
         }
+      }
+      // Card de veículo (BOM AUTO ou produto de veículo escolhido em contrato COMBO): exige modelo, cor,
+      // placa válida e ano (4 dígitos). Vale sempre que houver um card apontando para o produto de veículo.
+      if (veicId) {
+        const cardVeic = beneficiarios.find((b) => String(b.usua_produtos) === veicId);
         if (cardVeic) {
           const modelo = cardVeic.veic_modelo === "OUTRO" ? cardVeic.veic_modelo_outro : cardVeic.veic_modelo;
           const cor = cardVeic.veic_cor === "OUTRO" ? cardVeic.veic_cor_outro : cardVeic.veic_cor;
@@ -843,6 +847,8 @@ export default function UpsellNovoOrcamento() {
               !dependentePagoIds.includes(String(b.usua_produtos)) &&
               (isBomPet || petProdutoIds.includes(String(b.usua_produtos)))
             ) &&
+            // Card de veículo não tem CPF (nome é montado dos campos do veículo).
+            String(b.usua_produtos) !== veicId &&
             !isValidCpf(b.usua_cpf || "")
         );
         if (benefSemCpf) {
@@ -1585,6 +1591,11 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, s
   const isPetCard = (b) =>
     !dependentePagoIds.includes(String(b.usua_produtos)) &&
     (isBomPet || petProdutoIds.includes(String(b.usua_produtos)));
+  // Card de veículo: mostra os campos do veículo (modelo/cor/placa/ano) sempre que o card aponta para o
+  // produto "DADOS DO VEÍCULO" — não só em modo BOM AUTO. Em contratos COMBO (ex.: "COMBO MULTI ESPECIAL")
+  // o produto de veículo é escolhido como beneficiário comum, então o card precisa trocar para esses campos.
+  const isVeiculoCard = (b) =>
+    !!produtoVeiculoId && String(b.usua_produtos) === String(produtoVeiculoId);
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -1611,7 +1622,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, s
             <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-violet-500" />
               <span className="font-medium text-sm text-slate-700">
-                {b.usua_nome_completo || (isBomAuto ? descProduto(b.usua_produtos) || `Beneficiário ${i + 1}` : isPetCard(b) ? `Pet ${i + 1}` : `Beneficiário ${i + 1}`)}
+                {b.usua_nome_completo || ((isBomAuto || isVeiculoCard(b)) ? descProduto(b.usua_produtos) || `Beneficiário ${i + 1}` : isPetCard(b) ? `Pet ${i + 1}` : `Beneficiário ${i + 1}`)}
                 {b.usua_parentesco && (
                   <Badge variant="secondary" className="ml-2 text-xs">
                     {PARENTESCO_OPTIONS.find((p) => p.value === b.usua_parentesco)?.label || b.usua_parentesco}
@@ -1636,7 +1647,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, s
 
           {openBenef[i] && (
             <CardContent className="pt-0 pb-4 space-y-3">
-              {isBomAuto && String(b.usua_produtos) === produtoVeiculoId ? (
+              {isVeiculoCard(b) ? (
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">

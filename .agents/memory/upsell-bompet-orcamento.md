@@ -90,3 +90,20 @@ A MESMA exclusão precisa entrar na validação de CPF (o `!(isBomPet || petProd
 CPF de todos em modo BOM PET) e no título do card (`isPetCard(b)` em vez de `isBomPet` para o
 rótulo "Pet N" vs "Beneficiário N"). A regra de pet por `petProdutoIds.includes` (sem isBomPet)
 já exclui dependente naturalmente — só os pontos que usam `isBomPet` cru precisaram do ajuste.
+
+## Card de veículo em contrato COMBO (sem condutor) — não gatear por isBomAuto
+`isBomAuto = !!(produtoCondutor && produtoVeiculo)`, logo é **false** em contratos que têm o
+produto "DADOS DO VEÍCULO" mas NÃO têm condutor (ex.: "BOM PASTOR - COMBO MULTI ESPECIAL").
+Nesse caso o produto de veículo aparece no dropdown de beneficiário, mas o card não trocava
+para os campos do veículo porque renderização/validação exigiam `isBomAuto`.
+
+**Why:** mesma armadilha recorrente do BOM PET — pontos que usam o flag de modo (`isBomAuto`)
+"cru" tratam errado cards cujo produto é de outro tipo. A identidade do card deve vir do
+**produto específico**, não do modo do orçamento.
+
+**How to apply:** classificar por id do produto, não pelo modo. Helper
+`isVeiculoCard(b) = !!produtoVeiculoId && String(b.usua_produtos)===String(produtoVeiculoId)`
+usado na renderização dos campos do veículo e no título do card. Na validação (step 4):
+validar o card de veículo (modelo/cor/placa/ano) sempre que existir `veicId`+card, NÃO só em
+isBomAuto (condutor permanece sob isBomAuto); excluir o card de veículo da exigência de CPF
+(`usua_produtos !== veicId`), pois o nome dele é montado via `montarNomeVeiculo`.
