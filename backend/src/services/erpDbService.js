@@ -118,10 +118,18 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
     // inserida automaticamente pela API ao criar o pedido. Reaproveitada (não duplica pessoa)
     // para vincular o titular aos itens marcados com incluirTitular.
     const contrRes = await client.query(
-      `SELECT id, cpf FROM pedidos_pessoas WHERE pedido_id = $1 AND pessoa_id IS NOT NULL ORDER BY id LIMIT 1`,
+      `SELECT id, cpf, telefone, data_nascimento, sexo FROM pedidos_pessoas WHERE pedido_id = $1 AND pessoa_id IS NOT NULL ORDER BY id LIMIT 1`,
       [pedidoInternalId]
     );
     const contratanteId = contrRes.rows[0]?.id ? Number(contrRes.rows[0].id) : null;
+    // Dados do contratante usados como fallback para beneficiários. O Fechamento/Adesão do ERP
+    // percorre os beneficiários e desreferencia data_nascimento/sexo/telefone; se ficarem NULL
+    // (caso de veículo/pet/dependente sem esses campos), a procedure estoura "Objeto nulo" (NPE)
+    // e a adesão trava em "aguardando". Os orçamentos aprovados sempre têm os três preenchidos
+    // em TODA pessoa (beneficiário herda o telefone do titular e uma data/sexo de preenchimento).
+    const contratanteTelefone = contrRes.rows[0]?.telefone || null;
+    const contratanteNascimento = contrRes.rows[0]?.data_nascimento || null;
+    const contratanteSexo = contrRes.rows[0]?.sexo || null;
 
     // O ERP não permite o mesmo CPF em "pessoas diferentes" dentro do pedido. Mantemos um mapa
     // CPF(normalizado) -> pedidos_pessoas.id já existente no pedido para reaproveitar a mesma
@@ -226,9 +234,9 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
               pedidoInternalId,
               b.nome || null,
               b.cpf || null,
-              b.dataNascimento || null,
-              b.sexo || null,
-              b.telefone || null,
+              b.dataNascimento || contratanteNascimento || null,
+              b.sexo || contratanteSexo || null,
+              b.telefone || contratanteTelefone || null,
               b.parentesco || null,
             ]
           );

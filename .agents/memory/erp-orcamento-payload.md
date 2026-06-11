@@ -21,7 +21,7 @@ function erpLoginFromEmail(email) {
   const domain = email.slice(atIdx + 1).replace(/\.[^.]+$/, '').toLowerCase();
   return `user.${local}.${domain}`;
 }
-// teste3@bomflow.com → user.teste3.bomflow
+// agente@exemplo.com → user.agente.exemplo
 ```
 
 Implementado em `erpProxy.js` (injeta automaticamente do `req.user.email` se não vier no body) **e** em `ErpOrcamentoForm.jsx` (mostra no preview do payload).
@@ -54,6 +54,6 @@ Também existe `condicao_pagamento_id` no schema mas é NULL em todos os aprovad
 
 ## Problema de formato no usuario_inclusao para vendedores nativos ERP
 
-Vendedores nativos do ERP (ex: leonardo) têm login `firstname.lastname` (ex: `leonardo.silva`). Nossa derivação gera `user.firstname.domain` — formato INCORRETO para eles. Contas `user.*` criadas pelo BomFlow existem no ERP mas têm **zero funções** e nunca criaram um pedido aprovado. O campo `usuario_inclusao` provavelmente não troca o contexto de permissão do token (isso confirma o diagnóstico de camada de sessão).
+Vendedores nativos do ERP têm login no formato `firstname.lastname`. Nossa derivação gera `user.firstname.domain` — formato INCORRETO para eles. Contas `user.*` criadas pelo BomFlow existem no ERP mas têm **zero funções** e nunca criaram um pedido aprovado. O campo `usuario_inclusao` provavelmente não troca o contexto de permissão do token (isso confirma o diagnóstico de camada de sessão).
 
 **Why:** todos os pedidos aprovados (situacao='A') têm usuario_inclusao_id de contas com login `firstname.lastname`, nunca de contas `user.*`.
