@@ -158,9 +158,18 @@ function isVeiculoProduto(prod) {
   return /DADOS DO VE[IÍ]CULO/i.test(prod?.descricao || prod?.titulo_contrato || "");
 }
 
-// Um produto é "de beneficiário" (não do titular) se for pet, condutor ou veículo.
+// Produtos com "DEPENDENTE" no nome E valor 0,01 são "vagas" de dependente (sem custo): não devem
+// aparecer na lista do titular (Step 3) e sim apenas como produto de beneficiário (Step 5). Os
+// produtos DEPENDENTE com preço real (faixas etárias etc.) continuam sendo do titular, como hoje.
+function isDependenteProduto(prod) {
+  const desc = prod?.descricao || prod?.titulo_contrato || "";
+  const preco = Number(prod?.preco_informado);
+  return /DEPENDENTE/i.test(desc) && Math.abs(preco - 0.01) < 0.005;
+}
+
+// Um produto é "de beneficiário" (não do titular) se for pet, condutor, veículo ou vaga de dependente.
 function isProdutoBeneficiario(prod) {
-  return isPetProduto(prod) || isCondutorProduto(prod) || isVeiculoProduto(prod);
+  return isPetProduto(prod) || isCondutorProduto(prod) || isVeiculoProduto(prod) || isDependenteProduto(prod);
 }
 
 // Placa: aceita modelo antigo (AAA9999) e Mercosul (AAA9A99). Normaliza para alfanumérico maiúsculo.
