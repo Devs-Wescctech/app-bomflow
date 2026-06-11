@@ -1265,6 +1265,7 @@ ALTER TABLE leads ADD COLUMN IF NOT EXISTS lost_by VARCHAR(255);
 ALTER TABLE leads_pj ADD COLUMN IF NOT EXISTS lost BOOLEAN DEFAULT FALSE;
 ALTER TABLE leads_pj ADD COLUMN IF NOT EXISTS lost_at TIMESTAMP;
 ALTER TABLE leads_pj ADD COLUMN IF NOT EXISTS lost_by VARCHAR(255);
+ALTER TABLE leads_pj ADD COLUMN IF NOT EXISTS proposal_data JSONB;
 -- Ensure lost_by is VARCHAR(255) (fix environments where it may have been created as UUID)
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='leads' AND column_name='lost_by' AND data_type='uuid') THEN

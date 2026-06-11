@@ -384,6 +384,161 @@ export async function generateProposalPDF(template, lead, agent) {
   });
 }
 
+export async function generateManualProposalPDF(formData, lead, agent) {
+  return new Promise((resolve, reject) => {
+    try {
+      const fileName = `proposta_${lead.id}_${Date.now()}.pdf`;
+      const filePath = path.join(PROPOSALS_DIR, fileName);
+
+      const doc = new PDFDocument({ size: 'A4', margin: 0 });
+      const stream = fs.createWriteStream(filePath);
+      doc.pipe(stream);
+
+      const primaryColor = '#0066cc';
+
+      const clientName = (formData.clientName || lead.nome_fantasia || lead.razao_social || lead.contact_name || 'Cliente').toString();
+      const clientPhone = (formData.clientPhone || lead.phone || lead.contact_phone || '').toString();
+      const productName = (formData.productName || '').toString();
+      const description = (formData.description || '').toString();
+      const planValue = (formData.planValue || '').toString();
+      const observations = (formData.observations || '').toString();
+
+      let validUntilText = '';
+      if (formData.validUntil) {
+        const d = new Date(formData.validUntil);
+        validUntilText = isNaN(d.getTime())
+          ? String(formData.validUntil)
+          : d.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+      }
+
+      const pageWidth = doc.page.width;
+      const pageHeight = doc.page.height;
+      const margin = 40;
+      const contentWidth = pageWidth - margin * 2;
+
+      // ==================== HEADER ====================
+      const headerHeight = 110;
+      doc.rect(0, 0, pageWidth, headerHeight).fill(primaryColor);
+
+      const lightColor = lightenColor(primaryColor, 30);
+      doc.rect(0, 0, pageWidth * 0.4, headerHeight)
+         .fill(`rgb(${lightColor.r}, ${lightColor.g}, ${lightColor.b})`);
+
+      if (fs.existsSync(LOGO_PATH)) {
+        try {
+          doc.image(LOGO_PATH, margin, 25, { height: 55 });
+        } catch (e) {
+          console.log('Could not load logo:', e.message);
+        }
+      }
+
+      doc.fillColor('white')
+         .fontSize(26)
+         .font('Helvetica-Bold')
+         .text('PROPOSTA COMERCIAL', margin, 38, { width: contentWidth, align: 'right' });
+
+      if (validUntilText) {
+        doc.fontSize(11)
+           .font('Helvetica')
+           .text(`Proposta válida até: ${validUntilText}`, margin, 72, { width: contentWidth, align: 'right' });
+      }
+
+      let currentY = headerHeight + 30;
+
+      const drawSectionTitle = (title) => {
+        doc.roundedRect(margin, currentY, contentWidth, 26, 4).fill(primaryColor);
+        doc.fillColor('white')
+           .fontSize(12)
+           .font('Helvetica-Bold')
+           .text(title, margin + 14, currentY + 8);
+        currentY += 26 + 14;
+      };
+
+      const drawField = (label, value, multiline = false) => {
+        doc.fillColor('#1e293b').fontSize(10).font('Helvetica-Bold');
+        doc.text(label, margin + 4, currentY);
+        currentY += 16;
+        doc.fillColor('#334155').fontSize(11).font('Helvetica');
+        const text = value && value.trim() ? value : '—';
+        const h = multiline ? doc.heightOfString(text, { width: contentWidth - 8 }) : 14;
+        doc.text(text, margin + 4, currentY, { width: contentWidth - 8 });
+        currentY += (multiline ? h : 14) + 16;
+        doc.moveTo(margin + 4, currentY - 8)
+           .lineTo(margin + contentWidth - 4, currentY - 8)
+           .lineWidth(0.5)
+           .strokeColor('#e2e8f0')
+           .stroke();
+      };
+
+      // ==================== DADOS DO CLIENTE ====================
+      drawSectionTitle('DADOS DO CLIENTE');
+      drawField('Nome do Cliente:', clientName);
+      drawField('Telefone:', clientPhone);
+
+      currentY += 8;
+
+      // ==================== SERVICO CONTRATADO ====================
+      drawSectionTitle('SERVIÇO CONTRATADO');
+      drawField('Produtos / Serviços:', productName, true);
+      drawField('Descrição resumida:', description, true);
+
+      currentY += 8;
+
+      // ==================== VALORES ====================
+      drawSectionTitle('VALORES');
+      doc.fillColor('#1e293b').fontSize(10).font('Helvetica-Bold');
+      doc.text('Valor do Plano:', margin + 4, currentY);
+      currentY += 18;
+      doc.fillColor(primaryColor).fontSize(22).font('Helvetica-Bold');
+      doc.text(planValue && planValue.trim() ? planValue : '—', margin + 4, currentY);
+      currentY += 36;
+
+      // ==================== OBSERVACOES ====================
+      drawSectionTitle('OBSERVAÇÕES');
+      doc.fillColor('#334155').fontSize(11).font('Helvetica');
+      const obsText = observations && observations.trim() ? observations : '—';
+      doc.text(obsText, margin + 4, currentY, { width: contentWidth - 8 });
+      currentY += doc.heightOfString(obsText, { width: contentWidth - 8 }) + 30;
+
+      // ==================== ASSINATURA ====================
+      const signatureY = Math.max(currentY + 40, pageHeight - 130);
+      const lineWidth = 260;
+      const lineX = pageWidth / 2 - lineWidth / 2;
+      doc.moveTo(lineX, signatureY)
+         .lineTo(lineX + lineWidth, signatureY)
+         .lineWidth(1)
+         .strokeColor('#334155')
+         .stroke();
+      doc.fillColor('#334155')
+         .fontSize(11)
+         .font('Helvetica')
+         .text('Assinatura do Cliente', lineX, signatureY + 8, { width: lineWidth, align: 'center' });
+
+      // ==================== FOOTER ====================
+      const footerY = pageHeight - 40;
+      doc.fillColor('#94a3b8')
+         .fontSize(8)
+         .font('Helvetica')
+         .text(`Documento gerado em ${new Date().toLocaleDateString('pt-BR')} - Este documento é uma proposta comercial e não representa contrato.`,
+               margin, footerY, { align: 'center', width: contentWidth });
+
+      doc.end();
+
+      stream.on('finish', () => {
+        resolve({
+          filePath,
+          fileName,
+          publicUrl: `/proposals/${fileName}`
+        });
+      });
+
+      stream.on('error', reject);
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
 export function getProposalPath(fileName) {
   return path.join(PROPOSALS_DIR, fileName);
 }

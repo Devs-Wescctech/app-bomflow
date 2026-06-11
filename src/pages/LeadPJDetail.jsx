@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useNavigate } from "react-router-dom";
@@ -89,6 +89,17 @@ export default function LeadPJDetail() {
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [proposalUrl, setProposalUrl] = useState("");
+  const [proposalForm, setProposalForm] = useState({
+    validUntil: "",
+    clientName: "",
+    clientPhone: "",
+    productId: "",
+    productName: "",
+    description: "",
+    planValue: "",
+    observations: "",
+  });
+  const [proposalFormReady, setProposalFormReady] = useState(false);
   const [uploadingContract, setUploadingContract] = useState(false);
   const [sendingContractAutentique, setSendingContractAutentique] = useState(false);
   const [sendingContractLink, setSendingContractLink] = useState(false);
@@ -119,10 +130,38 @@ export default function LeadPJDetail() {
     refetchOnMount: 'always',
   });
 
-  const { data: templates = [] } = useQuery({
-    queryKey: ['proposalTemplates'],
-    queryFn: () => base44.entities.ProposalTemplate.list(),
+  const { data: erpProdutos = [], isLoading: loadingProdutos, isError: erpProdutosError } = useQuery({
+    queryKey: ['erpProdutos'],
+    queryFn: async () => {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch('/api/erp/produtos', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Erro ao buscar produtos do ERP');
+      }
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 10,
   });
+
+  useEffect(() => {
+    if (!lead || proposalFormReady) return;
+    const saved = lead.proposalData || {};
+    setProposalForm({
+      validUntil: saved.validUntil || "",
+      clientName: saved.clientName || lead.nomeFantasia || lead.razaoSocial || lead.contactName || "",
+      clientPhone: saved.clientPhone || lead.phone || lead.contactPhone || "",
+      productId: saved.productId || "",
+      productName: saved.productName || "",
+      description: saved.description || "",
+      planValue: saved.planValue || "",
+      observations: saved.observations || "",
+    });
+    if (lead.proposalUrl) setProposalUrl(lead.proposalUrl);
+    setProposalFormReady(true);
+  }, [lead, proposalFormReady]);
 
   const updateLeadMutation = useMutation({
     mutationFn: (data) => base44.entities.LeadPJ.update(leadId, data),
@@ -303,13 +342,30 @@ export default function LeadPJDetail() {
     });
   };
 
-  const handleGenerateProposal = async (templateId) => {
+  const handleProposalFieldChange = (field, value) => {
+    setProposalForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleProductSelect = (productId) => {
+    const produto = erpProdutos.find(p => String(p.id) === String(productId));
+    const productName = produto
+      ? (produto.nome || produto.descricao || produto.name || `Produto #${produto.id}`)
+      : "";
+    setProposalForm(prev => ({ ...prev, productId, productName }));
+  };
+
+  const handleGenerateProposal = async () => {
+    if (!proposalForm.clientName?.trim()) {
+      toast.error('Informe o nome do cliente.');
+      return;
+    }
+
     setGeneratingProposal(true);
     try {
       const response = await base44.functions.invoke('generateProposal', {
         lead_id: leadId,
-        template_id: templateId,
         lead_type: 'pj',
+        proposal_data: proposalForm,
       });
 
       if (response.data.success) {
@@ -325,8 +381,22 @@ export default function LeadPJDetail() {
     setGeneratingProposal(false);
   };
 
+  const handleDownloadProposal = () => {
+    const url = proposalUrl || lead.proposalUrl;
+    if (!url) {
+      toast.error('Gere a proposta primeiro!');
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `proposta_${lead.nomeFantasia || lead.razaoSocial || 'cliente'}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleSendWhatsApp = async () => {
-    if (!proposalUrl && !lead.proposal_url) {
+    if (!proposalUrl && !lead.proposalUrl) {
       toast.error('Gere a proposta primeiro!');
       return;
     }
@@ -335,7 +405,7 @@ export default function LeadPJDetail() {
     try {
       const response = await base44.functions.invoke('sendProposalWhatsApp', {
         leadId: leadId,
-        proposalUrl: proposalUrl || lead.proposal_url,
+        proposalUrl: proposalUrl || lead.proposalUrl,
         lead_type: 'pj',
       });
 
@@ -358,7 +428,7 @@ export default function LeadPJDetail() {
   };
 
   const handleSendEmail = async () => {
-    if (!proposalUrl && !lead.proposal_url) {
+    if (!proposalUrl && !lead.proposalUrl) {
       toast.error('Gere a proposta primeiro!');
       return;
     }
@@ -372,7 +442,7 @@ export default function LeadPJDetail() {
     try {
       const response = await base44.functions.invoke('sendProposalEmail', {
         lead_id: leadId,
-        proposal_url: proposalUrl || lead.proposal_url,
+        proposal_url: proposalUrl || lead.proposalUrl,
       });
 
       if (response.data.success) {
@@ -1030,45 +1100,143 @@ export default function LeadPJDetail() {
                       Proposta Comercial B2B
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="pt-6 space-y-4">
-                    {!lead.proposal_url && !proposalUrl ? (
-                      <>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">Selecione um template para gerar a proposta:</p>
-                        <div className="grid gap-3">
-                          {templates.map(template => (
-                            <Button
-                              key={template.id}
-                              variant="outline"
-                              onClick={() => handleGenerateProposal(template.id)}
-                              disabled={generatingProposal}
-                              className="justify-start"
-                            >
-                              {generatingProposal ? (
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              ) : (
-                                <FileText className="w-4 h-4 mr-2" />
-                              )}
-                              {template.name}
-                            </Button>
-                          ))}
+                  <CardContent className="pt-6 space-y-5">
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Preencha os dados da proposta e clique em <strong>Gerar Proposta</strong> para produzir o PDF.
+                    </p>
+
+                    <div className="grid gap-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="prop-validUntil">Proposta válida até</Label>
+                        <Input
+                          id="prop-validUntil"
+                          type="date"
+                          value={proposalForm.validUntil}
+                          onChange={(e) => handleProposalFieldChange('validUntil', e.target.value)}
+                        />
+                      </div>
+
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="grid gap-2">
+                          <Label htmlFor="prop-clientName">Nome do Cliente</Label>
+                          <Input
+                            id="prop-clientName"
+                            value={proposalForm.clientName}
+                            onChange={(e) => handleProposalFieldChange('clientName', e.target.value)}
+                            placeholder="Nome do cliente"
+                          />
                         </div>
-                      </>
-                    ) : (
-                      <div className="space-y-3">
+                        <div className="grid gap-2">
+                          <Label htmlFor="prop-clientPhone">Telefone</Label>
+                          <Input
+                            id="prop-clientPhone"
+                            value={proposalForm.clientPhone}
+                            onChange={(e) => handleProposalFieldChange('clientPhone', e.target.value)}
+                            placeholder="Telefone do cliente"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label htmlFor="prop-product">Produtos / Serviços</Label>
+                        {erpProdutosError ? (
+                          <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
+                            <AlertCircle className="w-4 h-4" />
+                            Não foi possível carregar os produtos do ERP. Tente novamente mais tarde.
+                          </div>
+                        ) : (
+                          <Select
+                            value={proposalForm.productId ? String(proposalForm.productId) : undefined}
+                            onValueChange={handleProductSelect}
+                            disabled={loadingProdutos}
+                          >
+                            <SelectTrigger id="prop-product">
+                              <SelectValue placeholder={loadingProdutos ? 'Carregando produtos...' : 'Selecione um produto'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {erpProdutos.map((p) => (
+                                <SelectItem key={p.id} value={String(p.id)}>
+                                  {p.nome || p.descricao || p.name || `Produto #${p.id}`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label htmlFor="prop-description">Descrição resumida</Label>
+                        <Textarea
+                          id="prop-description"
+                          value={proposalForm.description}
+                          onChange={(e) => handleProposalFieldChange('description', e.target.value)}
+                          placeholder="Descrição resumida do serviço contratado"
+                          rows={3}
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label htmlFor="prop-planValue">Valor do Plano</Label>
+                        <Input
+                          id="prop-planValue"
+                          value={proposalForm.planValue}
+                          onChange={(e) => handleProposalFieldChange('planValue', e.target.value)}
+                          placeholder="Ex: R$ 1.200,00/mês"
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label htmlFor="prop-observations">Observações importantes</Label>
+                        <Textarea
+                          id="prop-observations"
+                          value={proposalForm.observations}
+                          onChange={(e) => handleProposalFieldChange('observations', e.target.value)}
+                          placeholder="Observações importantes"
+                          rows={3}
+                        />
+                      </div>
+
+                      <Button
+                        onClick={handleGenerateProposal}
+                        disabled={generatingProposal}
+                        className="w-full"
+                      >
+                        {generatingProposal ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <FileText className="w-4 h-4 mr-2" />
+                        )}
+                        {(proposalUrl || lead.proposalUrl) ? 'Regerar Proposta' : 'Gerar Proposta'}
+                      </Button>
+                    </div>
+
+                    {(lead.proposalUrl || proposalUrl) && (
+                      <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700">
                         <div className="p-3 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200 dark:border-green-800">
                           <p className="text-sm font-medium text-green-900 dark:text-green-300 flex items-center gap-2">
                             <CheckCircle className="w-4 h-4" />
                             Proposta gerada com sucesso!
                           </p>
-                          <Button
-                            variant="link"
-                            size="sm"
-                            onClick={() => window.open(proposalUrl || lead.proposal_url, '_blank')}
-                            className="p-0 h-auto text-green-700 dark:text-green-400"
-                          >
-                            <Eye className="w-4 h-4 mr-1" />
-                            Visualizar proposta
-                          </Button>
+                          <div className="flex flex-wrap items-center gap-3 mt-1">
+                            <Button
+                              variant="link"
+                              size="sm"
+                              onClick={() => window.open(proposalUrl || lead.proposalUrl, '_blank')}
+                              className="p-0 h-auto text-green-700 dark:text-green-400"
+                            >
+                              <Eye className="w-4 h-4 mr-1" />
+                              Visualizar proposta
+                            </Button>
+                            <Button
+                              variant="link"
+                              size="sm"
+                              onClick={handleDownloadProposal}
+                              className="p-0 h-auto text-green-700 dark:text-green-400"
+                            >
+                              <Download className="w-4 h-4 mr-1" />
+                              Baixar PDF
+                            </Button>
+                          </div>
                         </div>
 
                         <div className="flex gap-3">

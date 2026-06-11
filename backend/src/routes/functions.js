@@ -11,7 +11,7 @@ import { checkAllSLAWarnings, checkSLABreach, recordFirstResponse, recordStatusC
 import { runAllAutomations, runAutomationsForLead } from '../services/leadAutomation.js';
 import { checkAndExecuteLeadUpsellAutomations, checkAndExecuteUpsellChannelAutomations, executeLeadCreatedAutomation, executeUpsellChannelLeadCreatedAutomation } from '../services/automationService.js';
 import { notifyLeadAssigned } from '../services/notificationService.js';
-import { generateProposalPDF } from '../services/pdfService.js';
+import { generateProposalPDF, generateManualProposalPDF } from '../services/pdfService.js';
 import { sendWhatsAppMessage, sendDocument, sendTextMessage } from '../services/whatsappService.js';
 import { v4 as uuidv4 } from 'uuid';
 import ExcelJS from 'exceljs';
@@ -3310,18 +3310,27 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
 
 router.post('/generate-proposal', authMiddleware, async (req, res) => {
   try {
-    const { template_id, lead_id, lead_type } = req.body;
-    
-    if (!template_id || !lead_id) {
+    const { template_id, lead_id, lead_type, proposal_data } = req.body;
+
+    // Manual proposal flow (Vendas PJ): seller fills the form, no template
+    const isManualPj = lead_type === 'pj' && proposal_data && typeof proposal_data === 'object';
+
+    if (!isManualPj && (!template_id || !lead_id)) {
       return res.status(400).json({ success: false, error: 'Template ID e Lead ID são obrigatórios' });
     }
-    
-    const templateResult = await query('SELECT * FROM proposal_templates WHERE id = $1', [template_id]);
-    if (templateResult.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Template não encontrado' });
+    if (isManualPj && !lead_id) {
+      return res.status(400).json({ success: false, error: 'Lead ID é obrigatório' });
     }
-    const template = templateResult.rows[0];
-    
+
+    let template = null;
+    if (!isManualPj) {
+      const templateResult = await query('SELECT * FROM proposal_templates WHERE id = $1', [template_id]);
+      if (templateResult.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Template não encontrado' });
+      }
+      template = templateResult.rows[0];
+    }
+
     const tableName = lead_type === 'pj' ? 'leads_pj' : lead_type === 'referral' ? 'referrals' : lead_type === 'upsell' ? 'leads_upsell' : 'leads';
     const leadResult = await query(`SELECT * FROM ${tableName} WHERE id = $1`, [lead_id]);
     if (leadResult.rows.length === 0) {
@@ -3338,12 +3347,21 @@ router.post('/generate-proposal', authMiddleware, async (req, res) => {
       }
     }
     
-    const pdfResult = await generateProposalPDF(template, lead, agent);
-    
-    await query(
-      `UPDATE ${tableName} SET proposal_url = $1 WHERE id = $2`,
-      [pdfResult.publicUrl, lead_id]
-    );
+    const pdfResult = isManualPj
+      ? await generateManualProposalPDF(proposal_data, lead, agent)
+      : await generateProposalPDF(template, lead, agent);
+
+    if (isManualPj) {
+      await query(
+        `UPDATE leads_pj SET proposal_url = $1, proposal_data = $2 WHERE id = $3`,
+        [pdfResult.publicUrl, JSON.stringify(proposal_data), lead_id]
+      );
+    } else {
+      await query(
+        `UPDATE ${tableName} SET proposal_url = $1 WHERE id = $2`,
+        [pdfResult.publicUrl, lead_id]
+      );
+    }
 
     if (lead_type === 'upsell') {
       // Resolve the creating agent from the logged-in user
