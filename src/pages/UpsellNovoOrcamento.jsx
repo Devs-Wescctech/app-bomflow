@@ -780,6 +780,18 @@ export default function UpsellNovoOrcamento() {
       if (semProduto) {
         toast.error(`Selecione o produto/plano de "${semProduto.usua_nome_completo.trim()}"`); return false;
       }
+      // Beneficiário comum (não condutor/veículo e não pet) com nome preenchido precisa de CPF válido.
+      if (!isBomAuto) {
+        const benefSemCpf = beneficiarios.find(
+          (b) =>
+            b.usua_nome_completo?.trim() &&
+            !(isBomPet || petProdutoIds.includes(String(b.usua_produtos))) &&
+            !isValidCpf(b.usua_cpf || "")
+        );
+        if (benefSemCpf) {
+          toast.error(`Informe um CPF válido para "${benefSemCpf.usua_nome_completo.trim()}"`); return false;
+        }
+      }
       // Todo produto precisa de ao menos uma pessoa (titular ou beneficiário), senão o fechamento falha no ERP.
       const vazio = produtosResumo.find((p) => p.quantidade < 1);
       if (vazio) {
@@ -1738,7 +1750,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, s
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label className="text-xs">CPF</Label>
+                      <Label className="text-xs">CPF{!isBomAuto && <span className="text-red-500"> *</span>}</Label>
                       <Input
                         value={b.usua_cpf}
                         onChange={(e) => setBenef(i, "usua_cpf", formatCpf(e.target.value))}
