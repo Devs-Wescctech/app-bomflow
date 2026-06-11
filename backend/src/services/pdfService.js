@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PROPOSALS_DIR = path.join(__dirname, '../../public/proposals');
-const LOGO_PATH = path.join(__dirname, '../../public/logo-bomflow.png');
+const LOGO_PATH = path.join(__dirname, '../../public/logo-bompastor.png');
 
 if (!fs.existsSync(PROPOSALS_DIR)) {
   fs.mkdirSync(PROPOSALS_DIR, { recursive: true });
@@ -431,37 +431,22 @@ export async function generateManualProposalPDF(formData, lead, agent) {
       doc.rect(0, 0, pageWidth, topBarH).fill(primaryColor);
 
       // ==================== HEADER ====================
-      let currentY = topBarH + 22;
+      let currentY = topBarH + 20;
 
-      const logoColor = '#1a3560';
-      const logoX = margin;
-      const logoY = currentY;
-
-      // Ícone "BP" — dois retângulos arredondados simulando o monograma
-      const iconSize = 34;
-      // D esquerdo (abertura para direita)
-      doc.save();
-      doc.roundedRect(logoX, logoY + 2, iconSize * 0.55, iconSize, 4).fill(logoColor);
-      doc.circle(logoX + iconSize * 0.55, logoY + iconSize / 2 + 2, iconSize * 0.38).fill('#ffffff');
-      doc.restore();
-      // D direito (menor, deslocado para direita e baixo)
-      doc.save();
-      doc.roundedRect(logoX + iconSize * 0.28, logoY + iconSize * 0.42, iconSize * 0.55, iconSize * 0.58, 3).fill(logoColor);
-      doc.circle(logoX + iconSize * 0.28 + iconSize * 0.55, logoY + iconSize * 0.42 + (iconSize * 0.58) / 2, iconSize * 0.25).fill('#ffffff');
-      doc.restore();
-
-      // Texto "GRUPO BOM PASTOR"
-      const textLogoX = logoX + iconSize + 8;
-      doc.fillColor(logoColor).fontSize(7).font('Helvetica').text('GRUPO', textLogoX, logoY + 3);
-      doc.fillColor(logoColor).fontSize(14).font('Helvetica-Bold').text('BOM', textLogoX, logoY + 11);
-      doc.fillColor(logoColor).fontSize(14).font('Helvetica-Bold').text('PASTOR', textLogoX, logoY + 24);
+      // Logo: imagem real (212×103 original → exibida com height=50)
+      const logoHeight = 50;
+      if (fs.existsSync(LOGO_PATH)) {
+        try {
+          doc.image(LOGO_PATH, margin, currentY, { height: logoHeight });
+        } catch (e) { /* ignore */ }
+      }
 
       doc.fillColor(primaryColor)
          .fontSize(22)
          .font('Helvetica-Bold')
-         .text('PROPOSTA COMERCIAL', margin, currentY + 8, { width: contentWidth, align: 'right' });
+         .text('PROPOSTA COMERCIAL', margin, currentY + (logoHeight / 2) - 11, { width: contentWidth, align: 'right' });
 
-      currentY += 58;
+      currentY += logoHeight + 14;
 
       doc.moveTo(margin, currentY)
          .lineTo(margin + contentWidth, currentY)
