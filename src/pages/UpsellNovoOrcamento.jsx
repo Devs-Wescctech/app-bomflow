@@ -167,6 +167,16 @@ function isDependenteProduto(prod) {
   return /DEPENDENTE/i.test(desc) && Math.abs(preco - 0.01) < 0.005;
 }
 
+// Produtos "DEPENDENTE" com preço real (> 0,01) são serviços de valor agregado: continuam sendo itens
+// do TITULAR (aparecem e são cobrados no passo Plano), mas exigem o cadastro do dependente como
+// beneficiário vinculado ao próprio item — o titular NÃO entra na quantidade desse item. Modelo
+// confirmado no pedido ERP 68923 (item "ESSENCIAL DEPENDENTES - 0 A 50 ANOS" vinculado só ao dependente).
+function isDependentePagoProduto(prod) {
+  const desc = prod?.descricao || prod?.titulo_contrato || "";
+  const preco = Number(prod?.preco_informado);
+  return /DEPENDENTE/i.test(desc) && Number.isFinite(preco) && preco > 0.015;
+}
+
 // Um produto é "de beneficiário" (não do titular) se for pet, condutor, veículo ou vaga de dependente.
 function isProdutoBeneficiario(prod) {
   return isPetProduto(prod) || isCondutorProduto(prod) || isVeiculoProduto(prod) || isDependenteProduto(prod);
@@ -382,6 +392,20 @@ export default function UpsellNovoOrcamento() {
     () => produtosFiltrados.filter((p) => isProdutoBeneficiario(p)),
     [produtosFiltrados]
   );
+  // Produtos "DEPENDENTE" pagos (> 0,01) que o titular selecionou no Plano. Continuam sendo itens do
+  // titular (cobrados no Plano), mas precisam aparecer como opção no card de beneficiário para cadastrar
+  // o dependente vinculado ao item. Só os selecionados entram (linkar dependente só faz sentido no pedido).
+  const produtosDependentePago = useMemo(
+    () => produtosFiltrados.filter((p) => isDependentePagoProduto(p)),
+    [produtosFiltrados]
+  );
+  const dependentePagoSelecionados = useMemo(
+    () =>
+      produtosDependentePago.filter((p) =>
+        produtosSel.some((ps) => String(ps.produto_id) === String(p.id))
+      ),
+    [produtosDependentePago, produtosSel]
+  );
 
   // BOM AUTO: produtos específicos de condutor e veículo, e flag do modo.
   const produtoCondutor = useMemo(
@@ -443,14 +467,16 @@ export default function UpsellNovoOrcamento() {
     [produtosResumo]
   );
 
-  // Opções de produto para cada beneficiário (Step 5): produtos de beneficiário (pet/condutor/veículo).
+  // Opções de produto para cada beneficiário (Step 5): produtos de beneficiário (pet/condutor/veículo/
+  // vaga 0,01) + produtos de dependente pago (> 0,01) selecionados no Plano. Não há sobreposição entre
+  // as duas listas (dependente pago não é "produto de beneficiário"), então não há duplicatas.
   const opcoesBenefProduto = useMemo(
     () =>
-      produtosBeneficiario.map((p) => ({
+      [...produtosBeneficiario, ...dependentePagoSelecionados].map((p) => ({
         produto_id: String(p.id),
         descricao: p.descricao || p.titulo_contrato || `Produto ${p.id}`,
       })),
-    [produtosBeneficiario]
+    [produtosBeneficiario, dependentePagoSelecionados]
   );
 
   // BOM PET: ids dos produtos de pet — quando um beneficiário aponta para um deles,
@@ -536,6 +562,26 @@ export default function UpsellNovoOrcamento() {
     });
   }, [isBomPet, petBenefProdutoId, petProdutoIds]);
 
+  // DEPENDENTE PAGO: para cada produto de dependente (> 0,01) selecionado no Plano, garante que exista
+  // um card de beneficiário já vinculado a ele, para o vendedor cadastrar o dependente (o item é
+  // vinculado ao dependente, não ao titular). Roda uma vez por conjunto de produtos de dependente; não
+  // recria cards que o vendedor removeu (o ref guarda o conjunto) e não roda em BOM AUTO.
+  const depPagoSetupRef = useRef("");
+  useEffect(() => {
+    if (isBomAuto) return;
+    const ids = dependentePagoSelecionados.map((p) => String(p.id));
+    const key = ids.slice().sort().join("|");
+    if (depPagoSetupRef.current === key) return;
+    depPagoSetupRef.current = key;
+    if (ids.length === 0) return;
+    const existentes = new Set(beneficiarios.map((b) => String(b.usua_produtos || "")));
+    const faltantes = ids.filter((id) => !existentes.has(id));
+    if (faltantes.length === 0) return;
+    const novos = faltantes.map((id) => ({ ...EMPTY_BENEFICIARIO, usua_produtos: id }));
+    setBeneficiarios((bs) => [...bs, ...novos]);
+    setOpenBenef((o) => [...o, ...novos.map(() => true)]);
+  }, [isBomAuto, dependentePagoSelecionados, beneficiarios]);
+
   const toggleProduto = (prod) => {
     setProdutosSel((list) => {
       const exists = list.some((p) => String(p.produto_id) === String(prod.id));
@@ -551,7 +597,9 @@ export default function UpsellNovoOrcamento() {
         {
           produto_id: String(prod.id),
           preco: prod.preco_informado !== undefined ? String(prod.preco_informado) : "",
-          incluir_titular: true,
+          // Dependente pago (> 0,01): no ERP o item é vinculado só ao dependente, não ao titular —
+          // por isso "incluir titular" nasce desligado (a quantidade vira o nº de dependentes).
+          incluir_titular: !isDependentePagoProduto(prod),
         },
       ];
     });
@@ -1377,6 +1425,8 @@ function Step3({ form, set, setTituloContrato, produtosFiltrados, produtosSel, p
           <Label>Itens selecionados</Label>
           {produtosSel.map((ps) => {
             const r = resumoById(ps.produto_id) || { descricao: ps.produto_id, quantidade: 0, total: 0 };
+            const prodOriginal = produtosFiltrados.find((p) => String(p.id) === String(ps.produto_id));
+            const isDepPago = prodOriginal ? isDependentePagoProduto(prodOriginal) : false;
             return (
               <Card key={ps.produto_id} className="border-violet-200">
                 <CardContent className="p-3 space-y-2">
@@ -1403,15 +1453,23 @@ function Step3({ form, set, setTituloContrato, produtosFiltrados, produtosSel, p
                         className="h-9"
                       />
                     </div>
-                    <label className="flex items-center gap-2 pb-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="w-4 h-4 accent-violet-600"
-                        checked={!!ps.incluir_titular}
-                        onChange={(e) => setProdutoField(ps.produto_id, "incluir_titular", e.target.checked)}
-                      />
-                      <span className="text-xs text-slate-600">Incluir titular neste item</span>
-                    </label>
+                    {isDepPago ? (
+                      <div className="flex items-center pb-2">
+                        <span className="text-xs text-slate-500">
+                          Item vinculado ao(s) dependente(s) — cadastre-os na etapa de Beneficiários.
+                        </span>
+                      </div>
+                    ) : (
+                      <label className="flex items-center gap-2 pb-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 accent-violet-600"
+                          checked={!!ps.incluir_titular}
+                          onChange={(e) => setProdutoField(ps.produto_id, "incluir_titular", e.target.checked)}
+                        />
+                        <span className="text-xs text-slate-600">Incluir titular neste item</span>
+                      </label>
+                    )}
                   </div>
                   <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-slate-100">
                     <span>Qtd. (pessoas): <strong className="text-slate-700">{r.quantidade}</strong></span>

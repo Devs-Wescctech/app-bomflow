@@ -52,3 +52,24 @@ os contratos dedicados `BOM PASTOR - BOM AUTO` e `BOM PASTOR - BOM PET` não con
 produto DEPENDENTE 0,01, então ficam intocados; os "demais contratos" (DIGITAL, COMBO,
 ESSENCIAL, etc.) são exatamente onde a regra deve valer. NÃO adicionar guard por modo —
 bloquearia contratos legítimos que compartilham produtos de condutor/veículo/pet.
+
+## Produtos DEPENDENTE pago (> 0,01) = item do titular MAS com beneficiário
+Produtos DEPENDENTE com preço real (faixas etárias) continuam sendo **itens do titular
+cobrados no passo "Plano"** (não viram produto de beneficiário), porém agora também
+**abrem card de beneficiário** para cadastrar o(s) dependente(s) vinculado(s).
+`isDependentePagoProduto` = "DEPENDENTE" no nome + `preco_informado` finito > 0,015.
+
+**Why:** no ERP o item de dependente pago é vinculado **só ao(s) dependente(s)**, não ao
+titular, e a **quantidade do item = nº de dependentes** (confirmado no pedido ERP real).
+Sem cadastrar o beneficiário, o item ficava sem pessoa vinculada e o fechamento falha
+(ver `erp-fechamento-pessoas-por-item.md`).
+
+**How to apply:** dependente pago entra em `opcoesBenefProduto`
+(`[...produtosBeneficiario, ...dependentePagoSelecionados]`) — só os SELECIONADOS no Plano.
+`toggleProduto` nasce com `incluir_titular:false` para esses produtos (quantidade =
+dependentes). Um `useEffect` (`depPagoSetupRef`, key = conjunto de ids selecionados)
+auto-cria um card de beneficiário aberto por produto faltante; NÃO recria cards removidos
+pelo vendedor enquanto o conjunto não mudar; pula `isBomAuto`. No passo Plano o checkbox
+"Incluir titular" é escondido para esses itens (substituído por nota). Sem cobrança dupla:
+o produto fica só em `produtosSel`, nunca em `produtosBeneficiario`/`benefItens`; o payload
+manda beneficiários por item via `usua_produtos === produto_id`.
