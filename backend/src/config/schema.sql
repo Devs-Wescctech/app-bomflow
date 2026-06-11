@@ -1638,6 +1638,34 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_perspectivas_perspectiva
   ON erp_perspectivas_negocios (perspectiva)
   WHERE perspectiva IS NOT NULL;
 
+-- Remove duplicatas CRM por par indicador/indicado (mesmo cpf_indicador + cpf_indicado),
+-- mantendo apenas um registro por par antes de criar o índice único parcial.
+-- Prioridade de qual manter: 1) já vinculado a um lote de pagamento, 2) já pago,
+-- 3) o mais antigo (menor id) — para não quebrar histórico de lotes/pagamentos.
+WITH ranked_crm_dup AS (
+  SELECT id,
+    ROW_NUMBER() OVER (
+      PARTITION BY cpf_indicador, cpf_indicado
+      ORDER BY
+        (lote_pagamento_id IS NOT NULL) DESC,
+        (status_pagamento = 'pago') DESC,
+        id ASC
+    ) AS rn
+  FROM erp_perspectivas_negocios
+  WHERE origem = 'crm'
+    AND cpf_indicador IS NOT NULL
+    AND cpf_indicado IS NOT NULL
+)
+DELETE FROM erp_perspectivas_negocios
+WHERE id IN (SELECT id FROM ranked_crm_dup WHERE rn > 1);
+
+-- Garante unicidade por par indicador/indicado em registros CRM com ambos os CPFs
+-- preenchidos, prevenindo recorrência mesmo em condições de corrida. Parcial em
+-- origem='crm' para não conflitar com registros origem='erp' (deduplicados por perspectiva).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_perspectivas_crm_par
+  ON erp_perspectivas_negocios (cpf_indicador, cpf_indicado)
+  WHERE origem = 'crm' AND cpf_indicador IS NOT NULL AND cpf_indicado IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS commission_perspectiva_control (
     id                            SERIAL PRIMARY KEY,
     perspectiva_id                INTEGER UNIQUE,

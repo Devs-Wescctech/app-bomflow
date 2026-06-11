@@ -1043,7 +1043,9 @@ export async function syncPerspectivaNegociosFromERP() {
   // Parte 2: Backfill CRM — sempre executa, independente do resultado do ERP
   try {
     // INSERT: leads fechado_ganho que ainda não têm linha em perspectivas
-    // Deduplicação por cpf_indicado (não nome_indicado) para evitar falsos negativos por variação de nome
+    // Deduplicação pelo par cpf_indicador + cpf_indicado (não nome_indicado) para
+    // evitar falsos negativos por variação de nome e manter a regra de unicidade
+    // consistente com o INSERT em tempo real (PUT /referrals/:id).
     const backfillResult = await query(`
       INSERT INTO erp_perspectivas_negocios
         (nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_perspectiva, origem, sincronizado_em)
@@ -1062,7 +1064,8 @@ export async function syncPerspectivaNegociosFromERP() {
         AND r.referred_cpf IS NOT NULL AND r.referred_cpf != ''
         AND NOT EXISTS (
           SELECT 1 FROM erp_perspectivas_negocios p
-          WHERE p.cpf_indicado IS NOT DISTINCT FROM r.referred_cpf
+          WHERE p.cpf_indicador IS NOT DISTINCT FROM r.referrer_cpf
+            AND p.cpf_indicado  IS NOT DISTINCT FROM r.referred_cpf
         )
     `);
     if (backfillResult.rowCount > 0) {
@@ -1127,7 +1130,8 @@ export async function checkValidacaoPagamento() {
           AND r.referred_cpf IS NOT NULL AND r.referred_cpf != ''
           AND NOT EXISTS (
             SELECT 1 FROM erp_perspectivas_negocios p
-            WHERE p.cpf_indicado IS NOT DISTINCT FROM r.referred_cpf
+            WHERE p.cpf_indicador IS NOT DISTINCT FROM r.referrer_cpf
+              AND p.cpf_indicado  IS NOT DISTINCT FROM r.referred_cpf
           )
       `);
       if (backfill.rowCount > 0) {

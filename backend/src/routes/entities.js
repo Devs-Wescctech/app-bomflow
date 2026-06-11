@@ -1756,10 +1756,23 @@ router.put('/referrals/:id', authMiddleware, async (req, res) => {
           const agentResult = await query('SELECT name FROM agents WHERE id = $1', [agentId]);
           if (agentResult.rows.length > 0) nomeVendedor = agentResult.rows[0].name;
         }
-        await query(
+        // Deduplicação por par indicador/indicado: não cria uma segunda linha de
+        // comissão quando já existe um registro (qualquer origem) com o mesmo
+        // cpf_indicador e cpf_indicado. A checagem é por par independente da origem,
+        // alinhada ao backfill (automationService) e ao alerta sem-registro-erp.
+        // Quando o cpf_indicado ainda está nulo no fechamento ($4 IS NULL), a checagem
+        // não bloqueia o insert — o preenchimento posterior do CPF é tratado pelo
+        // bloco de UPDATE de cpf_indicado abaixo.
+        const perspInsert = await query(
           `INSERT INTO erp_perspectivas_negocios
             (nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_perspectiva, origem, sincronizado_em)
-           VALUES ($1,$2,$3,$4,$5,'NEGOCIO FECHADO','crm',NOW())`,
+           SELECT $1,$2,$3,$4,$5,'NEGOCIO FECHADO','crm',NOW()
+           WHERE NOT EXISTS (
+             SELECT 1 FROM erp_perspectivas_negocios p
+             WHERE $4 IS NOT NULL
+               AND p.cpf_indicador IS NOT DISTINCT FROM $2
+               AND p.cpf_indicado  IS NOT DISTINCT FROM $4
+           )`,
           [
             referral.referrer_name || null,
             referral.referrer_cpf  || null,
@@ -1768,7 +1781,11 @@ router.put('/referrals/:id', authMiddleware, async (req, res) => {
             nomeVendedor
           ]
         );
-        console.log(`[PerspectivaNegócios] Lead convertido registrado: ${referral.referred_name}`);
+        if (perspInsert.rowCount > 0) {
+          console.log(`[PerspectivaNegócios] Lead convertido registrado: ${referral.referred_name}`);
+        } else {
+          console.log(`[PerspectivaNegócios] Lead convertido ignorado (par indicador/indicado já registrado): ${referral.referred_name}`);
+        }
       } catch (perspErr) {
         console.error('[PerspectivaNegócios] Erro ao registrar lead convertido:', perspErr.message);
       }

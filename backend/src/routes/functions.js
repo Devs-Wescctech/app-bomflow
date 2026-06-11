@@ -6517,7 +6517,8 @@ router.get('/commission-perspectiva/sem-registro-erp', authMiddleware, loadAgent
         AND r.referred_cpf IS NOT NULL AND r.referred_cpf != ''
         AND NOT EXISTS (
           SELECT 1 FROM erp_perspectivas_negocios p
-          WHERE p.cpf_indicado IS NOT DISTINCT FROM r.referred_cpf
+          WHERE p.cpf_indicador IS NOT DISTINCT FROM r.referrer_cpf
+            AND p.cpf_indicado  IS NOT DISTINCT FROM r.referred_cpf
         )
       ORDER BY r.updated_at DESC
     `);
