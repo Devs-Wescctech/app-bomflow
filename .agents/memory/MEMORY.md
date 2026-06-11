@@ -14,4 +14,4 @@
 - [ERP contatos/endereço orçamento](erp-contatos-endereco-orcamento.md) — REST OrcamentoSgprcUsuario grava telefone como comercial(573) e ignora endereço/celular/email; corrigir via INSERT em enderecos (tipos 565/566/577).
 - [ERP pedido CPF único](erp-pedido-cpf-unico.md) — ERP bloqueia mesmo CPF em pessoas diferentes no pedido (rollback total); dedup beneficiários por CPF reaproveitando a pessoa.
 - [ERP data de admissão](erp-data-admissao-fechamento.md) — Fechamento (M→I) exige documento de admissão (documentos_pessoas tipo 2657422) do cliente_id; cliente novo precisa inserir data de hoje.
-- [ERP itens_pedidos tipo_produto](erp-itens-pedidos-tipo-produto.md) — itens_pedidos.tipo_produto_id NULL estoura NPE no Fechamento; causa separada do NPE de beneficiários.
+- [ERP Fechamento apresentarValoresOrcamento NPE](erp-itens-pedidos-tipo-produto.md) — itens_pedidos.tipo_produto_id/descricao E pedidos.valor_desconto NULL estouram NPE; causa separada do NPE de beneficiários.

@@ -738,6 +738,11 @@ export async function applyFechamentoEPagamento(pedidoInternalId, opts = {}) {
     console.log(`[erpDbService] modos_pagamentos OK id=${pedidoInternalId} plano=${planoId} qtdParcelas=${qtdParcelas}`);
 
     // 2. Fechamento (M → I) + campos derivados/fiscais que o ERP preenche nessa etapa.
+    //    valor_desconto e data_emissao: a tela de Fechamento (apresentarValoresOrcamento)
+    //    desreferencia valor_desconto ao apresentar/calcular os valores; se ficar NULL
+    //    estoura NPE. Os orçamentos do ERP têm valor_desconto sempre preenchido (0.00 quando
+    //    não há desconto) e data_emissao preenchida. Garantimos ambos no fechamento via COALESCE
+    //    (não sobrescreve um desconto/data já existentes).
     await client.query(
       `UPDATE pedidos SET
          situacao = 'I',
@@ -746,6 +751,8 @@ export async function applyFechamentoEPagamento(pedidoInternalId, opts = {}) {
          numero_parcelas = COALESCE($3, numero_parcelas),
          valor_total_pedido = $4::numeric,
          valor_saldo = $4::double precision,
+         valor_desconto = COALESCE(valor_desconto, 0),
+         data_emissao = COALESCE(data_emissao, CURRENT_DATE),
          data_emissao_pedido_analise = CURRENT_DATE,
          valor_ipi = 0,
          outros_valores = 0,
