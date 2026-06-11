@@ -137,8 +137,8 @@ const STEPS = [
   { id: 1, label: "Contratante", icon: User },
   { id: 2, label: "Endereço", icon: MapPin },
   { id: 3, label: "Plano", icon: Package },
-  { id: 4, label: "Pagamento", icon: CreditCard },
-  { id: 5, label: "Beneficiários", icon: Users },
+  { id: 4, label: "Beneficiários", icon: Users },
+  { id: 5, label: "Pagamento", icon: CreditCard },
   { id: 6, label: "Revisão", icon: ClipboardCheck },
 ];
 
@@ -736,14 +736,14 @@ export default function UpsellNovoOrcamento() {
       const semPreco = produtosResumo.find((p) => !p.is_beneficiario && !(Number(p.preco) > 0));
       if (semPreco) { toast.error(`Informe um preço válido para "${semPreco.descricao}"`); return false; }
     }
-    if (step === 4) {
+    if (step === 5) {
       if (!form.plano_pagamento_id) { toast.error("Selecione o plano de pagamento"); return false; }
       const qtd = Number(form.quantidade_parcelas);
       if (!form.quantidade_parcelas || Number.isNaN(qtd) || qtd < 1) {
         toast.error("Informe uma quantidade de parcelas válida"); return false;
       }
     }
-    if (step === 5) {
+    if (step === 4) {
       // BOM AUTO: card do condutor exige nome; card do veículo exige modelo, cor, placa válida e ano (4 dígitos).
       if (isBomAuto) {
         const condId = produtoCondutor ? String(produtoCondutor.id) : "";
@@ -962,8 +962,7 @@ export default function UpsellNovoOrcamento() {
                   loadingProdutos={loadingProdutos}
                 />
               )}
-              {step === 4 && <Step4 form={form} set={set} planosPagamento={planosPagamento} loadingPlanos={loadingPlanos} planoSelecionado={planoSelecionado} />}
-              {step === 5 && (
+              {step === 4 && (
                 <Step5
                   beneficiarios={beneficiarios}
                   openBenef={openBenef}
@@ -981,6 +980,7 @@ export default function UpsellNovoOrcamento() {
                   petProdutoIds={petProdutoIds}
                 />
               )}
+              {step === 5 && <Step4 form={form} set={set} planosPagamento={planosPagamento} loadingPlanos={loadingPlanos} planoSelecionado={planoSelecionado} />}
               {step === 6 && (
                 <Step6
                   form={form}
