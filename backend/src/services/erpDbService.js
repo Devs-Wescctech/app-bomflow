@@ -168,6 +168,27 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
       const valorItem = precoNum * quantidade;
       valorTotal += valorItem;
 
+      // Descrição e tipo do produto. O Fechamento do ERP (apresentarValoresOrcamento) percorre
+      // os itens e desreferencia itens_pedidos.tipo_produto_id ao apresentar/calcular os valores;
+      // se ficar NULL a procedure estoura "Objeto nulo" (NPE) na tela de Fechamento. Os orçamentos
+      // criados pelo ERP gravam ambos os campos. Buscamos os valores do cadastro do produto e os
+      // gravamos no item para reproduzir o estado esperado pela tela.
+      const prodRes = await client.query(
+        `SELECT descricao, tipo_produto_id FROM produtos WHERE id = $1`,
+        [produtoId]
+      );
+      // Falha explícita: sem produto ou sem tipo_produto_id, o Fechamento do ERP voltaria a
+      // estourar NPE em apresentarValoresOrcamento. Melhor abortar a transação com erro claro
+      // do que gravar um item que trava a tela depois.
+      if (prodRes.rows.length === 0) {
+        throw new Error(`Item ${sequencia}: produto ${produtoId} não encontrado no cadastro do ERP (produtos).`);
+      }
+      if (prodRes.rows[0].tipo_produto_id == null) {
+        throw new Error(`Item ${sequencia}: produto ${produtoId} sem tipo_produto_id no cadastro do ERP; o Fechamento estouraria NPE.`);
+      }
+      const produtoDescricao = prodRes.rows[0].descricao ?? null;
+      const produtoTipoId = Number(prodRes.rows[0].tipo_produto_id);
+
       // INSERT itens_pedidos. Casts explícitos necessários: preco/preco_lista = double precision,
       // valor_unitario_item/valor_total_item = numeric; colunas de quantidade = numeric.
       const itemRes = await client.query(
@@ -178,7 +199,8 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
            quantidade_pendente, quantidade_temporaria, quantidade_temporaria_faturar,
            quantidade_carregar, quantidade_cancelada, quantidade_faturar,
            quantidade_faturada, qtde_cancelada_faturamento, comissao_item,
-           quantidade_acima_pedido, atualizar_consumo
+           quantidade_acima_pedido, atualizar_consumo,
+           descricao, tipo_produto_id
          ) VALUES (
            nextval('pk_sequence'), $1, $2::integer, 1, $3,
            $4::numeric, $5::double precision, 'P', $2::integer,
@@ -186,9 +208,10 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
            $4::numeric, $4::numeric, $4::numeric,
            $4::numeric, 0, $4::numeric,
            0, 0, 0,
-           0, 'S'
+           0, 'S',
+           $7, $8
          ) RETURNING id`,
-        [pedidoInternalId, sequencia, produtoId, quantidade, precoNum, valorItem]
+        [pedidoInternalId, sequencia, produtoId, quantidade, precoNum, valorItem, produtoDescricao, produtoTipoId]
       );
       const itemId = Number(itemRes.rows[0].id);
       itemIds.push(itemId);
