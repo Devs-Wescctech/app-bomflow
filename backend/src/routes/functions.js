@@ -3312,18 +3312,20 @@ router.post('/generate-proposal', authMiddleware, async (req, res) => {
   try {
     const { template_id, lead_id, lead_type, proposal_data } = req.body;
 
-    // Manual proposal flow (Vendas PJ): seller fills the form, no template
+    // Manual proposal flow (Vendas PJ or PF): seller fills the form, no template
     const isManualPj = lead_type === 'pj' && proposal_data && typeof proposal_data === 'object';
+    const isManualPf = lead_type === 'pf' && proposal_data && typeof proposal_data === 'object';
+    const isManual = isManualPj || isManualPf;
 
-    if (!isManualPj && (!template_id || !lead_id)) {
+    if (!isManual && (!template_id || !lead_id)) {
       return res.status(400).json({ success: false, error: 'Template ID e Lead ID são obrigatórios' });
     }
-    if (isManualPj && !lead_id) {
+    if (isManual && !lead_id) {
       return res.status(400).json({ success: false, error: 'Lead ID é obrigatório' });
     }
 
     let template = null;
-    if (!isManualPj) {
+    if (!isManual) {
       const templateResult = await query('SELECT * FROM proposal_templates WHERE id = $1', [template_id]);
       if (templateResult.rows.length === 0) {
         return res.status(404).json({ success: false, error: 'Template não encontrado' });
@@ -3347,13 +3349,18 @@ router.post('/generate-proposal', authMiddleware, async (req, res) => {
       }
     }
     
-    const pdfResult = isManualPj
+    const pdfResult = isManual
       ? await generateManualProposalPDF(proposal_data, lead, agent)
       : await generateProposalPDF(template, lead, agent);
 
     if (isManualPj) {
       await query(
         `UPDATE leads_pj SET proposal_url = $1, proposal_data = $2 WHERE id = $3`,
+        [pdfResult.publicUrl, JSON.stringify(proposal_data), lead_id]
+      );
+    } else if (isManualPf) {
+      await query(
+        `UPDATE leads SET proposal_url = $1, proposal_data = $2 WHERE id = $3`,
         [pdfResult.publicUrl, JSON.stringify(proposal_data), lead_id]
       );
     } else {
