@@ -6007,17 +6007,23 @@ router.get('/perspectivas-negocios', authMiddleware, async (req, res) => {
       params.push(sit_perspectiva);
     }
     if (cpf_indicador) {
-      where += ` AND cpf_indicador = $${idx++}`;
-      params.push(cpf_indicador);
+      where += ` AND regexp_replace(cpf_indicador, '[^0-9]', '', 'g') = $${idx++}`;
+      params.push(String(cpf_indicador).replace(/\D/g, ''));
     }
     if (nome_vendedor) {
       where += ` AND nome_vendedor ILIKE $${idx++}`;
       params.push(`%${nome_vendedor}%`);
     }
     if (search) {
-      where += ` AND (nome_indicado ILIKE $${idx} OR nome_indicador ILIKE $${idx} OR cpf_indicado ILIKE $${idx} OR cpf_indicador ILIKE $${idx})`;
+      const searchDigits = String(search).replace(/\D/g, '');
+      where += ` AND (nome_indicado ILIKE $${idx} OR nome_indicador ILIKE $${idx}`;
+      if (searchDigits) {
+        where += ` OR regexp_replace(COALESCE(cpf_indicado,''), '[^0-9]', '', 'g') LIKE $${idx + 1} OR regexp_replace(COALESCE(cpf_indicador,''), '[^0-9]', '', 'g') LIKE $${idx + 1}`;
+      }
+      where += `)`;
       params.push(`%${search}%`);
-      idx++;
+      if (searchDigits) params.push(`%${searchDigits}%`);
+      idx += searchDigits ? 2 : 1;
     }
 
     const { rows } = await query(
@@ -6179,7 +6185,7 @@ async function getPerspectivaReportData() {
   const controlResult = await query(
     `SELECT * FROM erp_perspectivas_negocios
      WHERE sit_titulo = 'Liquidado'
-       AND cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')
+       AND regexp_replace(cpf_indicador, '[^0-9]', '', 'g') NOT IN ('18470931830','32368440860')
        AND (status_pagamento IS NULL OR status_pagamento = 'elegivel')
      ORDER BY nome_indicador NULLS LAST, data_pagamento ASC`
   );
@@ -6390,7 +6396,7 @@ router.get('/commission-perspectiva/corretor-cpfs', authMiddleware, loadAgentMid
 router.get('/commission-perspectiva/control', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
   try {
     const { status, lote_id, data_inicio, data_fim } = req.query;
-    let where = `WHERE sit_titulo = 'Liquidado' AND cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')`;
+    let where = `WHERE sit_titulo = 'Liquidado' AND regexp_replace(cpf_indicador, '[^0-9]', '', 'g') NOT IN ('18470931830','32368440860')`;
     const params = [];
     let idx = 1;
     if (status && status !== 'all') {
@@ -6427,7 +6433,7 @@ router.get('/commission-perspectiva/summary', authMiddleware, loadAgentMiddlewar
     const byStatus = await query(
       `SELECT COALESCE(status_pagamento, 'elegivel') as status_pagamento, COUNT(*) as total
        FROM erp_perspectivas_negocios
-       WHERE sit_titulo = 'Liquidado' AND cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')
+       WHERE sit_titulo = 'Liquidado' AND regexp_replace(cpf_indicador, '[^0-9]', '', 'g') NOT IN ('18470931830','32368440860')
        GROUP BY COALESCE(status_pagamento, 'elegivel')`
     );
     const batchAbertos = await query("SELECT COUNT(*) as total FROM commission_perspectiva_batches WHERE status = 'aberto'");

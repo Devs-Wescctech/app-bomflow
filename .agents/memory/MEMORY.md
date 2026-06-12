@@ -15,3 +15,4 @@
 - [ERP pedido CPF único](erp-pedido-cpf-unico.md) — ERP bloqueia mesmo CPF em pessoas diferentes no pedido (rollback total); dedup beneficiários por CPF reaproveitando a pessoa.
 - [ERP data de admissão](erp-data-admissao-fechamento.md) — Fechamento (M→I) exige documento de admissão (documentos_pessoas tipo 2657422) do cliente_id; cliente novo precisa inserir data de hoje.
 - [ERP Fechamento apresentarValoresOrcamento NPE](erp-itens-pedidos-tipo-produto.md) — itens_pedidos.tipo_produto_id/descricao E pedidos.valor_desconto NULL estouram NPE; causa separada do NPE de beneficiários.
+- [Perspectivas CPF format](perspectivas-cpf-format.md) — CPF canônico = só dígitos; filtros de exclusão usam regexp_replace NOT IN (NULL preservado); nunca coalesce ('' incluiria CPFs NULL).
