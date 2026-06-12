@@ -607,20 +607,28 @@ export default function UpsellNovoOrcamento() {
   useEffect(() => {
     const depPagoAllIds = new Set(produtosDependentePago.map((p) => String(p.id)));
     const depPagoSelIds = new Set(dependentePagoSelecionados.map((p) => String(p.id)));
-    setBeneficiarios((prev) => {
-      const cardsDepPagoIds = new Set(
-        prev.filter((b) => depPagoAllIds.has(String(b.usua_produtos))).map((b) => String(b.usua_produtos))
-      );
-      const toAdd = [...depPagoSelIds].filter((id) => !cardsDepPagoIds.has(id));
-      const toRemove = new Set([...cardsDepPagoIds].filter((id) => !depPagoSelIds.has(id)));
-      if (toAdd.length === 0 && toRemove.size === 0) return prev;
-      let next = prev.filter((b) => !toRemove.has(String(b.usua_produtos)));
-      for (const id of toAdd) {
-        next = [...next, { ...EMPTY_BENEFICIARIO, usua_produtos: id }];
-      }
-      return next;
+    const cardsDepPagoIds = new Set(
+      beneficiarios.filter((b) => depPagoAllIds.has(String(b.usua_produtos))).map((b) => String(b.usua_produtos))
+    );
+    const toAdd = [...depPagoSelIds].filter((id) => !cardsDepPagoIds.has(id));
+    const toRemove = new Set([...cardsDepPagoIds].filter((id) => !depPagoSelIds.has(id)));
+    if (toAdd.length === 0 && toRemove.size === 0) return;
+    // índices que permanecem (mantém beneficiarios e openBenef alinhados por índice)
+    const keepIdx = [];
+    beneficiarios.forEach((b, idx) => {
+      if (!toRemove.has(String(b.usua_produtos))) keepIdx.push(idx);
     });
-  }, [dependentePagoSelecionados, produtosDependentePago]);
+    setBeneficiarios((prev) => {
+      const kept = keepIdx.filter((idx) => idx < prev.length).map((idx) => prev[idx]);
+      const novos = toAdd.map((id) => ({ ...EMPTY_BENEFICIARIO, usua_produtos: id }));
+      return [...kept, ...novos];
+    });
+    // novos cards de dependente pago nascem abertos para o vendedor preencher
+    setOpenBenef((o) => {
+      const kept = keepIdx.map((idx) => (o[idx] !== undefined ? o[idx] : true));
+      return [...kept, ...toAdd.map(() => true)];
+    });
+  }, [dependentePagoSelecionados, produtosDependentePago, beneficiarios]);
 
   // BOM PET: ao entrar no modo pet (ou trocar o produto de pet do contrato/plano), atribui o produto
   // de pet aos cards de beneficiário que ainda não apontam para um produto de pet. Assim os campos do
@@ -644,26 +652,6 @@ export default function UpsellNovoOrcamento() {
       return changed ? next : bs;
     });
   }, [isBomPet, petBenefProdutoId, petProdutoIds]);
-
-  // DEPENDENTE PAGO: para cada produto de dependente (> 0,01) selecionado no Plano, garante que exista
-  // um card de beneficiário já vinculado a ele, para o vendedor cadastrar o dependente (o item é
-  // vinculado ao dependente, não ao titular). Roda uma vez por conjunto de produtos de dependente; não
-  // recria cards que o vendedor removeu (o ref guarda o conjunto) e não roda em BOM AUTO.
-  const depPagoSetupRef = useRef("");
-  useEffect(() => {
-    if (isBomAuto) return;
-    const ids = dependentePagoSelecionados.map((p) => String(p.id));
-    const key = ids.slice().sort().join("|");
-    if (depPagoSetupRef.current === key) return;
-    depPagoSetupRef.current = key;
-    if (ids.length === 0) return;
-    const existentes = new Set(beneficiarios.map((b) => String(b.usua_produtos || "")));
-    const faltantes = ids.filter((id) => !existentes.has(id));
-    if (faltantes.length === 0) return;
-    const novos = faltantes.map((id) => ({ ...EMPTY_BENEFICIARIO, usua_produtos: id }));
-    setBeneficiarios((bs) => [...bs, ...novos]);
-    setOpenBenef((o) => [...o, ...novos.map(() => true)]);
-  }, [isBomAuto, dependentePagoSelecionados, beneficiarios]);
 
   const toggleProduto = (prod) => {
     setProdutosSel((list) => {
@@ -1041,7 +1029,12 @@ export default function UpsellNovoOrcamento() {
     );
   };
 
-  const toggleBenef = (i) => setOpenBenef((o) => o.map((v, idx) => idx === i ? !v : v));
+  const toggleBenef = (i) => setOpenBenef((o) => {
+    const next = [...o];
+    while (next.length <= i) next.push(true);
+    next[i] = !next[i];
+    return next;
+  });
 
   if (loadingUser) {
     return (

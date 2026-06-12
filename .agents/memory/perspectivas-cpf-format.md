@@ -6,7 +6,7 @@ description: Canonical CPF format in erp_perspectivas_negocios and the SQL NOT I
 # Perspectivas CPF: formato canônico = só dígitos
 
 CPF em `erp_perspectivas_negocios` (`cpf_indicador`/`cpf_indicado`) é canônico
-**apenas dígitos** (ex.: `90754549534`). A lógica de Perspectiva
+**apenas dígitos** (11 dígitos, sem pontuação). A lógica de Perspectiva
 (`runPerspectivaBatch`, `getPerspectivaReportData`) sempre agrupa/compara por
 CPF normalizado por dígitos, então o formato gravado não afeta agrupamento nem
 valores de comissão — só buscas/relatórios visuais.
@@ -36,7 +36,8 @@ Os filtros de comissão excluem 2 CPFs hardcoded. Em SQL, `NULL NOT IN (...)`
 correto/esperado atual.
 
 **How to apply:** ao mexer nesses filtros, use
-`regexp_replace(cpf_indicador,'[^0-9]','','g') NOT IN ('18470931830','32368440860')`.
+`regexp_replace(cpf_indicador,'[^0-9]','','g') NOT IN (<CPFs hardcoded no código>)`.
+Os 2 CPFs literais ficam no código-fonte dos filtros de comissão (não aqui).
 `regexp_replace(NULL)` retorna NULL, então a semântica de exclusão de NULL é
 preservada E o filtro fica format-agnostic. NÃO use `coalesce(...,'')` aqui —
 isso transformaria NULL em '' e passaria a INCLUIR as ~297 linhas de CPF NULL,
