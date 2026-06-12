@@ -493,16 +493,16 @@ export default function UpsellNovoOrcamento() {
     [produtosResumo]
   );
 
-  // Opções de produto para cada beneficiário (Step 5): produtos de beneficiário (pet/condutor/veículo/
-  // vaga 0,01) + produtos de dependente pago (> 0,01) selecionados no Plano. Não há sobreposição entre
-  // as duas listas (dependente pago não é "produto de beneficiário"), então não há duplicatas.
+  // Opções de produto para cada beneficiário (Step 5): apenas produtos de beneficiário
+  // (pet/condutor/veículo/vaga 0,01). Produtos de dependente pago (> 0,01) NÃO entram aqui —
+  // eles ganham cards automáticos com produto pré-definido e bloqueado (ver useEffect abaixo).
   const opcoesBenefProduto = useMemo(
     () =>
-      [...produtosBeneficiario, ...dependentePagoSelecionados].map((p) => ({
+      produtosBeneficiario.map((p) => ({
         produto_id: String(p.id),
         descricao: p.descricao || p.titulo_contrato || `Produto ${p.id}`,
       })),
-    [produtosBeneficiario, dependentePagoSelecionados]
+    [produtosBeneficiario]
   );
 
   // BOM PET: ids dos produtos de pet — quando um beneficiário aponta para um deles,
@@ -599,6 +599,28 @@ export default function UpsellNovoOrcamento() {
     isBomAuto, produtoVeiculo, produtoCondutor, beneficiarios,
     form.pessoa_contato, form.cpf, form.sexo, form.celular, form.telefone,
   ]);
+
+  // DEPENDENTE PAGO: cria/remove automaticamente 1 card de beneficiário por produto
+  // "DEPENDENTE" com preço real (> 0,01) selecionado no Plano. O card nasce com o produto
+  // pré-definido e bloqueado (limitado a 1 beneficiário); CPF, nome e data de nascimento
+  // são obrigatórios. Quando o produto é desmarcado no Plano, o card correspondente é removido.
+  useEffect(() => {
+    const depPagoAllIds = new Set(produtosDependentePago.map((p) => String(p.id)));
+    const depPagoSelIds = new Set(dependentePagoSelecionados.map((p) => String(p.id)));
+    setBeneficiarios((prev) => {
+      const cardsDepPagoIds = new Set(
+        prev.filter((b) => depPagoAllIds.has(String(b.usua_produtos))).map((b) => String(b.usua_produtos))
+      );
+      const toAdd = [...depPagoSelIds].filter((id) => !cardsDepPagoIds.has(id));
+      const toRemove = new Set([...cardsDepPagoIds].filter((id) => !depPagoSelIds.has(id)));
+      if (toAdd.length === 0 && toRemove.size === 0) return prev;
+      let next = prev.filter((b) => !toRemove.has(String(b.usua_produtos)));
+      for (const id of toAdd) {
+        next = [...next, { ...EMPTY_BENEFICIARIO, usua_produtos: id }];
+      }
+      return next;
+    });
+  }, [dependentePagoSelecionados, produtosDependentePago]);
 
   // BOM PET: ao entrar no modo pet (ou trocar o produto de pet do contrato/plano), atribui o produto
   // de pet aos cards de beneficiário que ainda não apontam para um produto de pet. Assim os campos do
@@ -886,9 +908,29 @@ export default function UpsellNovoOrcamento() {
       if (petIncompleto) {
         toast.error("Preencha todos os dados do pet (nome, tipo, raça, cor e porte)"); return false;
       }
+      // Beneficiários de dependente pago (produto DEPENDENTE > 0,01): CPF, nome completo e
+      // data de nascimento são obrigatórios, pois o card é criado automaticamente para o item.
+      for (const b of beneficiarios) {
+        if (!dependentePagoIds.includes(String(b.usua_produtos))) continue;
+        const prod = erpProdutos.find((p) => String(p.id) === String(b.usua_produtos));
+        const desc = prod?.descricao || "Dependente";
+        if (!b.usua_nome_completo?.trim()) {
+          toast.error(`Informe o nome completo do beneficiário para "${desc}"`); return false;
+        }
+        if (!isValidCpf(b.usua_cpf || "")) {
+          toast.error(`Informe um CPF válido para o beneficiário de "${desc}"`); return false;
+        }
+        if (!b.usua_data_nascimento) {
+          toast.error(`Informe a data de nascimento do beneficiário de "${desc}"`); return false;
+        }
+      }
       // Beneficiário com nome precisa estar atribuído a um produto válido (titular ou pet).
+      // Exclui cards de dependente pago — produto já pré-definido, não está em opcoesBenefProduto.
       const semProduto = beneficiarios.find(
-        (b) => b.usua_nome_completo?.trim() && !opcoesBenefProduto.some((p) => String(p.produto_id) === String(b.usua_produtos))
+        (b) =>
+          b.usua_nome_completo?.trim() &&
+          !dependentePagoIds.includes(String(b.usua_produtos)) &&
+          !opcoesBenefProduto.some((p) => String(p.produto_id) === String(b.usua_produtos))
       );
       if (semProduto) {
         toast.error(`Selecione o produto/plano de "${semProduto.usua_nome_completo.trim()}"`); return false;
@@ -1088,6 +1130,7 @@ export default function UpsellNovoOrcamento() {
                   openBenef={openBenef}
                   produtosResumo={produtosResumo}
                   opcoesBenefProduto={opcoesBenefProduto}
+                  allProdutos={erpProdutos}
                   setBenef={setBenef}
                   setVeiculoField={setVeiculoField}
                   setPetField={setPetField}
@@ -1640,9 +1683,15 @@ function Step4({ form, set, planosPagamento, loadingPlanos, planoSelecionado }) 
   );
 }
 
-function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, setBenef, setVeiculoField, setPetField, toggleBenef, addBeneficiario, removeBeneficiario, isBomAuto, isBomPet = false, produtoVeiculoId, produtoCondutorId = "", petProdutoIds = [], dependentePagoIds = [] }) {
-  const descProduto = (produtoId) =>
-    opcoesBenefProduto.find((p) => String(p.produto_id) === String(produtoId))?.descricao || "";
+function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, allProdutos = [], setBenef, setVeiculoField, setPetField, toggleBenef, addBeneficiario, removeBeneficiario, isBomAuto, isBomPet = false, produtoVeiculoId, produtoCondutorId = "", petProdutoIds = [], dependentePagoIds = [] }) {
+  const descProduto = (produtoId) => {
+    const fromOpcoes = opcoesBenefProduto.find((p) => String(p.produto_id) === String(produtoId))?.descricao;
+    if (fromOpcoes) return fromOpcoes;
+    // dep pago não está em opcoesBenefProduto — busca na lista completa
+    return allProdutos.find((p) => String(p.id) === String(produtoId))?.descricao || "";
+  };
+  // Card de dependente pago: produto DEPENDENTE com preço > 0,01 (card criado automaticamente).
+  const isDepPagoCard = (b) => dependentePagoIds.includes(String(b.usua_produtos));
   // Em modo BOM PET todo card é de pet; fora dele, só os cards atribuídos a um produto de pet.
   // EXCEÇÃO: cards de dependente pago (produto DEPENDENTE > 0,01) nunca são de pet, mesmo em modo
   // BOM PET — eles têm produto próprio e usam os campos comuns de beneficiário (CPF, nome, parentesco).
@@ -1690,11 +1739,12 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, s
                   </Badge>
                 )}
               </span>
-              {!isBomAuto && !isBomPet && i === 0 && <Badge className="bg-violet-100 text-violet-700 text-xs">Principal</Badge>}
+              {!isBomAuto && !isBomPet && i === 0 && !isDepPagoCard(b) && <Badge className="bg-violet-100 text-violet-700 text-xs">Principal</Badge>}
               {isCondutorCard(b) && <Badge className="bg-violet-100 text-violet-700 text-xs">Condutor</Badge>}
+              {isDepPagoCard(b) && <Badge className="bg-amber-100 text-amber-700 text-xs">Dependente</Badge>}
             </div>
             <div className="flex items-center gap-2">
-              {!isBomAuto && i > 0 && !isCondutorCard(b) && (
+              {!isBomAuto && i > 0 && !isCondutorCard(b) && !isDepPagoCard(b) && (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); removeBeneficiario(i); }}
@@ -1915,7 +1965,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, s
 
                   <div className="grid grid-cols-3 gap-3">
                     <div className="space-y-1">
-                      <Label className="text-xs">Data nascimento</Label>
+                      <Label className="text-xs">Data nascimento{isDepPagoCard(b) && <span className="text-red-500"> *</span>}</Label>
                       <Input
                         type="date"
                         value={b.usua_data_nascimento}
@@ -1963,7 +2013,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, s
 
               <div className="space-y-1">
                 <Label className="text-xs">Produto / plano <span className="text-red-500">*</span></Label>
-                {isBomAuto || (isBomPet && isPetCard(b)) || isCondutorCard(b) ? (
+                {isBomAuto || (isBomPet && isPetCard(b)) || isCondutorCard(b) || isDepPagoCard(b) ? (
                   <div className="h-9 flex items-center px-3 rounded-md border border-slate-200 bg-slate-50 text-sm text-slate-600">
                     {descProduto(b.usua_produtos) || "—"}
                   </div>
