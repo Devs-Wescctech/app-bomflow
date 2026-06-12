@@ -48,13 +48,18 @@ function formatCpf(cpf) {
 // retornado, que inclui `id` (PK numérica de pessoas, ~300M) e `pessoa` (código). O CPF
 // vai dentro de `documentos` (não como campo raiz, senão o ERP ignora). Mesma forma já
 // usada com sucesso na criação de agentes (Agents.jsx).
-async function criarPessoaErp(token, { nome_completo, cpf }) {
+async function criarPessoaErp(token, { nome_completo, cpf, data_nascimento }) {
   const body = {
     tipo_pessoa: 'Física',
     situacao: 'A',
     nome_completo: String(nome_completo || '').toUpperCase(),
     documentos: [{ tipo_documento: 'CPF', documento: formatCpf(cpf) }],
   };
+  // Data de nascimento no formato 'YYYY-MM-DD' (mesmo que a coluna pessoas.data_nascimento
+  // e o input type=date do frontend). Sem isso a Pessoa global fica com nascimento em branco.
+  if (data_nascimento) {
+    body.data_nascimento = String(data_nascimento).slice(0, 10);
+  }
   const r = await fetch(`${ERP_BASE}/Pessoas`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -84,7 +89,7 @@ async function resolveDependentePessoas(token, itens) {
       if (pessoaId) {
         console.log(`[ERP /orcamento] dependente CPF já cadastrado — reaproveitando Pessoa id=${pessoaId} (nome=${b.nome})`);
       } else {
-        const criada = await criarPessoaErp(token, { nome_completo: b.nome, cpf: cpfDigits });
+        const criada = await criarPessoaErp(token, { nome_completo: b.nome, cpf: cpfDigits, data_nascimento: b.dataNascimento });
         pessoaId = criada?.id ? Number(criada.id) : null;
         if (!pessoaId) {
           throw new Error(`Não foi possível cadastrar o dependente "${b.nome}" como Pessoa no ERP (resposta sem id).`);

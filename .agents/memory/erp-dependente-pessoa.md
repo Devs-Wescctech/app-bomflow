@@ -14,6 +14,10 @@ description: Como cadastrar beneficiários de produto DEPENDENTE como Pessoa glo
 - `POST /Pessoas` retorna `id` = a PK de `pessoas` (~300M), utilizável direto como
   `pessoa_id`. (Mesma forma usada na criação de agentes: `tipo_pessoa:'Física'`,
   `situacao:'A'`, `nome_completo`, CPF dentro de `documentos`.)
+- **`data_nascimento` É campo de RAIZ no POST /Pessoas** (formato `YYYY-MM-DD`) e
+  persiste (confirmado por echo + GET /Pessoas/{id}). Diferente do CPF, que precisa
+  ir dentro de `documentos`. Sem enviar `data_nascimento`, a Pessoa global nasce com
+  nascimento em branco mesmo que `pedidos_pessoas.data_nascimento` esteja preenchido.
 
 ## Decisão de negócio (acordada com o usuário)
 - Beneficiários de produtos **DEPENDENTE** (vaga 0,01 E faixa etária paga) devem ser
