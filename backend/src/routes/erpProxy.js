@@ -499,7 +499,7 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       }
     }
 
-    return res.json({ ...data, dbInserted: dbResult, fechamento: fechamentoResult });
+    return res.json({ ...data, numeroPedido, erpId: pedidoInternalId, dbInserted: dbResult, fechamento: fechamentoResult });
   } catch (err) {
     console.error('[ERP Proxy] POST /orcamento error:', err.message);
     return res.status(500).json({ error: err.message });

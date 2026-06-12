@@ -1146,8 +1146,6 @@ export default function UpsellNovoOrcamento() {
                   produtosResumo={produtosResumo}
                   grandTotal={grandTotal}
                   payload={payload}
-                  currentAgent={currentAgent}
-                  user={user}
                 />
               )}
             </CardContent>
@@ -1552,16 +1550,10 @@ function Step3({ form, set, setTituloContrato, produtosFiltrados, produtosSel, p
                   </div>
                   <div className="grid grid-cols-2 gap-3 items-end">
                     <div className="space-y-1">
-                      <Label className="text-xs">Preço unitário <span className="text-red-500">*</span></Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={ps.preco}
-                        onChange={(e) => setProdutoField(ps.produto_id, "preco", e.target.value)}
-                        placeholder="0.00"
-                        className="h-9"
-                      />
+                      <Label className="text-xs">Preço unitário</Label>
+                      <div className="h-9 flex items-center px-3 rounded-md border border-slate-200 bg-slate-50 text-sm font-medium text-slate-700">
+                        R$ {(Number(ps.preco) || 0).toFixed(2)}
+                      </div>
                     </div>
                     {isDepPago ? (
                       <div className="flex items-center pb-2">
@@ -1669,9 +1661,6 @@ function Step4({ form, set, planosPagamento, loadingPlanos, planoSelecionado }) 
         />
       </div>
 
-      <div className="p-3 bg-violet-50 border border-violet-200 rounded-lg text-xs text-violet-700 space-y-1">
-        <p className="font-medium">Após o envio, o orçamento será fechado automaticamente (situação "I") e o pagamento registrado no ERP. A aprovação (situação "A") continua manual.</p>
-      </div>
     </div>
   );
 }
@@ -2052,7 +2041,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, a
   );
 }
 
-function Step6({ form, beneficiarios, produtosResumo, grandTotal, payload, currentAgent, user }) {
+function Step6({ form, beneficiarios, produtosResumo, grandTotal, payload }) {
   const beneficiariosValidos = beneficiarios.filter((b) => b.usua_nome_completo?.trim());
   const descricaoProduto = (id) =>
     produtosResumo.find((p) => String(p.produto_id) === String(id))?.descricao || "—";
@@ -2134,13 +2123,6 @@ function Step6({ form, beneficiarios, produtosResumo, grandTotal, payload, curre
         )}
       </div>
 
-      <div className="p-3 bg-slate-50 rounded-lg text-xs space-y-1 text-slate-500">
-        <p className="font-medium text-slate-600">Campos automáticos no payload:</p>
-        <p>tipo_pedido: ORÇAMENTO | nome_estabelecimento: LIMEIRA - CNPA</p>
-        <p>agente_venda_id: {currentAgent?.erp_agente_venda_id || "—"} | usuario_inclusao: {user?.email ? `user.${user.email.split("@")[0]}.${user.email.split("@")[1]?.replace(/\.[^.]+$/, "")}` : "—"}</p>
-        <p>prazo_pagamento_id: {form.plano_pagamento_id || "—"} | usua_papeis: B</p>
-        <p className="text-violet-600">Fechamento automático: situação "M" → "I" + registro de pagamento</p>
-      </div>
     </div>
   );
 }
@@ -2175,11 +2157,8 @@ function SubmitResult({ result, onReset }) {
             <CheckCircle2 className="w-14 h-14 text-green-500" />
             <div>
               <p className="text-xl font-bold text-slate-800">Orçamento enviado com sucesso!</p>
-              {result.data?.id && (
-                <p className="text-sm text-slate-500 mt-1">ID do pedido: <strong>{result.data.id}</strong></p>
-              )}
-              {result.data?.numero_pedido && (
-                <p className="text-sm text-slate-500">Número: <strong>{result.data.numero_pedido}</strong></p>
+              {(result.data?.numeroPedido || result.data?.pedido || result.data?.numero) && (
+                <p className="text-sm text-slate-500 mt-1">Número do pedido: <strong>{result.data.numeroPedido || result.data.pedido || result.data.numero}</strong></p>
               )}
               {result.data?.fechamento?.situacao && (
                 <p className="text-sm text-violet-600 mt-1">
@@ -2187,12 +2166,6 @@ function SubmitResult({ result, onReset }) {
                 </p>
               )}
             </div>
-            <Button
-              className="bg-violet-600 hover:bg-violet-700 text-white mt-2"
-              onClick={onReset}
-            >
-              Criar novo orçamento
-            </Button>
           </>
         )}
 
