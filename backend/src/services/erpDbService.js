@@ -23,6 +23,32 @@ function getPool() {
   return pool;
 }
 
+// Normaliza um CPF para o formato armazenado no ERP (000.000.000-00). Documentos de CPF
+// no banco ficam em documentos_pessoas com tipo_documento_id=580 e SEMPRE formatados.
+function formatCpfDigits(cpf) {
+  const d = String(cpf ?? '').replace(/\D/g, '');
+  if (d.length !== 11) return null;
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}
+
+// Busca o id da Pessoa global do ERP (pessoas.id) a partir do CPF, consultando
+// documentos_pessoas (tipo_documento_id=580 = CPF). Retorna null se o CPF for inválido
+// ou não houver Pessoa cadastrada com ele. Usado para reaproveitar Pessoas existentes
+// (evita duplicar CPF — o ERP bloqueia CPF duplicado) ao cadastrar dependentes.
+const ERP_TIPO_DOCUMENTO_CPF = 580;
+export async function findPessoaIdByCpf(cpf) {
+  const formatted = formatCpfDigits(cpf);
+  if (!formatted) return null;
+  const db = getPool();
+  const r = await db.query(
+    `SELECT pessoa_id FROM documentos_pessoas
+       WHERE tipo_documento_id = $1 AND documento = $2
+       LIMIT 1`,
+    [ERP_TIPO_DOCUMENTO_CPF, formatted]
+  );
+  return r.rows[0]?.pessoa_id ? Number(r.rows[0].pessoa_id) : null;
+}
+
 /**
  * Registra um agente no canal de vendas do ERP inserindo um registro
  * em pessoas_contratos. Se o par (pessoa_id, contrato_id) já existir,
@@ -247,11 +273,15 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
           pessoaId = cpfToPessoaId.get(benefCpf);
           console.log(`[erpDbService] beneficiário CPF já existente no pedido — reaproveitando pessoa=${pessoaId} (item=${itemId}, nome=${b.nome})`);
         } else {
+          // Dependentes resolvidos para uma Pessoa global do ERP (lookup/criação prévia na rota)
+          // gravam pessoa_id, fazendo o beneficiário "existir em Pessoas" e vincular-se ao pedido
+          // como o titular. Demais beneficiários (sem CPF, condutor/veículo/pet) seguem com NULL.
+          const benefPessoaId = b.pessoaId ? Number(b.pessoaId) : null;
           const pessoaRes = await client.query(
             `INSERT INTO pedidos_pessoas (
-               id, pedido_id, nome_pessoa, cpf, data_nascimento, sexo, telefone, parentesco
+               id, pedido_id, nome_pessoa, cpf, data_nascimento, sexo, telefone, parentesco, pessoa_id
              ) VALUES (
-               nextval('pk_sequence'), $1, $2, $3, $4, $5, $6, $7
+               nextval('pk_sequence'), $1, $2, $3, $4, $5, $6, $7, $8
              ) RETURNING id`,
             [
               pedidoInternalId,
@@ -261,6 +291,7 @@ export async function addItemsToPedido(pedidoInternalId, opts = {}) {
               b.sexo || contratanteSexo || null,
               b.telefone || contratanteTelefone || null,
               b.parentesco || null,
+              benefPessoaId,
             ]
           );
           pessoaId = Number(pessoaRes.rows[0].id);

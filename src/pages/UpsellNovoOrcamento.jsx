@@ -728,6 +728,9 @@ export default function UpsellNovoOrcamento() {
       const prod = produtosFiltrados.find((p) => String(p.id) === String(ps.produto_id)) ||
         erpProdutos.find((p) => String(p.id) === String(ps.produto_id));
       const produtoIdNum = prod ? Number(prod.produto_id || prod.id) : Number(ps.produto_id);
+      // Beneficiários de produtos DEPENDENTE (vaga 0,01 ou faixa etária paga) devem ser
+      // cadastrados como Pessoa no ERP. Condutor/veículo/pet NÃO entram nessa regra.
+      const ehDependente = !!prod && (isDependenteProduto(prod) || isDependentePagoProduto(prod));
       const beneficiariosDoItem = beneficiarios
         .filter((b) => b.usua_nome_completo?.trim() && String(b.usua_produtos) === String(ps.produto_id))
         .map((b) => ({
@@ -737,6 +740,7 @@ export default function UpsellNovoOrcamento() {
           sexo: b.usua_sexo || null,
           parentesco: b.usua_parentesco || null,
           telefone: b.usua_telefone || null,
+          registrarPessoa: ehDependente,
         }));
       return {
         produtoId: produtoIdNum,

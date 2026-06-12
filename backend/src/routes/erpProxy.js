@@ -1,6 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB } from '../services/erpDbService.js';
+import { registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB, findPessoaIdByCpf } from '../services/erpDbService.js';
 import { query } from '../config/database.js';
 
 const router = express.Router();
@@ -42,6 +42,58 @@ function formatCpf(cpf) {
   const digits = String(cpf ?? '').replace(/\D/g, '');
   if (digits.length !== 11) return String(cpf ?? '');
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
+// Cria uma Pessoa Física no ERP (cadastro global) via POST /Pessoas e devolve o objeto
+// retornado, que inclui `id` (PK numérica de pessoas, ~300M) e `pessoa` (código). O CPF
+// vai dentro de `documentos` (não como campo raiz, senão o ERP ignora). Mesma forma já
+// usada com sucesso na criação de agentes (Agents.jsx).
+async function criarPessoaErp(token, { nome_completo, cpf }) {
+  const body = {
+    tipo_pessoa: 'Física',
+    situacao: 'A',
+    nome_completo: String(nome_completo || '').toUpperCase(),
+    documentos: [{ tipo_documento: 'CPF', documento: formatCpf(cpf) }],
+  };
+  const r = await fetch(`${ERP_BASE}/Pessoas`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || data?.error) {
+    throw new Error(data?.error || `POST /Pessoas falhou (HTTP ${r.status}).`);
+  }
+  return data;
+}
+
+// Resolve cada beneficiário de produto DEPENDENTE (registrarPessoa=true) para uma Pessoa
+// global do ERP, anexando `pessoaId` ao objeto. Lookup-first por CPF (reaproveita Pessoa
+// existente — o ERP bloqueia CPF duplicado); cria via POST /Pessoas só quando não existe.
+// Roda FORA da transação de banco (são chamadas HTTP). Beneficiários sem registrarPessoa
+// ou sem CPF válido seguem como hoje (sem pessoa_id). Falha clara aborta antes do DB para
+// não criar um orçamento incompleto.
+async function resolveDependentePessoas(token, itens) {
+  for (const it of itens) {
+    const beneficiarios = Array.isArray(it.beneficiarios) ? it.beneficiarios : [];
+    for (const b of beneficiarios) {
+      if (!b?.registrarPessoa) continue;
+      const cpfDigits = String(b.cpf ?? '').replace(/\D/g, '');
+      if (cpfDigits.length !== 11) continue; // sem CPF válido → segue como hoje (só no pedido)
+      let pessoaId = await findPessoaIdByCpf(cpfDigits);
+      if (pessoaId) {
+        console.log(`[ERP /orcamento] dependente CPF já cadastrado — reaproveitando Pessoa id=${pessoaId} (nome=${b.nome})`);
+      } else {
+        const criada = await criarPessoaErp(token, { nome_completo: b.nome, cpf: cpfDigits });
+        pessoaId = criada?.id ? Number(criada.id) : null;
+        if (!pessoaId) {
+          throw new Error(`Não foi possível cadastrar o dependente "${b.nome}" como Pessoa no ERP (resposta sem id).`);
+        }
+        console.log(`[ERP /orcamento] dependente cadastrado como Pessoa id=${pessoaId} código=${criada.pessoa} (nome=${b.nome})`);
+      }
+      b.pessoaId = pessoaId;
+    }
+  }
 }
 
 // Busca um usuário do ERP pelo login (usado para recuperar o registro mesmo
@@ -421,6 +473,19 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       console.error('[ERP /orcamento] ERP não retornou id do pedido; produto não pôde ser vinculado:', JSON.stringify(data));
       return res.status(502).json({
         error: 'O ERP não retornou o identificador do orçamento, então o produto não pôde ser vinculado. Tente novamente.',
+        erpResponse: data,
+      });
+    }
+
+    // Cadastra os dependentes (produtos DEPENDENTE) como Pessoa no ERP e anexa pessoaId a
+    // cada beneficiário ANTES da transação de banco (são chamadas HTTP; não podem rodar
+    // dentro da transação). addItemsToPedido grava esse pessoaId em pedidos_pessoas.pessoa_id.
+    try {
+      await resolveDependentePessoas(token, itens);
+    } catch (pessoaErr) {
+      console.error('[ERP /orcamento] cadastro de dependente como Pessoa falhou:', pessoaErr.message);
+      return res.status(502).json({
+        error: `O orçamento nº ${numeroPedido || pedidoInternalId} foi criado no ERP, mas não foi possível cadastrar um dependente como Pessoa (${pessoaErr.message}). O orçamento está INCOMPLETO e precisa ser corrigido manualmente.`,
         erpResponse: data,
       });
     }
