@@ -15,6 +15,20 @@ valores de comissão — só buscas/relatórios visuais.
 `backend/scripts/normalize_perspectivas_cpf.mjs` (idempotente, valida
 antes×depois, ROLLBACK se divergir).
 
+## Normalizar na entrada (não só saneamento)
+Todo write em `erp_perspectivas_negocios` deve gravar CPF já só com dígitos para
+não reintroduzir pontuação a cada sync. Pontos cobertos: sync ERP + backfills CRM
+(`checkPerspectivaNegocios`/`checkValidacaoPagamento` em `automationService.js`),
+insert/update em tempo real no PUT `/referrals/:id` (`entities.js`). JS usa
+`(v||'').replace(/\D/g,'')||null`; SQL usa
+`NULLIF(regexp_replace(COALESCE(x,''),'[^0-9]','','g'),'')`.
+
+**How to apply:** dedups por par CPF (NOT EXISTS / IS NOT DISTINCT FROM) devem
+normalizar **os dois lados** com `regexp_replace`, senão linhas legadas ainda
+pontuadas geram falso-negativo e duplicam. O diagnóstico
+`/commission-perspectiva/sem-registro-erp` (`functions.js`) também compara por
+dígitos pela mesma razão.
+
 ## Gotcha crítico: `NOT IN` + NULL nos filtros de exclusão
 Os filtros de comissão excluem 2 CPFs hardcoded. Em SQL, `NULL NOT IN (...)`
 => NULL (falsy), então linhas com `cpf_indicador` NULL eram silenciosamente

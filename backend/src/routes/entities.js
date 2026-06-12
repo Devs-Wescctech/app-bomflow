@@ -1770,14 +1770,14 @@ router.put('/referrals/:id', authMiddleware, async (req, res) => {
            WHERE NOT EXISTS (
              SELECT 1 FROM erp_perspectivas_negocios p
              WHERE $4 IS NOT NULL
-               AND p.cpf_indicador IS NOT DISTINCT FROM $2
-               AND p.cpf_indicado  IS NOT DISTINCT FROM $4
+               AND regexp_replace(COALESCE(p.cpf_indicador, ''), '[^0-9]', '', 'g') IS NOT DISTINCT FROM $2
+               AND regexp_replace(COALESCE(p.cpf_indicado, ''), '[^0-9]', '', 'g')  IS NOT DISTINCT FROM $4
            )`,
           [
             referral.referrer_name || null,
-            referral.referrer_cpf  || null,
+            (referral.referrer_cpf || '').replace(/\D/g, '') || null,
             referral.referred_name || null,
-            referral.referred_cpf  || null,
+            (referral.referred_cpf || '').replace(/\D/g, '') || null,
             nomeVendedor
           ]
         );
@@ -1805,8 +1805,12 @@ router.put('/referrals/:id', authMiddleware, async (req, res) => {
            WHERE origem = 'crm'
              AND cpf_indicado IS NULL
              AND nome_indicado IS NOT DISTINCT FROM $2
-             AND cpf_indicador IS NOT DISTINCT FROM $3`,
-          [data.referred_cpf, referral.referred_name, referral.referrer_cpf]
+             AND regexp_replace(COALESCE(cpf_indicador, ''), '[^0-9]', '', 'g') IS NOT DISTINCT FROM $3`,
+          [
+            (data.referred_cpf || '').replace(/\D/g, '') || null,
+            referral.referred_name,
+            (referral.referrer_cpf || '').replace(/\D/g, '') || null
+          ]
         );
         if (cpfResult.rowCount > 0) {
           console.log(`[PerspectivaNegócios] CPF indicado atualizado em tempo real: ${data.referred_cpf} (lead: ${referral.referred_name})`);

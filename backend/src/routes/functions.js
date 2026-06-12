@@ -6552,8 +6552,8 @@ router.get('/commission-perspectiva/sem-registro-erp', authMiddleware, loadAgent
         AND r.referred_cpf IS NOT NULL AND r.referred_cpf != ''
         AND NOT EXISTS (
           SELECT 1 FROM erp_perspectivas_negocios p
-          WHERE p.cpf_indicador IS NOT DISTINCT FROM r.referrer_cpf
-            AND p.cpf_indicado  IS NOT DISTINCT FROM r.referred_cpf
+          WHERE regexp_replace(COALESCE(p.cpf_indicador, ''), '[^0-9]', '', 'g') IS NOT DISTINCT FROM regexp_replace(COALESCE(r.referrer_cpf, ''), '[^0-9]', '', 'g')
+            AND regexp_replace(COALESCE(p.cpf_indicado, ''), '[^0-9]', '', 'g')  IS NOT DISTINCT FROM regexp_replace(COALESCE(r.referred_cpf, ''), '[^0-9]', '', 'g')
         )
       ORDER BY r.updated_at DESC
     `);

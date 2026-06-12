@@ -1012,9 +1012,9 @@ export async function syncPerspectivaNegociosFromERP() {
                 [
                   rec.perspectiva     || null,
                   rec.nome_indicador  || null,
-                  rec.cpf_indicador   || null,
+                  normalizeCpf(rec.cpf_indicador),
                   rec.nome_indicado   || null,
-                  rec.cpf_indicado    || null,
+                  normalizeCpf(rec.cpf_indicado),
                   rec.nome_vendedor   || null,
                   rec.sit_titulo      || null,
                   rec.sit_perspectiva || null,
@@ -1051,9 +1051,9 @@ export async function syncPerspectivaNegociosFromERP() {
         (nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_perspectiva, origem, sincronizado_em)
       SELECT
         r.referrer_name,
-        r.referrer_cpf,
+        NULLIF(regexp_replace(COALESCE(r.referrer_cpf, ''), '[^0-9]', '', 'g'), ''),
         r.referred_name,
-        r.referred_cpf,
+        NULLIF(regexp_replace(COALESCE(r.referred_cpf, ''), '[^0-9]', '', 'g'), ''),
         a.name,
         'NEGOCIO FECHADO',
         'crm',
@@ -1064,8 +1064,8 @@ export async function syncPerspectivaNegociosFromERP() {
         AND r.referred_cpf IS NOT NULL AND r.referred_cpf != ''
         AND NOT EXISTS (
           SELECT 1 FROM erp_perspectivas_negocios p
-          WHERE p.cpf_indicador IS NOT DISTINCT FROM r.referrer_cpf
-            AND p.cpf_indicado  IS NOT DISTINCT FROM r.referred_cpf
+          WHERE regexp_replace(COALESCE(p.cpf_indicador, ''), '[^0-9]', '', 'g') IS NOT DISTINCT FROM regexp_replace(COALESCE(r.referrer_cpf, ''), '[^0-9]', '', 'g')
+            AND regexp_replace(COALESCE(p.cpf_indicado, ''), '[^0-9]', '', 'g')  IS NOT DISTINCT FROM regexp_replace(COALESCE(r.referred_cpf, ''), '[^0-9]', '', 'g')
         )
     `);
     if (backfillResult.rowCount > 0) {
@@ -1076,14 +1076,14 @@ export async function syncPerspectivaNegociosFromERP() {
     // quando o vendedor adicionou o referred_cpf depois da conversão
     const cpfUpdateResult = await query(`
       UPDATE erp_perspectivas_negocios p
-      SET cpf_indicado = r.referred_cpf, sincronizado_em = NOW()
+      SET cpf_indicado = NULLIF(regexp_replace(COALESCE(r.referred_cpf, ''), '[^0-9]', '', 'g'), ''), sincronizado_em = NOW()
       FROM referrals r
       WHERE p.origem = 'crm'
         AND p.cpf_indicado IS NULL
         AND r.referred_cpf IS NOT NULL AND r.referred_cpf != ''
         AND r.stage = 'fechado_ganho'
         AND p.nome_indicado IS NOT DISTINCT FROM r.referred_name
-        AND p.cpf_indicador IS NOT DISTINCT FROM r.referrer_cpf
+        AND regexp_replace(COALESCE(p.cpf_indicador, ''), '[^0-9]', '', 'g') IS NOT DISTINCT FROM regexp_replace(COALESCE(r.referrer_cpf, ''), '[^0-9]', '', 'g')
     `);
     if (cpfUpdateResult.rowCount > 0) {
       console.log(`[PerspectivaNegócios] Backfill CPF: ${cpfUpdateResult.rowCount} cpf_indicado(s) preenchido(s) em linhas CRM existentes.`);
@@ -1098,6 +1098,15 @@ function formatCpf(cpf) {
   const digits = cpf.replace(/\D/g, '');
   if (digits.length !== 11) return cpf; // retorna como está se não for 11 dígitos
   return `${digits.slice(0,3)}.${digits.slice(3,6)}.${digits.slice(6,9)}-${digits.slice(9)}`;
+}
+
+// Normaliza o CPF para o formato canônico usado em erp_perspectivas_negocios:
+// APENAS DÍGITOS. Retorna null quando vazio/sem dígitos, para nunca gravar
+// CPFs com pontuação ao sincronizar/inserir na tabela de perspectivas.
+function normalizeCpf(cpf) {
+  if (cpf == null) return null;
+  const digits = String(cpf).replace(/\D/g, '');
+  return digits || null;
 }
 
 export async function checkValidacaoPagamento() {
@@ -1117,9 +1126,9 @@ export async function checkValidacaoPagamento() {
           (nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_perspectiva, origem, sincronizado_em)
         SELECT
           r.referrer_name,
-          r.referrer_cpf,
+          NULLIF(regexp_replace(COALESCE(r.referrer_cpf, ''), '[^0-9]', '', 'g'), ''),
           r.referred_name,
-          r.referred_cpf,
+          NULLIF(regexp_replace(COALESCE(r.referred_cpf, ''), '[^0-9]', '', 'g'), ''),
           a.name,
           'NEGOCIO FECHADO',
           'crm',
@@ -1130,8 +1139,8 @@ export async function checkValidacaoPagamento() {
           AND r.referred_cpf IS NOT NULL AND r.referred_cpf != ''
           AND NOT EXISTS (
             SELECT 1 FROM erp_perspectivas_negocios p
-            WHERE p.cpf_indicador IS NOT DISTINCT FROM r.referrer_cpf
-              AND p.cpf_indicado  IS NOT DISTINCT FROM r.referred_cpf
+            WHERE regexp_replace(COALESCE(p.cpf_indicador, ''), '[^0-9]', '', 'g') IS NOT DISTINCT FROM regexp_replace(COALESCE(r.referrer_cpf, ''), '[^0-9]', '', 'g')
+              AND regexp_replace(COALESCE(p.cpf_indicado, ''), '[^0-9]', '', 'g')  IS NOT DISTINCT FROM regexp_replace(COALESCE(r.referred_cpf, ''), '[^0-9]', '', 'g')
           )
       `);
       if (backfill.rowCount > 0) {
@@ -1222,7 +1231,7 @@ export async function checkValidacaoPagamento() {
                     INSERT INTO erp_perspectivas_negocios
                       (nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_titulo, sit_perspectiva, origem, sincronizado_em, data_pagamento)
                     VALUES ($1, $2, $3, $4, $5, 'Liquidado', 'NEGOCIO FECHADO', 'crm', NOW(), $6)
-                  `, [ref.referrer_name, ref.referrer_cpf, ref.referred_name, ref.referred_cpf, ref.vendedor_name, dataPagamento]);
+                  `, [ref.referrer_name, normalizeCpf(ref.referrer_cpf), ref.referred_name, normalizeCpf(ref.referred_cpf), ref.vendedor_name, dataPagamento]);
                   console.log(`[ValidacaoPagamento] Auto-insert Liquidado: CPF ${cpfFormatado} inserido com data_pagamento=${dataPagamento}`);
                   liquidados++;
                 } else {
