@@ -230,7 +230,8 @@ export default function CommissionPerspectivaControl() {
 
   const groupedByIndicator = {};
   for (const r of records.filter(r => r.status_pagamento === 'elegivel')) {
-    const key = r.cpf_indicador || r.nome_indicador || 'unknown';
+    const cpfDigits = r.cpf_indicador ? String(r.cpf_indicador).replace(/\D/g, '') : '';
+    const key = cpfDigits || r.nome_indicador || 'unknown';
     if (!groupedByIndicator[key]) {
       groupedByIndicator[key] = { nome: r.nome_indicador, cpf: r.cpf_indicador, items: [] };
     }

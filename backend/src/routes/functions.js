@@ -6080,7 +6080,8 @@ async function runPerspectivaBatch() {
 
     const indicatorMap = {};
     for (const e of elegiveis) {
-      const key = e.cpf_indicador || e.nome_indicador || 'unknown';
+      const cpfDigits = e.cpf_indicador ? String(e.cpf_indicador).replace(/\D/g, '') : '';
+      const key = cpfDigits || e.nome_indicador || 'unknown';
       if (!indicatorMap[key]) {
         indicatorMap[key] = { nome: e.nome_indicador, cpf: e.cpf_indicador, count: 0, total: 0, totalCumulative: 0, records: [] };
       }
@@ -6091,10 +6092,11 @@ async function runPerspectivaBatch() {
     for (const ind of Object.values(indicatorMap)) {
       let historicoPago = 0;
       if (ind.cpf) {
+        const cpfDigits = String(ind.cpf).replace(/\D/g, '');
         const histResult = await query(
           `SELECT COUNT(*) AS total FROM erp_perspectivas_negocios
-           WHERE cpf_indicador = $1 AND sit_titulo = 'Liquidado' AND status_pagamento = 'pago'`,
-          [ind.cpf]
+           WHERE regexp_replace(cpf_indicador, '[^0-9]', '', 'g') = $1 AND sit_titulo = 'Liquidado' AND status_pagamento = 'pago'`,
+          [cpfDigits]
         );
         historicoPago = parseInt(histResult.rows[0].total) || 0;
       }
@@ -6186,7 +6188,8 @@ async function getPerspectivaReportData() {
   // Agrupa por indicador (cpf_indicador preferencial, senão nome, senão 'unknown')
   const indicatorMap = {};
   for (const r of records) {
-    const key = r.cpf_indicador || r.nome_indicador || 'unknown';
+    const cpfDigits = r.cpf_indicador ? String(r.cpf_indicador).replace(/\D/g, '') : '';
+    const key = cpfDigits || r.nome_indicador || 'unknown';
     if (!indicatorMap[key]) {
       indicatorMap[key] = {
         nome: r.nome_indicador || '-',
@@ -6219,10 +6222,11 @@ async function getPerspectivaReportData() {
   for (const ind of Object.values(indicatorMap)) {
     let historicoPago = 0;
     if (ind.cpf && ind.cpf !== '-') {
+      const cpfDigits = String(ind.cpf).replace(/\D/g, '');
       const histResult = await query(
         `SELECT COUNT(*) AS total FROM erp_perspectivas_negocios
-         WHERE cpf_indicador = $1 AND sit_titulo = 'Liquidado' AND status_pagamento = 'pago'`,
-        [ind.cpf]
+         WHERE regexp_replace(cpf_indicador, '[^0-9]', '', 'g') = $1 AND sit_titulo = 'Liquidado' AND status_pagamento = 'pago'`,
+        [cpfDigits]
       );
       historicoPago = parseInt(histResult.rows[0].total) || 0;
     }
@@ -6406,7 +6410,7 @@ router.get('/commission-perspectiva/control', authMiddleware, loadAgentMiddlewar
     const result = await query(
       `SELECT e.*,
          (SELECT COUNT(*) FROM erp_perspectivas_negocios e2
-          WHERE e2.cpf_indicador = e.cpf_indicador
+          WHERE regexp_replace(e2.cpf_indicador, '[^0-9]', '', 'g') = regexp_replace(e.cpf_indicador, '[^0-9]', '', 'g')
             AND e2.sit_titulo = 'Liquidado'
             AND e2.status_pagamento = 'pago') AS historico_pago_count
        FROM erp_perspectivas_negocios e ${where} ORDER BY e.data_pagamento ASC, e.nome_indicador LIMIT 10000`,
