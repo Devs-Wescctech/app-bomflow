@@ -1036,20 +1036,20 @@ export default function LeadDetail() {
                   <span className="hidden sm:inline">Proposta</span>
                 </TabsTrigger>
                 <TabsTrigger 
-                  value="contract" 
-                  data-value="contract"
-                  className="rounded-lg data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-md transition-all"
-                >
-                  <FileSignature className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">Contrato</span>
-                </TabsTrigger>
-                <TabsTrigger 
                   value="orcamento" 
                   data-value="orcamento"
                   className="rounded-lg data-[state=active]:bg-violet-600 data-[state=active]:text-white data-[state=active]:shadow-md transition-all"
                 >
                   <Calculator className="w-4 h-4 mr-2" />
                   <span className="hidden sm:inline">Orçamento</span>
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="contract" 
+                  data-value="contract"
+                  className="rounded-lg data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-md transition-all"
+                >
+                  <FileSignature className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Contrato</span>
                 </TabsTrigger>
               </TabsList>
 

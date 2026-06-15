@@ -962,13 +962,13 @@ export default function ReferralDetail() {
                   <FileText className="w-4 h-4 mr-2" />
                   Proposta
                 </TabsTrigger>
-                <TabsTrigger value="contract" className="data-[state=active]:bg-amber-700 data-[state=active]:text-white">
-                  <FileSignature className="w-4 h-4 mr-2" />
-                  Contrato
-                </TabsTrigger>
                 <TabsTrigger value="orcamento" className="data-[state=active]:bg-violet-600 data-[state=active]:text-white">
                   <Calculator className="w-4 h-4 mr-2" />
                   Orçamento
+                </TabsTrigger>
+                <TabsTrigger value="contract" className="data-[state=active]:bg-amber-700 data-[state=active]:text-white">
+                  <FileSignature className="w-4 h-4 mr-2" />
+                  Contrato
                 </TabsTrigger>
               </TabsList>
 
