@@ -44,11 +44,14 @@ import {
   Presentation,
   AlertCircle,
   Calculator,
+  ArrowLeftRight,
 } from "lucide-react";
 import UpsellNovoOrcamento from "./UpsellNovoOrcamento";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { createPageUrl } from "@/utils";
+import ReassignLeadModal from "@/components/sales/ReassignLeadModal";
+import ReassignmentLog from "@/components/sales/ReassignmentLog";
 import { toast } from "sonner";
 
 import LeadPJTimeline from "@/components/sales/LeadPJTimeline";
@@ -86,6 +89,7 @@ export default function LeadPJDetail() {
   const [newNote, setNewNote] = useState("");
   const [newTask, setNewTask] = useState({ title: "", scheduledAt: "" });
   const [showLostDialog, setShowLostDialog] = useState(false);
+  const [showReassignModal, setShowReassignModal] = useState(false);
   const [lostReason, setLostReason] = useState("");
   const [generatingProposal, setGeneratingProposal] = useState(false);
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
@@ -622,7 +626,14 @@ export default function LeadPJDetail() {
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
   const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
   const isSupervisor = user?.role === 'supervisor' || currentAgentType?.includes('supervisor');
-  
+
+  const eligibleAgents = isAdmin
+    ? agents.filter(a => a.active !== false)
+    : agents.filter(a => {
+        const sid = a.supervisorId || a.supervisor_id;
+        return sid && String(sid) === String(currentAgent?.id);
+      });
+
   const isOwnLead = currentAgent && String(leadAgentId) === String(currentAgent.id);
   const isTeamLead = isSupervisor && currentAgent?.teamId && 
     agents.some(a => String(a.id) === String(leadAgentId) && String(a.teamId) === String(currentAgent.teamId));
@@ -771,6 +782,18 @@ export default function LeadPJDetail() {
                       Concluir
                     </>
                   )}
+                </Button>
+              )}
+              {(isAdmin || isSupervisor) && (
+                <Button
+                  onClick={() => setShowReassignModal(true)}
+                  variant="outline"
+                  size="sm"
+                  className="text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:hover:bg-blue-950"
+                  title="Redistribuir lead"
+                >
+                  <ArrowLeftRight className="w-4 h-4" />
+                  <span className="hidden sm:inline ml-1.5">Redistribuir</span>
                 </Button>
               )}
               {!lead.lost && (
@@ -1019,6 +1042,15 @@ export default function LeadPJDetail() {
                         <LeadPJTimeline activities={activities} />
                       </div>
                     </div>
+                    {(isAdmin || isSupervisor) && (
+                      <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
+                          <ArrowLeftRight className="w-4 h-4 text-blue-600" />
+                          Histórico de Redistribuições
+                        </h3>
+                        <ReassignmentLog leadId={leadId} module="leads-pj" />
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -1825,6 +1857,16 @@ export default function LeadPJDetail() {
       </div>
 
       {/* Dialog Marcar como Perdido */}
+      <ReassignLeadModal
+        open={showReassignModal}
+        onClose={() => setShowReassignModal(false)}
+        module="leads-pj"
+        leadId={leadId}
+        leadName={lead?.name}
+        currentAgent={agents.find(a => String(a.id) === String(lead?.agentId || lead?.agent_id))}
+        eligibleAgents={eligibleAgents}
+      />
+
       <Dialog open={showLostDialog} onOpenChange={setShowLostDialog}>
         <DialogContent className="bg-white dark:bg-gray-900">
           <CardHeader>

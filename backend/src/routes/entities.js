@@ -49,6 +49,21 @@ pool.query(`
 `).then(() => console.log('[Migration] activities_upsell.created_by OK'))
   .catch(e => console.error('[Migration] activities_upsell.created_by error:', e.message));
 
+pool.query(`
+  CREATE TABLE IF NOT EXISTS lead_reassignment_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    module VARCHAR(50) NOT NULL,
+    lead_id UUID NOT NULL,
+    from_agent_id UUID,
+    to_agent_id UUID NOT NULL,
+    reassigned_by UUID,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_reassignment_log_lead ON lead_reassignment_log(lead_id, module);
+`).then(() => console.log('[Migration] lead_reassignment_log OK'))
+  .catch(e => console.error('[Migration] lead_reassignment_log error:', e.message));
+
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }
@@ -964,6 +979,70 @@ router.put('/leads/:id', authMiddleware, async (req, res) => {
   }
 });
 
+router.put('/leads/:id/reassign', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { toAgentId, notes } = req.body;
+    const agentType = req.agent?.agentType;
+    const role = req.user?.role;
+    const isAdminRole = role === 'admin' || agentType === 'admin';
+    const allowedSupervisorTypes = ['supervisor', 'sales_supervisor'];
+    const isSupervisorRole = allowedSupervisorTypes.includes(agentType);
+    if (!isAdminRole && !isSupervisorRole) {
+      return res.status(403).json({ message: 'Sem permissão para redistribuir leads.' });
+    }
+    const leadResult = await query('SELECT * FROM leads WHERE id = $1', [id]);
+    if (leadResult.rows.length === 0) return res.status(404).json({ message: 'Lead não encontrado.' });
+    const lead = leadResult.rows[0];
+    if (!isAdminRole) {
+      const supervisorAgentId = req.agent.id;
+      if (lead.agent_id) {
+        const teamCheck = await query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [lead.agent_id, supervisorAgentId]);
+        if (teamCheck.rows.length === 0) {
+          return res.status(403).json({ message: 'Este lead não pertence a um agente da sua equipe.' });
+        }
+      }
+      const targetTeamCheck = await query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [toAgentId, supervisorAgentId]);
+      if (targetTeamCheck.rows.length === 0) {
+        return res.status(403).json({ message: 'O agente destino não pertence à sua equipe.' });
+      }
+    }
+    const targetAgent = await query('SELECT * FROM agents WHERE id = $1 AND active = true', [toAgentId]);
+    if (targetAgent.rows.length === 0) return res.status(404).json({ message: 'Agente destino não encontrado.' });
+    const fromAgentId = lead.agent_id;
+    const updateResult = await query('UPDATE leads SET agent_id = $1, updated_at = NOW() WHERE id = $2 RETURNING *', [toAgentId, id]);
+    const updatedLead = updateResult.rows[0];
+    await query(
+      `INSERT INTO lead_reassignment_log (module, lead_id, from_agent_id, to_agent_id, reassigned_by, notes) VALUES ('leads', $1, $2, $3, $4, $5)`,
+      [id, fromAgentId, toAgentId, req.agent?.id || null, notes || null]
+    );
+    try { await notifyLeadAssigned(updatedLead, toAgentId); } catch (e) { console.error('[Reassign leads] notify error:', e.message); }
+    res.json({ success: true, lead: convertKeysToCamel(updatedLead) });
+  } catch (error) {
+    console.error('Error reassigning lead:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/leads/:id/reassignment-log', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await query(
+      `SELECT r.*, fa.name AS from_agent_name, ta.name AS to_agent_name, ra.name AS reassigned_by_name
+       FROM lead_reassignment_log r
+       LEFT JOIN agents fa ON fa.id = r.from_agent_id
+       LEFT JOIN agents ta ON ta.id = r.to_agent_id
+       LEFT JOIN agents ra ON ra.id = r.reassigned_by
+       WHERE r.lead_id = $1 AND r.module = 'leads'
+       ORDER BY r.created_at DESC`,
+      [id]
+    );
+    res.json(result.rows.map(convertKeysToCamel));
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.get('/leads-pj', authMiddleware, async (req, res) => {
   try {
     const { sort = '-created_at', limit = 10000 } = req.query;
@@ -1138,6 +1217,70 @@ router.put('/leads-pj/:id', authMiddleware, async (req, res) => {
     res.json(convertKeysToCamel(lead));
   } catch (error) {
     console.error('Error updating lead PJ:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.put('/leads-pj/:id/reassign', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { toAgentId, notes } = req.body;
+    const agentType = req.agent?.agentType;
+    const role = req.user?.role;
+    const isAdminRole = role === 'admin' || agentType === 'admin';
+    const allowedSupervisorTypes = ['supervisor', 'sales_supervisor'];
+    const isSupervisorRole = allowedSupervisorTypes.includes(agentType);
+    if (!isAdminRole && !isSupervisorRole) {
+      return res.status(403).json({ message: 'Sem permissão para redistribuir leads PJ.' });
+    }
+    const leadResult = await query('SELECT * FROM leads_pj WHERE id = $1', [id]);
+    if (leadResult.rows.length === 0) return res.status(404).json({ message: 'Lead PJ não encontrado.' });
+    const lead = leadResult.rows[0];
+    if (!isAdminRole) {
+      const supervisorAgentId = req.agent.id;
+      if (lead.agent_id) {
+        const teamCheck = await query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [lead.agent_id, supervisorAgentId]);
+        if (teamCheck.rows.length === 0) {
+          return res.status(403).json({ message: 'Este lead PJ não pertence a um agente da sua equipe.' });
+        }
+      }
+      const targetTeamCheck = await query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [toAgentId, supervisorAgentId]);
+      if (targetTeamCheck.rows.length === 0) {
+        return res.status(403).json({ message: 'O agente destino não pertence à sua equipe.' });
+      }
+    }
+    const targetAgent = await query('SELECT * FROM agents WHERE id = $1 AND active = true', [toAgentId]);
+    if (targetAgent.rows.length === 0) return res.status(404).json({ message: 'Agente destino não encontrado.' });
+    const fromAgentId = lead.agent_id;
+    const updateResult = await query('UPDATE leads_pj SET agent_id = $1, updated_at = NOW() WHERE id = $2 RETURNING *', [toAgentId, id]);
+    const updatedLead = updateResult.rows[0];
+    await query(
+      `INSERT INTO lead_reassignment_log (module, lead_id, from_agent_id, to_agent_id, reassigned_by, notes) VALUES ('leads-pj', $1, $2, $3, $4, $5)`,
+      [id, fromAgentId, toAgentId, req.agent?.id || null, notes || null]
+    );
+    try { await notifyLeadPJAssigned(updatedLead, toAgentId); } catch (e) { console.error('[Reassign leads-pj] notify error:', e.message); }
+    res.json({ success: true, lead: convertKeysToCamel(updatedLead) });
+  } catch (error) {
+    console.error('Error reassigning lead PJ:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/leads-pj/:id/reassignment-log', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await query(
+      `SELECT r.*, fa.name AS from_agent_name, ta.name AS to_agent_name, ra.name AS reassigned_by_name
+       FROM lead_reassignment_log r
+       LEFT JOIN agents fa ON fa.id = r.from_agent_id
+       LEFT JOIN agents ta ON ta.id = r.to_agent_id
+       LEFT JOIN agents ra ON ra.id = r.reassigned_by
+       WHERE r.lead_id = $1 AND r.module = 'leads-pj'
+       ORDER BY r.created_at DESC`,
+      [id]
+    );
+    res.json(result.rows.map(convertKeysToCamel));
+  } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
@@ -1321,6 +1464,71 @@ router.put('/leads-upsell/:id', authMiddleware, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+
+router.put('/leads-upsell/:id/reassign', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { toAgentId, notes } = req.body;
+    const agentType = req.agent?.agentType;
+    const role = req.user?.role;
+    const isAdminRole = role === 'admin' || agentType === 'admin';
+    const allowedSupervisorTypes = ['supervisor', 'upsell_supervisor', 'upsell_admin'];
+    const isSupervisorRole = allowedSupervisorTypes.includes(agentType);
+    if (!isAdminRole && !isSupervisorRole) {
+      return res.status(403).json({ message: 'Sem permissão para redistribuir leads Upsell.' });
+    }
+    const leadResult = await query('SELECT * FROM leads_upsell WHERE id = $1', [id]);
+    if (leadResult.rows.length === 0) return res.status(404).json({ message: 'Lead Upsell não encontrado.' });
+    const lead = leadResult.rows[0];
+    if (!isAdminRole) {
+      const supervisorAgentId = req.agent.id;
+      if (lead.agent_id) {
+        const teamCheck = await query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [lead.agent_id, supervisorAgentId]);
+        if (teamCheck.rows.length === 0) {
+          return res.status(403).json({ message: 'Este lead Upsell não pertence a um agente da sua equipe.' });
+        }
+      }
+      const targetTeamCheck = await query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [toAgentId, supervisorAgentId]);
+      if (targetTeamCheck.rows.length === 0) {
+        return res.status(403).json({ message: 'O agente destino não pertence à sua equipe.' });
+      }
+    }
+    const targetAgent = await query('SELECT * FROM agents WHERE id = $1 AND active = true', [toAgentId]);
+    if (targetAgent.rows.length === 0) return res.status(404).json({ message: 'Agente destino não encontrado.' });
+    const fromAgentId = lead.agent_id;
+    const updateResult = await query('UPDATE leads_upsell SET agent_id = $1, updated_at = NOW() WHERE id = $2 RETURNING *', [toAgentId, id]);
+    const updatedLead = updateResult.rows[0];
+    await query(
+      `INSERT INTO lead_reassignment_log (module, lead_id, from_agent_id, to_agent_id, reassigned_by, notes) VALUES ('leads-upsell', $1, $2, $3, $4, $5)`,
+      [id, fromAgentId, toAgentId, req.agent?.id || null, notes || null]
+    );
+    try { await notifyLeadAssigned(updatedLead, toAgentId); } catch (e) { console.error('[Reassign leads-upsell] notify error:', e.message); }
+    res.json({ success: true, lead: convertKeysToCamel(updatedLead) });
+  } catch (error) {
+    console.error('Error reassigning lead upsell:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/leads-upsell/:id/reassignment-log', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await query(
+      `SELECT r.*, fa.name AS from_agent_name, ta.name AS to_agent_name, ra.name AS reassigned_by_name
+       FROM lead_reassignment_log r
+       LEFT JOIN agents fa ON fa.id = r.from_agent_id
+       LEFT JOIN agents ta ON ta.id = r.to_agent_id
+       LEFT JOIN agents ra ON ra.id = r.reassigned_by
+       WHERE r.lead_id = $1 AND r.module = 'leads-upsell'
+       ORDER BY r.created_at DESC`,
+      [id]
+    );
+    res.json(result.rows.map(convertKeysToCamel));
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // ===== END LEADS UPSELL =====
 
 router.get('/referrals', authMiddleware, async (req, res) => {
@@ -1823,6 +2031,70 @@ router.put('/referrals/:id', authMiddleware, async (req, res) => {
     res.json(convertKeysToCamel(referral));
   } catch (error) {
     console.error('Error updating referral:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.put('/referrals/:id/reassign', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { toAgentId, notes } = req.body;
+    const agentType = req.agent?.agentType;
+    const role = req.user?.role;
+    const isAdminRole = role === 'admin' || agentType === 'admin';
+    const allowedSupervisorTypes = ['supervisor', 'indicacoes_supervisor', 'indicacoes_admin'];
+    const isSupervisorRole = allowedSupervisorTypes.includes(agentType);
+    if (!isAdminRole && !isSupervisorRole) {
+      return res.status(403).json({ message: 'Sem permissão para redistribuir indicações.' });
+    }
+    const refResult = await query('SELECT * FROM referrals WHERE id = $1', [id]);
+    if (refResult.rows.length === 0) return res.status(404).json({ message: 'Indicação não encontrada.' });
+    const referral = refResult.rows[0];
+    if (!isAdminRole) {
+      const supervisorAgentId = req.agent.id;
+      if (referral.agent_id) {
+        const teamCheck = await query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [referral.agent_id, supervisorAgentId]);
+        if (teamCheck.rows.length === 0) {
+          return res.status(403).json({ message: 'Esta indicação não pertence a um agente da sua equipe.' });
+        }
+      }
+      const targetTeamCheck = await query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [toAgentId, supervisorAgentId]);
+      if (targetTeamCheck.rows.length === 0) {
+        return res.status(403).json({ message: 'O agente destino não pertence à sua equipe.' });
+      }
+    }
+    const targetAgent = await query('SELECT * FROM agents WHERE id = $1 AND active = true', [toAgentId]);
+    if (targetAgent.rows.length === 0) return res.status(404).json({ message: 'Agente destino não encontrado.' });
+    const fromAgentId = referral.agent_id;
+    const updateResult = await query('UPDATE referrals SET agent_id = $1, updated_at = NOW() WHERE id = $2 RETURNING *', [toAgentId, id]);
+    const updatedReferral = updateResult.rows[0];
+    await query(
+      `INSERT INTO lead_reassignment_log (module, lead_id, from_agent_id, to_agent_id, reassigned_by, notes) VALUES ('referrals', $1, $2, $3, $4, $5)`,
+      [id, fromAgentId, toAgentId, req.agent?.id || null, notes || null]
+    );
+    try { await notifyReferralAssigned(updatedReferral, toAgentId); } catch (e) { console.error('[Reassign referrals] notify error:', e.message); }
+    res.json({ success: true, referral: convertKeysToCamel(updatedReferral) });
+  } catch (error) {
+    console.error('Error reassigning referral:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/referrals/:id/reassignment-log', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await query(
+      `SELECT r.*, fa.name AS from_agent_name, ta.name AS to_agent_name, ra.name AS reassigned_by_name
+       FROM lead_reassignment_log r
+       LEFT JOIN agents fa ON fa.id = r.from_agent_id
+       LEFT JOIN agents ta ON ta.id = r.to_agent_id
+       LEFT JOIN agents ra ON ra.id = r.reassigned_by
+       WHERE r.lead_id = $1 AND r.module = 'referrals'
+       ORDER BY r.created_at DESC`,
+      [id]
+    );
+    res.json(result.rows.map(convertKeysToCamel));
+  } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
