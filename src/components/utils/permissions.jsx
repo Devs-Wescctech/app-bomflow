@@ -329,8 +329,8 @@ export function isUpsellPrivileged(user, agent) {
 export function filterMenuItems(agent, menuItems, user = null) {
   const agentType = agent?.agent_type || agent?.agentType;
 
-  // JWT admin without an agent record: show all items
-  if (user?.role === 'admin' && !agentType) {
+  // JWT admin always gets full menu regardless of agent type
+  if (user?.role === 'admin') {
     return menuItems.filter(item => !item.salesOnly);
   }
 
@@ -365,8 +365,8 @@ export function filterMenuItems(agent, menuItems, user = null) {
       return true;
     })
     .map(item => {
-      // Admin sees all sub-items
-      if (isAdmin) return item;
+      // Admin or any *_admin module-admin sees all sub-items within their accessible modules
+      if (isAdmin || agentType?.endsWith('_admin')) return item;
       
       // If no sub-items, return as-is
       if (!item.items || item.items.length === 0) return item;
@@ -399,6 +399,14 @@ export function filterMenuItems(agent, menuItems, user = null) {
         
         // No ADM submenu restrictions - use hardcoded flag-based permissions
         
+        // allowedEmails: só visível para e-mails específicos (admins sempre veem)
+        if (subItem.allowedEmails && subItem.allowedEmails.length > 0) {
+          const userEmail = user?.email || agent?.email || agent?.userEmail;
+          if (!userEmail || !subItem.allowedEmails.includes(userEmail)) {
+            return false;
+          }
+        }
+
         // supervisorOnly: only visible to supervisors, admins, and module admins (_admin types)
         const hasElevatedAccess = isSupervisor || isAdmin || agentType?.endsWith('_admin');
         if (subItem.supervisorOnly && !hasElevatedAccess) {
