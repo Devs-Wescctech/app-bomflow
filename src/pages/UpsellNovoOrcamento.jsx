@@ -277,9 +277,11 @@ const EMPTY_BENEFICIARIO = {
   pet_porte: "",
 };
 
+const NOVO_ORCAMENTO_ALLOWED_EMAILS = ["teste3@bomflow.com", "bomflow4@wescctech.com.br"];
+
 function useCanAccessOrcamento(user) {
   if (!user) return null;
-  return user.role === "admin" || user.email === "teste3@bomflow.com";
+  return user.role === "admin" || NOVO_ORCAMENTO_ALLOWED_EMAILS.includes(user.email);
 }
 
 export default function UpsellNovoOrcamento() {

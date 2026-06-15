@@ -228,7 +228,7 @@ const menuModules = [
       { title: "Tarefas", url: createPageUrl("SalesUpsellTasks"), icon: CheckSquare },
       { title: "Gerador de Leads", url: createPageUrl("UpsellLeadGenerator"), icon: Users, requiredSubmenu: "UpsellLeadGenerator" },
       { title: "Templates", url: createPageUrl("ProposalTemplates"), icon: FileText, supervisorOnly: true },
-      { title: "Novo Orçamento", url: createPageUrl("UpsellNovoOrcamento"), icon: ClipboardList, allowedEmails: ['teste3@bomflow.com'] },
+      { title: "Novo Orçamento", url: createPageUrl("UpsellNovoOrcamento"), icon: ClipboardList, allowedEmails: ['teste3@bomflow.com', 'bomflow4@wescctech.com.br'] },
       { title: "Orçamento ERP (Legacy)", url: createPageUrl("ErpOrcamentoForm"), icon: ClipboardList, allowedEmails: ['teste3@bomflow.com'] },
     ]
   },
