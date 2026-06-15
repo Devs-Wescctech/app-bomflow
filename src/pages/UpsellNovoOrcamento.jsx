@@ -355,7 +355,11 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     prefilledKeyRef.current = key;
     setForm((f) => ({
       ...f,
-      contratante_pessoa: initialLead.nome || f.contratante_pessoa,
+      // O nome do lead é o nome do contato/titular (campo "Nome completo"), NÃO o
+      // contratante_pessoa — esse último é o CÓDIGO ERP da pessoa, preenchido apenas
+      // pela consulta de CPF (lookup-cpf). Gravar o nome em contratante_pessoa faz o
+      // ERP rejeitar o orçamento (espera código numérico) e deixa o "Nome completo" vazio.
+      pessoa_contato: initialLead.nome || f.pessoa_contato,
       cpf: initialLead.cpf ? formatCpf(initialLead.cpf) : f.cpf,
       telefone: initialLead.telefone || f.telefone,
       email_contato: initialLead.email || f.email_contato,
@@ -724,6 +728,20 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       setCpfLookup({ status: "notfound", error: err.message });
     },
   });
+
+  // No modo embutido o CPF é preenchido por código (não dispara o onChange do passo 1),
+  // então a consulta de CPF que resolve o contratante_pessoa (código ERP) nunca rodaria.
+  // Dispara-a uma vez por CPF válido pré-preenchido para o fluxo embutido se comportar
+  // como o standalone (resolve o código da pessoa em vez de mandar o orçamento sem ele).
+  const autoLookupCpfRef = useRef(null);
+  useEffect(() => {
+    if (!embedded) return;
+    const raw = (form.cpf || "").replace(/\D/g, "");
+    if (raw.length !== 11 || !isValidCpf(form.cpf)) return;
+    if (autoLookupCpfRef.current === raw) return;
+    autoLookupCpfRef.current = raw;
+    lookupCpfMutation.mutate(form.cpf);
+  }, [embedded, form.cpf]);
 
   const lookupCepMutation = useMutation({
     mutationFn: async (cep) => {
