@@ -77,7 +77,10 @@ function buildAgentResponse(agent, agentTypeConfig = { modules: [], allowedSubme
       permissions: agent.permissions || {},
       mustResetPassword: agent.must_reset_password || false,
       modules: agentTypeConfig.modules || [],
-      allowedSubmenus: agentTypeConfig.allowedSubmenus || []
+      allowedSubmenus: agentTypeConfig.allowedSubmenus || [],
+      erpAgenteVendaId: agent.erp_agente_venda_id ?? null,
+      erpAgentId: agent.erp_agent_id ?? null,
+      erpPessoaCode: agent.erp_pessoa_code ?? null,
     }
   };
 }
