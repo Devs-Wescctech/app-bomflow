@@ -305,7 +305,7 @@ router.post('/usuario', authMiddleware, async (req, res) => {
 // Deve ser chamado APÓS a criação da Pessoa+Usuário no ERP, quando o id interno
 // da Pessoa (pessoaId) já está disponível no frontend.
 // body: { agentId, pessoaId, contratoId, grupoId }
-router.post('/registrar-canal', authMiddleware, async (req, res) => {
+router.post('/registrar-canal', authMiddleware, requireManageAgents, async (req, res) => {
   const { agentId, pessoaId, contratoId, grupoId } = req.body;
 
   if (!agentId || !pessoaId || !contratoId) {
@@ -451,6 +451,9 @@ router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (
   for (const it of items) {
     const agentId = it?.agentId;
     const force = !!it?.force;
+    // recanal: força re-registro do canal mesmo com erp_agente_venda_id já preenchido
+    // (usado quando o canal_venda_id foi alterado na edição do agente).
+    const recanal = !!it?.recanal;
     if (!agentId) {
       results.push({ agentId: agentId || null, status: 'invalido' });
       continue;
@@ -463,48 +466,77 @@ router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (
       )).rows[0];
 
       if (!a) { results.push({ agentId, status: 'nao_encontrado' }); continue; }
-      if (a.erp_agent_id) { results.push({ agentId, status: 'ja_vinculado', erpAgentId: Number(a.erp_agent_id) }); continue; }
-      if (!a.cpf) { results.push({ agentId, status: 'sem_cpf' }); continue; }
 
+      let erpAgentId = a.erp_agent_id ? Number(a.erp_agent_id) : null;
+      let erpAgenteVendaId = a.erp_agente_venda_id ? Number(a.erp_agente_venda_id) : null;
+      const precisaErpAgentId = !erpAgentId;
+      const precisaCanal = !!a.canal_venda_id && (!erpAgenteVendaId || recanal);
+
+      // Nada a fazer? (já vinculado e canal já registrado, ou sem canal a registrar)
+      if (!precisaErpAgentId && !precisaCanal) {
+        results.push({ agentId, status: 'ja_vinculado', erpAgentId });
+        continue;
+      }
+      if (!a.cpf) { results.push({ agentId, status: 'sem_cpf', erpAgentId }); continue; }
+
+      // Resolve no ERP via CPF — fornece usuarioId (erp_agent_id), pessoaInternalId
+      // (para o canal), login e nome (para validação).
       const r = await resolveAgentErpByCpf(a.cpf);
-      if (r.status !== 'ok' || !r.usuarioId) {
-        results.push({ agentId, status: r.status || 'usuario_nao_encontrado' });
-        continue;
-      }
+      let login = r.login || null;
+      const actions = [];
 
-      const nameMatch = r.nomeErp
-        ? normalizeNameForMatch(r.nomeErp) === normalizeNameForMatch(a.name)
-        : false;
-      if (!nameMatch && !force) {
-        results.push({ agentId, status: 'nome_divergente', nomeErp: r.nomeErp });
-        continue;
-      }
-
-      // Grava erp_agent_id (índice único protege contra duplicatas).
-      try {
-        await query('UPDATE agents SET erp_agent_id = $1 WHERE id = $2', [r.usuarioId, agentId]);
-      } catch (updErr) {
-        results.push({ agentId, status: 'erro', erro: `Falha ao gravar erp_agent_id (possível duplicata): ${updErr.message}` });
-        continue;
-      }
-
-      // Se houver canal definido, registra no ERP e grava erp_agente_venda_id.
-      let erpAgenteVendaId = null;
-      if (a.canal_venda_id && r.pessoaInternalId) {
+      // 1. erp_agent_id (só grava com nome batendo, ou force para divergência revisada)
+      if (precisaErpAgentId) {
+        if (r.status !== 'ok' || !r.usuarioId) {
+          results.push({ agentId, status: r.status || 'usuario_nao_encontrado' });
+          continue;
+        }
+        const nameMatch = r.nomeErp
+          ? normalizeNameForMatch(r.nomeErp) === normalizeNameForMatch(a.name)
+          : false;
+        if (!nameMatch && !force) {
+          results.push({ agentId, status: 'nome_divergente', nomeErp: r.nomeErp });
+          continue;
+        }
         try {
-          erpAgenteVendaId = await registerAgentInCanal(
+          await query('UPDATE agents SET erp_agent_id = $1 WHERE id = $2', [r.usuarioId, agentId]);
+        } catch (updErr) {
+          results.push({ agentId, status: 'erro', erro: `Falha ao gravar erp_agent_id (possível duplicata): ${updErr.message}` });
+          continue;
+        }
+        erpAgentId = r.usuarioId;
+        actions.push('vinculo');
+      }
+
+      // 2. Canal de vendas — registra e grava erp_agente_venda_id quando há canal
+      // definido e ainda não vinculado. Não depende do nome (usa pessoaInternalId).
+      if (precisaCanal) {
+        if (!r.pessoaInternalId) {
+          // Sem Pessoa resolvível: não dá para registrar o canal.
+          results.push({ agentId, status: actions.length ? 'vinculado_sem_canal' : 'pessoa_nao_encontrada', erpAgentId, login });
+          continue;
+        }
+        try {
+          const prevVendaId = erpAgenteVendaId;
+          const novoVendaId = await registerAgentInCanal(
             Number(r.pessoaInternalId),
             Number(a.canal_venda_id),
             a.canal_venda_grupo_id ? Number(a.canal_venda_grupo_id) : null
           );
-          await query('UPDATE agents SET erp_agente_venda_id = $1 WHERE id = $2', [erpAgenteVendaId, agentId]);
+          // Só grava/conta a ação se o vínculo realmente mudou (registerAgentInCanal
+          // é idempotente: pode retornar o mesmo id quando o canal não mudou).
+          if (novoVendaId !== prevVendaId) {
+            await query('UPDATE agents SET erp_agente_venda_id = $1 WHERE id = $2', [novoVendaId, agentId]);
+            actions.push('canal');
+          }
+          erpAgenteVendaId = novoVendaId;
         } catch (canalErr) {
-          results.push({ agentId, status: 'vinculado_sem_canal', erpAgentId: r.usuarioId, login: r.login, canalErro: canalErr.message });
+          results.push({ agentId, status: 'vinculado_sem_canal', erpAgentId, login, canalErro: canalErr.message });
           continue;
         }
       }
 
-      results.push({ agentId, status: 'ok', erpAgentId: r.usuarioId, erpAgenteVendaId, login: r.login });
+      results.push({ agentId, status: actions.length ? 'ok' : 'ja_vinculado', erpAgentId, erpAgenteVendaId, login, actions });
     } catch (e) {
       results.push({ agentId, status: 'erro', erro: e.message });
     }

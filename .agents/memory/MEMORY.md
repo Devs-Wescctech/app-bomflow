@@ -15,6 +15,7 @@
 - [ERP pedido CPF único](erp-pedido-cpf-unico.md) — ERP bloqueia mesmo CPF em pessoas diferentes no pedido (rollback total); dedup beneficiários por CPF reaproveitando a pessoa.
 - [ERP data de admissão](erp-data-admissao-fechamento.md) — Fechamento (M→I) exige documento de admissão (documentos_pessoas tipo 2657422) do cliente_id; cliente novo precisa inserir data de hoje.
 - [ERP Fechamento apresentarValoresOrcamento NPE](erp-itens-pedidos-tipo-produto.md) — itens_pedidos.tipo_produto_id/descricao E pedidos.valor_desconto NULL estouram NPE; causa separada do NPE de beneficiários.
+- [ERP sync-agentes commit](erp-sync-agentes-commit.md) — /sync-agentes/commit é o ponto único e idempotente de vínculo ERP de agentes (erp_agent_id + canal, recanal p/ troca); reusado pelo lote e pela edição.
 - [ERP sync de agentes — authz](erp-sync-agentes-authz.md) — rotas que leem PII/gravam vínculo ERP devem autorizar no backend (manage-agents), não só esconder o botão; resolver prefere login nativo.
 - [ERP dependentes como Pessoa + CPF](erp-dependente-pessoa.md) — CPF vive em documentos_pessoas tipo 580 formatado; dependentes (0,01 e pago) viram Pessoa global (lookup-first), condutor/veículo/pet não.
 - [Perspectivas CPF format](perspectivas-cpf-format.md) — CPF canônico = só dígitos; filtros de exclusão usam regexp_replace NOT IN (NULL preservado); nunca coalesce ('' incluiria CPFs NULL).

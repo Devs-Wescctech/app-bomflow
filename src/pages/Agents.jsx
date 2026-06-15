@@ -10,7 +10,7 @@ import { canManageAgents, isSupervisorType } from "@/components/utils/permission
 import ErpSyncDialog from "@/components/agents/ErpSyncDialog";
 /* NOVO — integração ERP */
 import { createPessoaErp, createUsuarioErp, getPessoaByErp } from "@/api/erpClient";
-import { buscarCanaisVenda, registrarCanalErp } from "@/api/erpService";
+import { buscarCanaisVenda, registrarCanalErp, commitSyncAgentesErp } from "@/api/erpService";
 import {
   Dialog,
   DialogContent,
@@ -473,11 +473,47 @@ export default function Agents() {
 
   const updateAgentMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Agent.update(id, data),
-    onSuccess: () => {
+    /* MODIFICADO — Frente 2: garante o vínculo ERP (erp_agent_id + canal) na edição */
+    onSuccess: async (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
       setIsDialogOpen(false);
       resetForm();
       toast.success('Agente atualizado com sucesso!');
+
+      // Só aciona o ERP quando há CPF e algo a vincular (sem erp_agent_id ou com canal).
+      // O endpoint é idempotente: se já estiver tudo vinculado, retorna 'ja_vinculado'.
+      const data = variables?.data || {};
+      const canalChanged = !!variables?.canalChanged;
+      const temCpf = !!(data.cpf && String(data.cpf).replace(/\D/g, ''));
+      const precisaErp = temCpf && (!data.erpAgentId || !!data.canalVendaId);
+      if (!precisaErp) return;
+
+      try {
+        const resp = await commitSyncAgentesErp([{ agentId: variables.id, recanal: canalChanged }]);
+        const r = resp?.results?.[0];
+        if (r) {
+          const acts = r.actions || [];
+          if (r.status === 'ok') {
+            if (acts.includes('vinculo') && acts.includes('canal')) {
+              toast.success('Agente vinculado ao ERP e canal de vendas registrado.');
+            } else if (acts.includes('canal')) {
+              toast.success('Canal de vendas registrado no ERP.');
+            } else if (acts.includes('vinculo')) {
+              toast.success('Agente vinculado ao ERP.');
+            }
+          } else if (r.status === 'nome_divergente') {
+            toast.warning('O nome do agente diverge do cadastro no ERP. Use "Sincronizar com ERP" para revisar e confirmar o vínculo.', { duration: 10000 });
+          } else if (r.status === 'vinculado_sem_canal') {
+            toast.warning(`Agente vinculado, mas o canal de vendas no ERP falhou: ${r.canalErro || 'erro desconhecido'}`, { duration: 10000 });
+          } else if (r.status === 'pessoa_nao_encontrada' || r.status === 'usuario_nao_encontrado') {
+            toast.warning('Não foi encontrado um usuário no ERP para este CPF. Verifique o cadastro no ERP.', { duration: 8000 });
+          }
+          // 'ja_vinculado' e 'sem_cpf' → silencioso
+        }
+        queryClient.invalidateQueries({ queryKey: ['agents'] });
+      } catch (e) {
+        toast.warning('Não foi possível sincronizar o vínculo ERP automaticamente: ' + e.message, { duration: 8000 });
+      }
     },
     onError: (error) => {
       toast.error('Erro ao atualizar agente: ' + error.message);
@@ -986,9 +1022,13 @@ export default function Agents() {
       if (channelTokenChanged) {
         dataToSend.whatsappChannelToken = channelTokenInput || null;
       }
+      // Frente 2: detecta troca de canal de vendas para forçar re-registro no ERP.
+      const prevCanal = editingAgent?.canalVendaId ? Number(editingAgent.canalVendaId) : null;
+      const canalChanged = !!dataToSend.canalVendaId && dataToSend.canalVendaId !== prevCanal;
       updateAgentMutation.mutate({
         id: editingAgent.id,
-        data: dataToSend
+        data: dataToSend,
+        canalChanged
       });
     } else {
       setCreatingStep('agent');

@@ -174,7 +174,10 @@ export async function previewSyncAgentesErp(agentIds) {
 }
 
 // Grava o vínculo ERP dos agentes selecionados.
-// items: [{ agentId, force? }]
+// items: [{ agentId, force?, recanal? }]
+//   force   — grava erp_agent_id mesmo com nome divergente (revisado pelo admin)
+//   recanal — força re-registro do canal mesmo já tendo erp_agente_venda_id
+//             (usado na edição quando o canal_venda_id foi alterado)
 export async function commitSyncAgentesErp(items) {
   const response = await fetch('/api/erp/sync-agentes/commit', {
     method: 'POST',
