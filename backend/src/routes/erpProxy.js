@@ -1,6 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB, findPessoaIdByCpf } from '../services/erpDbService.js';
+import { registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB, findPessoaIdByCpf, resolveAgentErpByCpf } from '../services/erpDbService.js';
 import { query } from '../config/database.js';
 
 const router = express.Router();
@@ -330,6 +330,188 @@ router.post('/registrar-canal', authMiddleware, async (req, res) => {
     console.error('[ERP Proxy] POST /registrar-canal error:', err.message);
     return res.status(500).json({ error: err.message });
   }
+});
+
+// Autorização: somente quem pode GERENCIAR AGENTES pode rodar a sincronização ERP
+// (consulta CPF/nome no ERP e grava vínculos). Replica a regra do frontend
+// canManageAgents: admin, OU módulo 'all'/'config', OU permissions.can_manage_agents.
+async function requireManageAgents(req, res, next) {
+  try {
+    const ag = (await query('SELECT agent_type, permissions FROM agents WHERE id = $1', [req.user?.id])).rows[0];
+    if (!ag) return res.status(403).json({ error: 'Acesso negado.' });
+
+    if (ag.agent_type === 'admin') return next();
+    if (ag.permissions?.can_manage_agents) return next();
+
+    const at = (await query('SELECT modules FROM agent_types WHERE key = $1', [ag.agent_type])).rows[0];
+    const modules = at?.modules || [];
+    if (Array.isArray(modules) && (modules.includes('all') || modules.includes('config'))) return next();
+
+    return res.status(403).json({ error: 'Acesso negado. Apenas administradores ou gestores de agentes podem sincronizar com o ERP.' });
+  } catch (err) {
+    console.error('[ERP Proxy] requireManageAgents error:', err.message);
+    return res.status(500).json({ error: 'Falha ao validar permissão.' });
+  }
+}
+
+// Normaliza nome para comparação: remove acentos, maiúsculas, espaços colapsados.
+function normalizeNameForMatch(s) {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Colunas mínimas dos agentes usadas pela sincronização ERP.
+const SYNC_AGENT_COLS = 'id, name, cpf, erp_agent_id, erp_agente_venda_id, canal_venda_id, canal_venda_grupo_id, active';
+
+// POST /api/erp/sync-agentes/preview
+// Pré-visualização (NÃO grava nada). Resolve, via banco do ERP, o vínculo de cada
+// agente a partir do CPF (CPF → Pessoa → Usuário) e devolve o status + se o nome bate.
+// body: { agentIds?: string[] }  — sem agentIds: todos os agentes ativos sem erp_agent_id.
+router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async (req, res) => {
+  try {
+    const { agentIds } = req.body || {};
+
+    let rows;
+    if (Array.isArray(agentIds) && agentIds.length) {
+      rows = (await query(
+        `SELECT ${SYNC_AGENT_COLS} FROM agents WHERE id = ANY($1) ORDER BY name`,
+        [agentIds]
+      )).rows;
+    } else {
+      rows = (await query(
+        `SELECT ${SYNC_AGENT_COLS} FROM agents WHERE erp_agent_id IS NULL AND active = true ORDER BY name`
+      )).rows;
+    }
+
+    const items = [];
+    for (const a of rows) {
+      const base = {
+        agentId: a.id,
+        agentName: a.name,
+        cpf: a.cpf || null,
+        hasCanal: !!a.canal_venda_id,
+      };
+
+      if (a.erp_agent_id) {
+        items.push({ ...base, status: 'ja_vinculado', erpAgentId: Number(a.erp_agent_id) });
+        continue;
+      }
+      if (!a.cpf || !String(a.cpf).replace(/\D/g, '')) {
+        items.push({ ...base, status: 'sem_cpf' });
+        continue;
+      }
+
+      let r;
+      try {
+        r = await resolveAgentErpByCpf(a.cpf);
+      } catch (e) {
+        items.push({ ...base, status: 'erro', erro: e.message });
+        continue;
+      }
+
+      const nameMatch = r.nomeErp
+        ? normalizeNameForMatch(r.nomeErp) === normalizeNameForMatch(a.name)
+        : false;
+
+      items.push({
+        ...base,
+        status: r.status === 'ok' ? (nameMatch ? 'ok' : 'nome_divergente') : r.status,
+        erpAgentId: r.usuarioId,
+        pessoaInternalId: r.pessoaInternalId,
+        login: r.login,
+        nomeErp: r.nomeErp,
+        nameMatch,
+      });
+    }
+
+    return res.json({ items });
+  } catch (err) {
+    console.error('[ERP Proxy] POST /sync-agentes/preview error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/erp/sync-agentes/commit
+// Grava o vínculo. Re-resolve no servidor (não confia em ids do cliente) e só grava
+// quando o nome bate (ou quando o item vem com force=true, para divergências revisadas
+// manualmente pelo admin). Se o agente já tiver canal_venda_id, também roda o
+// registrar-canal para preencher erp_agente_venda_id.
+// body: { items: [{ agentId, force?: boolean }] }
+router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (req, res) => {
+  const { items } = req.body || {};
+  if (!Array.isArray(items) || !items.length) {
+    return res.status(400).json({ error: 'items é obrigatório.' });
+  }
+
+  const results = [];
+  for (const it of items) {
+    const agentId = it?.agentId;
+    const force = !!it?.force;
+    if (!agentId) {
+      results.push({ agentId: agentId || null, status: 'invalido' });
+      continue;
+    }
+
+    try {
+      const a = (await query(
+        `SELECT ${SYNC_AGENT_COLS} FROM agents WHERE id = $1`,
+        [agentId]
+      )).rows[0];
+
+      if (!a) { results.push({ agentId, status: 'nao_encontrado' }); continue; }
+      if (a.erp_agent_id) { results.push({ agentId, status: 'ja_vinculado', erpAgentId: Number(a.erp_agent_id) }); continue; }
+      if (!a.cpf) { results.push({ agentId, status: 'sem_cpf' }); continue; }
+
+      const r = await resolveAgentErpByCpf(a.cpf);
+      if (r.status !== 'ok' || !r.usuarioId) {
+        results.push({ agentId, status: r.status || 'usuario_nao_encontrado' });
+        continue;
+      }
+
+      const nameMatch = r.nomeErp
+        ? normalizeNameForMatch(r.nomeErp) === normalizeNameForMatch(a.name)
+        : false;
+      if (!nameMatch && !force) {
+        results.push({ agentId, status: 'nome_divergente', nomeErp: r.nomeErp });
+        continue;
+      }
+
+      // Grava erp_agent_id (índice único protege contra duplicatas).
+      try {
+        await query('UPDATE agents SET erp_agent_id = $1 WHERE id = $2', [r.usuarioId, agentId]);
+      } catch (updErr) {
+        results.push({ agentId, status: 'erro', erro: `Falha ao gravar erp_agent_id (possível duplicata): ${updErr.message}` });
+        continue;
+      }
+
+      // Se houver canal definido, registra no ERP e grava erp_agente_venda_id.
+      let erpAgenteVendaId = null;
+      if (a.canal_venda_id && r.pessoaInternalId) {
+        try {
+          erpAgenteVendaId = await registerAgentInCanal(
+            Number(r.pessoaInternalId),
+            Number(a.canal_venda_id),
+            a.canal_venda_grupo_id ? Number(a.canal_venda_grupo_id) : null
+          );
+          await query('UPDATE agents SET erp_agente_venda_id = $1 WHERE id = $2', [erpAgenteVendaId, agentId]);
+        } catch (canalErr) {
+          results.push({ agentId, status: 'vinculado_sem_canal', erpAgentId: r.usuarioId, login: r.login, canalErro: canalErr.message });
+          continue;
+        }
+      }
+
+      results.push({ agentId, status: 'ok', erpAgentId: r.usuarioId, erpAgenteVendaId, login: r.login });
+    } catch (e) {
+      results.push({ agentId, status: 'erro', erro: e.message });
+    }
+  }
+
+  console.log('[ERP /sync-agentes/commit] resultados:', JSON.stringify(results.map(x => ({ a: x.agentId, s: x.status }))));
+  return res.json({ results });
 });
 
 // GET /api/erp/lookup-cpf?cpf=xxx

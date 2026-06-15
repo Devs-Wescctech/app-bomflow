@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Edit, Trash2, UserCheck, UserX, Activity, Upload, Loader2, MessageSquare, Copy, Check, ExternalLink, MoreVertical, Clock, Users, Building2, Layers, Settings, ShieldX, KeyRound, Eye, EyeOff, Search, X, UserPlus, Server, CheckCircle, AlertCircle } from "lucide-react";
 import { canManageAgents, isSupervisorType } from "@/components/utils/permissions.jsx";
+import ErpSyncDialog from "@/components/agents/ErpSyncDialog";
 /* NOVO — integração ERP */
 import { createPessoaErp, createUsuarioErp, getPessoaByErp } from "@/api/erpClient";
 import { buscarCanaisVenda, registrarCanalErp } from "@/api/erpService";
@@ -216,6 +217,7 @@ export default function Agents() {
   const hasPermission = isAdmin || canManageAgents(currentAgent);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isErpSyncOpen, setIsErpSyncOpen] = useState(false);
   const [showTokenField, setShowTokenField] = useState(false);
   const [channelTokenInput, setChannelTokenInput] = useState("");
   const [channelTokenChanged, setChannelTokenChanged] = useState(false);
@@ -1151,16 +1153,26 @@ export default function Agents() {
                 ? `${filteredAgents.length} de ${agents.length} agente(s)`
                 : `${agents.length} agente(s) cadastrado(s)`}
             </p>
-            <Button 
-              onClick={() => {
-                resetForm();
-                setIsDialogOpen(true);
-              }}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Novo Agente
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsErpSyncOpen(true)}
+                className="border-blue-200 text-blue-700 hover:bg-blue-50"
+              >
+                <Server className="w-4 h-4 mr-2" />
+                Sincronizar com ERP
+              </Button>
+              <Button 
+                onClick={() => {
+                  resetForm();
+                  setIsDialogOpen(true);
+                }}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Novo Agente
+              </Button>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2 mb-4">
@@ -3164,6 +3176,14 @@ export default function Agents() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <ErpSyncDialog
+        open={isErpSyncOpen}
+        onOpenChange={setIsErpSyncOpen}
+        onDone={() => {
+          queryClient.invalidateQueries({ queryKey: ['agents'] });
+        }}
+      />
     </div>
   );
 }

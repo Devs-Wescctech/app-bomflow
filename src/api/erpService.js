@@ -156,6 +156,40 @@ export async function registrarCanalErp({ agentId, pessoaId, contratoId, grupoId
   return data;
 }
 
+// Pré-visualiza a sincronização ERP dos agentes (não grava nada).
+// agentIds opcional; sem ele o backend traz todos os ativos sem erp_agent_id.
+export async function previewSyncAgentesErp(agentIds) {
+  const response = await fetch('/api/erp/sync-agentes/preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify({ agentIds: agentIds || null }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error || 'Erro ao pré-visualizar a sincronização ERP');
+    error.status = response.status;
+    throw error;
+  }
+  return data; // { items: [...] }
+}
+
+// Grava o vínculo ERP dos agentes selecionados.
+// items: [{ agentId, force? }]
+export async function commitSyncAgentesErp(items) {
+  const response = await fetch('/api/erp/sync-agentes/commit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify({ items }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error || 'Erro ao gravar a sincronização ERP');
+    error.status = response.status;
+    throw error;
+  }
+  return data; // { results: [...] }
+}
+
 export async function buscarCanaisVenda() {
   const response = await fetch('/api/erp/canais-venda', {
     headers: getAuthHeaders(),

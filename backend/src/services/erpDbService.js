@@ -50,6 +50,75 @@ export async function findPessoaIdByCpf(cpf) {
 }
 
 /**
+ * Resolve, a partir do CPF, o vínculo ERP de um AGENTE/VENDEDOR já existente:
+ *   documentos_pessoas (CPF, tipo 580) → pessoa_id (id interno da Pessoa)
+ *   pessoas (id)                       → pessoa (código) + nome_completo
+ *   usuarios (pessoa_id = id interno)  → id (usuário = erp_agent_id) + login
+ *
+ * Prefere o login NATIVO do ERP (não começa com "user.") e usuário ativo —
+ * o login nativo é o que permite o orçamento sair como criado pelo vendedor
+ * real (Frente 3), e não por "acesso.api".
+ *
+ * Tudo é leitura (SELECT). Nenhuma escrita no ERP.
+ *
+ * @param {string} cpf
+ * @returns {Promise<{
+ *   status: 'ok'|'cpf_invalido'|'pessoa_nao_encontrada'|'usuario_nao_encontrado',
+ *   pessoaInternalId: number|null, pessoaCodigo: string|null,
+ *   nomeErp: string|null, situacaoPessoa: string|null,
+ *   usuarioId: number|null, login: string|null, usuarioAtivo: string|null
+ * }>}
+ */
+export async function resolveAgentErpByCpf(cpf) {
+  const formatted = formatCpfDigits(cpf);
+  if (!formatted) {
+    return { status: 'cpf_invalido', pessoaInternalId: null, pessoaCodigo: null, nomeErp: null, situacaoPessoa: null, usuarioId: null, login: null, usuarioAtivo: null };
+  }
+
+  const db = getPool();
+
+  // 1. CPF → id interno da Pessoa
+  const docRes = await db.query(
+    `SELECT pessoa_id FROM documentos_pessoas
+       WHERE tipo_documento_id = $1 AND documento = $2
+       LIMIT 1`,
+    [ERP_TIPO_DOCUMENTO_CPF, formatted]
+  );
+  const pessoaInternalId = docRes.rows[0]?.pessoa_id ? Number(docRes.rows[0].pessoa_id) : null;
+  if (!pessoaInternalId) {
+    return { status: 'pessoa_nao_encontrada', pessoaInternalId: null, pessoaCodigo: null, nomeErp: null, situacaoPessoa: null, usuarioId: null, login: null, usuarioAtivo: null };
+  }
+
+  // 2. Pessoa → código + nome (para validação de nome)
+  const pesRes = await db.query(
+    `SELECT id, pessoa, nome_completo, situacao FROM pessoas WHERE id = $1 LIMIT 1`,
+    [pessoaInternalId]
+  );
+  const pessoa = pesRes.rows[0] || null;
+
+  // 3. Pessoa → Usuário. Prefere login nativo (não "user.%") e usuário ativo.
+  const usrRes = await db.query(
+    `SELECT id, login, nome_completo, ativo FROM usuarios
+       WHERE pessoa_id = $1
+       ORDER BY (login NOT LIKE 'user.%') DESC, (ativo = 'S') DESC, id ASC
+       LIMIT 1`,
+    [pessoaInternalId]
+  );
+  const usuario = usrRes.rows[0] || null;
+
+  return {
+    status: usuario ? 'ok' : 'usuario_nao_encontrado',
+    pessoaInternalId,
+    pessoaCodigo: pessoa?.pessoa ? String(pessoa.pessoa) : null,
+    nomeErp: pessoa?.nome_completo || null,
+    situacaoPessoa: pessoa?.situacao || null,
+    usuarioId: usuario?.id ? Number(usuario.id) : null,
+    login: usuario?.login || null,
+    usuarioAtivo: usuario?.ativo || null,
+  };
+}
+
+/**
  * Registra um agente no canal de vendas do ERP inserindo um registro
  * em pessoas_contratos. Se o par (pessoa_id, contrato_id) já existir,
  * retorna o id existente sem criar duplicata.
