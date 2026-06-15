@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PROPOSALS_DIR = path.join(__dirname, '../../public/proposals');
-const LOGO_PATH = path.join(__dirname, '../../public/logo-bomflow.png');
+const LOGO_PATH = path.join(__dirname, '../../public/logo-bompastor.png');
 
 if (!fs.existsSync(PROPOSALS_DIR)) {
   fs.mkdirSync(PROPOSALS_DIR, { recursive: true });
@@ -378,6 +378,223 @@ export async function generateProposalPDF(template, lead, agent) {
       
       stream.on('error', reject);
       
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+export async function generateManualProposalPDF(formData, lead, agent) {
+  return new Promise((resolve, reject) => {
+    try {
+      const fileName = `proposta_${lead.id}_${Date.now()}.pdf`;
+      const filePath = path.join(PROPOSALS_DIR, fileName);
+
+      const doc = new PDFDocument({ size: 'A4', margin: 0 });
+      const stream = fs.createWriteStream(filePath);
+      doc.pipe(stream);
+
+      const primaryColor = '#1a56db';
+      const textDark = '#1e293b';
+      const textMid = '#374151';
+      const borderColor = '#cbd5e1';
+
+      const clientName = (formData.clientName || lead.nome_fantasia || lead.razao_social || lead.contact_name || lead.name || 'Cliente').toString();
+      const clientPhone = (formData.clientPhone || lead.phone || lead.contact_phone || '').toString();
+      let productNames = [];
+      if (Array.isArray(formData.products) && formData.products.length > 0) {
+        productNames = formData.products
+          .filter((p) => {
+            const preco = parseFloat(p && p.price) || 0;
+            return Math.abs(preco - 0.01) >= 0.005;
+          })
+          .map((p) => (p && (p.name || p.productName) ? (p.name || p.productName).toString() : ''))
+          .filter((n) => n.trim());
+      } else if (formData.productName) {
+        productNames = [formData.productName.toString()];
+      }
+      const description = (formData.description || '').toString();
+      const planValue = (formData.planValue || '').toString();
+      const observations = (formData.observations || '').toString();
+
+      let validUntilText = '';
+      if (formData.validUntil) {
+        const d = new Date(formData.validUntil);
+        validUntilText = isNaN(d.getTime())
+          ? String(formData.validUntil)
+          : d.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+      }
+
+      const pageWidth = doc.page.width;
+      const pageHeight = doc.page.height;
+      const margin = 50;
+      const contentWidth = pageWidth - margin * 2;
+
+      // ==================== TOPO AZUL ====================
+      const topBarH = 8;
+      doc.rect(0, 0, pageWidth, topBarH).fill(primaryColor);
+
+      // ==================== HEADER ====================
+      let currentY = topBarH + 20;
+
+      // Logo: imagem real (212×103 original → exibida com height=50)
+      const logoHeight = 50;
+      if (fs.existsSync(LOGO_PATH)) {
+        try {
+          doc.image(LOGO_PATH, margin, currentY, { height: logoHeight });
+        } catch (e) { /* ignore */ }
+      }
+
+      doc.fillColor(primaryColor)
+         .fontSize(22)
+         .font('Helvetica-Bold')
+         .text('PROPOSTA COMERCIAL', margin, currentY + (logoHeight / 2) - 11, { width: contentWidth, align: 'right' });
+
+      currentY += logoHeight + 14;
+
+      doc.moveTo(margin, currentY)
+         .lineTo(margin + contentWidth, currentY)
+         .lineWidth(1)
+         .strokeColor(primaryColor)
+         .stroke();
+
+      currentY += 10;
+
+      if (validUntilText) {
+        doc.fillColor(textMid)
+           .fontSize(10)
+           .font('Helvetica')
+           .text(`Proposta válida até: ${validUntilText}`, margin, currentY, { width: contentWidth, align: 'right' });
+        currentY += 18;
+      }
+
+      currentY += 14;
+
+      // ==================== HELPERS ====================
+      const drawSectionTitle = (title, withMarker = true) => {
+        if (withMarker) {
+          doc.rect(margin, currentY + 3, 6, 12).fill(primaryColor);
+          doc.fillColor(textDark)
+             .fontSize(11)
+             .font('Helvetica-Bold')
+             .text(title, margin + 14, currentY);
+        } else {
+          doc.fillColor(textDark)
+             .fontSize(11)
+             .font('Helvetica-Bold')
+             .text(title, margin, currentY);
+        }
+        currentY += 18;
+        doc.moveTo(margin, currentY)
+           .lineTo(margin + contentWidth, currentY)
+           .lineWidth(0.5)
+           .strokeColor(borderColor)
+           .stroke();
+        currentY += 12;
+      };
+
+      const drawField = (label, value, multiline = false) => {
+        doc.fillColor('#64748b').fontSize(9).font('Helvetica-Bold');
+        doc.text(label.toUpperCase(), margin, currentY, { characterSpacing: 0.4 });
+        currentY += 14;
+        const displayValue = value && value.trim() ? value : '';
+        doc.fillColor(textDark).fontSize(11).font('Helvetica');
+        if (multiline) {
+          const h = displayValue ? doc.heightOfString(displayValue, { width: contentWidth }) : 14;
+          if (displayValue) doc.text(displayValue, margin, currentY, { width: contentWidth });
+          currentY += h + 6;
+        } else {
+          if (displayValue) doc.text(displayValue, margin, currentY, { width: contentWidth });
+          currentY += 16;
+        }
+        doc.moveTo(margin, currentY)
+           .lineTo(margin + contentWidth, currentY)
+           .lineWidth(0.5)
+           .strokeColor(borderColor)
+           .stroke();
+        currentY += 16;
+      };
+
+      // ==================== DADOS DO CLIENTE ====================
+      drawSectionTitle('DADOS DO CLIENTE');
+      drawField('Nome do Cliente', clientName);
+      drawField('Telefone', clientPhone);
+
+      currentY += 6;
+
+      // ==================== SERVIÇO CONTRATADO ====================
+      drawSectionTitle('SERVIÇO CONTRATADO');
+      const productsText = productNames.length > 0
+        ? productNames.join('\n')
+        : '';
+      drawField('Produtos / Serviços', productsText, true);
+      drawField('Descrição resumida', description, true);
+
+      currentY += 6;
+
+      // ==================== VALORES ====================
+      drawSectionTitle('VALORES');
+      doc.fillColor('#64748b').fontSize(9).font('Helvetica-Bold');
+      doc.text('VALOR DO PLANO', margin, currentY, { characterSpacing: 0.4 });
+      currentY += 14;
+      doc.fillColor(primaryColor).fontSize(18).font('Helvetica-Bold');
+      doc.text(planValue && planValue.trim() ? planValue : '', margin, currentY);
+      currentY += 28;
+      doc.moveTo(margin, currentY)
+         .lineTo(margin + contentWidth, currentY)
+         .lineWidth(0.5)
+         .strokeColor(borderColor)
+         .stroke();
+      currentY += 16;
+
+      currentY += 6;
+
+      // ==================== OBSERVACOES ====================
+      drawSectionTitle('OBSERVAÇÕES', false);
+      doc.fillColor(textMid).fontSize(10).font('Helvetica');
+      const obsText = observations && observations.trim() ? observations : '';
+      if (obsText) {
+        const obsH = doc.heightOfString(obsText, { width: contentWidth });
+        doc.text(obsText, margin, currentY, { width: contentWidth });
+        currentY += obsH + 16;
+      } else {
+        currentY += 16;
+      }
+
+      // ==================== ASSINATURA ====================
+      const signatureY = Math.max(currentY + 40, pageHeight - 110);
+      const sigLineW = 240;
+      const sigLineX = pageWidth / 2 - sigLineW / 2;
+      doc.moveTo(sigLineX, signatureY)
+         .lineTo(sigLineX + sigLineW, signatureY)
+         .lineWidth(1)
+         .strokeColor(textMid)
+         .stroke();
+      doc.fillColor(textMid)
+         .fontSize(10)
+         .font('Helvetica')
+         .text('Assinatura do Cliente', sigLineX, signatureY + 7, { width: sigLineW, align: 'center' });
+
+      // ==================== RODAPE ====================
+      const footerY = pageHeight - 32;
+      doc.rect(0, footerY - 8, pageWidth, 40).fill('#f8fafc');
+      doc.fillColor('#94a3b8')
+         .fontSize(7.5)
+         .font('Helvetica')
+         .text(
+           `Emitido em ${new Date().toLocaleDateString('pt-BR')} · Este documento é uma proposta comercial e não constitui contrato.`,
+           margin, footerY, { align: 'center', width: contentWidth }
+         );
+
+      // faixa rodapé
+      doc.rect(0, pageHeight - 8, pageWidth, 8).fill(primaryColor);
+
+      doc.end();
+
+      stream.on('finish', () => {
+        resolve({ filePath, fileName, publicUrl: `/proposals/${fileName}` });
+      });
+      stream.on('error', reject);
     } catch (error) {
       reject(error);
     }

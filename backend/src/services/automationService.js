@@ -1012,9 +1012,9 @@ export async function syncPerspectivaNegociosFromERP() {
                 [
                   rec.perspectiva     || null,
                   rec.nome_indicador  || null,
-                  rec.cpf_indicador   || null,
+                  normalizeCpf(rec.cpf_indicador),
                   rec.nome_indicado   || null,
-                  rec.cpf_indicado    || null,
+                  normalizeCpf(rec.cpf_indicado),
                   rec.nome_vendedor   || null,
                   rec.sit_titulo      || null,
                   rec.sit_perspectiva || null,
@@ -1043,14 +1043,17 @@ export async function syncPerspectivaNegociosFromERP() {
   // Parte 2: Backfill CRM — sempre executa, independente do resultado do ERP
   try {
     // INSERT: leads fechado_ganho que ainda não têm linha em perspectivas
+    // Deduplicação pelo par cpf_indicador + cpf_indicado (não nome_indicado) para
+    // evitar falsos negativos por variação de nome e manter a regra de unicidade
+    // consistente com o INSERT em tempo real (PUT /referrals/:id).
     const backfillResult = await query(`
       INSERT INTO erp_perspectivas_negocios
         (nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_perspectiva, origem, sincronizado_em)
       SELECT
         r.referrer_name,
-        r.referrer_cpf,
+        NULLIF(regexp_replace(COALESCE(r.referrer_cpf, ''), '[^0-9]', '', 'g'), ''),
         r.referred_name,
-        r.referred_cpf,
+        NULLIF(regexp_replace(COALESCE(r.referred_cpf, ''), '[^0-9]', '', 'g'), ''),
         a.name,
         'NEGOCIO FECHADO',
         'crm',
@@ -1058,11 +1061,11 @@ export async function syncPerspectivaNegociosFromERP() {
       FROM referrals r
       LEFT JOIN agents a ON a.id = r.agent_id
       WHERE r.stage = 'fechado_ganho'
+        AND r.referred_cpf IS NOT NULL AND r.referred_cpf != ''
         AND NOT EXISTS (
           SELECT 1 FROM erp_perspectivas_negocios p
-          WHERE p.origem = 'crm'
-            AND p.nome_indicado IS NOT DISTINCT FROM r.referred_name
-            AND p.cpf_indicador IS NOT DISTINCT FROM r.referrer_cpf
+          WHERE regexp_replace(COALESCE(p.cpf_indicador, ''), '[^0-9]', '', 'g') IS NOT DISTINCT FROM regexp_replace(COALESCE(r.referrer_cpf, ''), '[^0-9]', '', 'g')
+            AND regexp_replace(COALESCE(p.cpf_indicado, ''), '[^0-9]', '', 'g')  IS NOT DISTINCT FROM regexp_replace(COALESCE(r.referred_cpf, ''), '[^0-9]', '', 'g')
         )
     `);
     if (backfillResult.rowCount > 0) {
@@ -1073,14 +1076,14 @@ export async function syncPerspectivaNegociosFromERP() {
     // quando o vendedor adicionou o referred_cpf depois da conversão
     const cpfUpdateResult = await query(`
       UPDATE erp_perspectivas_negocios p
-      SET cpf_indicado = r.referred_cpf, sincronizado_em = NOW()
+      SET cpf_indicado = NULLIF(regexp_replace(COALESCE(r.referred_cpf, ''), '[^0-9]', '', 'g'), ''), sincronizado_em = NOW()
       FROM referrals r
       WHERE p.origem = 'crm'
         AND p.cpf_indicado IS NULL
         AND r.referred_cpf IS NOT NULL AND r.referred_cpf != ''
         AND r.stage = 'fechado_ganho'
         AND p.nome_indicado IS NOT DISTINCT FROM r.referred_name
-        AND p.cpf_indicador IS NOT DISTINCT FROM r.referrer_cpf
+        AND regexp_replace(COALESCE(p.cpf_indicador, ''), '[^0-9]', '', 'g') IS NOT DISTINCT FROM regexp_replace(COALESCE(r.referrer_cpf, ''), '[^0-9]', '', 'g')
     `);
     if (cpfUpdateResult.rowCount > 0) {
       console.log(`[PerspectivaNegócios] Backfill CPF: ${cpfUpdateResult.rowCount} cpf_indicado(s) preenchido(s) em linhas CRM existentes.`);
@@ -1097,6 +1100,15 @@ function formatCpf(cpf) {
   return `${digits.slice(0,3)}.${digits.slice(3,6)}.${digits.slice(6,9)}-${digits.slice(9)}`;
 }
 
+// Normaliza o CPF para o formato canônico usado em erp_perspectivas_negocios:
+// APENAS DÍGITOS. Retorna null quando vazio/sem dígitos, para nunca gravar
+// CPFs com pontuação ao sincronizar/inserir na tabela de perspectivas.
+function normalizeCpf(cpf) {
+  if (cpf == null) return null;
+  const digits = String(cpf).replace(/\D/g, '');
+  return digits || null;
+}
+
 export async function checkValidacaoPagamento() {
   try {
     const erpAuthToken = process.env.ERP_AUTH_TOKEN;
@@ -1105,6 +1117,38 @@ export async function checkValidacaoPagamento() {
       return;
     }
     const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
+
+    // Backfill ativo: garante que todos os fechado_ganho com CPF já estejam na tabela
+    // antes de consultar a API, mesmo que o sync anterior tenha falhado
+    try {
+      const backfill = await query(`
+        INSERT INTO erp_perspectivas_negocios
+          (nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_perspectiva, origem, sincronizado_em)
+        SELECT
+          r.referrer_name,
+          NULLIF(regexp_replace(COALESCE(r.referrer_cpf, ''), '[^0-9]', '', 'g'), ''),
+          r.referred_name,
+          NULLIF(regexp_replace(COALESCE(r.referred_cpf, ''), '[^0-9]', '', 'g'), ''),
+          a.name,
+          'NEGOCIO FECHADO',
+          'crm',
+          NOW()
+        FROM referrals r
+        LEFT JOIN agents a ON a.id = r.agent_id
+        WHERE r.stage = 'fechado_ganho'
+          AND r.referred_cpf IS NOT NULL AND r.referred_cpf != ''
+          AND NOT EXISTS (
+            SELECT 1 FROM erp_perspectivas_negocios p
+            WHERE regexp_replace(COALESCE(p.cpf_indicador, ''), '[^0-9]', '', 'g') IS NOT DISTINCT FROM regexp_replace(COALESCE(r.referrer_cpf, ''), '[^0-9]', '', 'g')
+              AND regexp_replace(COALESCE(p.cpf_indicado, ''), '[^0-9]', '', 'g')  IS NOT DISTINCT FROM regexp_replace(COALESCE(r.referred_cpf, ''), '[^0-9]', '', 'g')
+          )
+      `);
+      if (backfill.rowCount > 0) {
+        console.log(`[ValidacaoPagamento] Backfill pré-validação: ${backfill.rowCount} lead(s) fechado_ganho inseridos em erp_perspectivas_negocios.`);
+      }
+    } catch (backfillErr) {
+      console.warn('[ValidacaoPagamento] Erro no backfill pré-validação:', backfillErr.message);
+    }
 
     // Busca CPFs pendentes: não liquidados OU liquidados mas sem data_pagamento
     const pendentes = await query(`
@@ -1144,19 +1188,59 @@ export async function checkValidacaoPagamento() {
 
         if (pagamentos.length > 0) {
           const dataPagamento = pagamentos[0].data_pagamento || null;
-          // IS DISTINCT FROM garante que NULL != 'Liquidado' é tratado corretamente
+          // UPDATE cobre dois casos:
+          //   1. sit_titulo ainda não é 'Liquidado'
+          //   2. sit_titulo = 'Liquidado' mas data_pagamento está NULL (registro incompleto)
+          // Assim evitamos 0 rows affected em registros já marcados como Liquidado sem data
           const result = await query(`
             UPDATE erp_perspectivas_negocios
             SET sit_titulo = 'Liquidado', data_pagamento = $1
             WHERE cpf_indicado = $2
-              AND sit_titulo IS DISTINCT FROM 'Liquidado'
+              AND (
+                sit_titulo IS DISTINCT FROM 'Liquidado'
+                OR (sit_titulo = 'Liquidado' AND data_pagamento IS NULL)
+              )
           `, [dataPagamento, row.cpf_indicado]);
           const rowsAffected = result.rowCount ?? 0;
           if (rowsAffected > 0) {
             console.log(`[ValidacaoPagamento] CPF ${cpfFormatado} liquidado em ${dataPagamento} (${rowsAffected} registro(s) atualizado(s))`);
             liquidados++;
           } else {
-            console.warn(`[ValidacaoPagamento] CPF ${cpfFormatado}: API retornou pagamento mas 0 registros foram atualizados na tabela`);
+            // 0 rows affected: ou o CPF não existe na tabela, ou já está completamente atualizado.
+            // Verificar explicitamente se existe alguma linha para este CPF antes de inserir
+            const existsCheck = await query(`
+              SELECT 1 FROM erp_perspectivas_negocios WHERE cpf_indicado = $1 LIMIT 1
+            `, [row.cpf_indicado]);
+            if (existsCheck.rowCount > 0) {
+              // Já existe e já está completamente liquidado — nenhuma ação necessária
+            } else {
+              // CPF não existe na tabela mas API confirma pagamento — tentar inserir
+              console.warn(`[ValidacaoPagamento] ALERTA: CPF ${cpfFormatado}: API retornou pagamento mas CPF não encontrado em erp_perspectivas_negocios — tentando auto-insert`);
+              try {
+                const referralRow = await query(`
+                  SELECT r.referred_name, r.referred_cpf, r.referrer_name, r.referrer_cpf, a.name AS vendedor_name
+                  FROM referrals r
+                  LEFT JOIN agents a ON a.id = r.agent_id
+                  WHERE r.referred_cpf IS NOT DISTINCT FROM $1
+                    AND r.stage = 'fechado_ganho'
+                  LIMIT 1
+                `, [row.cpf_indicado]);
+                if (referralRow.rows.length > 0) {
+                  const ref = referralRow.rows[0];
+                  await query(`
+                    INSERT INTO erp_perspectivas_negocios
+                      (nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_titulo, sit_perspectiva, origem, sincronizado_em, data_pagamento)
+                    VALUES ($1, $2, $3, $4, $5, 'Liquidado', 'NEGOCIO FECHADO', 'crm', NOW(), $6)
+                  `, [ref.referrer_name, normalizeCpf(ref.referrer_cpf), ref.referred_name, normalizeCpf(ref.referred_cpf), ref.vendedor_name, dataPagamento]);
+                  console.log(`[ValidacaoPagamento] Auto-insert Liquidado: CPF ${cpfFormatado} inserido com data_pagamento=${dataPagamento}`);
+                  liquidados++;
+                } else {
+                  console.warn(`[ValidacaoPagamento] ALERTA: CPF ${cpfFormatado}: pagamento confirmado pelo ERP mas não encontrado em referrals (fechado_ganho). Registro ignorado.`);
+                }
+              } catch (insertErr) {
+                console.error(`[ValidacaoPagamento] Erro no auto-insert para CPF ${cpfFormatado}:`, insertErr.message);
+              }
+            }
           }
         }
       } catch (cpfErr) {

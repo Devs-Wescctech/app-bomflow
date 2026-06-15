@@ -212,6 +212,8 @@ import SalesUpsellWonReport from "./SalesUpsellWonReport";
 import SalesUpsellTasks from "./SalesUpsellTasks";
 import SalesUpsellAgenda from "./SalesUpsellAgenda";
 import UpsellLeadGenerator from "./UpsellLeadGenerator";
+import ErpOrcamentoForm from "./ErpOrcamentoForm";
+import UpsellNovoOrcamento from "./UpsellNovoOrcamento";
 import ReferralWonReport from "./ReferralWonReport";
 
 import Login from "./Login";
@@ -427,6 +429,8 @@ const PAGES = {
     SalesUpsellTasks: SalesUpsellTasks,
     SalesUpsellAgenda: SalesUpsellAgenda,
     UpsellLeadGenerator: UpsellLeadGenerator,
+    ErpOrcamentoForm: ErpOrcamentoForm,
+    UpsellNovoOrcamento: UpsellNovoOrcamento,
     ReferralWonReport: ReferralWonReport,
     
 }
@@ -673,6 +677,8 @@ function PagesContent() {
                 <Route path="/SalesUpsellTasks" element={<SalesUpsellTasks />} />
                 <Route path="/SalesUpsellAgenda" element={<SalesUpsellAgenda />} />
                 <Route path="/UpsellLeadGenerator" element={<UpsellLeadGenerator />} />
+                <Route path="/ErpOrcamentoForm" element={<ErpOrcamentoForm />} />
+                <Route path="/UpsellNovoOrcamento" element={<UpsellNovoOrcamento />} />
                 <Route path="/ReferralWonReport" element={<ReferralWonReport />} />
                 
             </Routes>

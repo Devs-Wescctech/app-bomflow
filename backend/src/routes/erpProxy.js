@@ -1,12 +1,14 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
+import { registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB, findPessoaIdByCpf, resolveAgentErpByCpf, getLoginByUsuarioId } from '../services/erpDbService.js';
+import { query } from '../config/database.js';
 
 const router = express.Router();
 
 const ERP_BASE = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api';
 
 const ERP_ESTABELECIMENTO_PADRAO = process.env.ERP_ESTABELECIMENTO_PADRAO || 104;
-const ERP_SENHA_PADRAO           = process.env.ERP_SENHA_PADRAO || 'bp@123';
+const ERP_SENHA_PADRAO           = process.env.ERP_SENHA_PADRAO;
 const ERP_COPIAR_DIREITOS_DE     = process.env.ERP_COPIAR_DIREITOS_DE || 'base.upsell';
 const ERP_MENU_PADRAO            = process.env.ERP_MENU_PADRAO || 'MENU_VENDEDOR_PAP';
 
@@ -19,6 +21,42 @@ function getToken(res) {
   return token;
 }
 
+// Deriva o login ERP a partir do e-mail do agente logado.
+// Padrão: user.{local}.{domínio_sem_tld}
+// Ex: teste3@bomflow.com → user.teste3.bomflow
+function erpLoginFromEmail(email) {
+  if (!email) return undefined;
+  const atIdx = email.indexOf('@');
+  if (atIdx < 0) return undefined;
+  const local = email.slice(0, atIdx).toLowerCase().trim();
+  const domain = email.slice(atIdx + 1);
+  const domainPart = domain.replace(/\.[^.]+$/, '').toLowerCase().trim();
+  if (!local || !domainPart) return undefined;
+  return `user.${local}.${domainPart}`;
+}
+
+// Resolve o login do ERP que deve assinar o orçamento (usuario_inclusao).
+// SEMPRE derivado no servidor a partir do agente autenticado — o valor enviado pelo
+// cliente é ignorado (atribuição de autoria não pode ser influenciada pelo cliente).
+// Frente 3: prioriza o login NATIVO do vendedor (agents.erp_agent_id → usuarios.login),
+// caindo para a derivação pelo e-mail do JWT (formato legado user.*) somente quando o
+// agente ainda não está vinculado ao ERP (sem erp_agent_id) ou o lookup falha.
+async function resolveUsuarioInclusao(req) {
+  try {
+    if (req.user?.id) {
+      const a = (await query('SELECT erp_agent_id FROM agents WHERE id = $1', [req.user.id])).rows[0];
+      const erpAgentId = a?.erp_agent_id ? Number(a.erp_agent_id) : null;
+      if (erpAgentId) {
+        const nativeLogin = await getLoginByUsuarioId(erpAgentId);
+        if (nativeLogin) return nativeLogin;
+      }
+    }
+  } catch (e) {
+    console.warn('[ERP usuario_inclusao] Falha ao resolver login nativo, usando fallback:', e.message);
+  }
+  return req.user?.email ? erpLoginFromEmail(req.user.email) : undefined;
+}
+
 // Normaliza um CPF para o formato que o ERP usa/exige (000.000.000-00).
 // A view API_CADASTRO_PESSOAS só encontra a pessoa com o CPF formatado
 // (com dígitos puros retorna 0), então padronizamos aqui.
@@ -26,6 +64,63 @@ function formatCpf(cpf) {
   const digits = String(cpf ?? '').replace(/\D/g, '');
   if (digits.length !== 11) return String(cpf ?? '');
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
+// Cria uma Pessoa Física no ERP (cadastro global) via POST /Pessoas e devolve o objeto
+// retornado, que inclui `id` (PK numérica de pessoas, ~300M) e `pessoa` (código). O CPF
+// vai dentro de `documentos` (não como campo raiz, senão o ERP ignora). Mesma forma já
+// usada com sucesso na criação de agentes (Agents.jsx).
+async function criarPessoaErp(token, { nome_completo, cpf, data_nascimento }) {
+  const body = {
+    tipo_pessoa: 'Física',
+    situacao: 'A',
+    nome_completo: String(nome_completo || '').toUpperCase(),
+    documentos: [{ tipo_documento: 'CPF', documento: formatCpf(cpf) }],
+  };
+  // Data de nascimento no formato 'YYYY-MM-DD' (mesmo que a coluna pessoas.data_nascimento
+  // e o input type=date do frontend). Sem isso a Pessoa global fica com nascimento em branco.
+  if (data_nascimento) {
+    body.data_nascimento = String(data_nascimento).slice(0, 10);
+  }
+  const r = await fetch(`${ERP_BASE}/Pessoas`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || data?.error) {
+    throw new Error(data?.error || `POST /Pessoas falhou (HTTP ${r.status}).`);
+  }
+  return data;
+}
+
+// Resolve cada beneficiário de produto DEPENDENTE (registrarPessoa=true) para uma Pessoa
+// global do ERP, anexando `pessoaId` ao objeto. Lookup-first por CPF (reaproveita Pessoa
+// existente — o ERP bloqueia CPF duplicado); cria via POST /Pessoas só quando não existe.
+// Roda FORA da transação de banco (são chamadas HTTP). Beneficiários sem registrarPessoa
+// ou sem CPF válido seguem como hoje (sem pessoa_id). Falha clara aborta antes do DB para
+// não criar um orçamento incompleto.
+async function resolveDependentePessoas(token, itens) {
+  for (const it of itens) {
+    const beneficiarios = Array.isArray(it.beneficiarios) ? it.beneficiarios : [];
+    for (const b of beneficiarios) {
+      if (!b?.registrarPessoa) continue;
+      const cpfDigits = String(b.cpf ?? '').replace(/\D/g, '');
+      if (cpfDigits.length !== 11) continue; // sem CPF válido → segue como hoje (só no pedido)
+      let pessoaId = await findPessoaIdByCpf(cpfDigits);
+      if (pessoaId) {
+        console.log(`[ERP /orcamento] dependente CPF já cadastrado — reaproveitando Pessoa id=${pessoaId} (nome=${b.nome})`);
+      } else {
+        const criada = await criarPessoaErp(token, { nome_completo: b.nome, cpf: cpfDigits, data_nascimento: b.dataNascimento });
+        pessoaId = criada?.id ? Number(criada.id) : null;
+        if (!pessoaId) {
+          throw new Error(`Não foi possível cadastrar o dependente "${b.nome}" como Pessoa no ERP (resposta sem id).`);
+        }
+        console.log(`[ERP /orcamento] dependente cadastrado como Pessoa id=${pessoaId} código=${criada.pessoa} (nome=${b.nome})`);
+      }
+      b.pessoaId = pessoaId;
+    }
+  }
 }
 
 // Busca um usuário do ERP pelo login (usado para recuperar o registro mesmo
@@ -227,6 +322,535 @@ router.post('/usuario', authMiddleware, async (req, res) => {
   }
 });
 
+// POST /api/erp/registrar-canal
+// Registra o agente no canal de vendas do ERP (INSERT em pessoas_contratos).
+// Deve ser chamado APÓS a criação da Pessoa+Usuário no ERP, quando o id interno
+// da Pessoa (pessoaId) já está disponível no frontend.
+// body: { agentId, pessoaId, contratoId, grupoId }
+router.post('/registrar-canal', authMiddleware, requireManageAgents, async (req, res) => {
+  const { agentId, pessoaId, contratoId, grupoId } = req.body;
+
+  if (!agentId || !pessoaId || !contratoId) {
+    return res.status(400).json({ error: 'agentId, pessoaId e contratoId são obrigatórios.' });
+  }
+
+  try {
+    const erpAgenteVendaId = await registerAgentInCanal(
+      Number(pessoaId),
+      Number(contratoId),
+      grupoId ? Number(grupoId) : null
+    );
+
+    await query(
+      'UPDATE agents SET erp_agente_venda_id = $1 WHERE id = $2',
+      [erpAgenteVendaId, agentId]
+    );
+
+    console.log(`[ERP /registrar-canal] agente ${agentId} → erp_agente_venda_id ${erpAgenteVendaId}`);
+    return res.json({ erpAgenteVendaId });
+  } catch (err) {
+    console.error('[ERP Proxy] POST /registrar-canal error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Autorização: somente quem pode GERENCIAR AGENTES pode rodar a sincronização ERP
+// (consulta CPF/nome no ERP e grava vínculos). Replica a regra do frontend
+// canManageAgents: admin, OU módulo 'all'/'config', OU permissions.can_manage_agents.
+async function requireManageAgents(req, res, next) {
+  try {
+    const ag = (await query('SELECT agent_type, permissions FROM agents WHERE id = $1', [req.user?.id])).rows[0];
+    if (!ag) return res.status(403).json({ error: 'Acesso negado.' });
+
+    if (ag.agent_type === 'admin') return next();
+    if (ag.permissions?.can_manage_agents) return next();
+
+    const at = (await query('SELECT modules FROM agent_types WHERE key = $1', [ag.agent_type])).rows[0];
+    const modules = at?.modules || [];
+    if (Array.isArray(modules) && (modules.includes('all') || modules.includes('config'))) return next();
+
+    return res.status(403).json({ error: 'Acesso negado. Apenas administradores ou gestores de agentes podem sincronizar com o ERP.' });
+  } catch (err) {
+    console.error('[ERP Proxy] requireManageAgents error:', err.message);
+    return res.status(500).json({ error: 'Falha ao validar permissão.' });
+  }
+}
+
+// Normaliza nome para comparação: remove acentos, maiúsculas, espaços colapsados.
+function normalizeNameForMatch(s) {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Colunas mínimas dos agentes usadas pela sincronização ERP.
+const SYNC_AGENT_COLS = 'id, name, cpf, erp_agent_id, erp_agente_venda_id, canal_venda_id, canal_venda_grupo_id, active';
+
+// POST /api/erp/sync-agentes/preview
+// Pré-visualização (NÃO grava nada). Resolve, via banco do ERP, o vínculo de cada
+// agente a partir do CPF (CPF → Pessoa → Usuário) e devolve o status + se o nome bate.
+// body: { agentIds?: string[] }  — sem agentIds: todos os agentes ativos sem erp_agent_id.
+router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async (req, res) => {
+  try {
+    const { agentIds } = req.body || {};
+
+    let rows;
+    if (Array.isArray(agentIds) && agentIds.length) {
+      rows = (await query(
+        `SELECT ${SYNC_AGENT_COLS} FROM agents WHERE id = ANY($1) ORDER BY name`,
+        [agentIds]
+      )).rows;
+    } else {
+      rows = (await query(
+        `SELECT ${SYNC_AGENT_COLS} FROM agents WHERE erp_agent_id IS NULL AND active = true ORDER BY name`
+      )).rows;
+    }
+
+    const items = [];
+    for (const a of rows) {
+      const base = {
+        agentId: a.id,
+        agentName: a.name,
+        cpf: a.cpf || null,
+        hasCanal: !!a.canal_venda_id,
+      };
+
+      if (a.erp_agent_id) {
+        items.push({ ...base, status: 'ja_vinculado', erpAgentId: Number(a.erp_agent_id) });
+        continue;
+      }
+      if (!a.cpf || !String(a.cpf).replace(/\D/g, '')) {
+        items.push({ ...base, status: 'sem_cpf' });
+        continue;
+      }
+
+      let r;
+      try {
+        r = await resolveAgentErpByCpf(a.cpf);
+      } catch (e) {
+        items.push({ ...base, status: 'erro', erro: e.message });
+        continue;
+      }
+
+      const nameMatch = r.nomeErp
+        ? normalizeNameForMatch(r.nomeErp) === normalizeNameForMatch(a.name)
+        : false;
+
+      items.push({
+        ...base,
+        status: r.status === 'ok' ? (nameMatch ? 'ok' : 'nome_divergente') : r.status,
+        erpAgentId: r.usuarioId,
+        pessoaInternalId: r.pessoaInternalId,
+        login: r.login,
+        nomeErp: r.nomeErp,
+        nameMatch,
+      });
+    }
+
+    return res.json({ items });
+  } catch (err) {
+    console.error('[ERP Proxy] POST /sync-agentes/preview error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/erp/sync-agentes/commit
+// Grava o vínculo. Re-resolve no servidor (não confia em ids do cliente) e só grava
+// quando o nome bate (ou quando o item vem com force=true, para divergências revisadas
+// manualmente pelo admin). Se o agente já tiver canal_venda_id, também roda o
+// registrar-canal para preencher erp_agente_venda_id.
+// body: { items: [{ agentId, force?: boolean }] }
+router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (req, res) => {
+  const { items } = req.body || {};
+  if (!Array.isArray(items) || !items.length) {
+    return res.status(400).json({ error: 'items é obrigatório.' });
+  }
+
+  const results = [];
+  for (const it of items) {
+    const agentId = it?.agentId;
+    const force = !!it?.force;
+    // recanal: força re-registro do canal mesmo com erp_agente_venda_id já preenchido
+    // (usado quando o canal_venda_id foi alterado na edição do agente).
+    const recanal = !!it?.recanal;
+    if (!agentId) {
+      results.push({ agentId: agentId || null, status: 'invalido' });
+      continue;
+    }
+
+    try {
+      const a = (await query(
+        `SELECT ${SYNC_AGENT_COLS} FROM agents WHERE id = $1`,
+        [agentId]
+      )).rows[0];
+
+      if (!a) { results.push({ agentId, status: 'nao_encontrado' }); continue; }
+
+      let erpAgentId = a.erp_agent_id ? Number(a.erp_agent_id) : null;
+      let erpAgenteVendaId = a.erp_agente_venda_id ? Number(a.erp_agente_venda_id) : null;
+      const precisaErpAgentId = !erpAgentId;
+      const precisaCanal = !!a.canal_venda_id && (!erpAgenteVendaId || recanal);
+
+      // Nada a fazer? (já vinculado e canal já registrado, ou sem canal a registrar)
+      if (!precisaErpAgentId && !precisaCanal) {
+        results.push({ agentId, status: 'ja_vinculado', erpAgentId });
+        continue;
+      }
+      if (!a.cpf) { results.push({ agentId, status: 'sem_cpf', erpAgentId }); continue; }
+
+      // Resolve no ERP via CPF — fornece usuarioId (erp_agent_id), pessoaInternalId
+      // (para o canal), login e nome (para validação).
+      const r = await resolveAgentErpByCpf(a.cpf);
+      let login = r.login || null;
+      const actions = [];
+
+      // 1. erp_agent_id (só grava com nome batendo, ou force para divergência revisada)
+      if (precisaErpAgentId) {
+        if (r.status !== 'ok' || !r.usuarioId) {
+          results.push({ agentId, status: r.status || 'usuario_nao_encontrado' });
+          continue;
+        }
+        const nameMatch = r.nomeErp
+          ? normalizeNameForMatch(r.nomeErp) === normalizeNameForMatch(a.name)
+          : false;
+        if (!nameMatch && !force) {
+          results.push({ agentId, status: 'nome_divergente', nomeErp: r.nomeErp });
+          continue;
+        }
+        try {
+          await query('UPDATE agents SET erp_agent_id = $1 WHERE id = $2', [r.usuarioId, agentId]);
+        } catch (updErr) {
+          results.push({ agentId, status: 'erro', erro: `Falha ao gravar erp_agent_id (possível duplicata): ${updErr.message}` });
+          continue;
+        }
+        erpAgentId = r.usuarioId;
+        actions.push('vinculo');
+      }
+
+      // 2. Canal de vendas — registra e grava erp_agente_venda_id quando há canal
+      // definido e ainda não vinculado. Não depende do nome (usa pessoaInternalId).
+      if (precisaCanal) {
+        if (!r.pessoaInternalId) {
+          // Sem Pessoa resolvível: não dá para registrar o canal.
+          results.push({ agentId, status: actions.length ? 'vinculado_sem_canal' : 'pessoa_nao_encontrada', erpAgentId, login });
+          continue;
+        }
+        try {
+          const prevVendaId = erpAgenteVendaId;
+          const novoVendaId = await registerAgentInCanal(
+            Number(r.pessoaInternalId),
+            Number(a.canal_venda_id),
+            a.canal_venda_grupo_id ? Number(a.canal_venda_grupo_id) : null
+          );
+          // Só grava/conta a ação se o vínculo realmente mudou (registerAgentInCanal
+          // é idempotente: pode retornar o mesmo id quando o canal não mudou).
+          if (novoVendaId !== prevVendaId) {
+            await query('UPDATE agents SET erp_agente_venda_id = $1 WHERE id = $2', [novoVendaId, agentId]);
+            actions.push('canal');
+          }
+          erpAgenteVendaId = novoVendaId;
+        } catch (canalErr) {
+          results.push({ agentId, status: 'vinculado_sem_canal', erpAgentId, login, canalErro: canalErr.message });
+          continue;
+        }
+      }
+
+      results.push({ agentId, status: actions.length ? 'ok' : 'ja_vinculado', erpAgentId, erpAgenteVendaId, login, actions });
+    } catch (e) {
+      results.push({ agentId, status: 'erro', erro: e.message });
+    }
+  }
+
+  console.log('[ERP /sync-agentes/commit] resultados:', JSON.stringify(results.map(x => ({ a: x.agentId, s: x.status }))));
+  return res.json({ results });
+});
+
+// GET /api/erp/lookup-cpf?cpf=xxx
+// Busca o código ERP de uma pessoa pelo CPF (contratante_pessoa para orçamentos).
+//
+// IMPORTANTE: API_CADASTRO_PESSOAS retorna `id` = ID do contrato (ex: 55569514),
+// NÃO o código Pessoa do ERP. O endpoint PrePropostaUsuarioSgprc rejeita esse valor.
+// A rota correta para obter o código Pessoa é GET /Pessoas?cpf=, que retorna o
+// campo `pessoa` (código alfanumérico, ex: "2606501").
+router.get('/lookup-cpf', authMiddleware, async (req, res) => {
+  const token = getToken(res);
+  if (!token) return;
+  const { cpf } = req.query;
+  if (!cpf) return res.status(400).json({ error: 'CPF obrigatório.' });
+  try {
+    const formatted = formatCpf(cpf);
+
+    // Passo 1: busca o código Pessoa via GET /Pessoas?cpf= (retorna campo `pessoa`)
+    const pessoasUrl = `${ERP_BASE}/Pessoas?cpf=${encodeURIComponent(formatted)}`;
+    const pessoasR = await fetch(pessoasUrl, { headers: { Authorization: `Bearer ${token}` } });
+    const pessoasData = await pessoasR.json().catch(() => ({}));
+    console.log('[ERP lookup-cpf] GET /Pessoas status:', pessoasR.status);
+    console.log('[ERP lookup-cpf] GET /Pessoas resposta (primeiros):', JSON.stringify(pessoasData).substring(0, 400));
+
+    if (pessoasR.ok) {
+      const results = pessoasData?.results || pessoasData?.data || (Array.isArray(pessoasData) ? pessoasData : []);
+      if (results.length) {
+        const p = results[0];
+        // GET /Pessoas retorna o campo `pessoa` = código ERP da Pessoa (ex: "2")
+        // que é o valor aceito por PrePropostaUsuarioSgprc como `contratante_pessoa`.
+        // NÃO usar `id` (ex: 150) — esse é o ID interno do registro, rejeitado pelo ERP.
+        const pessoaCodigo = String(p.pessoa || p.codigo || p.id || '');
+        const nome = p.nome_completo || p.nome_titular || p.nome || '';
+        console.log('[ERP lookup-cpf] GET /Pessoas → pessoa:', p.pessoa, '| id:', p.id, '| usando:', pessoaCodigo, '| nome:', nome);
+        return res.json({ pessoa: pessoaCodigo, nome, cpf: p.cpf || formatted });
+      }
+    }
+
+    // Passo 2: fallback para API_CADASTRO_PESSOAS (clientes com contrato)
+    const cadastroUrl = `${ERP_BASE}/API_CADASTRO_PESSOAS?cpf=${encodeURIComponent(formatted)}`;
+    const cadastroR = await fetch(cadastroUrl, { headers: { Authorization: `Bearer ${token}` } });
+    const cadastroData = await cadastroR.json().catch(() => ({}));
+    console.log('[ERP lookup-cpf] fallback API_CADASTRO_PESSOAS status:', cadastroR.status);
+
+    if (!cadastroR.ok) return res.status(cadastroR.status).json(cadastroData);
+    const cadastroResults = cadastroData?.results || cadastroData?.data || (Array.isArray(cadastroData) ? cadastroData : []);
+    if (!cadastroResults.length) return res.status(404).json({ error: 'Pessoa não encontrada no ERP para este CPF.' });
+
+    const p = cadastroResults[0];
+    // API_CADASTRO_PESSOAS: `id` = ID do contrato. Tenta retornar `pessoa` se existir,
+    // senão usa `id` como fallback (pode ser rejeitado pelo ERP em orçamentos).
+    const pessoaCodigo = p.pessoa || String(p.id || '');
+    console.log('[ERP lookup-cpf] fallback código:', pessoaCodigo, '| campo pessoa presente:', !!p.pessoa);
+    return res.json({
+      pessoa: pessoaCodigo,
+      nome: p.nome_titular || p.nome_completo || '',
+      cpf: p.cpf || formatted,
+    });
+  } catch (err) {
+    console.error('[ERP Proxy] GET /lookup-cpf error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/erp/orcamento
+// Cria um orçamento no ERP via POST /OrcamentoSgprcUsuario
+router.post('/orcamento', authMiddleware, async (req, res) => {
+  const token = getToken(res);
+  if (!token) return;
+  try {
+    const payload = { ...req.body };
+
+    // Define usuario_inclusao sempre no servidor (login nativo do vendedor, ou fallback
+    // por e-mail do JWT). Ignora o valor enviado pelo cliente para que a autoria do
+    // orçamento no ERP não possa ser forjada pelo frontend.
+    {
+      const ui = await resolveUsuarioInclusao(req);
+      if (ui) payload.usuario_inclusao = ui; else delete payload.usuario_inclusao;
+    }
+
+    // Extrai itens (múltiplos produtos) e campos de pagamento antes de enviar ao ERP
+    // (a API REST só salva o cabeçalho; produtos/pessoas são inseridos via DB)
+    const {
+      itens: itensRaw,
+      prazo_pagamento_id: planoPagamentoId,
+      quantidade_parcelas: quantidadeParcelas,
+      usua_produtos,
+      usua_papeis,
+      ...headerPayload
+    } = payload;
+
+    // Normaliza os itens: cada item = um produto com seus beneficiários (até 15 por item).
+    const itens = Array.isArray(itensRaw)
+      ? itensRaw.map((it) => ({
+          produtoId: Number(it.produtoId),
+          preco: Number(it.preco) || 0,
+          incluirTitular: !!it.incluirTitular,
+          beneficiarios: Array.isArray(it.beneficiarios) ? it.beneficiarios.slice(0, 15) : [],
+        }))
+      : [];
+
+    // Ao menos um item válido é obrigatório. A API REST salva apenas o cabeçalho; os produtos
+    // e beneficiários são gravados via DB direto logo depois. Sem itens válidos o orçamento
+    // ficaria incompleto no ERP. Valida ANTES de criar o cabeçalho para não deixar órfão.
+    if (itens.length === 0) {
+      return res.status(400).json({ error: 'Produto obrigatório: selecione ao menos um produto antes de enviar o orçamento.' });
+    }
+    const itemInvalido = itens.find((it) => !it.produtoId || Number.isNaN(it.produtoId));
+    if (itemInvalido) {
+      return res.status(400).json({ error: 'Há um produto inválido na seleção. Revise os produtos do orçamento.' });
+    }
+    // Cada item precisa de ao menos uma pessoa (titular ou beneficiário), senão o Fechamento falha.
+    const itemSemPessoa = itens.find((it) => (it.incluirTitular ? 1 : 0) + it.beneficiarios.length < 1);
+    if (itemSemPessoa) {
+      return res.status(400).json({ error: 'Cada produto precisa de ao menos uma pessoa vinculada (titular ou beneficiário).' });
+    }
+
+    // Plano de pagamento é obrigatório: o fluxo do orçamento Upsell sempre termina com o
+    // Fechamento (situação "I") + registro do pagamento. Sem um plano válido o orçamento
+    // ficaria parado em "M". Valida ANTES de criar o cabeçalho para não gerar órfão no ERP.
+    const planoPagamentoIdNum = Number(planoPagamentoId);
+    if (!planoPagamentoIdNum || Number.isNaN(planoPagamentoIdNum)) {
+      return res.status(400).json({ error: 'Plano de pagamento obrigatório: selecione um plano antes de enviar o orçamento.' });
+    }
+
+    console.log('[ERP /orcamento] payload enviado ao ERP:', JSON.stringify(headerPayload, null, 2));
+    console.log(`[ERP /orcamento] itens recebidos: ${itens.length} | beneficiários totais: ${itens.reduce((a, it) => a + it.beneficiarios.length, 0)}`);
+    const r = await fetch(`${ERP_BASE}/OrcamentoSgprcUsuario`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(headerPayload),
+    });
+    const data = await r.json().catch(() => ({}));
+    console.log('[ERP /orcamento] status HTTP:', r.status);
+    console.log('[ERP /orcamento] resposta ERP completa:', JSON.stringify(data, null, 2));
+    if (!r.ok) return res.status(r.status).json(data);
+    if (data?.block || data?.error) return res.json(data);
+
+    // Pedido criado — agora insere produto e beneficiários via DB direto
+    const pedidoInternalId = data?.id;
+    const numeroPedido = data?.pedido ?? data?.numero ?? null;
+
+    // Sem o id interno do pedido não há como vincular produto/beneficiários.
+    if (!pedidoInternalId) {
+      console.error('[ERP /orcamento] ERP não retornou id do pedido; produto não pôde ser vinculado:', JSON.stringify(data));
+      return res.status(502).json({
+        error: 'O ERP não retornou o identificador do orçamento, então o produto não pôde ser vinculado. Tente novamente.',
+        erpResponse: data,
+      });
+    }
+
+    // Cadastra os dependentes (produtos DEPENDENTE) como Pessoa no ERP e anexa pessoaId a
+    // cada beneficiário ANTES da transação de banco (são chamadas HTTP; não podem rodar
+    // dentro da transação). addItemsToPedido grava esse pessoaId em pedidos_pessoas.pessoa_id.
+    try {
+      await resolveDependentePessoas(token, itens);
+    } catch (pessoaErr) {
+      console.error('[ERP /orcamento] cadastro de dependente como Pessoa falhou:', pessoaErr.message);
+      return res.status(502).json({
+        error: `O orçamento nº ${numeroPedido || pedidoInternalId} foi criado no ERP, mas não foi possível cadastrar um dependente como Pessoa (${pessoaErr.message}). O orçamento está INCOMPLETO e precisa ser corrigido manualmente.`,
+        erpResponse: data,
+      });
+    }
+
+    let dbResult = null;
+    try {
+      dbResult = await addItemsToPedido(Number(pedidoInternalId), { itens });
+      console.log('[ERP /orcamento] DB inserts OK:', JSON.stringify(dbResult));
+    } catch (dbErr) {
+      // O cabeçalho já existe no ERP, mas produto/beneficiários falharam (rollback do DB).
+      // Retorna ERRO REAL (não 2xx) para que o vendedor seja notificado e o orçamento
+      // incompleto não passe despercebido. NÃO alteramos o ERP automaticamente.
+      console.error('[ERP /orcamento] DB insert falhou (cabeçalho salvo no ERP):', dbErr.message);
+      return res.status(502).json({
+        error: `O orçamento ${numeroPedido ? `nº ${numeroPedido} ` : ''}foi criado no ERP, mas o produto/beneficiários NÃO foram gravados (${dbErr.message}). O orçamento está INCOMPLETO no ERP e precisa ser corrigido manualmente.`,
+        incomplete: true,
+        pedido: numeroPedido,
+        erpId: pedidoInternalId,
+      });
+    }
+
+    // Cria/corrige os contatos e o endereço físico do contratante que a API REST
+    // não grava corretamente para clientes novos (endereço some; telefone fica
+    // como "comercial"). Roda antes do finalize para o endereço novo (577) ser
+    // encontrado pelo CEP. Não crítico: best-effort, idempotente.
+    try {
+      const contatosResult = await ensureContatosEnderecoDB(Number(pedidoInternalId), {
+        telefone: headerPayload.telefone ?? null,
+        celular: headerPayload.celular ?? null,
+        emailContato: headerPayload.email_contato ?? null,
+        codigoPostal: headerPayload.un_codigo_postal ?? null,
+        logradouro: headerPayload.un_lougradouro ?? null,
+        numero: headerPayload.un_numero_lougradouro ?? null,
+        complemento: headerPayload.un_complemento_lougradouro ?? null,
+        bairro: headerPayload.un_bairro ?? null,
+        cidade: headerPayload.un_cidade ?? null,
+      });
+      console.log('[ERP /orcamento] contatos/endereço OK:', JSON.stringify(contatosResult));
+    } catch (contErr) {
+      console.error('[ERP /orcamento] contatos/endereço falhou (não crítico):', contErr.message);
+    }
+
+    // Preenche campos ignorados pela API REST: endereco_id, dia_vencimento, email_contato
+    const finalizeResult = await finalizeOrcamentoDB(Number(pedidoInternalId), {
+      diaVencimento: headerPayload.dia_vencimento ?? null,
+      emailContato: headerPayload.email_contato ?? null,
+      codigoPostal: headerPayload.un_codigo_postal ?? null,
+    });
+    if (finalizeResult) {
+      console.log('[ERP /orcamento] finalizeOrcamento OK:', JSON.stringify(finalizeResult));
+    }
+
+    // Fechamento (M → I) + registro da guia Pagamento (modos_pagamentos), replicando
+    // o processo manual do ERP. Só roda se um plano de pagamento foi escolhido.
+    let fechamentoResult = null;
+    const planoIdNum = Number(planoPagamentoId);
+    if (planoIdNum && !Number.isNaN(planoIdNum)) {
+      try {
+        fechamentoResult = await applyFechamentoEPagamento(Number(pedidoInternalId), {
+          planoPagamentoId: planoIdNum,
+          quantidadeParcelas: quantidadeParcelas ?? null,
+        });
+        console.log('[ERP /orcamento] fechamento+pagamento OK:', JSON.stringify(fechamentoResult));
+      } catch (fechErr) {
+        // O orçamento foi criado e está completo (produto/beneficiários gravados), mas o
+        // Fechamento/Pagamento falhou. Retorna ERRO REAL para o vendedor não tratar como
+        // sucesso — o orçamento ficou em "M" e precisa de ação manual no ERP.
+        console.error('[ERP /orcamento] fechamento+pagamento falhou:', fechErr.message);
+        return res.status(502).json({
+          error: `O orçamento ${numeroPedido ? `nº ${numeroPedido} ` : ''}foi criado no ERP, mas o Fechamento (situação "I") e o registro do pagamento NÃO foram concluídos (${fechErr.message}). O orçamento ficou em "M" e precisa ser fechado manualmente no ERP.`,
+          incomplete: true,
+          pedido: numeroPedido,
+          erpId: pedidoInternalId,
+          dbInserted: dbResult,
+        });
+      }
+    }
+
+    return res.json({ ...data, numeroPedido, erpId: pedidoInternalId, dbInserted: dbResult, fechamento: fechamentoResult });
+  } catch (err) {
+    console.error('[ERP Proxy] POST /orcamento error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/erp/pre-proposta
+// Cria uma proposta completa (header + endereço + produto + 1 beneficiário) via POST /PrePropostaUsuarioSgprc
+router.post('/pre-proposta', authMiddleware, async (req, res) => {
+  const token = getToken(res);
+  if (!token) return;
+  try {
+    const payload = { ...req.body };
+
+    // Define usuario_inclusao sempre no servidor. O campo diz ao ERP quem criou o
+    // orçamento; sem ele o ERP usa o dono do token (acesso.api) que não tem permissão
+    // para o bloco SGPRC_USUARIO.CAD_ORCAMENTO_SGPRC_USUARIO_FECHAMENTO. Frente 3:
+    // prioriza o login nativo do vendedor (via erp_agent_id); ignora o valor do cliente.
+    {
+      const ui = await resolveUsuarioInclusao(req);
+      if (ui) payload.usuario_inclusao = ui; else delete payload.usuario_inclusao;
+    }
+
+    console.log('[ERP pre-proposta] payload enviado ao ERP:', JSON.stringify(payload, null, 2));
+    const r = await fetch(`${ERP_BASE}/PrePropostaUsuarioSgprc`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json().catch(() => ({}));
+    console.log('[ERP pre-proposta] status HTTP:', r.status);
+    console.log('[ERP pre-proposta] resposta ERP completa:', JSON.stringify(data, null, 2));
+    if (!r.ok) return res.status(r.status).json(data);
+    return res.json(data);
+  } catch (err) {
+    console.error('[ERP Proxy] POST /pre-proposta error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/erp/canais-venda
 // Retorna os canais de venda disponíveis no ERP (API_CANAL_VENDAS)
 // Retorno: [{ titulo_contrato: string, id: number }]
@@ -245,6 +869,46 @@ router.get('/canais-venda', authMiddleware, async (req, res) => {
     return res.json(results);
   } catch (err) {
     console.error('[ERP Proxy] GET /canais-venda error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/erp/planos-pagamento
+// Retorna os planos de pagamento ativos e válidos do ERP (planos_pagamentos via DB)
+// Retorno: [{ id: number, plano_pagamento: string, numero_parcelas: number, dia_vencimento: number|null }]
+router.get('/planos-pagamento', authMiddleware, async (req, res) => {
+  try {
+    const planos = await getPlanosPagamento();
+    return res.json(planos);
+  } catch (err) {
+    console.error('[ERP Proxy] GET /planos-pagamento error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/erp/produtos
+// Retorna os produtos disponíveis no ERP (API_MV_API_PRODUTOS)
+// Retorno: [{ id: number, nome: string, ... }]
+router.get('/produtos', authMiddleware, async (req, res) => {
+  const token = getToken(res);
+  if (!token) return;
+
+  try {
+    const url = `${ERP_BASE}/API_MV_API_PRODUTOS`;
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) return res.status(response.status).json(data);
+    const results = data?.results || data?.data || (Array.isArray(data) ? data : []);
+    if (results.length > 0) {
+      console.log('[ERP /produtos] total:', results.length);
+      console.log('[ERP /produtos] campos do 1º produto:', Object.keys(results[0]));
+      console.log('[ERP /produtos] 1º produto completo:', JSON.stringify(results[0], null, 2));
+    }
+    return res.json(results);
+  } catch (err) {
+    console.error('[ERP Proxy] GET /produtos error:', err.message);
     return res.status(500).json({ error: err.message });
   }
 });

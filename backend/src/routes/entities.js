@@ -4,6 +4,7 @@ import { createCrudRouter } from '../utils/crud.js';
 import { authMiddleware, optionalAuth } from '../middleware/auth.js';
 import { loadAgentMiddleware, requireRole } from '../middleware/permissions.js';
 import { query, pool } from '../config/database.js';
+import { registerAgentInCanal } from '../services/erpDbService.js';
 import { 
   notifyLeadAssigned, 
   notifyLeadStageChanged, 
@@ -42,6 +43,11 @@ pool.query(`
   ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS dependents JSONB DEFAULT '[]'::jsonb;
 `).then(() => console.log('[Migration] leads_upsell ERP columns OK'))
   .catch(e => console.error('[Migration] leads_upsell ERP columns error:', e.message));
+
+pool.query(`
+  ALTER TABLE activities_upsell ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES agents(id);
+`).then(() => console.log('[Migration] activities_upsell.created_by OK'))
+  .catch(e => console.error('[Migration] activities_upsell.created_by error:', e.message));
 
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
@@ -518,7 +524,7 @@ router.get('/agents', authMiddleware, async (req, res) => {
              photo_url, permissions, level, online, capacity, working_hours, 
              queue_ids, work_unit, role, must_reset_password, erp_agent_id,
              whatsapp_access_token, whatsapp_token_expires_at,
-             canal_venda, canal_venda_id,
+             canal_venda, canal_venda_id, canal_venda_grupo_id, erp_agente_venda_id,
              created_at, updated_at
       FROM agents 
       ORDER BY created_at DESC 
@@ -543,7 +549,7 @@ router.get('/agents/:id', authMiddleware, async (req, res) => {
              queue_ids, work_unit, role, must_reset_password, erp_agent_id,
              whatsapp_access_token, whatsapp_token_expires_at,
              whatsapp_channel_token,
-             canal_venda, canal_venda_id,
+             canal_venda, canal_venda_id, canal_venda_grupo_id, erp_agente_venda_id,
              created_at, updated_at
       FROM agents WHERE id = $1
     `, [id]);
@@ -608,7 +614,7 @@ router.post('/agents', authMiddleware, async (req, res) => {
     const result = await query(sql, values);
     const agent = result.rows[0];
     delete agent.password_hash;
-    
+
     res.status(201).json(convertKeysToCamel(agent));
   } catch (error) {
     console.error('Error creating agent:', error);
@@ -699,7 +705,7 @@ router.post('/agents/filter', authMiddleware, async (req, res) => {
       SELECT id, name, cpf, email, agent_type, team_id, skills, active, 
              photo_url, permissions, level, online, capacity, working_hours, 
              queue_ids, work_unit, role, erp_agent_id,
-             canal_venda, canal_venda_id,
+             canal_venda, canal_venda_id, canal_venda_grupo_id, erp_agente_venda_id,
              created_at, updated_at
       FROM agents
     `;
@@ -1750,19 +1756,36 @@ router.put('/referrals/:id', authMiddleware, async (req, res) => {
           const agentResult = await query('SELECT name FROM agents WHERE id = $1', [agentId]);
           if (agentResult.rows.length > 0) nomeVendedor = agentResult.rows[0].name;
         }
-        await query(
+        // Deduplicação por par indicador/indicado: não cria uma segunda linha de
+        // comissão quando já existe um registro (qualquer origem) com o mesmo
+        // cpf_indicador e cpf_indicado. A checagem é por par independente da origem,
+        // alinhada ao backfill (automationService) e ao alerta sem-registro-erp.
+        // Quando o cpf_indicado ainda está nulo no fechamento ($4 IS NULL), a checagem
+        // não bloqueia o insert — o preenchimento posterior do CPF é tratado pelo
+        // bloco de UPDATE de cpf_indicado abaixo.
+        const perspInsert = await query(
           `INSERT INTO erp_perspectivas_negocios
             (nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_perspectiva, origem, sincronizado_em)
-           VALUES ($1,$2,$3,$4,$5,'NEGOCIO FECHADO','crm',NOW())`,
+           SELECT $1,$2,$3,$4,$5,'NEGOCIO FECHADO','crm',NOW()
+           WHERE NOT EXISTS (
+             SELECT 1 FROM erp_perspectivas_negocios p
+             WHERE $4 IS NOT NULL
+               AND regexp_replace(COALESCE(p.cpf_indicador, ''), '[^0-9]', '', 'g') IS NOT DISTINCT FROM $2
+               AND regexp_replace(COALESCE(p.cpf_indicado, ''), '[^0-9]', '', 'g')  IS NOT DISTINCT FROM $4
+           )`,
           [
             referral.referrer_name || null,
-            referral.referrer_cpf  || null,
+            (referral.referrer_cpf || '').replace(/\D/g, '') || null,
             referral.referred_name || null,
-            referral.referred_cpf  || null,
+            (referral.referred_cpf || '').replace(/\D/g, '') || null,
             nomeVendedor
           ]
         );
-        console.log(`[PerspectivaNegócios] Lead convertido registrado: ${referral.referred_name}`);
+        if (perspInsert.rowCount > 0) {
+          console.log(`[PerspectivaNegócios] Lead convertido registrado: ${referral.referred_name}`);
+        } else {
+          console.log(`[PerspectivaNegócios] Lead convertido ignorado (par indicador/indicado já registrado): ${referral.referred_name}`);
+        }
       } catch (perspErr) {
         console.error('[PerspectivaNegócios] Erro ao registrar lead convertido:', perspErr.message);
       }
@@ -1782,8 +1805,12 @@ router.put('/referrals/:id', authMiddleware, async (req, res) => {
            WHERE origem = 'crm'
              AND cpf_indicado IS NULL
              AND nome_indicado IS NOT DISTINCT FROM $2
-             AND cpf_indicador IS NOT DISTINCT FROM $3`,
-          [data.referred_cpf, referral.referred_name, referral.referrer_cpf]
+             AND regexp_replace(COALESCE(cpf_indicador, ''), '[^0-9]', '', 'g') IS NOT DISTINCT FROM $3`,
+          [
+            (data.referred_cpf || '').replace(/\D/g, '') || null,
+            referral.referred_name,
+            (referral.referrer_cpf || '').replace(/\D/g, '') || null
+          ]
         );
         if (cpfResult.rowCount > 0) {
           console.log(`[PerspectivaNegócios] CPF indicado atualizado em tempo real: ${data.referred_cpf} (lead: ${referral.referred_name})`);

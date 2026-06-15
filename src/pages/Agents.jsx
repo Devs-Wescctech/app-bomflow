@@ -7,9 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Edit, Trash2, UserCheck, UserX, Activity, Upload, Loader2, MessageSquare, Copy, Check, ExternalLink, MoreVertical, Clock, Users, Building2, Layers, Settings, ShieldX, KeyRound, Eye, EyeOff, Search, X, UserPlus, Server, CheckCircle, AlertCircle } from "lucide-react";
 import { canManageAgents, isSupervisorType } from "@/components/utils/permissions.jsx";
+import ErpSyncDialog from "@/components/agents/ErpSyncDialog";
 /* NOVO — integração ERP */
 import { createPessoaErp, createUsuarioErp, getPessoaByErp } from "@/api/erpClient";
-import { buscarCanaisVenda } from "@/api/erpService";
+import { buscarCanaisVenda, registrarCanalErp, commitSyncAgentesErp } from "@/api/erpService";
 import {
   Dialog,
   DialogContent,
@@ -216,6 +217,7 @@ export default function Agents() {
   const hasPermission = isAdmin || canManageAgents(currentAgent);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isErpSyncOpen, setIsErpSyncOpen] = useState(false);
   const [showTokenField, setShowTokenField] = useState(false);
   const [channelTokenInput, setChannelTokenInput] = useState("");
   const [channelTokenChanged, setChannelTokenChanged] = useState(false);
@@ -266,6 +268,7 @@ export default function Agents() {
     workUnit: "",
     canalVenda: "",
     canalVendaId: null,
+    canalVendaGrupoId: null,
     erpAgentId: "",
     erpLogin: "",
     erpEmail: "",
@@ -329,7 +332,7 @@ export default function Agents() {
   const createAgentMutation = useMutation({
     mutationFn: (data) => base44.entities.Agent.create(data),
     /* MODIFICADO — chama ERP após criar agente no BomFlow */
-    onSuccess: async (novoAgente) => {
+    onSuccess: async (novoAgente, variables) => {
       const finalizar = () => {
         queryClient.invalidateQueries({ queryKey: ['agents'] });
         setIsDialogOpen(false);
@@ -343,6 +346,9 @@ export default function Agents() {
         if (deveVincularErp) {
           try {
             let codigoPessoa = erpPessoaCode;
+            // ID interno da Pessoa no ERP (PK numérica ~300M) — necessário para pessoas_contratos
+            let pessoaInternalId = erpPessoaResult?.id || null;
+
             // Se CPF não estava no ERP, cria a pessoa primeiro
             if (!codigoPessoa) {
               if (erpPessoaResult?.notFound) {
@@ -354,6 +360,7 @@ export default function Agents() {
                   situacao: "A",
                 });
                 codigoPessoa = String(criada.pessoa || "");
+                pessoaInternalId = criada.id || null; // ex: 302505993
                 setErpPessoaCode(codigoPessoa);
               } else {
                 toast.error(
@@ -389,6 +396,36 @@ export default function Agents() {
             if (erpUserId) {
               await base44.entities.Agent.update(novoAgente.id, { erpAgentId: erpUserId });
             }
+
+            // Registra agente no canal de vendas do ERP (INSERT em pessoas_contratos)
+            // Usa `variables` (dados do mutate) em vez de `formData` para evitar
+            // stale-closure — variables é imutável e capturado no momento do submit.
+            const canalVendaId    = variables?.canalVendaId    ?? null;
+            const canalVendaGrupoId = variables?.canalVendaGrupoId ?? null;
+            console.log('[createAgent] canal check — pessoaInternalId:', pessoaInternalId, 'canalVendaId:', canalVendaId);
+            if (pessoaInternalId && canalVendaId) {
+              try {
+                setCreatingStep('erp_canal');
+                await registrarCanalErp({
+                  agentId: novoAgente.id,
+                  pessoaId: pessoaInternalId,
+                  contratoId: canalVendaId,
+                  grupoId: canalVendaGrupoId || null,
+                });
+                console.log(`[createAgent] Agente ${novoAgente.id} registrado no canal ERP ${canalVendaId}`);
+              } catch (canalErr) {
+                console.warn('[createAgent] Falha ao registrar canal ERP:', canalErr.message);
+                toast.warning(
+                  `Agente criado, mas o vínculo com o canal de vendas ERP falhou: ${canalErr.message}`,
+                  { duration: 10000 }
+                );
+              }
+            } else if (canalVendaId && !pessoaInternalId) {
+              console.warn('[createAgent] Canal configurado mas pessoaInternalId indisponível — vínculo ERP omitido.');
+            } else if (!canalVendaId) {
+              console.log('[createAgent] Nenhum canal de vendas selecionado — INSERT em pessoas_contratos omitido.');
+            }
+
             toast.success('Agente criado e usuário ERP vinculado com sucesso!');
           } catch (erpError) {
             console.error('ERRO createUsuarioErp debug:', erpError);
@@ -436,11 +473,47 @@ export default function Agents() {
 
   const updateAgentMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Agent.update(id, data),
-    onSuccess: () => {
+    /* MODIFICADO — Frente 2: garante o vínculo ERP (erp_agent_id + canal) na edição */
+    onSuccess: async (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
       setIsDialogOpen(false);
       resetForm();
       toast.success('Agente atualizado com sucesso!');
+
+      // Só aciona o ERP quando há CPF e algo a vincular (sem erp_agent_id ou com canal).
+      // O endpoint é idempotente: se já estiver tudo vinculado, retorna 'ja_vinculado'.
+      const data = variables?.data || {};
+      const canalChanged = !!variables?.canalChanged;
+      const temCpf = !!(data.cpf && String(data.cpf).replace(/\D/g, ''));
+      const precisaErp = temCpf && (!data.erpAgentId || !!data.canalVendaId);
+      if (!precisaErp) return;
+
+      try {
+        const resp = await commitSyncAgentesErp([{ agentId: variables.id, recanal: canalChanged }]);
+        const r = resp?.results?.[0];
+        if (r) {
+          const acts = r.actions || [];
+          if (r.status === 'ok') {
+            if (acts.includes('vinculo') && acts.includes('canal')) {
+              toast.success('Agente vinculado ao ERP e canal de vendas registrado.');
+            } else if (acts.includes('canal')) {
+              toast.success('Canal de vendas registrado no ERP.');
+            } else if (acts.includes('vinculo')) {
+              toast.success('Agente vinculado ao ERP.');
+            }
+          } else if (r.status === 'nome_divergente') {
+            toast.warning('O nome do agente diverge do cadastro no ERP. Use "Sincronizar com ERP" para revisar e confirmar o vínculo.', { duration: 10000 });
+          } else if (r.status === 'vinculado_sem_canal') {
+            toast.warning(`Agente vinculado, mas o canal de vendas no ERP falhou: ${r.canalErro || 'erro desconhecido'}`, { duration: 10000 });
+          } else if (r.status === 'pessoa_nao_encontrada' || r.status === 'usuario_nao_encontrado') {
+            toast.warning('Não foi encontrado um usuário no ERP para este CPF. Verifique o cadastro no ERP.', { duration: 8000 });
+          }
+          // 'ja_vinculado' e 'sem_cpf' → silencioso
+        }
+        queryClient.invalidateQueries({ queryKey: ['agents'] });
+      } catch (e) {
+        toast.warning('Não foi possível sincronizar o vínculo ERP automaticamente: ' + e.message, { duration: 8000 });
+      }
     },
     onError: (error) => {
       toast.error('Erro ao atualizar agente: ' + error.message);
@@ -650,6 +723,7 @@ export default function Agents() {
       workUnit: "",
       canalVenda: "",
       canalVendaId: null,
+      canalVendaGrupoId: null,
       erpAgentId: "",
       erpLogin: "",
       erpEmail: "",
@@ -772,6 +846,7 @@ export default function Agents() {
       workUnit: agent.workUnit || "",
       canalVenda: agent.canalVenda || "",
       canalVendaId: agent.canalVendaId || null,
+      canalVendaGrupoId: agent.canalVendaGrupoId || null,
       erpAgentId: agent.erpAgentId != null ? String(agent.erpAgentId) : "",
       erpLogin: generateErpLogin(agent.name || ""),
       erpEmail: "",
@@ -935,6 +1010,7 @@ export default function Agents() {
       ...formDataToSave,
       erpAgentId: formData.erpAgentId ? Number(formData.erpAgentId) : null,
       canalVendaId: formData.canalVendaId ? Number(formData.canalVendaId) : null,
+      canalVendaGrupoId: formData.canalVendaGrupoId ? Number(formData.canalVendaGrupoId) : null,
       supervisorId: formData.supervisorId && formData.supervisorId !== "none" ? formData.supervisorId : null,
       permissions: normalizePermissions(formData.permissions)
     };
@@ -946,9 +1022,13 @@ export default function Agents() {
       if (channelTokenChanged) {
         dataToSend.whatsappChannelToken = channelTokenInput || null;
       }
+      // Frente 2: detecta troca de canal de vendas para forçar re-registro no ERP.
+      const prevCanal = editingAgent?.canalVendaId ? Number(editingAgent.canalVendaId) : null;
+      const canalChanged = !!dataToSend.canalVendaId && dataToSend.canalVendaId !== prevCanal;
       updateAgentMutation.mutate({
         id: editingAgent.id,
-        data: dataToSend
+        data: dataToSend,
+        canalChanged
       });
     } else {
       setCreatingStep('agent');
@@ -1113,16 +1193,26 @@ export default function Agents() {
                 ? `${filteredAgents.length} de ${agents.length} agente(s)`
                 : `${agents.length} agente(s) cadastrado(s)`}
             </p>
-            <Button 
-              onClick={() => {
-                resetForm();
-                setIsDialogOpen(true);
-              }}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Novo Agente
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsErpSyncOpen(true)}
+                className="border-blue-200 text-blue-700 hover:bg-blue-50"
+              >
+                <Server className="w-4 h-4 mr-2" />
+                Sincronizar com ERP
+              </Button>
+              <Button 
+                onClick={() => {
+                  resetForm();
+                  setIsDialogOpen(true);
+                }}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Novo Agente
+              </Button>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2 mb-4">
@@ -2023,7 +2113,8 @@ export default function Agents() {
                     setFormData({
                       ...formData,
                       canalVendaId: e.target.value ? Number(e.target.value) : null,
-                      canalVenda: selected?.titulo_contrato || ""
+                      canalVenda: selected?.titulo_contrato || "",
+                      canalVendaGrupoId: selected?.grupo_id ? Number(selected.grupo_id) : null
                     });
                   }}
                   className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
@@ -2405,9 +2496,10 @@ export default function Agents() {
           <SheetFooter className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
             {(() => {
               const CREATE_STEPS = [
-                { key: 'agent',       label: 'Criando agente no sistema...' },
-                { key: 'erp_pessoa',  label: 'Registrando no ERP...'        },
-                { key: 'erp_usuario', label: 'Criando acesso ao ERP...'     },
+                { key: 'agent',       label: 'Criando agente no sistema...'          },
+                { key: 'erp_pessoa',  label: 'Registrando no ERP...'                 },
+                { key: 'erp_usuario', label: 'Criando acesso ao ERP...'              },
+                { key: 'erp_canal',   label: 'Vinculando ao canal de vendas ERP...'  },
               ];
               const isBusy = creatingStep !== null || updateAgentMutation.isPending;
               const stepIdx = CREATE_STEPS.findIndex(s => s.key === creatingStep);
@@ -3124,6 +3216,14 @@ export default function Agents() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <ErpSyncDialog
+        open={isErpSyncOpen}
+        onOpenChange={setIsErpSyncOpen}
+        onDone={() => {
+          queryClient.invalidateQueries({ queryKey: ['agents'] });
+        }}
+      />
     </div>
   );
 }

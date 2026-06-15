@@ -11,7 +11,7 @@ import { checkAllSLAWarnings, checkSLABreach, recordFirstResponse, recordStatusC
 import { runAllAutomations, runAutomationsForLead } from '../services/leadAutomation.js';
 import { checkAndExecuteLeadUpsellAutomations, checkAndExecuteUpsellChannelAutomations, executeLeadCreatedAutomation, executeUpsellChannelLeadCreatedAutomation } from '../services/automationService.js';
 import { notifyLeadAssigned } from '../services/notificationService.js';
-import { generateProposalPDF } from '../services/pdfService.js';
+import { generateProposalPDF, generateManualProposalPDF } from '../services/pdfService.js';
 import { sendWhatsAppMessage, sendDocument, sendTextMessage } from '../services/whatsappService.js';
 import { v4 as uuidv4 } from 'uuid';
 import ExcelJS from 'exceljs';
@@ -3310,18 +3310,29 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
 
 router.post('/generate-proposal', authMiddleware, async (req, res) => {
   try {
-    const { template_id, lead_id, lead_type } = req.body;
-    
-    if (!template_id || !lead_id) {
+    const { template_id, lead_id, lead_type, proposal_data } = req.body;
+
+    // Manual proposal flow (Vendas PJ or PF): seller fills the form, no template
+    const isManualPj = lead_type === 'pj' && proposal_data && typeof proposal_data === 'object';
+    const isManualPf = lead_type === 'pf' && proposal_data && typeof proposal_data === 'object';
+    const isManual = isManualPj || isManualPf;
+
+    if (!isManual && (!template_id || !lead_id)) {
       return res.status(400).json({ success: false, error: 'Template ID e Lead ID são obrigatórios' });
     }
-    
-    const templateResult = await query('SELECT * FROM proposal_templates WHERE id = $1', [template_id]);
-    if (templateResult.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Template não encontrado' });
+    if (isManual && !lead_id) {
+      return res.status(400).json({ success: false, error: 'Lead ID é obrigatório' });
     }
-    const template = templateResult.rows[0];
-    
+
+    let template = null;
+    if (!isManual) {
+      const templateResult = await query('SELECT * FROM proposal_templates WHERE id = $1', [template_id]);
+      if (templateResult.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Template não encontrado' });
+      }
+      template = templateResult.rows[0];
+    }
+
     const tableName = lead_type === 'pj' ? 'leads_pj' : lead_type === 'referral' ? 'referrals' : lead_type === 'upsell' ? 'leads_upsell' : 'leads';
     const leadResult = await query(`SELECT * FROM ${tableName} WHERE id = $1`, [lead_id]);
     if (leadResult.rows.length === 0) {
@@ -3338,12 +3349,26 @@ router.post('/generate-proposal', authMiddleware, async (req, res) => {
       }
     }
     
-    const pdfResult = await generateProposalPDF(template, lead, agent);
-    
-    await query(
-      `UPDATE ${tableName} SET proposal_url = $1 WHERE id = $2`,
-      [pdfResult.publicUrl, lead_id]
-    );
+    const pdfResult = isManual
+      ? await generateManualProposalPDF(proposal_data, lead, agent)
+      : await generateProposalPDF(template, lead, agent);
+
+    if (isManualPj) {
+      await query(
+        `UPDATE leads_pj SET proposal_url = $1, proposal_data = $2 WHERE id = $3`,
+        [pdfResult.publicUrl, JSON.stringify(proposal_data), lead_id]
+      );
+    } else if (isManualPf) {
+      await query(
+        `UPDATE leads SET proposal_url = $1, proposal_data = $2 WHERE id = $3`,
+        [pdfResult.publicUrl, JSON.stringify(proposal_data), lead_id]
+      );
+    } else {
+      await query(
+        `UPDATE ${tableName} SET proposal_url = $1 WHERE id = $2`,
+        [pdfResult.publicUrl, lead_id]
+      );
+    }
 
     if (lead_type === 'upsell') {
       // Resolve the creating agent from the logged-in user
@@ -5982,17 +6007,23 @@ router.get('/perspectivas-negocios', authMiddleware, async (req, res) => {
       params.push(sit_perspectiva);
     }
     if (cpf_indicador) {
-      where += ` AND cpf_indicador = $${idx++}`;
-      params.push(cpf_indicador);
+      where += ` AND regexp_replace(cpf_indicador, '[^0-9]', '', 'g') = $${idx++}`;
+      params.push(String(cpf_indicador).replace(/\D/g, ''));
     }
     if (nome_vendedor) {
       where += ` AND nome_vendedor ILIKE $${idx++}`;
       params.push(`%${nome_vendedor}%`);
     }
     if (search) {
-      where += ` AND (nome_indicado ILIKE $${idx} OR nome_indicador ILIKE $${idx} OR cpf_indicado ILIKE $${idx} OR cpf_indicador ILIKE $${idx})`;
+      const searchDigits = String(search).replace(/\D/g, '');
+      where += ` AND (nome_indicado ILIKE $${idx} OR nome_indicador ILIKE $${idx}`;
+      if (searchDigits) {
+        where += ` OR regexp_replace(COALESCE(cpf_indicado,''), '[^0-9]', '', 'g') LIKE $${idx + 1} OR regexp_replace(COALESCE(cpf_indicador,''), '[^0-9]', '', 'g') LIKE $${idx + 1}`;
+      }
+      where += `)`;
       params.push(`%${search}%`);
-      idx++;
+      if (searchDigits) params.push(`%${searchDigits}%`);
+      idx += searchDigits ? 2 : 1;
     }
 
     const { rows } = await query(
@@ -6055,7 +6086,8 @@ async function runPerspectivaBatch() {
 
     const indicatorMap = {};
     for (const e of elegiveis) {
-      const key = e.cpf_indicador || e.nome_indicador || 'unknown';
+      const cpfDigits = e.cpf_indicador ? String(e.cpf_indicador).replace(/\D/g, '') : '';
+      const key = cpfDigits || e.nome_indicador || 'unknown';
       if (!indicatorMap[key]) {
         indicatorMap[key] = { nome: e.nome_indicador, cpf: e.cpf_indicador, count: 0, total: 0, totalCumulative: 0, records: [] };
       }
@@ -6066,10 +6098,11 @@ async function runPerspectivaBatch() {
     for (const ind of Object.values(indicatorMap)) {
       let historicoPago = 0;
       if (ind.cpf) {
+        const cpfDigits = String(ind.cpf).replace(/\D/g, '');
         const histResult = await query(
           `SELECT COUNT(*) AS total FROM erp_perspectivas_negocios
-           WHERE cpf_indicador = $1 AND sit_titulo = 'Liquidado' AND status_pagamento = 'pago'`,
-          [ind.cpf]
+           WHERE regexp_replace(cpf_indicador, '[^0-9]', '', 'g') = $1 AND sit_titulo = 'Liquidado' AND status_pagamento = 'pago'`,
+          [cpfDigits]
         );
         historicoPago = parseInt(histResult.rows[0].total) || 0;
       }
@@ -6152,7 +6185,7 @@ async function getPerspectivaReportData() {
   const controlResult = await query(
     `SELECT * FROM erp_perspectivas_negocios
      WHERE sit_titulo = 'Liquidado'
-       AND cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')
+       AND regexp_replace(cpf_indicador, '[^0-9]', '', 'g') NOT IN ('18470931830','32368440860')
        AND (status_pagamento IS NULL OR status_pagamento = 'elegivel')
      ORDER BY nome_indicador NULLS LAST, data_pagamento ASC`
   );
@@ -6161,7 +6194,8 @@ async function getPerspectivaReportData() {
   // Agrupa por indicador (cpf_indicador preferencial, senão nome, senão 'unknown')
   const indicatorMap = {};
   for (const r of records) {
-    const key = r.cpf_indicador || r.nome_indicador || 'unknown';
+    const cpfDigits = r.cpf_indicador ? String(r.cpf_indicador).replace(/\D/g, '') : '';
+    const key = cpfDigits || r.nome_indicador || 'unknown';
     if (!indicatorMap[key]) {
       indicatorMap[key] = {
         nome: r.nome_indicador || '-',
@@ -6194,10 +6228,11 @@ async function getPerspectivaReportData() {
   for (const ind of Object.values(indicatorMap)) {
     let historicoPago = 0;
     if (ind.cpf && ind.cpf !== '-') {
+      const cpfDigits = String(ind.cpf).replace(/\D/g, '');
       const histResult = await query(
         `SELECT COUNT(*) AS total FROM erp_perspectivas_negocios
-         WHERE cpf_indicador = $1 AND sit_titulo = 'Liquidado' AND status_pagamento = 'pago'`,
-        [ind.cpf]
+         WHERE regexp_replace(cpf_indicador, '[^0-9]', '', 'g') = $1 AND sit_titulo = 'Liquidado' AND status_pagamento = 'pago'`,
+        [cpfDigits]
       );
       historicoPago = parseInt(histResult.rows[0].total) || 0;
     }
@@ -6361,7 +6396,7 @@ router.get('/commission-perspectiva/corretor-cpfs', authMiddleware, loadAgentMid
 router.get('/commission-perspectiva/control', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
   try {
     const { status, lote_id, data_inicio, data_fim } = req.query;
-    let where = `WHERE sit_titulo = 'Liquidado' AND cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')`;
+    let where = `WHERE sit_titulo = 'Liquidado' AND regexp_replace(cpf_indicador, '[^0-9]', '', 'g') NOT IN ('18470931830','32368440860')`;
     const params = [];
     let idx = 1;
     if (status && status !== 'all') {
@@ -6381,7 +6416,7 @@ router.get('/commission-perspectiva/control', authMiddleware, loadAgentMiddlewar
     const result = await query(
       `SELECT e.*,
          (SELECT COUNT(*) FROM erp_perspectivas_negocios e2
-          WHERE e2.cpf_indicador = e.cpf_indicador
+          WHERE regexp_replace(e2.cpf_indicador, '[^0-9]', '', 'g') = regexp_replace(e.cpf_indicador, '[^0-9]', '', 'g')
             AND e2.sit_titulo = 'Liquidado'
             AND e2.status_pagamento = 'pago') AS historico_pago_count
        FROM erp_perspectivas_negocios e ${where} ORDER BY e.data_pagamento ASC, e.nome_indicador LIMIT 10000`,
@@ -6398,7 +6433,7 @@ router.get('/commission-perspectiva/summary', authMiddleware, loadAgentMiddlewar
     const byStatus = await query(
       `SELECT COALESCE(status_pagamento, 'elegivel') as status_pagamento, COUNT(*) as total
        FROM erp_perspectivas_negocios
-       WHERE sit_titulo = 'Liquidado' AND cpf_indicador NOT IN ('184.709.318-30','323.684.408-60')
+       WHERE sit_titulo = 'Liquidado' AND regexp_replace(cpf_indicador, '[^0-9]', '', 'g') NOT IN ('18470931830','32368440860')
        GROUP BY COALESCE(status_pagamento, 'elegivel')`
     );
     const batchAbertos = await query("SELECT COUNT(*) as total FROM commission_perspectiva_batches WHERE status = 'aberto'");
@@ -6496,6 +6531,36 @@ router.post('/commission-perspectiva/report/send', authMiddleware, loadAgentMidd
   } catch (error) {
     console.error('[Perspectiva Email] Erro no envio manual:', error.message);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/commission-perspectiva/sem-registro-erp', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT
+        r.id,
+        r.referred_name,
+        r.referred_cpf,
+        r.referrer_name,
+        r.referrer_cpf,
+        r.stage,
+        r.updated_at,
+        a.name AS vendedor_name
+      FROM referrals r
+      LEFT JOIN agents a ON a.id = r.agent_id
+      WHERE r.stage = 'fechado_ganho'
+        AND r.referred_cpf IS NOT NULL AND r.referred_cpf != ''
+        AND NOT EXISTS (
+          SELECT 1 FROM erp_perspectivas_negocios p
+          WHERE regexp_replace(COALESCE(p.cpf_indicador, ''), '[^0-9]', '', 'g') IS NOT DISTINCT FROM regexp_replace(COALESCE(r.referrer_cpf, ''), '[^0-9]', '', 'g')
+            AND regexp_replace(COALESCE(p.cpf_indicado, ''), '[^0-9]', '', 'g')  IS NOT DISTINCT FROM regexp_replace(COALESCE(r.referred_cpf, ''), '[^0-9]', '', 'g')
+        )
+      ORDER BY r.updated_at DESC
+    `);
+    res.json({ records: result.rows });
+  } catch (error) {
+    console.error('[Perspectiva SemRegistroERP] Erro:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 

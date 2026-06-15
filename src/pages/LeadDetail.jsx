@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useNavigate } from "react-router-dom";
@@ -50,7 +50,9 @@ import {
   AlertCircle,
   Presentation,
   Users,
+  Calculator,
 } from "lucide-react";
+import UpsellNovoOrcamento from "./UpsellNovoOrcamento";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { createPageUrl } from "@/utils";
@@ -112,6 +114,16 @@ export default function LeadDetail() {
   const [sendingAutentique, setSendingAutentique] = useState(false);
   const [checkingAutentique, setCheckingAutentique] = useState(false);
   const [proposalUrl, setProposalUrl] = useState("");
+  const [proposalForm, setProposalForm] = useState({
+    validUntil: "",
+    clientName: "",
+    clientPhone: "",
+    products: [],
+    description: "",
+    planValue: "",
+    observations: "",
+  });
+  const [proposalFormReady, setProposalFormReady] = useState(false);
   const [uploadingContract, setUploadingContract] = useState(false);
   const [sendingContractAutentique, setSendingContractAutentique] = useState(false);
   const [sendingContractLink, setSendingContractLink] = useState(false);
@@ -152,14 +164,49 @@ export default function LeadDetail() {
     refetchOnMount: 'always',
   });
 
-  const { data: templates = [] } = useQuery({
-    queryKey: ['proposalTemplates'],
-    queryFn: () => base44.entities.ProposalTemplate.list(),
+  const { data: erpProdutos = [], isLoading: loadingProdutos, isError: erpProdutosError } = useQuery({
+    queryKey: ['erpProdutos'],
+    queryFn: async () => {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch('/api/erp/produtos', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Erro ao buscar produtos do ERP');
+      }
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 10,
   });
 
   const actionableTypes = ['task', 'visit', 'call', 'meeting', 'email', 'presentation', 'proposal'];
   const pendingTasks = activities.filter(a => actionableTypes.includes(a.type) && !a.completed);
   const hasPendingTasks = pendingTasks.length > 0;
+
+  useEffect(() => {
+    if (!lead || proposalFormReady) return;
+    const saved = lead.proposalData || lead.proposal_data || {};
+    let savedProducts = [];
+    if (Array.isArray(saved.products) && saved.products.length > 0) {
+      savedProducts = saved.products
+        .map((p) => ({ id: String(p.id ?? ""), name: (p.name || "").toString() }))
+        .filter((p) => p.name);
+    } else if (saved.productName) {
+      savedProducts = [{ id: String(saved.productId || ""), name: saved.productName }];
+    }
+    setProposalForm({
+      validUntil: saved.validUntil || "",
+      clientName: saved.clientName || lead.name || "",
+      clientPhone: saved.clientPhone || lead.phone || "",
+      products: savedProducts,
+      description: saved.description || "",
+      planValue: saved.planValue || "",
+      observations: saved.observations || "",
+    });
+    if (lead.proposalUrl || lead.proposal_url) setProposalUrl(lead.proposalUrl || lead.proposal_url);
+    setProposalFormReady(true);
+  }, [lead, proposalFormReady]);
 
   const getTaskTypeConfig = (type) => {
     const configs = {
@@ -368,13 +415,49 @@ export default function LeadDetail() {
     });
   };
 
-  const handleGenerateProposal = async (templateId) => {
+  const handleProposalFieldChange = (field, value) => {
+    setProposalForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleProductSelect = (productId) => {
+    const produto = erpProdutos.find(p => String(p.id) === String(productId));
+    if (!produto) return;
+    const preco = parseFloat(produto.preco_informado) || 0;
+    if (Math.abs(preco - 0.01) < 0.005) return;
+    const productName = produto.nome || produto.descricao || produto.name || `Produto #${produto.id}`;
+    setProposalForm(prev => {
+      if (prev.products.some(p => String(p.id) === String(productId))) return prev;
+      const newProducts = [...prev.products, { id: String(productId), name: productName, price: preco }];
+      const total = newProducts.reduce((sum, p) => sum + (parseFloat(p.price) || 0), 0);
+      const formatted = total > 0
+        ? `R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mês`
+        : '';
+      return { ...prev, products: newProducts, planValue: formatted };
+    });
+  };
+
+  const handleProductRemove = (productId) => {
+    setProposalForm(prev => {
+      const newProducts = prev.products.filter(p => String(p.id) !== String(productId));
+      const total = newProducts.reduce((sum, p) => sum + (parseFloat(p.price) || 0), 0);
+      const formatted = total > 0
+        ? `R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mês`
+        : '';
+      return { ...prev, products: newProducts, planValue: formatted };
+    });
+  };
+
+  const handleGenerateProposal = async () => {
+    if (!proposalForm.clientName?.trim()) {
+      toast.error('Informe o nome do cliente.');
+      return;
+    }
     setGeneratingProposal(true);
     try {
       const response = await base44.functions.invoke('generateProposal', {
         lead_id: leadId,
-        template_id: templateId,
         lead_type: 'pf',
+        proposal_data: proposalForm,
       });
 
       if (response.data.success) {
@@ -388,6 +471,20 @@ export default function LeadDetail() {
       toast.error('Erro ao gerar proposta');
     }
     setGeneratingProposal(false);
+  };
+
+  const handleDownloadProposal = () => {
+    const url = proposalUrl || lead?.proposal_url;
+    if (!url) {
+      toast.error('Gere a proposta primeiro!');
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `proposta_${lead?.name || 'cliente'}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleSendWhatsApp = async () => {
@@ -908,7 +1005,7 @@ export default function LeadDetail() {
           {/* Left Column: Tabs */}
           <div className="lg:col-span-2">
             <Tabs defaultValue="activities" className="w-full">
-              <TabsList className="grid w-full grid-cols-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-1.5 shadow-sm">
+              <TabsList className="grid w-full grid-cols-5 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-1.5 shadow-sm">
                 <TabsTrigger 
                   value="activities" 
                   data-value="activities"
@@ -939,6 +1036,14 @@ export default function LeadDetail() {
                   <span className="hidden sm:inline">Proposta</span>
                 </TabsTrigger>
                 <TabsTrigger 
+                  value="orcamento" 
+                  data-value="orcamento"
+                  className="rounded-lg data-[state=active]:bg-violet-600 data-[state=active]:text-white data-[state=active]:shadow-md transition-all"
+                >
+                  <Calculator className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Orçamento</span>
+                </TabsTrigger>
+                <TabsTrigger 
                   value="contract" 
                   data-value="contract"
                   className="rounded-lg data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-md transition-all"
@@ -947,6 +1052,18 @@ export default function LeadDetail() {
                   <span className="hidden sm:inline">Contrato</span>
                 </TabsTrigger>
               </TabsList>
+
+              <TabsContent value="orcamento" className="mt-6">
+                <UpsellNovoOrcamento
+                  embedded
+                  initialLead={{
+                    nome: lead.name,
+                    cpf: lead.cpf,
+                    telefone: lead.phone,
+                    email: lead.email,
+                  }}
+                />
+              </TabsContent>
 
               <TabsContent value="activities" className="mt-6">
                 <Card className="bg-white dark:bg-gray-900">
@@ -1109,45 +1226,172 @@ export default function LeadDetail() {
                       Proposta Comercial
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="pt-6 space-y-4">
-                    {!lead.proposal_url && !proposalUrl ? (
-                      <>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">Selecione um template para gerar a proposta:</p>
+                  <CardContent className="pt-6 space-y-5">
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Preencha os dados da proposta e clique em <strong>Gerar Proposta</strong> para produzir o PDF.
+                    </p>
+
+                    <div className="grid gap-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="pf-prop-validUntil">Proposta válida até</Label>
+                        <Input
+                          id="pf-prop-validUntil"
+                          type="date"
+                          value={proposalForm.validUntil}
+                          onChange={(e) => handleProposalFieldChange('validUntil', e.target.value)}
+                        />
+                      </div>
+
+                      <div className="grid gap-4 sm:grid-cols-2">
                         <div className="grid gap-2">
-                          {templates.map(template => (
-                            <Button
-                              key={template.id}
-                              variant="outline"
-                              onClick={() => handleGenerateProposal(template.id)}
-                              disabled={generatingProposal}
-                              className="justify-start"
-                            >
-                              {generatingProposal ? (
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              ) : (
-                                <FileText className="w-4 h-4 mr-2" />
-                              )}
-                              {template.name}
-                            </Button>
-                          ))}
+                          <Label htmlFor="pf-prop-clientName">Nome do Cliente</Label>
+                          <Input
+                            id="pf-prop-clientName"
+                            value={proposalForm.clientName}
+                            onChange={(e) => handleProposalFieldChange('clientName', e.target.value)}
+                            placeholder="Nome do cliente"
+                          />
                         </div>
-                      </>
-                    ) : (
-                      <div className="space-y-3">
+                        <div className="grid gap-2">
+                          <Label htmlFor="pf-prop-clientPhone">Telefone</Label>
+                          <Input
+                            id="pf-prop-clientPhone"
+                            value={proposalForm.clientPhone}
+                            onChange={(e) => handleProposalFieldChange('clientPhone', e.target.value)}
+                            placeholder="Telefone do cliente"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label htmlFor="pf-prop-product">Produtos / Serviços</Label>
+                        {erpProdutosError ? (
+                          <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
+                            <AlertCircle className="w-4 h-4" />
+                            Não foi possível carregar os produtos do ERP. Tente novamente mais tarde.
+                          </div>
+                        ) : (
+                          <>
+                            <Select
+                              value=""
+                              onValueChange={handleProductSelect}
+                              disabled={loadingProdutos}
+                            >
+                              <SelectTrigger id="pf-prop-product">
+                                <SelectValue placeholder={loadingProdutos ? 'Carregando produtos...' : 'Adicionar produto / serviço'} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {erpProdutos
+                                  .filter((p) => {
+                                    const preco = parseFloat(p.preco_informado) || 0;
+                                    if (Math.abs(preco - 0.01) < 0.005) return false;
+                                    return !proposalForm.products.some((sel) => String(sel.id) === String(p.id));
+                                  })
+                                  .map((p) => (
+                                    <SelectItem key={p.id} value={String(p.id)}>
+                                      {p.nome || p.descricao || p.name || `Produto #${p.id}`}
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                            {proposalForm.products.length > 0 && (
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {proposalForm.products.map((p) => (
+                                  <Badge
+                                    key={p.id || p.name}
+                                    variant="secondary"
+                                    className="flex items-center gap-1 pl-3 pr-1 py-1"
+                                  >
+                                    <span>{p.name}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleProductRemove(p.id)}
+                                      className="rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 p-0.5"
+                                      aria-label={`Remover ${p.name}`}
+                                    >
+                                      <XCircle className="w-3.5 h-3.5" />
+                                    </button>
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label htmlFor="pf-prop-description">Descrição resumida</Label>
+                        <Textarea
+                          id="pf-prop-description"
+                          value={proposalForm.description}
+                          onChange={(e) => handleProposalFieldChange('description', e.target.value)}
+                          placeholder="Descrição resumida do serviço contratado"
+                          rows={3}
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label htmlFor="pf-prop-planValue">Valor do Plano</Label>
+                        <Input
+                          id="pf-prop-planValue"
+                          value={proposalForm.planValue}
+                          onChange={(e) => handleProposalFieldChange('planValue', e.target.value)}
+                          placeholder="Ex: R$ 89,90/mês"
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label htmlFor="pf-prop-observations">Observações importantes</Label>
+                        <Textarea
+                          id="pf-prop-observations"
+                          value={proposalForm.observations}
+                          onChange={(e) => handleProposalFieldChange('observations', e.target.value)}
+                          placeholder="Observações importantes"
+                          rows={3}
+                        />
+                      </div>
+
+                      <Button
+                        onClick={handleGenerateProposal}
+                        disabled={generatingProposal}
+                        className="w-full"
+                      >
+                        {generatingProposal ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <FileText className="w-4 h-4 mr-2" />
+                        )}
+                        {(proposalUrl || lead.proposal_url) ? 'Regerar Proposta' : 'Gerar Proposta'}
+                      </Button>
+                    </div>
+
+                    {(lead.proposal_url || proposalUrl) && (
+                      <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700">
                         <div className="p-3 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200 dark:border-green-800">
                           <p className="text-sm font-medium text-green-900 dark:text-green-300 flex items-center gap-2">
                             <CheckCircle className="w-4 h-4" />
                             Proposta gerada com sucesso!
                           </p>
-                          <Button
-                            variant="link"
-                            size="sm"
-                            onClick={() => window.open(proposalUrl || lead.proposal_url, '_blank')}
-                            className="p-0 h-auto text-green-700 dark:text-green-400"
-                          >
-                            <Eye className="w-4 h-4 mr-1" />
-                            Visualizar proposta
-                          </Button>
+                          <div className="flex flex-wrap items-center gap-3 mt-1">
+                            <Button
+                              variant="link"
+                              size="sm"
+                              onClick={() => window.open(proposalUrl || lead.proposal_url, '_blank')}
+                              className="p-0 h-auto text-green-700 dark:text-green-400"
+                            >
+                              <Eye className="w-4 h-4 mr-1" />
+                              Visualizar proposta
+                            </Button>
+                            <Button
+                              variant="link"
+                              size="sm"
+                              onClick={handleDownloadProposal}
+                              className="p-0 h-auto text-green-700 dark:text-green-400"
+                            >
+                              <Download className="w-4 h-4 mr-1" />
+                              Baixar PDF
+                            </Button>
+                          </div>
                         </div>
 
                         <div className="flex gap-2">
