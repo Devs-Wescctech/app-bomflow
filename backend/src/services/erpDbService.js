@@ -119,6 +119,24 @@ export async function resolveAgentErpByCpf(cpf) {
 }
 
 /**
+ * Busca o login do ERP de um usuário pelo seu id interno (= agents.erp_agent_id).
+ * Usado para assinar o orçamento com o login NATIVO do vendedor (Frente 3).
+ * Apenas leitura (SELECT). Retorna o login ou null.
+ *
+ * @param {number} usuarioId - id do usuário no ERP (agents.erp_agent_id)
+ * @returns {Promise<string|null>}
+ */
+export async function getLoginByUsuarioId(usuarioId) {
+  if (!usuarioId) return null;
+  const db = getPool();
+  const res = await db.query(
+    `SELECT login FROM usuarios WHERE id = $1 LIMIT 1`,
+    [Number(usuarioId)]
+  );
+  return res.rows[0]?.login || null;
+}
+
+/**
  * Registra um agente no canal de vendas do ERP inserindo um registro
  * em pessoas_contratos. Se o par (pessoa_id, contrato_id) já existir,
  * retorna o id existente sem criar duplicata.

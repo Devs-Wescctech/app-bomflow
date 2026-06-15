@@ -57,3 +57,10 @@ Também existe `condicao_pagamento_id` no schema mas é NULL em todos os aprovad
 Vendedores nativos do ERP têm login no formato `firstname.lastname`. Nossa derivação gera `user.firstname.domain` — formato INCORRETO para eles. Contas `user.*` criadas pelo BomFlow existem no ERP mas têm **zero funções** e nunca criaram um pedido aprovado. O campo `usuario_inclusao` provavelmente não troca o contexto de permissão do token (isso confirma o diagnóstico de camada de sessão).
 
 **Why:** todos os pedidos aprovados (situacao='A') têm usuario_inclusao_id de contas com login `firstname.lastname`, nunca de contas `user.*`.
+
+## Decisão (Frente 3): usuario_inclusao resolvido no servidor pelo login nativo
+
+`usuario_inclusao` é **sempre** definido no backend (rotas `/orcamento` e `/pre-proposta`), nunca confiando no valor enviado pelo cliente. Ordem de resolução: (1) login NATIVO do vendedor via `agents.erp_agent_id → usuarios.login` no banco ERP; (2) fallback para a derivação `user.*` pelo e-mail do JWT quando o agente não está vinculado ao ERP.
+
+**Why:** atribuição de autoria do orçamento no ERP não pode ser forjada/influenciada pelo frontend, e o login nativo é o único que aparece em pedidos aprovados. Para agentes ainda não sincronizados (sem `erp_agent_id`), o fallback mantém o comportamento legado sem quebrar.
+**How to apply:** ao mexer no payload do orçamento, lembre que o frontend ainda envia `usuario_inclusao` no formato legado `user.*`, mas o backend o sobrepõe; só toque na derivação client-side se também ajustar o backend.

@@ -1,6 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB, findPessoaIdByCpf, resolveAgentErpByCpf } from '../services/erpDbService.js';
+import { registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB, findPessoaIdByCpf, resolveAgentErpByCpf, getLoginByUsuarioId } from '../services/erpDbService.js';
 import { query } from '../config/database.js';
 
 const router = express.Router();
@@ -33,6 +33,28 @@ function erpLoginFromEmail(email) {
   const domainPart = domain.replace(/\.[^.]+$/, '').toLowerCase().trim();
   if (!local || !domainPart) return undefined;
   return `user.${local}.${domainPart}`;
+}
+
+// Resolve o login do ERP que deve assinar o orçamento (usuario_inclusao).
+// SEMPRE derivado no servidor a partir do agente autenticado — o valor enviado pelo
+// cliente é ignorado (atribuição de autoria não pode ser influenciada pelo cliente).
+// Frente 3: prioriza o login NATIVO do vendedor (agents.erp_agent_id → usuarios.login),
+// caindo para a derivação pelo e-mail do JWT (formato legado user.*) somente quando o
+// agente ainda não está vinculado ao ERP (sem erp_agent_id) ou o lookup falha.
+async function resolveUsuarioInclusao(req) {
+  try {
+    if (req.user?.id) {
+      const a = (await query('SELECT erp_agent_id FROM agents WHERE id = $1', [req.user.id])).rows[0];
+      const erpAgentId = a?.erp_agent_id ? Number(a.erp_agent_id) : null;
+      if (erpAgentId) {
+        const nativeLogin = await getLoginByUsuarioId(erpAgentId);
+        if (nativeLogin) return nativeLogin;
+      }
+    }
+  } catch (e) {
+    console.warn('[ERP usuario_inclusao] Falha ao resolver login nativo, usando fallback:', e.message);
+  }
+  return req.user?.email ? erpLoginFromEmail(req.user.email) : undefined;
 }
 
 // Normaliza um CPF para o formato que o ERP usa/exige (000.000.000-00).
@@ -616,10 +638,12 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
   try {
     const payload = { ...req.body };
 
-    // Injeta usuario_inclusao a partir do e-mail do agente autenticado se não vier no body.
-    if (!payload.usuario_inclusao && req.user?.email) {
-      const login = erpLoginFromEmail(req.user.email);
-      if (login) payload.usuario_inclusao = login;
+    // Define usuario_inclusao sempre no servidor (login nativo do vendedor, ou fallback
+    // por e-mail do JWT). Ignora o valor enviado pelo cliente para que a autoria do
+    // orçamento no ERP não possa ser forjada pelo frontend.
+    {
+      const ui = await resolveUsuarioInclusao(req);
+      if (ui) payload.usuario_inclusao = ui; else delete payload.usuario_inclusao;
     }
 
     // Extrai itens (múltiplos produtos) e campos de pagamento antes de enviar ao ERP
@@ -798,12 +822,13 @@ router.post('/pre-proposta', authMiddleware, async (req, res) => {
   try {
     const payload = { ...req.body };
 
-    // Injeta usuario_inclusao a partir do e-mail do agente autenticado se não vier no body.
-    // O campo diz ao ERP quem criou o orçamento; sem ele o ERP usa o dono do token
-    // (acesso.api) que não tem permissão para o bloco SGPRC_USUARIO.CAD_ORCAMENTO_SGPRC_USUARIO_FECHAMENTO.
-    if (!payload.usuario_inclusao && req.user?.email) {
-      const login = erpLoginFromEmail(req.user.email);
-      if (login) payload.usuario_inclusao = login;
+    // Define usuario_inclusao sempre no servidor. O campo diz ao ERP quem criou o
+    // orçamento; sem ele o ERP usa o dono do token (acesso.api) que não tem permissão
+    // para o bloco SGPRC_USUARIO.CAD_ORCAMENTO_SGPRC_USUARIO_FECHAMENTO. Frente 3:
+    // prioriza o login nativo do vendedor (via erp_agent_id); ignora o valor do cliente.
+    {
+      const ui = await resolveUsuarioInclusao(req);
+      if (ui) payload.usuario_inclusao = ui; else delete payload.usuario_inclusao;
     }
 
     console.log('[ERP pre-proposta] payload enviado ao ERP:', JSON.stringify(payload, null, 2));
