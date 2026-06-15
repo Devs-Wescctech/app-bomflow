@@ -994,19 +994,6 @@ router.put('/leads/:id/reassign', authMiddleware, loadAgentMiddleware, async (re
     const leadResult = await query('SELECT * FROM leads WHERE id = $1', [id]);
     if (leadResult.rows.length === 0) return res.status(404).json({ message: 'Lead não encontrado.' });
     const lead = leadResult.rows[0];
-    if (!isAdminRole) {
-      const supervisorAgentId = req.agent.id;
-      if (lead.agent_id) {
-        const teamCheck = await query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [lead.agent_id, supervisorAgentId]);
-        if (teamCheck.rows.length === 0) {
-          return res.status(403).json({ message: 'Este lead não pertence a um agente da sua equipe.' });
-        }
-      }
-      const targetTeamCheck = await query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [toAgentId, supervisorAgentId]);
-      if (targetTeamCheck.rows.length === 0) {
-        return res.status(403).json({ message: 'O agente destino não pertence à sua equipe.' });
-      }
-    }
     const targetAgent = await query('SELECT * FROM agents WHERE id = $1 AND active = true', [toAgentId]);
     if (targetAgent.rows.length === 0) return res.status(404).json({ message: 'Agente destino não encontrado.' });
     const fromAgentId = lead.agent_id;
@@ -1236,19 +1223,6 @@ router.put('/leads-pj/:id/reassign', authMiddleware, loadAgentMiddleware, async 
     const leadResult = await query('SELECT * FROM leads_pj WHERE id = $1', [id]);
     if (leadResult.rows.length === 0) return res.status(404).json({ message: 'Lead PJ não encontrado.' });
     const lead = leadResult.rows[0];
-    if (!isAdminRole) {
-      const supervisorAgentId = req.agent.id;
-      if (lead.agent_id) {
-        const teamCheck = await query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [lead.agent_id, supervisorAgentId]);
-        if (teamCheck.rows.length === 0) {
-          return res.status(403).json({ message: 'Este lead PJ não pertence a um agente da sua equipe.' });
-        }
-      }
-      const targetTeamCheck = await query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [toAgentId, supervisorAgentId]);
-      if (targetTeamCheck.rows.length === 0) {
-        return res.status(403).json({ message: 'O agente destino não pertence à sua equipe.' });
-      }
-    }
     const targetAgent = await query('SELECT * FROM agents WHERE id = $1 AND active = true', [toAgentId]);
     if (targetAgent.rows.length === 0) return res.status(404).json({ message: 'Agente destino não encontrado.' });
     const fromAgentId = lead.agent_id;
@@ -1480,19 +1454,6 @@ router.put('/leads-upsell/:id/reassign', authMiddleware, loadAgentMiddleware, as
     const leadResult = await query('SELECT * FROM leads_upsell WHERE id = $1', [id]);
     if (leadResult.rows.length === 0) return res.status(404).json({ message: 'Lead Upsell não encontrado.' });
     const lead = leadResult.rows[0];
-    if (!isAdminRole) {
-      const supervisorAgentId = req.agent.id;
-      if (lead.agent_id) {
-        const teamCheck = await query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [lead.agent_id, supervisorAgentId]);
-        if (teamCheck.rows.length === 0) {
-          return res.status(403).json({ message: 'Este lead Upsell não pertence a um agente da sua equipe.' });
-        }
-      }
-      const targetTeamCheck = await query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [toAgentId, supervisorAgentId]);
-      if (targetTeamCheck.rows.length === 0) {
-        return res.status(403).json({ message: 'O agente destino não pertence à sua equipe.' });
-      }
-    }
     const targetAgent = await query('SELECT * FROM agents WHERE id = $1 AND active = true', [toAgentId]);
     if (targetAgent.rows.length === 0) return res.status(404).json({ message: 'Agente destino não encontrado.' });
     const fromAgentId = lead.agent_id;
@@ -2050,19 +2011,6 @@ router.put('/referrals/:id/reassign', authMiddleware, loadAgentMiddleware, async
     const refResult = await query('SELECT * FROM referrals WHERE id = $1', [id]);
     if (refResult.rows.length === 0) return res.status(404).json({ message: 'Indicação não encontrada.' });
     const referral = refResult.rows[0];
-    if (!isAdminRole) {
-      const supervisorAgentId = req.agent.id;
-      if (referral.agent_id) {
-        const teamCheck = await query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [referral.agent_id, supervisorAgentId]);
-        if (teamCheck.rows.length === 0) {
-          return res.status(403).json({ message: 'Esta indicação não pertence a um agente da sua equipe.' });
-        }
-      }
-      const targetTeamCheck = await query('SELECT id FROM agents WHERE id = $1 AND supervisor_id = $2', [toAgentId, supervisorAgentId]);
-      if (targetTeamCheck.rows.length === 0) {
-        return res.status(403).json({ message: 'O agente destino não pertence à sua equipe.' });
-      }
-    }
     const targetAgent = await query('SELECT * FROM agents WHERE id = $1 AND active = true', [toAgentId]);
     if (targetAgent.rows.length === 0) return res.status(404).json({ message: 'Agente destino não encontrado.' });
     const fromAgentId = referral.agent_id;

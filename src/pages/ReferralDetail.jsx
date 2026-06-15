@@ -506,12 +506,7 @@ export default function ReferralDetail() {
   const isIndicacoesAtendente = currentAgent?.agentType === 'indicacoes_atendente';
   const isHardDeleteAllowed = currentAgent?.agentType === 'indicacoes_supervisor' || currentAgent?.agentType === 'indicacoes_admin' || currentAgent?.agentType === 'admin' || user?.role === 'admin';
 
-  const eligibleAgents = isAdmin
-    ? agents.filter(a => a.active !== false)
-    : agents.filter(a => {
-        const sid = a.supervisorId || a.supervisor_id;
-        return sid && String(sid) === String(currentAgent?.id);
-      });
+  const eligibleAgents = agents.filter(a => a.active !== false);
   const leadPhone = referral?.referredPhone || referral?.referred_phone;
 
   const handleSendWaMessage = async () => {

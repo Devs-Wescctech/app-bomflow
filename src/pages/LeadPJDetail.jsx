@@ -627,12 +627,7 @@ export default function LeadPJDetail() {
   const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
   const isSupervisor = user?.role === 'supervisor' || currentAgentType?.includes('supervisor');
 
-  const eligibleAgents = isAdmin
-    ? agents.filter(a => a.active !== false)
-    : agents.filter(a => {
-        const sid = a.supervisorId || a.supervisor_id;
-        return sid && String(sid) === String(currentAgent?.id);
-      });
+  const eligibleAgents = agents.filter(a => a.active !== false);
 
   const isOwnLead = currentAgent && String(leadAgentId) === String(currentAgent.id);
   const isTeamLead = isSupervisor && currentAgent?.teamId && 
