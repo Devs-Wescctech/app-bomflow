@@ -43,7 +43,9 @@ import {
   Download,
   Presentation,
   AlertCircle,
+  Calculator,
 } from "lucide-react";
+import UpsellNovoOrcamento from "./UpsellNovoOrcamento";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { createPageUrl } from "@/utils";
@@ -941,7 +943,7 @@ export default function LeadPJDetail() {
           {/* COLUNA ESQUERDA: TABS (2/3) */}
           <div className="lg:col-span-2">
             <Tabs defaultValue="activities" className="w-full">
-              <TabsList className="grid w-full grid-cols-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-1">
+              <TabsList className="grid w-full grid-cols-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-1">
                 <TabsTrigger value="activities" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
                   <Activity className="w-4 h-4 mr-2" />
                   Atividades
@@ -963,7 +965,28 @@ export default function LeadPJDetail() {
                   <FileSignature className="w-4 h-4 mr-2" />
                   Contrato
                 </TabsTrigger>
+                <TabsTrigger value="orcamento" className="data-[state=active]:bg-violet-600 data-[state=active]:text-white">
+                  <Calculator className="w-4 h-4 mr-2" />
+                  Orçamento
+                </TabsTrigger>
               </TabsList>
+
+              <TabsContent value="orcamento" className="mt-6">
+                <UpsellNovoOrcamento
+                  embedded
+                  initialLead={{
+                    nome:
+                      lead.nomeFantasia ||
+                      lead.nome_fantasia ||
+                      lead.razaoSocial ||
+                      lead.razao_social ||
+                      lead.contactName ||
+                      lead.contact_name,
+                    telefone: lead.phone || lead.contactPhone || lead.contact_phone,
+                    email: lead.email,
+                  }}
+                />
+              </TabsContent>
 
               <TabsContent value="activities" className="mt-6">
                 <Card className="bg-white dark:bg-gray-900">

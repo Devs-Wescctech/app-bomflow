@@ -284,7 +284,7 @@ function useCanAccessOrcamento(user) {
   return user.role === "admin" || NOVO_ORCAMENTO_ALLOWED_EMAILS.includes(user.email);
 }
 
-export default function UpsellNovoOrcamento() {
+export default function UpsellNovoOrcamento({ embedded = false, initialLead = null } = {}) {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [cpfLookup, setCpfLookup] = useState(null);
@@ -340,7 +340,28 @@ export default function UpsellNovoOrcamento() {
     queryFn: () => base44.auth.me(),
   });
 
-  const canAccess = useCanAccessOrcamento(user);
+  const canAccessRaw = useCanAccessOrcamento(user);
+  // Quando embutido numa aba do LeadDetail a liberação é para todos os usuários (decisão do produto);
+  // o gate por allowlist só vale para a página standalone "Novo Orçamento".
+  const canAccess = embedded ? true : canAccessRaw;
+
+  // Pré-preenche o formulário com os dados do lead quando embutido. Aplica uma única vez por lead
+  // (chave estável) para não sobrescrever edições manuais do usuário a cada re-render.
+  const prefilledKeyRef = useRef(null);
+  useEffect(() => {
+    if (!initialLead) return;
+    const key = initialLead.cpf || initialLead.nome || initialLead.telefone || initialLead.email;
+    if (!key || prefilledKeyRef.current === key) return;
+    prefilledKeyRef.current = key;
+    setForm((f) => ({
+      ...f,
+      contratante_pessoa: initialLead.nome || f.contratante_pessoa,
+      cpf: initialLead.cpf ? formatCpf(initialLead.cpf) : f.cpf,
+      telefone: initialLead.telefone || f.telefone,
+      email_contato: initialLead.email || f.email_contato,
+      whatsapp_do_cliente: initialLead.whatsapp || initialLead.telefone || f.whatsapp_do_cliente,
+    }));
+  }, [initialLead]);
 
   const currentAgent = user?.agent;
   const erpAgenteVendaId = currentAgent?.erp_agente_venda_id ?? currentAgent?.erpAgenteVendaId ?? null;
@@ -1063,19 +1084,21 @@ export default function UpsellNovoOrcamento() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto p-4 pb-16 space-y-6">
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => navigate(createPageUrl("LeadsUpsellKanban"))}
-          className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5 text-slate-500" />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Novo Orçamento ERP</h1>
-          <p className="text-sm text-slate-500">Criação de orçamento via PrePropostaUsuarioSgprc</p>
+    <div className={embedded ? "space-y-6" : "max-w-3xl mx-auto p-4 pb-16 space-y-6"}>
+      {!embedded && (
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate(createPageUrl("LeadsUpsellKanban"))}
+            className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5 text-slate-500" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">Novo Orçamento ERP</h1>
+            <p className="text-sm text-slate-500">Criação de orçamento via PrePropostaUsuarioSgprc</p>
+          </div>
         </div>
-      </div>
+      )}
 
       <ProgressBar step={step} />
 

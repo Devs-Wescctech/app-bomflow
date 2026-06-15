@@ -50,7 +50,9 @@ import {
   AlertCircle,
   Presentation,
   Users,
+  Calculator,
 } from "lucide-react";
+import UpsellNovoOrcamento from "./UpsellNovoOrcamento";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { createPageUrl } from "@/utils";
@@ -1003,7 +1005,7 @@ export default function LeadDetail() {
           {/* Left Column: Tabs */}
           <div className="lg:col-span-2">
             <Tabs defaultValue="activities" className="w-full">
-              <TabsList className="grid w-full grid-cols-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-1.5 shadow-sm">
+              <TabsList className="grid w-full grid-cols-5 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-1.5 shadow-sm">
                 <TabsTrigger 
                   value="activities" 
                   data-value="activities"
@@ -1041,7 +1043,27 @@ export default function LeadDetail() {
                   <FileSignature className="w-4 h-4 mr-2" />
                   <span className="hidden sm:inline">Contrato</span>
                 </TabsTrigger>
+                <TabsTrigger 
+                  value="orcamento" 
+                  data-value="orcamento"
+                  className="rounded-lg data-[state=active]:bg-violet-600 data-[state=active]:text-white data-[state=active]:shadow-md transition-all"
+                >
+                  <Calculator className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Orçamento</span>
+                </TabsTrigger>
               </TabsList>
+
+              <TabsContent value="orcamento" className="mt-6">
+                <UpsellNovoOrcamento
+                  embedded
+                  initialLead={{
+                    nome: lead.name,
+                    cpf: lead.cpf,
+                    telefone: lead.phone,
+                    email: lead.email,
+                  }}
+                />
+              </TabsContent>
 
               <TabsContent value="activities" className="mt-6">
                 <Card className="bg-white dark:bg-gray-900">
