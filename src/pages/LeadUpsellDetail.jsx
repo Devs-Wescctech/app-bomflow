@@ -692,12 +692,7 @@ export default function LeadUpsellDetail() {
   const isAdmin = isUpsellAdmin(user, userAgent);
   const isSupervisor = user?.role === 'supervisor' || currentAgentType?.includes('supervisor');
 
-  const eligibleAgents = isAdmin
-    ? agents.filter(a => a.active !== false)
-    : agents.filter(a => {
-        const sid = a.supervisorId || a.supervisor_id;
-        return sid && String(sid) === String(userAgent?.id);
-      });
+  const eligibleAgents = agents.filter(a => a.active !== false);
 
   const leadAgentId = lead?.agentId || lead?.agent_id;
   
