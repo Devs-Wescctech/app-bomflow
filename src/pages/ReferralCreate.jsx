@@ -1,4 +1,5 @@
 import { useState } from "react";
+import LeadPoolClaimBanner from '@/components/sales/LeadPoolClaimBanner';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { buscarIndicadorERP, buscarIndicadorPorTelefoneERP, buscarHistoricoIndicacoes, buscarConversoesPorCpf } from "@/api/erpService";
@@ -654,6 +655,7 @@ export default function ReferralCreate() {
                           required
                           className="mt-1"
                         />
+                        <LeadPoolClaimBanner phone={formData.referred_phone} currentModule="referrals" />
                       </div>
 
                       <div>

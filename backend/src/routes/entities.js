@@ -64,6 +64,30 @@ pool.query(`
 `).then(() => console.log('[Migration] lead_reassignment_log OK'))
   .catch(e => console.error('[Migration] lead_reassignment_log error:', e.message));
 
+pool.query(`
+  CREATE TABLE IF NOT EXISTS lead_pool_transfers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    from_module VARCHAR(50) NOT NULL,
+    from_lead_id UUID NOT NULL,
+    to_module VARCHAR(50) NOT NULL,
+    to_lead_id UUID,
+    pulled_by UUID REFERENCES agents(id),
+    pulled_at TIMESTAMPTZ DEFAULT NOW(),
+    notes TEXT
+  );
+  ALTER TABLE leads ADD COLUMN IF NOT EXISTS transferred_out BOOLEAN DEFAULT FALSE;
+  ALTER TABLE leads_pj ADD COLUMN IF NOT EXISTS transferred_out BOOLEAN DEFAULT FALSE;
+  ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS transferred_out BOOLEAN DEFAULT FALSE;
+  ALTER TABLE referrals ADD COLUMN IF NOT EXISTS transferred_out BOOLEAN DEFAULT FALSE;
+`).then(() => {
+  console.log('[Migration] lead_pool OK');
+  return pool.query(`
+    INSERT INTO system_settings (setting_key, setting_value, setting_type)
+    SELECT 'lead_pool_inactivity_days', '20', 'number'
+    WHERE NOT EXISTS (SELECT 1 FROM system_settings WHERE setting_key = 'lead_pool_inactivity_days')
+  `);
+}).catch(e => console.error('[Migration] lead_pool error:', e.message));
+
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }
@@ -2372,6 +2396,176 @@ router.post('/visits', authMiddleware, async (req, res) => {
     res.status(201).json(convertKeysToCamel(visit));
   } catch (error) {
     console.error('Error creating visit:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ─── Lead Pool ──────────────────────────────────────────────────────────────
+
+router.get('/lead-pool/check', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const { phone } = req.query;
+    const phoneDigits = (phone || '').replace(/\D/g, '');
+    if (phoneDigits.length < 10) return res.json({ found: false });
+
+    const settingResult = await query("SELECT setting_value FROM system_settings WHERE setting_key = 'lead_pool_inactivity_days'");
+    const inactivityDays = parseInt(settingResult.rows[0]?.setting_value || '20', 10);
+
+    const [r1, r2, r3, r4] = await Promise.all([
+      query(
+        `SELECT l.id, l.name, l.phone, l.updated_at, l.agent_id, a.name as agent_name
+         FROM leads l LEFT JOIN agents a ON a.id = l.agent_id
+         WHERE REGEXP_REPLACE(l.phone, '[^0-9]', '', 'g') = $1
+           AND (l.transferred_out IS NULL OR l.transferred_out = FALSE)
+           AND (l.concluded IS NULL OR l.concluded = FALSE)
+         LIMIT 1`,
+        [phoneDigits]
+      ),
+      query(
+        `SELECT l.id, COALESCE(l.nome_fantasia, l.razao_social, l.contact_name, 'Lead PJ') as name, l.phone, l.updated_at, l.agent_id, a.name as agent_name
+         FROM leads_pj l LEFT JOIN agents a ON a.id = l.agent_id
+         WHERE REGEXP_REPLACE(l.phone, '[^0-9]', '', 'g') = $1
+           AND (l.transferred_out IS NULL OR l.transferred_out = FALSE)
+           AND (l.concluded IS NULL OR l.concluded = FALSE)
+         LIMIT 1`,
+        [phoneDigits]
+      ),
+      query(
+        `SELECT l.id, l.name, l.phone, l.updated_at, l.agent_id, a.name as agent_name
+         FROM leads_upsell l LEFT JOIN agents a ON a.id = l.agent_id
+         WHERE REGEXP_REPLACE(l.phone, '[^0-9]', '', 'g') = $1
+           AND (l.transferred_out IS NULL OR l.transferred_out = FALSE)
+           AND (l.concluded IS NULL OR l.concluded = FALSE)
+         LIMIT 1`,
+        [phoneDigits]
+      ),
+      query(
+        `SELECT r.id, r.referred_name as name, r.referred_phone as phone, r.updated_at, r.agent_id, a.name as agent_name
+         FROM referrals r LEFT JOIN agents a ON a.id = r.agent_id
+         WHERE REGEXP_REPLACE(r.referred_phone, '[^0-9]', '', 'g') = $1
+           AND (r.transferred_out IS NULL OR r.transferred_out = FALSE)
+           AND (r.concluded IS NULL OR r.concluded = FALSE)
+         LIMIT 1`,
+        [phoneDigits]
+      ),
+    ]);
+
+    const moduleKeys   = ['leads', 'leads_pj', 'leads_upsell', 'referrals'];
+    const moduleLabels = { leads: 'Vendas PF', leads_pj: 'Vendas PJ', leads_upsell: 'Upsell', referrals: 'Indicações' };
+    const checks = [r1, r2, r3, r4];
+
+    for (let i = 0; i < checks.length; i++) {
+      if (checks[i].rows.length > 0) {
+        const lead = checks[i].rows[0];
+        const daysInactive = Math.floor((Date.now() - new Date(lead.updated_at).getTime()) / 86400000);
+        return res.json({
+          found: true,
+          module: moduleKeys[i],
+          moduleLabel: moduleLabels[moduleKeys[i]],
+          leadId: lead.id,
+          leadName: lead.name || 'Sem nome',
+          agentName: lead.agent_name || null,
+          daysInactive,
+          claimable: daysInactive >= inactivityDays,
+          inactivityDays,
+        });
+      }
+    }
+    res.json({ found: false });
+  } catch (error) {
+    console.error('[Lead Pool] Check error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/lead-pool/claim', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const { fromModule, fromLeadId, toModule, notes } = req.body;
+    if (!fromModule || !fromLeadId || !toModule) {
+      return res.status(400).json({ message: 'fromModule, fromLeadId e toModule são obrigatórios.' });
+    }
+
+    const srcMap = {
+      leads:        { table: 'leads',        sel: `id, name, phone, email, cpf, updated_at, agent_id` },
+      leads_pj:     { table: 'leads_pj',     sel: `id, COALESCE(nome_fantasia, razao_social, contact_name, 'Lead PJ') as name, phone, email, NULL::text as cpf, updated_at, agent_id` },
+      leads_upsell: { table: 'leads_upsell', sel: `id, name, phone, email, cpf, updated_at, agent_id` },
+      referrals:    { table: 'referrals',    sel: `id, referred_name as name, referred_phone as phone, referred_email as email, referred_cpf as cpf, updated_at, agent_id` },
+    };
+    const src = srcMap[fromModule];
+    if (!src)              return res.status(400).json({ message: 'Módulo de origem inválido.' });
+    if (!srcMap[toModule]) return res.status(400).json({ message: 'Módulo destino inválido.' });
+
+    const sourceResult = await query(
+      `SELECT ${src.sel}, transferred_out FROM ${src.table} WHERE id = $1`,
+      [fromLeadId]
+    );
+    if (!sourceResult.rows.length) return res.status(404).json({ message: 'Lead de origem não encontrado.' });
+    const lead = sourceResult.rows[0];
+    if (lead.transferred_out) return res.status(409).json({ message: 'Este lead já foi transferido por outro vendedor.' });
+
+    const settingResult = await query("SELECT setting_value FROM system_settings WHERE setting_key = 'lead_pool_inactivity_days'");
+    const inactivityDays = parseInt(settingResult.rows[0]?.setting_value || '20', 10);
+    const daysInactive = Math.floor((Date.now() - new Date(lead.updated_at).getTime()) / 86400000);
+    if (daysInactive < inactivityDays) {
+      return res.status(403).json({ message: `Lead ainda ativo (${daysInactive} dias). Necessário ${inactivityDays} dias de inatividade.` });
+    }
+
+    await query(`UPDATE ${src.table} SET transferred_out = TRUE, updated_at = NOW() WHERE id = $1`, [fromLeadId]);
+
+    const agentId = req.agent.id;
+    const name  = lead.name  || 'Lead importado';
+    const phone = lead.phone || '';
+    const email = lead.email || null;
+    const cpf   = lead.cpf   || null;
+
+    let newLeadId;
+    if (toModule === 'leads') {
+      const r = await query(
+        `INSERT INTO leads (name, phone, email, cpf, agent_id, created_at, updated_at, last_contact_at) VALUES ($1,$2,$3,$4,$5,NOW(),NOW(),NOW()) RETURNING id`,
+        [name, phone, email, cpf, agentId]
+      );
+      newLeadId = r.rows[0].id;
+    } else if (toModule === 'leads_pj') {
+      const r = await query(
+        `INSERT INTO leads_pj (razao_social, phone, email, agent_id, created_at, updated_at) VALUES ($1,$2,$3,$4,NOW(),NOW()) RETURNING id`,
+        [name, phone, email, agentId]
+      );
+      newLeadId = r.rows[0].id;
+    } else if (toModule === 'leads_upsell') {
+      const r = await query(
+        `INSERT INTO leads_upsell (name, phone, email, cpf, agent_id, created_at, updated_at, last_contact_at) VALUES ($1,$2,$3,$4,$5,NOW(),NOW(),NOW()) RETURNING id`,
+        [name, phone, email, cpf, agentId]
+      );
+      newLeadId = r.rows[0].id;
+    } else {
+      const r = await query(
+        `INSERT INTO referrals (referred_name, referred_phone, referred_email, referred_cpf, agent_id, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,NOW(),NOW()) RETURNING id`,
+        [name, phone, email, cpf, agentId]
+      );
+      newLeadId = r.rows[0].id;
+    }
+
+    await query(
+      `INSERT INTO lead_pool_transfers (from_module, from_lead_id, to_module, to_lead_id, pulled_by, notes) VALUES ($1,$2,$3,$4,$5,$6)`,
+      [fromModule, fromLeadId, toModule, newLeadId, agentId, notes || null]
+    );
+
+    if (lead.agent_id) {
+      try {
+        const ar = await query('SELECT email, name FROM agents WHERE id = $1', [lead.agent_id]);
+        if (ar.rows.length > 0) {
+          await query(
+            `INSERT INTO notifications (user_email, type, title, message, created_at) VALUES ($1,'lead_pool',$2,$3,NOW())`,
+            [ar.rows[0].email, 'Lead transferido por inatividade',
+             `O lead ${name} foi puxado pelo vendedor ${req.agent.name} após ${daysInactive} dias de inatividade.`]
+          );
+        }
+      } catch (ne) { console.error('[Lead Pool] notify error:', ne.message); }
+    }
+
+    res.json({ success: true, newLeadId });
+  } catch (error) {
+    console.error('[Lead Pool] Claim error:', error);
     res.status(500).json({ message: error.message });
   }
 });

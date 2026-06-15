@@ -1,4 +1,5 @@
 import { useState } from "react";
+import LeadPoolClaimBanner from '@/components/sales/LeadPoolClaimBanner';
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -352,6 +353,7 @@ export default function QuickLeadPJForm({ onSuccess, onCancel }) {
                 <p className="text-xs text-red-600 mt-1">{duplicateError}</p>
               </div>
             )}
+            <LeadPoolClaimBanner phone={formData.phone} currentModule="leads_pj" />
           </div>
 
           <div>

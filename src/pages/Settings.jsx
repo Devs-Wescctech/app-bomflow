@@ -15,6 +15,7 @@ export default function Settings() {
   const [uploading, setUploading] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#0066cc");
+  const [inactivityDays, setInactivityDays] = useState("20");
 
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
@@ -110,6 +111,21 @@ export default function Settings() {
   };
 
   const logoUrl = settings.find(s => s.setting_key === 'company_logo')?.setting_value;
+
+  useEffect(() => {
+    const s = settings.find(s => s.setting_key === 'lead_pool_inactivity_days');
+    if (s) setInactivityDays(s.setting_value);
+  }, [settings]);
+
+  const handleSaveLeadPool = async () => {
+    const days = parseInt(inactivityDays, 10);
+    if (isNaN(days) || days < 1) { toast.error('Digite um número válido de dias (mínimo 1)'); return; }
+    await createOrUpdateSettingMutation.mutateAsync({
+      key: 'lead_pool_inactivity_days',
+      value: String(days),
+      type: 'number',
+    });
+  };
 
   // Verificar se é admin
   const isAdmin = user?.role === 'admin';
@@ -298,10 +314,53 @@ export default function Settings() {
 
         <TabsContent value="general" className="space-y-6">
           <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+            <CardHeader className="border-b border-gray-200 dark:border-gray-800">
+              <CardTitle className="flex items-center gap-2 text-gray-900 dark:text-gray-100">
+                <SettingsIcon className="w-5 h-5" />
+                Pool de Leads — Inatividade
+              </CardTitle>
+            </CardHeader>
             <CardContent className="pt-6">
-              <p className="text-gray-600 dark:text-gray-400 text-center py-12">
-                Configurações gerais em breve...
-              </p>
+              <div className="space-y-4">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Define quantos dias de inatividade um lead precisa ter (sem atualização) para ficar disponível
+                  para outros vendedores puxarem de módulos diferentes.
+                </p>
+                <div>
+                  <Label className="text-gray-900 dark:text-gray-100">Dias de inatividade para liberar lead</Label>
+                  <div className="flex gap-3 mt-2 items-center">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={inactivityDays}
+                      onChange={(e) => setInactivityDays(e.target.value)}
+                      className="w-32 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                      placeholder="20"
+                    />
+                    <span className="text-sm text-gray-500 dark:text-gray-400">dias</span>
+                  </div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    Padrão: 20 dias. Leads com updated_at mais antigo que este valor ficam disponíveis no Pool.
+                  </p>
+                </div>
+                <Button
+                  onClick={handleSaveLeadPool}
+                  disabled={createOrUpdateSettingMutation.isPending}
+                  className="bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600"
+                >
+                  {createOrUpdateSettingMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Salvar
+                    </>
+                  )}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
