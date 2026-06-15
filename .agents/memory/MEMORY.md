@@ -1,3 +1,4 @@
+- [GitHub push paths & MCP limit](github-mcp-push-limit.md) — local git push blocked; MCP pushFiles caps ~15KB; large/binary pushes via direct Git Data API in node (token only in real bash env, not sandbox).
 - [API key casing](api-key-casing.md) — Express API sends camelCase (convertKeysToCamel); snake_case field access on frontend silently returns undefined. Bit supervisor visibility.
 - [Supervisor visibility](supervisor-visibility.md) — pages defining isAdmin to include 'supervisor'/'sales_supervisor' bypass getVisibleAgents and leak all data; isAdmin must be admin-only.
 - [ERP Usuarios API](erp-usuarios-api.md) — acesso_todos_estabelecimentos é read-only via API REST (POST/PUT retornam 200 mas ignoram); só seta pela tela web do ERP.
