@@ -1,5 +1,6 @@
 
 import { useState, useEffect } from "react";
+import LeadPoolClaimBanner from '@/components/sales/LeadPoolClaimBanner';
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useNavigate } from "react-router-dom";
@@ -500,6 +501,7 @@ export default function NewLead() {
                         <p className="text-xs text-red-600 mt-1">{duplicateError}</p>
                       </div>
                     )}
+                    <LeadPoolClaimBanner phone={formData.phone} currentModule="leads" />
                   </div>
 
                   <div>
