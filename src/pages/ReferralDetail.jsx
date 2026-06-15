@@ -59,9 +59,12 @@ import {
   Building2,
   Trash2,
   Calculator,
+  ArrowLeftRight,
 } from "lucide-react";
 import UpsellNovoOrcamento from "./UpsellNovoOrcamento";
 import { createPageUrl } from "@/utils";
+import ReassignLeadModal from "@/components/sales/ReassignLeadModal";
+import ReassignmentLog from "@/components/sales/ReassignmentLog";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
@@ -88,6 +91,7 @@ export default function ReferralDetail() {
   const [newNote, setNewNote] = useState("");
   const [newTask, setNewTask] = useState({ title: "", scheduledAt: "" });
   const [showLostDialog, setShowLostDialog] = useState(false);
+  const [showReassignModal, setShowReassignModal] = useState(false);
   const [lostReason, setLostReason] = useState("");
   const [generatingProposal, setGeneratingProposal] = useState(false);
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
@@ -496,8 +500,18 @@ export default function ReferralDetail() {
   };
 
   const currentAgent = user?.agent;
+  const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
+  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
+  const isSupervisor = user?.role === 'supervisor' || currentAgentType?.includes('supervisor');
   const isIndicacoesAtendente = currentAgent?.agentType === 'indicacoes_atendente';
   const isHardDeleteAllowed = currentAgent?.agentType === 'indicacoes_supervisor' || currentAgent?.agentType === 'indicacoes_admin' || currentAgent?.agentType === 'admin' || user?.role === 'admin';
+
+  const eligibleAgents = isAdmin
+    ? agents.filter(a => a.active !== false)
+    : agents.filter(a => {
+        const sid = a.supervisorId || a.supervisor_id;
+        return sid && String(sid) === String(currentAgent?.id);
+      });
   const leadPhone = referral?.referredPhone || referral?.referred_phone;
 
   const handleSendWaMessage = async () => {
@@ -786,6 +800,18 @@ export default function ReferralDetail() {
                   <span className="hidden sm:inline ml-1.5">Excluir</span>
                 </Button>
               )}
+              {(isAdmin || isSupervisor) && (
+                <Button
+                  onClick={() => setShowReassignModal(true)}
+                  variant="outline"
+                  size="sm"
+                  className="text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:hover:bg-blue-950"
+                  title="Redistribuir indicação"
+                >
+                  <ArrowLeftRight className="w-4 h-4" />
+                  <span className="hidden sm:inline ml-1.5">Redistribuir</span>
+                </Button>
+              )}
               <Button
                 onClick={() => setShowLostDialog(true)}
                 variant="outline"
@@ -1015,6 +1041,15 @@ export default function ReferralDetail() {
                         <ReferralTimeline activities={activities} />
                       </div>
                     </div>
+                    {(isAdmin || isSupervisor) && (
+                      <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
+                          <ArrowLeftRight className="w-4 h-4 text-blue-600" />
+                          Histórico de Redistribuições
+                        </h3>
+                        <ReassignmentLog leadId={referralId} module="referrals" />
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -1773,6 +1808,16 @@ export default function ReferralDetail() {
       </div>
 
       {/* Dialog Marcar como Perdido */}
+      <ReassignLeadModal
+        open={showReassignModal}
+        onClose={() => setShowReassignModal(false)}
+        module="referrals"
+        leadId={referralId}
+        leadName={referral?.referredName || referral?.referred_name}
+        currentAgent={agents.find(a => String(a.id) === String(referral?.agentId || referral?.agent_id))}
+        eligibleAgents={eligibleAgents}
+      />
+
       <Dialog open={showLostDialog} onOpenChange={setShowLostDialog}>
         <DialogContent className="bg-white dark:bg-gray-900">
           <CardHeader>
