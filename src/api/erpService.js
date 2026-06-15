@@ -140,6 +140,59 @@ export async function buscarHistoricoIndicacoes(cpf) {
   return response.json();
 }
 
+export async function registrarCanalErp({ agentId, pessoaId, contratoId, grupoId }) {
+  const response = await fetch('/api/erp/registrar-canal', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify({ agentId, pessoaId, contratoId, grupoId }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error || 'Erro ao registrar agente no canal de vendas do ERP');
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+// Pré-visualiza a sincronização ERP dos agentes (não grava nada).
+// agentIds opcional; sem ele o backend traz todos os ativos sem erp_agent_id.
+export async function previewSyncAgentesErp(agentIds) {
+  const response = await fetch('/api/erp/sync-agentes/preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify({ agentIds: agentIds || null }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error || 'Erro ao pré-visualizar a sincronização ERP');
+    error.status = response.status;
+    throw error;
+  }
+  return data; // { items: [...] }
+}
+
+// Grava o vínculo ERP dos agentes selecionados.
+// items: [{ agentId, force?, recanal? }]
+//   force   — grava erp_agent_id mesmo com nome divergente (revisado pelo admin)
+//   recanal — força re-registro do canal mesmo já tendo erp_agente_venda_id
+//             (usado na edição quando o canal_venda_id foi alterado)
+export async function commitSyncAgentesErp(items) {
+  const response = await fetch('/api/erp/sync-agentes/commit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify({ items }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error || 'Erro ao gravar a sincronização ERP');
+    error.status = response.status;
+    throw error;
+  }
+  return data; // { results: [...] }
+}
+
 export async function buscarCanaisVenda() {
   const response = await fetch('/api/erp/canais-venda', {
     headers: getAuthHeaders(),
