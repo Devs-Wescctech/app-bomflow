@@ -10,10 +10,6 @@ export default function AppsHub() {
     queryFn: () => base44.auth.me(),
   });
 
-  const currentAgent = user?.agent;
-  const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
-  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
-
   const apps = [
     {
       id: "api-docs",
@@ -24,18 +20,14 @@ export default function AppsHub() {
       url: createPageUrl("ApiDocumentation"),
       external: true,
     },
-    ...(isAdmin
-      ? [
-          {
-            id: "api-keys",
-            title: "API Keys",
-            description: "Gerencie chaves de leitura para integração de sistemas externos (Vendas PF, Upsell, Indicações).",
-            icon: KeyRound,
-            gradient: "from-blue-600 to-cyan-600",
-            url: createPageUrl("AdminApiKeys"),
-          },
-        ]
-      : []),
+    {
+      id: "api-keys",
+      title: "API Keys",
+      description: "Gerencie chaves de leitura para integração de sistemas externos (Vendas PF, Upsell, Indicações).",
+      icon: KeyRound,
+      gradient: "from-blue-600 to-cyan-600",
+      url: createPageUrl("AdminApiKeys"),
+    },
   ];
 
   return (
