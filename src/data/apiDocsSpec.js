@@ -10,7 +10,7 @@ import {
 
 export const API_META = {
   baseUrl: "/api",
-  productionBaseUrl: "https://crm.wescctech.com.br/api",
+  productionBaseUrl: "https://app.bomflow.com.br/api",
   authScheme: "Bearer JWT",
   contentType: "application/json",
   description:
