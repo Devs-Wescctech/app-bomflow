@@ -96,7 +96,7 @@ router.post('/:id/revoke', async (req, res) => {
 
 // Download the external API documentation as a Markdown file
 router.get('/docs', (req, res) => {
-  const docPath = resolve(process.cwd(), '../docs/BomFlow-API-Externa.md');
+  const docPath = resolve(process.cwd(), 'docs/BomFlow-API-Externa.md');
   if (!existsSync(docPath)) {
     return res.status(404).json({ message: 'Documentação não encontrada.' });
   }
