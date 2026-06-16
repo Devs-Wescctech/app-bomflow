@@ -6,6 +6,14 @@ dist/
 .upm/
 uploads/*
 !uploads/.gitkeep
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/public/proposals/*
+!backend/public/proposals/.gitkeep
+backend/public/signatures/*
+!backend/public/signatures/.gitkeep
+backend/public/uploads/*
+!backend/public/uploads/.gitkeep
 *.log
 .env
 .env.*
