@@ -57,7 +57,6 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use('/data/bom-auto-images', express.static(path.join(__dirname, '../../data/bom-auto-images')));
 app.use('/proposals', express.static(path.join(__dirname, '../public/proposals')));
-app.use(express.static(distPath));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/api-keys', apiKeyRoutes);
@@ -68,6 +67,8 @@ app.use('/api/functions', functionRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/bom-auto', bomAutoRoutes);
 app.use('/api/erp', erpProxyRoutes);
+
+app.use(express.static(distPath));
 
 app.post('/api/api_chatid_indicacoes', async (req, res) => {
   try {
