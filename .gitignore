@@ -6,6 +6,14 @@ dist/
 .upm/
 uploads/*
 !uploads/.gitkeep
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/public/proposals/*
+!backend/public/proposals/.gitkeep
+backend/public/signatures/*
+!backend/public/signatures/.gitkeep
+backend/public/uploads/*
+!backend/public/uploads/.gitkeep
 *.log
 .env
 .env.*
@@ -14,10 +22,3 @@ data/bom-auto-images/*
 !data/bom-auto-images/.gitkeep
 attached_assets/
 .replit_integration_files/
-
-# Agent runtime files
-.agents/
-.local/
-
-# Generated proposal PDFs
-backend/public/proposals/
