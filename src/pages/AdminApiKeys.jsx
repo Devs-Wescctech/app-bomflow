@@ -26,7 +26,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { KeyRound, Plus, Copy, Check, Trash2, Ban, ShieldAlert, Loader2 } from "lucide-react";
+import { KeyRound, Plus, Copy, Check, Trash2, Ban, ShieldAlert, Loader2, FileDown } from "lucide-react";
 
 const API_BASE = "/api";
 
@@ -104,6 +104,27 @@ export default function AdminApiKeys() {
     setName("");
     setSelectedScopes([]);
     setExpiresAt("");
+  };
+
+  const handleDownloadDocs = async () => {
+    try {
+      const token = localStorage.getItem("accessToken");
+      const res = await fetch(`${API_BASE}/api-keys/docs`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao baixar documentação.");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "BomFlow-API-Externa.md";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err.message || "Erro ao baixar documentação.");
+    }
   };
 
   const handleCreate = async () => {
@@ -207,12 +228,21 @@ export default function AdminApiKeys() {
                 </p>
               </div>
             </div>
-            <Button
-              onClick={() => setCreateOpen(true)}
-              className="bg-white text-blue-700 hover:bg-blue-50 font-semibold"
-            >
-              <Plus className="w-4 h-4 mr-2" /> Nova API Key
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                onClick={handleDownloadDocs}
+                className="text-white hover:bg-white/20 font-medium"
+              >
+                <FileDown className="w-4 h-4 mr-2" /> Baixar Documentação
+              </Button>
+              <Button
+                onClick={() => setCreateOpen(true)}
+                className="bg-white text-blue-700 hover:bg-blue-50 font-semibold"
+              >
+                <Plus className="w-4 h-4 mr-2" /> Nova API Key
+              </Button>
+            </div>
           </div>
         </div>
 

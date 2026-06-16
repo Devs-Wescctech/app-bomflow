@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { query } from '../config/database.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { generateApiKey, API_KEY_SCOPES } from '../middleware/apiKeyAuth.js';
+import { readFileSync, existsSync } from 'fs';
+import { resolve } from 'path';
 
 const router = Router();
 
@@ -90,6 +92,18 @@ router.post('/:id/revoke', async (req, res) => {
     console.error('[api-keys revoke] error:', err.message);
     res.status(500).json({ message: 'Erro ao revogar API key.' });
   }
+});
+
+// Download the external API documentation as a Markdown file
+router.get('/docs', (req, res) => {
+  const docPath = resolve(process.cwd(), '../docs/BomFlow-API-Externa.md');
+  if (!existsSync(docPath)) {
+    return res.status(404).json({ message: 'Documentação não encontrada.' });
+  }
+  const content = readFileSync(docPath, 'utf-8');
+  res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="BomFlow-API-Externa.md"');
+  res.send(content);
 });
 
 // Permanently delete an API key
