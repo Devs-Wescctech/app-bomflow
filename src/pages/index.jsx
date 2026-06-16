@@ -197,6 +197,7 @@ import BomAutoPainel from "./BomAutoPainel";
 import BomAutoRelatorio from "./BomAutoRelatorio";
 import AppsHub from "./AppsHub";
 import ApiDocumentation from "./ApiDocumentation";
+import AdminApiKeys from "./AdminApiKeys";
 
 import SalesWonReport from "./SalesWonReport";
 import SalesPJWonReport from "./SalesPJWonReport";
@@ -414,6 +415,7 @@ const PAGES = {
     BomAutoRelatorio: BomAutoRelatorio,
     AppsHub: AppsHub,
     ApiDocumentation: ApiDocumentation,
+    AdminApiKeys: AdminApiKeys,
 
     SalesWonReport: SalesWonReport,
     SalesPJWonReport: SalesPJWonReport,
@@ -665,6 +667,7 @@ function PagesContent() {
                 <Route path="/SalesPJWonReport" element={<SalesPJWonReport />} />
                 <Route path="/AppsHub" element={<AppsHub />} />
                 <Route path="/ApiDocumentation" element={<ApiDocumentation />} />
+                <Route path="/AdminApiKeys" element={<AdminApiKeys />} />
                 <Route path="/NewLeadUpsell" element={<NewLeadUpsell />} />
                 <Route path="/LeadsUpsellKanban" element={<LeadsUpsellKanban />} />
                 <Route path="/LeadUpsellDetail" element={<LeadUpsellDetail />} />
