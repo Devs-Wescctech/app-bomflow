@@ -1,1 +1,150 @@
-aW1wb3J0IHsgdXNlU3RhdGUsIHVzZUVmZmVjdCB9IGZyb20gJ3JlYWN0JzsKaW1wb3J0IHsgdXNlTmF2aWdhdGUgfSBmcm9tICdyZWFjdC1yb3V0ZXItZG9tJzsKaW1wb3J0IHsgY3JlYXRlUGFnZVVybCB9IGZyb20gJ0AvdXRpbHMnOwppbXBvcnQgeyBBbGVydFRyaWFuZ2xlLCBDbG9jaywgTG9hZGVyMiwgQXJyb3dSaWdodExlZnQgfSBmcm9tICdsdWNpZGUtcmVhY3QnOwppbXBvcnQgeyBCdXR0b24gfSBmcm9tICdAL2NvbXBvbmVudHMvdWkvYnV0dG9uJzsKaW1wb3J0IHsgdG9hc3QgfSBmcm9tICdzb25uZXInOwoKY29uc3QgTU9EVUxFX1JPVVRFUyA9IHsKICBsZWFkczogJ0xlYWREZXRhaWwnLAogIGxlYWRzX3BqOiAnTGVhZFBKRGV0YWlsJywKICBsZWFkc191cHNlbGw6ICdMZWFkVXBzZWxsRGV0YWlsJywKICByZWZlcnJhbHM6ICdSZWZlcnJhbERldGFpbCcsCn07Cgpjb25zdCBNT0RVTEVfTEFCRUxTID0gewogIGxlYWRzOiAnVmVuZGFzIFBGJywKICBsZWFkc19wajogJ1ZlbmRhcyBQSicsCiAgbGVhZHNfdXBzZWxsOiAnVXBzZWxsJywKICByZWZlcnJhbHM6ICdJbmRpY2HDp8O1ZXMnLAp9OwoKZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24gTGVhZFBvb2xDbGFpbUJhbm5lcih7IHBob25lLCBjdXJyZW50TW9kdWxlIH0pIHsKICBjb25zdCBuYXZpZ2F0ZSA9IHVzZU5hdmlnYXRlKCk7CiAgY29uc3QgW2NoZWNrUmVzdWx0LCBzZXRDaGVja1Jlc3VsdF0gPSB1c2VTdGF0ZShudWxsKTsKICBjb25zdCBbY2hlY2tpbmcsIHNldENoZWNraW5nXSA9IHVzZVN0YXRlKGZhbHNlKTsKICBjb25zdCBbY2xhaW1pbmcsIHNldENsYWltaW5nXSA9IHVzZVN0YXRlKGZhbHNlKTsKCiAgdXNlRWZmZWN0KCgpID0+IHsKICAgIGNvbnN0IGRpZ2l0cyA9IChwaG9uZSB8fCAnJykucmVwbGFjZSgvXEQvZywgJycpOwogICAgaWYgKGRpZ2l0cy5sZW5ndGggPCAxMCkgewogICAgICBzZXRDaGVja1Jlc3VsdChudWxsKTsKICAgICAgcmV0dXJuOwogICAgfQogICAgY29uc3QgdGltZXIgPSBzZXRUaW1lb3V0KGFzeW5jICgpID0+IHsKICAgICAgc2V0Q2hlY2tpbmcodHJ1ZSk7CiAgICAgIHRyeSB7CiAgICAgICAgY29uc3QgdG9rZW4gPSBsb2NhbFN0b3JhZ2UuZ2V0SXRlbSgnYWNjZXNzVG9rZW4nKTsKICAgICAgICBjb25zdCByZXMgPSBhd2FpdCBmZXRjaChgL2FwaS9sZWFkLXBvb2wvY2hlY2s/cGhvbmU9JHtlbmNvZGVVUklDb21wb25lbnQoZGlnaXRzKX1gLCB7CiAgICAgICAgICBoZWFkZXJzOiB7IEF1dGhvcml6YXRpb246IGBCZWFyZXIgJHt0b2tlbn1gIH0sCiAgICAgICAgfSk7CiAgICAgICAgY29uc3QgZGF0YSA9IGF3YWl0IHJlcy5qc29uKCk7CiAgICAgICAgaWYgKGRhdGEuZm91bmQgJiYgZGF0YS5tb2R1bGUgIT09IGN1cnJlbnRNb2R1bGUpIHsKICAgICAgICAgIHNldENoZWNrUmVzdWx0KGRhdGEpOwogICAgICAgIH0gZWxzZSB7CiAgICAgICAgICBzZXRDaGVja1Jlc3VsdChudWxsKTsKICAgICAgICB9CiAgICAgIH0gY2F0Y2ggewogICAgICAgIHNldENoZWNrUmVzdWx0KG51bGwpOwogICAgICB9IGZpbmFsbHkgewogICAgICAgIHNldENoZWNraW5nKGZhbHNlKTsKICAgICAgfQogICAgfSwgMTAwMCk7CiAgICByZXR1cm4gKCkgPT4gY2xlYXJUaW1lb3V0KHRpbWVyKTsKICB9LCBbcGhvbmUsIGN1cnJlbnRNb2R1bGVdKTsKCiAgY29uc3QgaGFuZGxlQ2xhaW0gPSBhc3luYyAoKSA9PiB7CiAgICBpZiAoIWNoZWNrUmVzdWx0KSByZXR1cm47CiAgICBzZXRDbGFpbWluZyh0cnVlKTsKICAgIHRyeSB7CiAgICAgIGNvbnN0IHRva2VuID0gbG9jYWxTdG9yYWdlLmdldEl0ZW0oJ2FjY2Vzc1Rva2VuJyk7CiAgICAgIGNvbnN0IHJlcyA9IGF3YWl0IGZldGNoKCcvYXBpL2xlYWQtcG9vbC9jbGFpbScsIHsKICAgICAgICBtZXRob2Q6ICdQT1NUJywKICAgICAgICBoZWFkZXJzOiB7CiAgICAgICAgICBBdXRob3JpemF0aW9uOiBgQmVhcmVyICR7dG9rZW59YCwKICAgICAgICAgICdDb250ZW50LVR5cGUnOiAnYXBwbGljYXRpb24vanNvbicsCiAgICAgICAgfSwKICAgICAgICBib2R5OiBKU09OLnN0cmluZ2lmeSh7CiAgICAgICAgICBmcm9tTW9kdWxlOiBjaGVja1Jlc3VsdC5tb2R1bGUsCiAgICAgICAgICBmcm9tTGVhZElkOiBjaGVja1Jlc3VsdC5sZWFkSWQsCiAgICAgICAgICB0b01vZHVsZTogY3VycmVudE1vZHVsZSwKICAgICAgICAgIG5vdGVzOiBgUHV4YWRvIGRlICR7TU9EVUxFX0xBQkVMU1tjaGVja1Jlc3VsdC5tb2R1bGVdfSBhcMOzcyAke2NoZWNrUmVzdWx0LmRheXNJbmFjdGl2ZX0gZGlhcyBkZSBpbmF0aXZpZGFkZWAsCiAgICAgICAgfSksCiAgICAgIH0pOwogICAgICBjb25zdCBkYXRhID0gYXdhaXQgcmVzLmpzb24oKTsKICAgICAgaWYgKCFyZXMub2spIHRocm93IG5ldyBFcnJvcihkYXRhLm1lc3NhZ2UgfHwgJ0Vycm8gYW8gcHV4YXIgbGVhZCcpOwogICAgICB0b2FzdC5zdWNjZXNzKCdMZWFkIHB1eGFkbyBjb20gc3VjZXNzbyEgUmVkaXJlY2lvbmFuZG8uLi4nKTsKICAgICAgY29uc3Qgcm91dGVOYW1lID0gTU9EVUxFX1JPVVRFU1tjdXJyZW50TW9kdWxlXTsKICAgICAgc2V0VGltZW91dCgoKSA9PiBuYXZpZ2F0ZShgJHtjcmVhdGVQYWdlVXJsKHJvdXRlTmFtZSl9P2lkPSR7ZGF0YS5uZXdMZWFkSWR9YCksIDEyMDApOwogICAgfSBjYXRjaCAoZSkgewogICAgICB0b2FzdC5lcnJvcihlLm1lc3NhZ2UgfHwgJ0Vycm8gYW8gcHV4YXIgbGVhZCcpOwogICAgICBzZXRDbGFpbWluZyhmYWxzZSk7CiAgICB9CiAgfTsKCiAgaWYgKGNoZWNraW5nKSB7CiAgICByZXR1cm4gKAogICAgICA8cCBjbGFzc05hbWU9InRleHQteHMgdGV4dC1ibHVlLTUwMCBtdC0xIGZsZXggaXRlbXMtY2VudGVyIGdhcC0xIj4KICAgICAgICA8TG9hZGVyMiBjbGFzc05hbWU9InctMyBoLTMgYW5pbWF0ZS1zcGluIiAvPgogICAgICAgIFZlcmlmaWNhbmRvIGVtIG91dHJvcyBtw7NkdWxvcy4uLgogICAgICA8L3A+CiAgICApOwogIH0KCiAgaWYgKCFjaGVja1Jlc3VsdCkgcmV0dXJuIG51bGw7CgogIGlmICghY2hlY2tSZXN1bHQuY2xhaW1hYmxlKSB7CiAgICByZXR1cm4gKAogICAgICA8ZGl2IGNsYXNzTmFtZT0ibXQtMiBwLTMgYmctb3JhbmdlLTUwIGJvcmRlciBib3JkZXItb3JhbmdlLTMwMCByb3VuZGVkLWxnIj4KICAgICAgICA8ZGl2IGNsYXNzTmFtZT0iZmxleCBpdGVtcy1jZW50ZXIgZ2FwLTIiPgogICAgICAgICAgPEFsZXJ0VHJpYW5nbGUgY2xhc3NOYW1lPSJ3LTQgaC00IHRleHQtb3JhbmdlLTYwMCBmbGV4LXNocmluay0wIiAvPgogICAgICAgICAgPHAgY2xhc3NOYW1lPSJ0ZXh0LXNtIGZvbnQtc2VtaWJvbGQgdGV4dC1vcmFuZ2UtNzAwIj5MZWFkIGVtIGF0ZW5kaW1lbnRvIGF0aXZvPC9wPgogICAgICAgIDwvZGl2PgogICAgICAgIDxwIGNsYXNzTmFtZT0idGV4dC14cyB0ZXh0LW9yYW5nZS02MDAgbXQtMSI+CiAgICAgICAgICBUZWxlZm9uZSBqw6EgY2FkYXN0cmFkbyBubyBtw7NkdWxvIDxzdHJvbmc+e2NoZWNrUmVzdWx0Lm1vZHVsZUxhYmVsfTwvc3Ryb25nPgogICAgICAgICAge2NoZWNrUmVzdWx0LmFnZW50TmFtZSA/IGAg4oCUIHZlbmRlZG9yOiAke2NoZWNrUmVzdWx0LmFnZW50TmFtZX1gIDogJyd9LnsnICd9CiAgICAgICAgICBBdGl2byBow6EgPHN0cm9uZz57Y2hlY2tSZXN1bHQuZGF5c0luYWN0aXZlfSBkaWFzPC9zdHJvbmc+IChuZWNlc3PDoXJpb3snICd9CiAgICAgICAgICB7Y2hlY2tSZXN1bHQuaW5hY3Rpdml0eURheXN9IGRpYXMgZGUgaW5hdGl2aWRhZGUgcGFyYSBsaWJlcmFyKS4KICAgICAgICA8L3A+CiAgICAgIDwvZGl2PgogICAgKTsKICB9CgogIHJldHVybiAoCiAgICA8ZGl2IGNsYXNzTmFtZT0ibXQtMiBwLTMgYmctYW1iZXItNTAgYm9yZGVyIGJvcmRlci1hbWJlci00MDAgcm91bmRlZC1sZyI+CiAgICAgIDxkaXYgY2xhc3NOYW1lPSJmbGV4IGl0ZW1zLXN0YXJ0IGp1c3RpZnktYmV0d2VlbiBnYXAtMyI+CiAgICAgICAgPGRpdiBjbGFzc05hbWU9ImZsZXgtMSBtaW4tdy0wIj4KICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPSJmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMiI+CiAgICAgICAgICAgIDxDbG9jayBjbGFzc05hbWU9InctNCBoLTQgdGV4dC1hbWJlci03MDAgZmxleC1zaHJpbmstMCIgLz4KICAgICAgICAgICAgPHAgY2xhc3NOYW1lPSJ0ZXh0LXNtIGZvbnQtc2VtaWJvbGQgdGV4dC1hbWJlci04MDAiPkxlYWQgZGlzcG9uw612ZWwgcGFyYSBwdXhhcjwvcD4KICAgICAgICAgIDwvZGl2PgogICAgICAgICAgPHAgY2xhc3NOYW1lPSJ0ZXh0LXhzIHRleHQtYW1iZXItNzAwIG10LTEiPgogICAgICAgICAgICA8c3Ryb25nPntjaGVja1Jlc3VsdC5sZWFkTmFtZX08L3N0cm9uZz4gZXN0w6Egbm8gbcOzZHVsb3snICd9CiAgICAgICAgICAgIDxzdHJvbmc+e2NoZWNrUmVzdWx0Lm1vZHVsZUxhYmVsfTwvc3Ryb25nPgogICAgICAgICAgICB7Y2hlY2tSZXN1bHQuYWdlbnROYW1lID8gYCAoJHtjaGVja1Jlc3VsdC5hZ2VudE5hbWV9KWAgOiAnJ30sIGluYXRpdm8gaMOheycgJ30KICAgICAgICAgICAgPHN0cm9uZz57Y2hlY2tSZXN1bHQuZGF5c0luYWN0aXZlfSBkaWFzPC9zdHJvbmc+LiBWb2PDqiBwb2RlIHRyYW5zZmVyaS1sbyBwYXJhIHNldSBtw7NkdWxvLgogICAgICAgICAgPC9wPgogICAgICAgIDwvZGl2PgogICAgICAgIDxCdXR0b24KICAgICAgICAgIHR5cGU9ImJ1dHRvbiIKICAgICAgICAgIHNpemU9InNtIgogICAgICAgICAgb25DbGljaz17aGFuZGxlQ2xhaW19CiAgICAgICAgICBkaXNhYmxlZD17Y2xhaW1pbmd9CiAgICAgICAgICBjbGFzc05hbWU9ImJnLWFtYmVyLTYwMCBob3ZlcjpiZy1hbWJlci03MDAgdGV4dC13aGl0ZSBzaHJpbmstMCIKICAgICAgICA+CiAgICAgICAgICB7Y2xhaW1pbmcgPyAoCiAgICAgICAgICAgIDw+CiAgICAgICAgICAgICAgPExvYWRlcjIgY2xhc3NOYW1lPSJ3LTMgaC0zIG1yLTEgYW5pbWF0ZS1zcGluIiAvPgogICAgICAgICAgICAgIFB1eGFuZG8uLi4KICAgICAgICAgICAgPC8+CiAgICAgICAgICApIDogKAogICAgICAgICAgICA8PgogICAgICAgICAgICAgIDxBcnJvd1JpZ2h0TGVmdCBjbGFzc05hbWU9InctMyBoLTMgbXItMSIgLz4KICAgICAgICAgICAgICBQdXhhciBMZWFkCiAgICAgICAgICAgIDwvPgogICAgICAgICAgKX0KICAgICAgICA8L0J1dHRvbj4KICAgICAgPC9kaXY+CiAgICA8L2Rpdj4KICApOwp9Cg==
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
+import { AlertTriangle, Clock, Loader2, ArrowRightLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+
+const MODULE_ROUTES = {
+  leads: 'LeadDetail',
+  leads_pj: 'LeadPJDetail',
+  leads_upsell: 'LeadUpsellDetail',
+  referrals: 'ReferralDetail',
+};
+
+const MODULE_LABELS = {
+  leads: 'Vendas PF',
+  leads_pj: 'Vendas PJ',
+  leads_upsell: 'Upsell',
+  referrals: 'Indicações',
+};
+
+export default function LeadPoolClaimBanner({ phone, currentModule }) {
+  const navigate = useNavigate();
+  const [checkResult, setCheckResult] = useState(null);
+  const [checking, setChecking] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+
+  useEffect(() => {
+    const digits = (phone || '').replace(/\D/g, '');
+    if (digits.length < 10) {
+      setCheckResult(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setChecking(true);
+      try {
+        const token = localStorage.getItem('accessToken');
+        const res = await fetch(`/api/lead-pool/check?phone=${encodeURIComponent(digits)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data.found && data.module !== currentModule) {
+          setCheckResult(data);
+        } else {
+          setCheckResult(null);
+        }
+      } catch {
+        setCheckResult(null);
+      } finally {
+        setChecking(false);
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [phone, currentModule]);
+
+  const handleClaim = async () => {
+    if (!checkResult) return;
+    setClaiming(true);
+    try {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch('/api/lead-pool/claim', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fromModule: checkResult.module,
+          fromLeadId: checkResult.leadId,
+          toModule: currentModule,
+          notes: `Puxado de ${MODULE_LABELS[checkResult.module]} após ${checkResult.daysInactive} dias de inatividade`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Erro ao puxar lead');
+      toast.success('Lead puxado com sucesso! Redirecionando...');
+      const routeName = MODULE_ROUTES[currentModule];
+      setTimeout(() => navigate(`${createPageUrl(routeName)}?id=${data.newLeadId}`), 1200);
+    } catch (e) {
+      toast.error(e.message || 'Erro ao puxar lead');
+      setClaiming(false);
+    }
+  };
+
+  if (checking) {
+    return (
+      <p className="text-xs text-blue-500 mt-1 flex items-center gap-1">
+        <Loader2 className="w-3 h-3 animate-spin" />
+        Verificando em outros módulos...
+      </p>
+    );
+  }
+
+  if (!checkResult) return null;
+
+  if (!checkResult.claimable) {
+    return (
+      <div className="mt-2 p-3 bg-orange-50 border border-orange-300 rounded-lg">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-orange-600 flex-shrink-0" />
+          <p className="text-sm font-semibold text-orange-700">Lead em atendimento ativo</p>
+        </div>
+        <p className="text-xs text-orange-600 mt-1">
+          Telefone já cadastrado no módulo <strong>{checkResult.moduleLabel}</strong>
+          {checkResult.agentName ? ` — vendedor: ${checkResult.agentName}` : ''}.{' '}
+          Ativo há <strong>{checkResult.daysInactive} dias</strong> (necessário{' '}
+          {checkResult.inactivityDays} dias de inatividade para liberar).
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 p-3 bg-amber-50 border border-amber-400 rounded-lg">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-700 flex-shrink-0" />
+            <p className="text-sm font-semibold text-amber-800">Lead disponível para puxar</p>
+          </div>
+          <p className="text-xs text-amber-700 mt-1">
+            <strong>{checkResult.leadName}</strong> está no módulo{' '}
+            <strong>{checkResult.moduleLabel}</strong>
+            {checkResult.agentName ? ` (${checkResult.agentName})` : ''}, inativo há{' '}
+            <strong>{checkResult.daysInactive} dias</strong>. Você pode transferi-lo para seu módulo.
+          </p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          onClick={handleClaim}
+          disabled={claiming}
+          className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"
+        >
+          {claiming ? (
+            <>
+              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              Puxando...
+            </>
+          ) : (
+            <>
+              <ArrowRightLeft className="w-3 h-3 mr-1" />
+              Puxar Lead
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
