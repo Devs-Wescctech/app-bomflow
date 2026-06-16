@@ -27,6 +27,7 @@ WORKDIR /app
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 COPY backend/ ./backend/
+COPY docs/ ./docs/
 COPY --from=backend-deps /app/backend/node_modules ./backend/node_modules
 COPY --from=frontend-build /app/dist ./dist
 
