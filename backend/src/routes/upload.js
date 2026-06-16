@@ -8,8 +8,12 @@ import { authMiddleware } from '../middleware/auth.js';
 const router = Router();
 
 const uploadDir = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+try {
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+} catch (e) {
+  console.error('[Upload] Falha ao criar diretório de uploads:', uploadDir, e.message);
 }
 
 const storage = multer.diskStorage({
@@ -37,58 +41,68 @@ const upload = multer({
       'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     ];
-    
+
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('File type not allowed'), false);
+      cb(new Error(`Tipo de arquivo não permitido: ${file.mimetype}`), false);
     }
   }
 });
 
-router.post('/', authMiddleware, upload.single('file'), (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'No file uploaded' });
-    }
-    
-    const fileUrl = `/uploads/${req.file.filename}`;
-    
-    res.json({
-      success: true,
-      file: {
-        filename: req.file.filename,
-        originalname: req.file.originalname,
-        mimetype: req.file.mimetype,
-        size: req.file.size,
-        url: fileUrl
+// Handler helper que captura tanto erros do multer quanto erros da rota
+function handleUpload(multerMiddleware, handler) {
+  return (req, res) => {
+    multerMiddleware(req, res, (err) => {
+      if (err) {
+        console.error('[Upload] Erro no multer:', err.message);
+        const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+        return res.status(status).json({ message: err.message });
+      }
+      try {
+        handler(req, res);
+      } catch (handlerErr) {
+        console.error('[Upload] Erro no handler:', handlerErr.message);
+        res.status(500).json({ message: handlerErr.message });
       }
     });
-  } catch (error) {
-    console.error('Error uploading file:', error);
-    res.status(500).json({ message: error.message });
-  }
-});
+  };
+}
 
-router.post('/multiple', authMiddleware, upload.array('files', 10), (req, res) => {
-  try {
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ message: 'No files uploaded' });
-    }
-    
-    const files = req.files.map(file => ({
-      filename: file.filename,
-      originalname: file.originalname,
-      mimetype: file.mimetype,
-      size: file.size,
-      url: `/uploads/${file.filename}`
-    }));
-    
-    res.json({ success: true, files });
-  } catch (error) {
-    console.error('Error uploading files:', error);
-    res.status(500).json({ message: error.message });
+router.post('/', authMiddleware, handleUpload(upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: 'Nenhum arquivo enviado' });
   }
-});
+
+  const fileUrl = `/uploads/${req.file.filename}`;
+  console.log('[Upload] Arquivo salvo:', req.file.filename, '→', uploadDir);
+
+  res.json({
+    success: true,
+    file: {
+      filename: req.file.filename,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      url: fileUrl
+    }
+  });
+}));
+
+router.post('/multiple', authMiddleware, handleUpload(upload.array('files', 10), (req, res) => {
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).json({ message: 'Nenhum arquivo enviado' });
+  }
+
+  const files = req.files.map(file => ({
+    filename: file.filename,
+    originalname: file.originalname,
+    mimetype: file.mimetype,
+    size: file.size,
+    url: `/uploads/${file.filename}`
+  }));
+
+  res.json({ success: true, files });
+}));
 
 export default router;
