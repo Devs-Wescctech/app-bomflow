@@ -1,17 +1,21 @@
 import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import { authMiddleware } from '../middleware/auth.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const router = Router();
 
-const uploadDir = path.join(process.cwd(), 'uploads');
+// Usa backend/public/uploads (mesmo padrão de proposals/ e signatures/)
+// Garante funcionamento mesmo quando /app/uploads é sobrescrito por volume Docker
+const uploadDir = path.join(__dirname, '../../public/uploads');
 try {
-  if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-  }
+  fs.mkdirSync(uploadDir, { recursive: true });
 } catch (e) {
   console.error('[Upload] Falha ao criar diretório de uploads:', uploadDir, e.message);
 }
