@@ -10,7 +10,9 @@ export default function AppsHub() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = user?.role === 'admin' || user?.agent_type === 'admin' || user?.agentType === 'admin';
+  const currentAgent = user?.agent;
+  const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
+  const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
 
   const apps = [
     {
