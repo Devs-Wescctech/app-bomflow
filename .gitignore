@@ -14,3 +14,10 @@ data/bom-auto-images/*
 !data/bom-auto-images/.gitkeep
 attached_assets/
 .replit_integration_files/
+
+# Agent runtime files
+.agents/
+.local/
+
+# Generated proposal PDFs
+backend/public/proposals/
