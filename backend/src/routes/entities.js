@@ -88,6 +88,25 @@ pool.query(`
   `);
 }).catch(e => console.error('[Migration] lead_pool error:', e.message));
 
+pool.query(`
+  CREATE TABLE IF NOT EXISTS api_keys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    key_hash VARCHAR(128) NOT NULL UNIQUE,
+    key_prefix VARCHAR(32) NOT NULL,
+    scopes TEXT[] DEFAULT '{}',
+    active BOOLEAN DEFAULT TRUE,
+    created_by UUID,
+    last_used_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
+`).then(() => console.log('[Migration] api_keys OK'))
+  .catch(e => console.error('[Migration] api_keys error:', e.message));
+
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }

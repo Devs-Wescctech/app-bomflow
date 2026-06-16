@@ -12,6 +12,8 @@ import functionRoutes from './routes/functions.js';
 import whatsappRoutes from './routes/whatsapp.js';
 import bomAutoRoutes from './routes/bomAuto.js';
 import erpProxyRoutes from './routes/erpProxy.js';
+import apiKeyRoutes from './routes/apiKeys.js';
+import externalRoutes from './routes/external.js';
 import { runAllAutomations } from './services/automationService.js';
 import cron from 'node-cron';
 import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport, runPerspectivaBatch, sendPerspectivaReport } from './routes/functions.js';
@@ -58,6 +60,8 @@ app.use('/proposals', express.static(path.join(__dirname, '../public/proposals')
 app.use(express.static(distPath));
 
 app.use('/api/auth', authRoutes);
+app.use('/api/api-keys', apiKeyRoutes);
+app.use('/api/external', externalRoutes);
 app.use('/api', entityRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/functions', functionRoutes);

@@ -2,13 +2,15 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
-import { LayoutGrid, Lock, BookOpen } from "lucide-react";
+import { LayoutGrid, Lock, BookOpen, KeyRound } from "lucide-react";
 
 export default function AppsHub() {
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
+
+  const isAdmin = user?.role === 'admin' || user?.agent_type === 'admin' || user?.agentType === 'admin';
 
   const apps = [
     {
@@ -20,6 +22,18 @@ export default function AppsHub() {
       url: createPageUrl("ApiDocumentation"),
       external: true,
     },
+    ...(isAdmin
+      ? [
+          {
+            id: "api-keys",
+            title: "API Keys",
+            description: "Gerencie chaves de leitura para integração de sistemas externos (Vendas PF, Upsell, Indicações).",
+            icon: KeyRound,
+            gradient: "from-blue-600 to-cyan-600",
+            url: createPageUrl("AdminApiKeys"),
+          },
+        ]
+      : []),
   ];
 
   return (

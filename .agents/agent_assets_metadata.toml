@@ -24,3 +24,9 @@ id = "0WO_bko0xAxqa7cpqu1-a"
 uri = "file://docs/Agents.jsx.txt"
 type = "text"
 title = "Agents.jsx — código completo"
+
+[[outputs]]
+id = "v7dwzmJQDyJH9dgSb33va"
+uri = "file://docs/BomFlow-API-Externa.md"
+type = "text"
+title = "Documentação da API Externa — Bom Flow"
