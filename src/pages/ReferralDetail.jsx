@@ -540,13 +540,25 @@ export default function ReferralDetail() {
 
     setUploadingContract(true);
     try {
-      const result = await base44.integrations.Core.UploadFile({ file });
-      const fileUrl = result.file?.url || result.file_url;
-      
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = localStorage.getItem('accessToken');
+      const uploadRes = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => ({}));
+        throw new Error(err.message || 'Falha no upload');
+      }
+      const result = await uploadRes.json();
+      const fileUrl = result.file?.url;
+
       if (!fileUrl) {
         throw new Error('URL do arquivo não retornada');
       }
-      
+
       await base44.entities.Referral.update(referralId, {
         contract_url: fileUrl,
         contract_uploaded_at: new Date().toISOString(),
