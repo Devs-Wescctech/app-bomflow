@@ -821,6 +821,8 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       dia_vencimento: form.dia_vencimento ? Number(form.dia_vencimento) : undefined,
       prazo_pagamento_id: form.plano_pagamento_id ? Number(form.plano_pagamento_id) : undefined,
       observacoes: form.observacoes || undefined,
+      // Metadado do Bom Flow (rastreio CRM por módulo). O backend remove antes de enviar ao ERP.
+      modulo: "sales_upsell",
     };
     return Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
   }, [form, itensSel, produtosFiltrados, erpProdutos, planoSelecionado, beneficiarios, erpAgenteVendaId, user]);

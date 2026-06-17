@@ -630,6 +630,51 @@ router.get('/lookup-cpf', authMiddleware, async (req, res) => {
   }
 });
 
+// Registra no CRM o orçamento criado pelo Bom Flow, vinculando-o ao módulo e ao agente
+// real que o criou. O ERP atribui todos os orçamentos criados via API à conta do token
+// (acesso.api), então este registro é a ÚNICA fonte confiável de "quem/qual módulo".
+// Best-effort: nunca derruba a criação do orçamento se a gravação falhar.
+async function recordBomflowOrcamento(req, { erpPedidoId, erpNumero, modulo, clienteNome, clienteCpf, valor }) {
+  try {
+    if (!erpPedidoId) return;
+    if (!modulo || !VALID_MODULOS.includes(modulo)) {
+      console.warn('[bomflow_orcamentos] módulo ausente/inválido, orçamento não rastreado:', modulo, 'pedido:', erpPedidoId);
+      return;
+    }
+    let agentName = null;
+    if (req.user?.id) {
+      const a = (await query('SELECT name FROM agents WHERE id = $1', [req.user.id])).rows[0];
+      agentName = a?.name || req.user?.name || null;
+    }
+    await query(
+      `INSERT INTO bomflow_orcamentos
+         (erp_pedido_id, erp_numero, modulo, agent_id, agent_name, cliente_nome, cliente_cpf, valor_criacao)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (erp_pedido_id) DO UPDATE SET
+         erp_numero   = EXCLUDED.erp_numero,
+         modulo       = EXCLUDED.modulo,
+         agent_id     = EXCLUDED.agent_id,
+         agent_name   = EXCLUDED.agent_name,
+         cliente_nome = EXCLUDED.cliente_nome,
+         cliente_cpf  = EXCLUDED.cliente_cpf,
+         valor_criacao = EXCLUDED.valor_criacao`,
+      [
+        Number(erpPedidoId),
+        erpNumero != null ? Number(erpNumero) : null,
+        modulo,
+        req.user?.id || null,
+        agentName,
+        clienteNome || null,
+        clienteCpf || null,
+        valor != null ? Number(valor) : null,
+      ]
+    );
+    console.log(`[bomflow_orcamentos] registrado pedido ${erpPedidoId} (nº ${erpNumero}) módulo=${modulo} agente=${agentName}`);
+  } catch (e) {
+    console.error('[bomflow_orcamentos] falha ao registrar (não crítico):', e.message);
+  }
+}
+
 // POST /api/erp/orcamento
 // Cria um orçamento no ERP via POST /OrcamentoSgprcUsuario
 router.post('/orcamento', authMiddleware, async (req, res) => {
@@ -654,6 +699,7 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       quantidade_parcelas: quantidadeParcelas,
       usua_produtos,
       usua_papeis,
+      modulo: moduloOrcamento,
       ...headerPayload
     } = payload;
 
@@ -807,6 +853,16 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       }
     }
 
+    // Rastreio CRM: vincula este orçamento ao módulo e agente real (best-effort).
+    await recordBomflowOrcamento(req, {
+      erpPedidoId: pedidoInternalId,
+      erpNumero: numeroPedido,
+      modulo: moduloOrcamento,
+      clienteNome: headerPayload.nome_contratante || headerPayload.contratante_nome || null,
+      clienteCpf: headerPayload.cpf || headerPayload.contratante_cpf || null,
+      valor: data?.valor_total ?? null,
+    });
+
     return res.json({ ...data, numeroPedido, erpId: pedidoInternalId, dbInserted: dbResult, fechamento: fechamentoResult });
   } catch (err) {
     console.error('[ERP Proxy] POST /orcamento error:', err.message);
@@ -820,7 +876,8 @@ router.post('/pre-proposta', authMiddleware, async (req, res) => {
   const token = getToken(res);
   if (!token) return;
   try {
-    const payload = { ...req.body };
+    // `modulo` é metadado do Bom Flow (rastreio CRM), NÃO deve ser enviado ao ERP.
+    const { modulo: moduloOrcamento, ...payload } = { ...req.body };
 
     // Define usuario_inclusao sempre no servidor. O campo diz ao ERP quem criou o
     // orçamento; sem ele o ERP usa o dono do token (acesso.api) que não tem permissão
@@ -844,6 +901,20 @@ router.post('/pre-proposta', authMiddleware, async (req, res) => {
     console.log('[ERP pre-proposta] status HTTP:', r.status);
     console.log('[ERP pre-proposta] resposta ERP completa:', JSON.stringify(data, null, 2));
     if (!r.ok) return res.status(r.status).json(data);
+
+    // Rastreio CRM (best-effort): só registra se o ERP devolveu o id do pedido e não houve
+    // bloco/erro interno. Vincula ao módulo e agente real que criou.
+    if (!data?.block && !data?.error) {
+      await recordBomflowOrcamento(req, {
+        erpPedidoId: data?.id ?? null,
+        erpNumero: data?.pedido ?? data?.numero ?? null,
+        modulo: moduloOrcamento,
+        clienteNome: payload.nome_contratante || payload.contratante_nome || null,
+        clienteCpf: payload.cpf || payload.contratante_cpf || null,
+        valor: data?.valor_total ?? null,
+      });
+    }
+
     return res.json(data);
   } catch (err) {
     console.error('[ERP Proxy] POST /pre-proposta error:', err.message);
@@ -939,6 +1010,23 @@ async function getModuleErpAgentIds(modulo) {
   return r.rows.map(row => Number(row.erp_agent_id));
 }
 
+// Retorna os agentes (CRM) elegíveis a um módulo, por tipo de agente.
+// Diferente de getModuleErpAgentIds, NÃO exige erp_agent_id: a autoria do orçamento
+// é rastreada no CRM (bomflow_orcamentos.agent_id), não pelo login do ERP.
+// Retorno: [{ id (uuid), name }].
+async function getModuleAgentIds(modulo) {
+  if (!modulo || !VALID_MODULOS.includes(modulo)) return [];
+  const r = await query(
+    `SELECT a.id, a.name
+       FROM agents a
+       JOIN agent_types t ON t.key = a.agent_type
+      WHERE ($1 = ANY(t.modules) OR 'all' = ANY(t.modules))
+      ORDER BY a.name`,
+    [modulo]
+  );
+  return r.rows;
+}
+
 /**
  * GET /api/erp/relatorio-orcamentos/vendedores
  * Retorna a lista de vendedores elegíveis para o filtro do relatório,
@@ -950,7 +1038,7 @@ router.get('/relatorio-orcamentos/vendedores', authMiddleware, async (req, res) 
     const { team_id, modulo } = req.query;
 
     const agentRes = await query(
-      `SELECT id, agent_type, erp_agent_id, supervisor_id FROM agents WHERE id = $1`,
+      `SELECT id, agent_type, supervisor_id FROM agents WHERE id = $1`,
       [req.user.id]
     );
     const agent = agentRes.rows[0];
@@ -960,39 +1048,40 @@ router.get('/relatorio-orcamentos/vendedores', authMiddleware, async (req, res) 
     const isAdmin = agentType === 'admin' || (req.user.role || '').toLowerCase() === 'admin';
     const isSupervisor = !isAdmin && agentType.includes('supervisor');
 
-    // Universo de agentes Bom Flow do módulo (só esses podem aparecer)
-    const moduleErpIds = await getModuleErpAgentIds(modulo);
-    const moduleSet = new Set(moduleErpIds);
+    // Universo de agentes (CRM) do módulo — autoria é rastreada no CRM, não pelo ERP.
+    const moduleAgents = await getModuleAgentIds(modulo);
+    const moduleSet = new Set(moduleAgents.map(a => a.id));
 
-    let erpIds = [];
+    let agents = [];
 
     if (isAdmin) {
       if (team_id && team_id !== 'todos') {
         const allRes = await query(
-          `SELECT erp_agent_id FROM agents WHERE team_id = $1 AND erp_agent_id IS NOT NULL ORDER BY name`,
+          `SELECT id, name FROM agents WHERE team_id = $1 ORDER BY name`,
           [team_id]
         );
-        erpIds = allRes.rows.map(r => Number(r.erp_agent_id));
+        agents = allRes.rows;
       } else {
-        erpIds = moduleErpIds;
+        agents = moduleAgents;
       }
     } else if (isSupervisor) {
       const teamRes = await query(
-        `SELECT erp_agent_id FROM agents WHERE supervisor_id = $1 AND erp_agent_id IS NOT NULL ORDER BY name`,
+        `SELECT id, name FROM agents WHERE supervisor_id = $1 ORDER BY name`,
         [agent.id]
       );
-      erpIds = teamRes.rows.map(r => Number(r.erp_agent_id));
-      if (agent.erp_agent_id) erpIds.push(Number(agent.erp_agent_id));
+      agents = teamRes.rows;
+      const selfRes = await query(`SELECT id, name FROM agents WHERE id = $1`, [agent.id]);
+      if (selfRes.rows[0]) agents.push(selfRes.rows[0]);
+    } else {
+      const selfRes = await query(`SELECT id, name FROM agents WHERE id = $1`, [agent.id]);
+      agents = selfRes.rows;
     }
 
-    // Restringe ao universo do módulo
-    erpIds = erpIds.filter(id => moduleSet.has(id));
-
-    if (erpIds.length === 0) return res.json({ vendedores: [] });
-
-    const loginsMap = await getErpLoginsByIds(erpIds);
-    const vendedores = Object.values(loginsMap)
-      .filter(v => v.login)
+    // Restringe ao universo do módulo e remove duplicados.
+    const seen = new Set();
+    const vendedores = agents
+      .filter(a => moduleSet.has(a.id) && !seen.has(a.id) && seen.add(a.id))
+      .map(a => ({ id: a.id, nome: a.name }))
       .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
 
     return res.json({ vendedores });
@@ -1009,10 +1098,15 @@ router.get('/relatorio-orcamentos/vendedores', authMiddleware, async (req, res) 
  */
 router.get('/relatorio-orcamentos', authMiddleware, async (req, res) => {
   try {
-    const { start_date, end_date, situacao, vendedor_login, canal_id, team_id, modulo, limit = 500 } = req.query;
+    // vendedor_id é o uuid do agente CRM (a autoria é rastreada no CRM, não no ERP).
+    // Mantém compatibilidade com o nome antigo vendedor_login caso ainda venha.
+    const { start_date, end_date, situacao, canal_id, team_id, modulo, limit = 500 } = req.query;
+    const vendedorId = req.query.vendedor_id || req.query.vendedor_login || null;
+
+    if (!modulo || !VALID_MODULOS.includes(modulo)) return res.json({ items: [] });
 
     const agentRes = await query(
-      `SELECT id, agent_type, erp_agent_id, supervisor_id FROM agents WHERE id = $1`,
+      `SELECT id, agent_type, supervisor_id FROM agents WHERE id = $1`,
       [req.user.id]
     );
     const agent = agentRes.rows[0];
@@ -1022,66 +1116,70 @@ router.get('/relatorio-orcamentos', authMiddleware, async (req, res) => {
     const isAdmin = agentType === 'admin' || (req.user.role || '').toLowerCase() === 'admin';
     const isSupervisor = !isAdmin && agentType.includes('supervisor');
 
-    // ─── Universo do módulo ───────────────────────────────────────────────
-    // Somente orçamentos criados por agentes Bom Flow (com erp_agent_id) do
-    // módulo solicitado. Isso garante que NUNCA retornamos todo o ERP.
-    const moduleErpIds = await getModuleErpAgentIds(modulo);
-    if (moduleErpIds.length === 0) return res.json({ items: [] });
-    const moduleLoginsMap = await getErpLoginsByIds(moduleErpIds);
-    const moduleLogins = Object.values(moduleLoginsMap).map(v => v.login).filter(Boolean);
-    if (moduleLogins.length === 0) return res.json({ items: [] });
-
-    // ─── Escopo do visualizador (permissão) ───────────────────────────────
-    // viewerLogins = null → admin (sem restrição extra além do módulo)
-    let viewerLogins = null;
+    // ─── Escopo do visualizador (permissão) por agente CRM ─────────────────
+    // scopeAgentIds = null → admin sem restrição (todos os agentes do módulo).
+    let scopeAgentIds = null;
 
     if (!isAdmin) {
       if (isSupervisor) {
         const teamRes = await query(
-          `SELECT erp_agent_id FROM agents WHERE supervisor_id = $1 AND erp_agent_id IS NOT NULL`,
+          `SELECT id FROM agents WHERE supervisor_id = $1`,
           [agent.id]
         );
-        const erpIds = teamRes.rows.map(r => Number(r.erp_agent_id));
-        if (agent.erp_agent_id) erpIds.push(Number(agent.erp_agent_id));
-        const loginsMap = erpIds.length ? await getErpLoginsByIds(erpIds) : {};
-        viewerLogins = Object.values(loginsMap).map(v => v.login).filter(Boolean);
+        scopeAgentIds = teamRes.rows.map(r => r.id);
+        scopeAgentIds.push(agent.id);
       } else {
-        const erpLogin = agent.erp_agent_id
-          ? await getLoginByUsuarioId(Number(agent.erp_agent_id))
-          : null;
-        viewerLogins = erpLogin ? [erpLogin] : [];
+        scopeAgentIds = [agent.id];
       }
     }
 
     // Admin: escopo por time
     if (isAdmin && team_id && team_id !== 'todos') {
       const teamAgents = await query(
-        `SELECT erp_agent_id FROM agents WHERE team_id = $1 AND erp_agent_id IS NOT NULL`,
+        `SELECT id FROM agents WHERE team_id = $1`,
         [team_id]
       );
-      const teamErpIds = teamAgents.rows.map(r => Number(r.erp_agent_id));
-      const loginsMap = teamErpIds.length ? await getErpLoginsByIds(teamErpIds) : {};
-      viewerLogins = Object.values(loginsMap).map(v => v.login).filter(Boolean);
+      scopeAgentIds = teamAgents.rows.map(r => r.id);
     }
 
-    // Filtro adicional de vendedor_login (supervisor/admin escolhem um específico)
-    if (vendedor_login && vendedor_login !== 'todos') {
-      viewerLogins = viewerLogins ? viewerLogins.filter(l => l === vendedor_login) : [vendedor_login];
+    // Filtro adicional de vendedor (supervisor/admin escolhem um agente específico)
+    if (vendedorId && vendedorId !== 'todos') {
+      scopeAgentIds = scopeAgentIds ? scopeAgentIds.filter(id => id === vendedorId) : [vendedorId];
     }
 
-    // ─── Interseção: módulo ∩ permissão do visualizador ───────────────────
-    const logins = viewerLogins === null
-      ? moduleLogins
-      : viewerLogins.filter(l => moduleLogins.includes(l));
+    // ─── Rastreio CRM: quais pedidos do ERP pertencem a este módulo+escopo ──
+    const crmParams = [modulo];
+    let crmWhere = 'modulo = $1';
+    if (Array.isArray(scopeAgentIds)) {
+      if (scopeAgentIds.length === 0) return res.json({ items: [] });
+      crmParams.push(scopeAgentIds);
+      crmWhere += ` AND agent_id = ANY($${crmParams.length})`;
+    }
+    const crmRes = await query(
+      `SELECT erp_pedido_id, agent_name FROM bomflow_orcamentos WHERE ${crmWhere}`,
+      crmParams
+    );
+    if (crmRes.rows.length === 0) return res.json({ items: [] });
 
-    const items = await getRelatorioOrcamentos({
-      logins,
+    const pedidoIds = crmRes.rows.map(r => Number(r.erp_pedido_id));
+    const agentNameById = new Map(crmRes.rows.map(r => [Number(r.erp_pedido_id), r.agent_name]));
+
+    // ─── Dados ao vivo do ERP para esses pedidos ───────────────────────────
+    const rows = await getRelatorioOrcamentos({
+      pedidoIds,
       startDate: start_date || null,
       endDate: end_date || null,
       situacao: situacao && situacao !== 'todos' ? situacao : null,
       canalId: canal_id && canal_id !== 'todos' ? canal_id : null,
       limit: Math.min(Number(limit) || 500, 1000),
       offset: 0,
+    });
+
+    // O ERP atribui a autoria à conta do token (acesso.api); sobrescrevemos com o
+    // agente real do Bom Flow (rastreio CRM) para exibir o vendedor correto.
+    const items = rows.map(row => {
+      const realName = agentNameById.get(Number(row.erp_id));
+      return realName ? { ...row, nome_vendedor: realName, login_vendedor: realName } : row;
     });
 
     return res.json({ items });

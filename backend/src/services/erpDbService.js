@@ -941,6 +941,7 @@ export async function getErpLoginsByIds(usuarioIds) {
  */
 export async function getRelatorioOrcamentos({
   logins = null,
+  pedidoIds = null,
   startDate = null,
   endDate = null,
   situacao = null,
@@ -949,10 +950,18 @@ export async function getRelatorioOrcamentos({
   offset = 0,
 } = {}) {
   if (Array.isArray(logins) && logins.length === 0) return [];
+  if (Array.isArray(pedidoIds) && pedidoIds.length === 0) return [];
 
   const db = getPool();
   const params = [];
   const conditions = ['1=1'];
+
+  // Filtro por ids internos do pedido no ERP (usado pelo relatório do Bom Flow, que
+  // resolve QUAIS pedidos exibir a partir do rastreio CRM em bomflow_orcamentos).
+  if (Array.isArray(pedidoIds)) {
+    params.push(pedidoIds.map(Number));
+    conditions.push(`p.id = ANY($${params.length})`);
+  }
 
   if (Array.isArray(logins)) {
     params.push(logins);

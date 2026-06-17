@@ -107,6 +107,29 @@ pool.query(`
 `).then(() => console.log('[Migration] api_keys OK'))
   .catch(e => console.error('[Migration] api_keys error:', e.message));
 
+// Rastreio de orçamentos criados pelo Bom Flow. O ERP atribui todos os orçamentos
+// criados via API à conta compartilhada do token (acesso.api), perdendo o módulo e o
+// agente real. Esta tabela guarda apenas o que NÃO muda (vínculo com o pedido do ERP,
+// módulo e agente que criou); os dados dinâmicos (situação, valor, cliente) são lidos
+// ao vivo do ERP no momento do relatório, usando erp_pedido_id como chave.
+pool.query(`
+  CREATE TABLE IF NOT EXISTS bomflow_orcamentos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    erp_pedido_id BIGINT NOT NULL UNIQUE,
+    erp_numero BIGINT,
+    modulo VARCHAR(32) NOT NULL,
+    agent_id UUID,
+    agent_name VARCHAR(255),
+    cliente_nome VARCHAR(255),
+    cliente_cpf VARCHAR(32),
+    valor_criacao NUMERIC,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_bomflow_orcamentos_modulo ON bomflow_orcamentos(modulo);
+  CREATE INDEX IF NOT EXISTS idx_bomflow_orcamentos_agent ON bomflow_orcamentos(agent_id);
+`).then(() => console.log('[Migration] bomflow_orcamentos OK'))
+  .catch(e => console.error('[Migration] bomflow_orcamentos error:', e.message));
+
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }

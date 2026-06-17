@@ -251,7 +251,7 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
       if (filterDateStart)                    params.set('start_date',     filterDateStart);
       if (filterDateEnd)                      params.set('end_date',       filterDateEnd);
       if (filterSituacao  !== 'todos')        params.set('situacao',       filterSituacao);
-      if (filterVendedor  !== 'todos')        params.set('vendedor_login', filterVendedor);
+      if (filterVendedor  !== 'todos')        params.set('vendedor_id', filterVendedor);
       if (filterCanal     !== 'todos')        params.set('canal_id',       filterCanal);
       if (filterTime      !== 'todos' && isAdmin) params.set('team_id',   filterTime);
       if (modulo)                             params.set('modulo',       modulo);
@@ -499,8 +499,8 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
                         <SelectContent>
                           <SelectItem value="todos">Todos os vendedores</SelectItem>
                           {vendedores.map(v => (
-                            <SelectItem key={v.login} value={v.login}>
-                              {v.nome || v.login}
+                            <SelectItem key={v.id} value={v.id}>
+                              {v.nome || v.id}
                             </SelectItem>
                           ))}
                         </SelectContent>
