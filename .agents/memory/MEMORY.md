@@ -20,3 +20,4 @@
 - [ERP sync de agentes — authz](erp-sync-agentes-authz.md) — rotas que leem PII/gravam vínculo ERP devem autorizar no backend (manage-agents), não só esconder o botão; resolver prefere login nativo.
 - [ERP dependentes como Pessoa + CPF](erp-dependente-pessoa.md) — CPF vive em documentos_pessoas tipo 580 formatado; dependentes (0,01 e pago) viram Pessoa global (lookup-first), condutor/veículo/pet não.
 - [Perspectivas CPF format](perspectivas-cpf-format.md) — CPF canônico = só dígitos; filtros de exclusão usam regexp_replace NOT IN (NULL preservado); nunca coalesce ('' incluiria CPFs NULL).
+- [Relatório Orçamentos por módulo](relatorio-orcamentos-modulo.md) — só orçamentos Bom Flow (agentes com erp_agent_id) escopados por agent_types.modules; nunca logins=null.

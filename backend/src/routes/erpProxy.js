@@ -916,13 +916,38 @@ router.get('/produtos', authMiddleware, async (req, res) => {
 // ─── Relatório de Orçamentos ─────────────────────────────────────────────────
 
 /**
+ * Retorna os erp_agent_id dos agentes Bom Flow pertencentes a um módulo.
+ * O módulo é mapeado via agent_types.modules (ex.: 'sales', 'sales_pj',
+ * 'sales_upsell', 'referral'). Agentes 'admin' (modules = {all}) entram em
+ * todos os módulos. Módulo é obrigatório e validado: ausente/inválido => [].
+ * Só considera agentes com erp_agent_id (= usuário do ERP que cria orçamentos).
+ */
+const VALID_MODULOS = ['sales', 'sales_pj', 'sales_upsell', 'referral'];
+
+async function getModuleErpAgentIds(modulo) {
+  // Módulo é obrigatório e deve ser válido. Sem isso, retornamos vazio para
+  // garantir separação estrita por módulo (nunca agregar todos os módulos).
+  if (!modulo || !VALID_MODULOS.includes(modulo)) return [];
+  const r = await query(
+    `SELECT DISTINCT a.erp_agent_id
+       FROM agents a
+       JOIN agent_types t ON t.key = a.agent_type
+      WHERE a.erp_agent_id IS NOT NULL
+        AND ($1 = ANY(t.modules) OR 'all' = ANY(t.modules))`,
+    [modulo]
+  );
+  return r.rows.map(row => Number(row.erp_agent_id));
+}
+
+/**
  * GET /api/erp/relatorio-orcamentos/vendedores
  * Retorna a lista de vendedores elegíveis para o filtro do relatório,
- * baseada no escopo do usuário logado (admin = todos; supervisor = equipe; vendedor = só ele).
+ * baseada no escopo do usuário logado (admin = todos; supervisor = equipe; vendedor = só ele)
+ * e restrita aos agentes Bom Flow do módulo solicitado.
  */
 router.get('/relatorio-orcamentos/vendedores', authMiddleware, async (req, res) => {
   try {
-    const { team_id } = req.query;
+    const { team_id, modulo } = req.query;
 
     const agentRes = await query(
       `SELECT id, agent_type, erp_agent_id, supervisor_id FROM agents WHERE id = $1`,
@@ -935,6 +960,10 @@ router.get('/relatorio-orcamentos/vendedores', authMiddleware, async (req, res) 
     const isAdmin = agentType === 'admin' || (req.user.role || '').toLowerCase() === 'admin';
     const isSupervisor = !isAdmin && agentType.includes('supervisor');
 
+    // Universo de agentes Bom Flow do módulo (só esses podem aparecer)
+    const moduleErpIds = await getModuleErpAgentIds(modulo);
+    const moduleSet = new Set(moduleErpIds);
+
     let erpIds = [];
 
     if (isAdmin) {
@@ -945,10 +974,7 @@ router.get('/relatorio-orcamentos/vendedores', authMiddleware, async (req, res) 
         );
         erpIds = allRes.rows.map(r => Number(r.erp_agent_id));
       } else {
-        const allRes = await query(
-          `SELECT erp_agent_id FROM agents WHERE erp_agent_id IS NOT NULL ORDER BY name`
-        );
-        erpIds = allRes.rows.map(r => Number(r.erp_agent_id));
+        erpIds = moduleErpIds;
       }
     } else if (isSupervisor) {
       const teamRes = await query(
@@ -958,6 +984,9 @@ router.get('/relatorio-orcamentos/vendedores', authMiddleware, async (req, res) 
       erpIds = teamRes.rows.map(r => Number(r.erp_agent_id));
       if (agent.erp_agent_id) erpIds.push(Number(agent.erp_agent_id));
     }
+
+    // Restringe ao universo do módulo
+    erpIds = erpIds.filter(id => moduleSet.has(id));
 
     if (erpIds.length === 0) return res.json({ vendedores: [] });
 
@@ -980,7 +1009,7 @@ router.get('/relatorio-orcamentos/vendedores', authMiddleware, async (req, res) 
  */
 router.get('/relatorio-orcamentos', authMiddleware, async (req, res) => {
   try {
-    const { start_date, end_date, situacao, vendedor_login, canal_id, team_id, limit = 500 } = req.query;
+    const { start_date, end_date, situacao, vendedor_login, canal_id, team_id, modulo, limit = 500 } = req.query;
 
     const agentRes = await query(
       `SELECT id, agent_type, erp_agent_id, supervisor_id FROM agents WHERE id = $1`,
@@ -993,10 +1022,18 @@ router.get('/relatorio-orcamentos', authMiddleware, async (req, res) => {
     const isAdmin = agentType === 'admin' || (req.user.role || '').toLowerCase() === 'admin';
     const isSupervisor = !isAdmin && agentType.includes('supervisor');
 
-    // logins = null → admin vê tudo (sem filtro por usuario_inclusao)
-    // logins = []   → sem acesso (retorna vazio imediatamente)
-    // logins = [..] → filtro por lista de logins
-    let logins = null;
+    // ─── Universo do módulo ───────────────────────────────────────────────
+    // Somente orçamentos criados por agentes Bom Flow (com erp_agent_id) do
+    // módulo solicitado. Isso garante que NUNCA retornamos todo o ERP.
+    const moduleErpIds = await getModuleErpAgentIds(modulo);
+    if (moduleErpIds.length === 0) return res.json({ items: [] });
+    const moduleLoginsMap = await getErpLoginsByIds(moduleErpIds);
+    const moduleLogins = Object.values(moduleLoginsMap).map(v => v.login).filter(Boolean);
+    if (moduleLogins.length === 0) return res.json({ items: [] });
+
+    // ─── Escopo do visualizador (permissão) ───────────────────────────────
+    // viewerLogins = null → admin (sem restrição extra além do módulo)
+    let viewerLogins = null;
 
     if (!isAdmin) {
       if (isSupervisor) {
@@ -1006,44 +1043,36 @@ router.get('/relatorio-orcamentos', authMiddleware, async (req, res) => {
         );
         const erpIds = teamRes.rows.map(r => Number(r.erp_agent_id));
         if (agent.erp_agent_id) erpIds.push(Number(agent.erp_agent_id));
-
-        if (erpIds.length > 0) {
-          const loginsMap = await getErpLoginsByIds(erpIds);
-          logins = Object.values(loginsMap).map(v => v.login).filter(Boolean);
-        } else {
-          logins = [];
-        }
+        const loginsMap = erpIds.length ? await getErpLoginsByIds(erpIds) : {};
+        viewerLogins = Object.values(loginsMap).map(v => v.login).filter(Boolean);
       } else {
         const erpLogin = agent.erp_agent_id
           ? await getLoginByUsuarioId(Number(agent.erp_agent_id))
           : null;
-        logins = erpLogin ? [erpLogin] : [];
+        viewerLogins = erpLogin ? [erpLogin] : [];
       }
     }
 
-    // Admin: escopo por time — aplicado antes do filtro de vendedor_login
+    // Admin: escopo por time
     if (isAdmin && team_id && team_id !== 'todos') {
       const teamAgents = await query(
         `SELECT erp_agent_id FROM agents WHERE team_id = $1 AND erp_agent_id IS NOT NULL`,
         [team_id]
       );
       const teamErpIds = teamAgents.rows.map(r => Number(r.erp_agent_id));
-      if (teamErpIds.length > 0) {
-        const loginsMap = await getErpLoginsByIds(teamErpIds);
-        logins = Object.values(loginsMap).map(v => v.login).filter(Boolean);
-      } else {
-        logins = [];
-      }
+      const loginsMap = teamErpIds.length ? await getErpLoginsByIds(teamErpIds) : {};
+      viewerLogins = Object.values(loginsMap).map(v => v.login).filter(Boolean);
     }
 
     // Filtro adicional de vendedor_login (supervisor/admin escolhem um específico)
     if (vendedor_login && vendedor_login !== 'todos') {
-      if (logins === null) {
-        logins = [vendedor_login];
-      } else {
-        logins = logins.filter(l => l === vendedor_login);
-      }
+      viewerLogins = viewerLogins ? viewerLogins.filter(l => l === vendedor_login) : [vendedor_login];
     }
+
+    // ─── Interseção: módulo ∩ permissão do visualizador ───────────────────
+    const logins = viewerLogins === null
+      ? moduleLogins
+      : viewerLogins.filter(l => moduleLogins.includes(l));
 
     const items = await getRelatorioOrcamentos({
       logins,

@@ -146,7 +146,7 @@ function DetailRow({ icon: Icon, label, value, mono = false, highlight = false, 
  *   gradient     {string}  — Tailwind gradient classes for the header
  *   accentColor  {string}  — key into ACCENT map: "blue" | "sky" | "teal" | "violet"
  */
-export default function ErpOrcamentoRelatorioBase({ moduloNome, gradient, accentColor = 'blue' }) {
+export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient, accentColor = 'blue' }) {
   const { toast } = useToast();
   const ac = ACCENT[accentColor] || ACCENT.blue;
 
@@ -231,8 +231,10 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, gradient, accent
 
   async function fetchVendedores(teamId = 'todos') {
     try {
-      const params = teamId && teamId !== 'todos' ? `?team_id=${teamId}` : '';
-      const res = await fetch(`${API_BASE}/erp/relatorio-orcamentos/vendedores${params}`, { headers: getAuthHeaders() });
+      const params = new URLSearchParams();
+      if (teamId && teamId !== 'todos') params.set('team_id', teamId);
+      if (modulo) params.set('modulo', modulo);
+      const res = await fetch(`${API_BASE}/erp/relatorio-orcamentos/vendedores?${params}`, { headers: getAuthHeaders() });
       if (res.ok) {
         const d = await res.json();
         setVendedores(d.vendedores || []);
@@ -252,6 +254,7 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, gradient, accent
       if (filterVendedor  !== 'todos')        params.set('vendedor_login', filterVendedor);
       if (filterCanal     !== 'todos')        params.set('canal_id',       filterCanal);
       if (filterTime      !== 'todos' && isAdmin) params.set('team_id',   filterTime);
+      if (modulo)                             params.set('modulo',       modulo);
 
       const res = await fetch(`${API_BASE}/erp/relatorio-orcamentos?${params}`, { headers: getAuthHeaders() });
       if (!res.ok) {
