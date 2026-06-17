@@ -990,7 +990,6 @@ export async function getRelatorioOrcamentos({
       COALESCE(p.valor_total, 0)::numeric           AS valor_total,
       pp.nome_pessoa                                AS nome_titular,
       pp.cpf                                        AS cpf_titular,
-      c.titulo_contrato                             AS canal_venda,
       p.contrato_id                                 AS canal_id,
       u.nome_completo                               AS nome_vendedor
     FROM pedidos p
@@ -1001,7 +1000,6 @@ export async function getRelatorioOrcamentos({
       ORDER BY id
       LIMIT 1
     ) pp ON true
-    LEFT JOIN contratos c ON c.id = p.contrato_id
     LEFT JOIN usuarios u ON u.login = p.usuario_inclusao
     WHERE ${conditions.join(' AND ')}
     ORDER BY p.data_inclusao DESC

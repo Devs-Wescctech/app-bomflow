@@ -173,6 +173,12 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, gradient, accent
   const [filterCanal,     setFilterCanal]     = useState('todos');
   const [filterTime,      setFilterTime]      = useState('todos');
 
+  const canaisMap = useMemo(() => {
+    const m = {};
+    canais.forEach(c => { m[c.id] = c.titulo_contrato || String(c.id); });
+    return m;
+  }, [canais]);
+
   const agentType      = (currentUser?.agent?.agentType || currentUser?.agentType || '').toLowerCase();
   const role           = (currentUser?.role || '').toLowerCase();
   const isAdmin        = agentType === 'admin' || role === 'admin';
@@ -295,7 +301,7 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, gradient, accent
       'Data Venda':       formatDateOnly(o.data_venda),
       'Situação':         SITUACOES[o.situacao]?.label || o.situacao || '-',
       'Vendedor':         o.nome_vendedor || o.login_vendedor || '-',
-      'Canal de Vendas':  o.canal_venda || '-',
+      'Canal de Vendas':  (o.canal_id ? canaisMap[o.canal_id] || String(o.canal_id) : '-'),
       'Valor Total (R$)': Number(o.valor_total || 0).toFixed(2),
       'Última Alteração': formatDateTime(o.data_ultima_alteracao),
     }));
@@ -343,7 +349,7 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, gradient, accent
           formatDateOnly(o.data_venda),
           SITUACOES[o.situacao]?.label || o.situacao || '-',
           o.nome_vendedor || o.login_vendedor || '-',
-          o.canal_venda || '-',
+          (o.canal_id ? canaisMap[o.canal_id] || String(o.canal_id) : '-'),
         ]),
         startY: 35,
         styles: { fontSize: 8, cellPadding: 2 },
@@ -622,8 +628,8 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, gradient, accent
                         </td>
                       )}
                       <td className="px-4 py-3 max-w-[160px]">
-                        <span className="block truncate text-xs text-gray-500 dark:text-gray-400" title={o.canal_venda}>
-                          {o.canal_venda || '-'}
+                        <span className="block truncate text-xs text-gray-500 dark:text-gray-400" title={o.canal_id ? canaisMap[o.canal_id] : ''}>
+                          {o.canal_id ? (canaisMap[o.canal_id] || String(o.canal_id)) : '-'}
                         </span>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right font-semibold">
@@ -671,9 +677,9 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, gradient, accent
             <div className="space-y-5">
               <div className="flex items-center gap-2 flex-wrap">
                 <SituacaoBadge situacao={selectedItem.situacao} />
-                {selectedItem.canal_venda && (
+                {selectedItem.canal_id && canaisMap[selectedItem.canal_id] && (
                   <Badge variant="outline" className="text-gray-600 border-gray-200 bg-gray-50 dark:text-gray-300 dark:border-gray-700 dark:bg-gray-800 text-xs">
-                    <Store className="w-3 h-3 mr-1" />{selectedItem.canal_venda}
+                    <Store className="w-3 h-3 mr-1" />{canaisMap[selectedItem.canal_id]}
                   </Badge>
                 )}
               </div>
@@ -686,8 +692,8 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, gradient, accent
                 <DetailRow icon={Clock}      label="Última Alteração" value={formatDateTime(selectedItem.data_ultima_alteracao)} />
                 <DetailRow icon={User}       label="Vendedor"        value={selectedItem.nome_vendedor || selectedItem.login_vendedor || '-'} />
                 <DetailRow icon={TrendingUp} label="Valor Total"     value={formatCurrency(selectedItem.valor_total)} />
-                {selectedItem.canal_venda && (
-                  <DetailRow icon={Store}    label="Canal de Vendas" value={selectedItem.canal_venda} span2 />
+                {selectedItem.canal_id && canaisMap[selectedItem.canal_id] && (
+                  <DetailRow icon={Store}    label="Canal de Vendas" value={canaisMap[selectedItem.canal_id]} span2 />
                 )}
               </div>
 
