@@ -1,6 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB, findPessoaIdByCpf, resolveAgentErpByCpf, getLoginByUsuarioId } from '../services/erpDbService.js';
+import { registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB, findPessoaIdByCpf, resolveAgentErpByCpf, getLoginByUsuarioId, getErpLoginsByIds, getRelatorioOrcamentos } from '../services/erpDbService.js';
 import { query } from '../config/database.js';
 
 const router = express.Router();
@@ -909,6 +909,130 @@ router.get('/produtos', authMiddleware, async (req, res) => {
     return res.json(results);
   } catch (err) {
     console.error('[ERP Proxy] GET /produtos error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Relatório de Orçamentos ─────────────────────────────────────────────────
+
+/**
+ * GET /api/erp/relatorio-orcamentos/vendedores
+ * Retorna a lista de vendedores elegíveis para o filtro do relatório,
+ * baseada no escopo do usuário logado (admin = todos; supervisor = equipe; vendedor = só ele).
+ */
+router.get('/relatorio-orcamentos/vendedores', authMiddleware, async (req, res) => {
+  try {
+    const agentRes = await query(
+      `SELECT id, agent_type, erp_agent_id, supervisor_id FROM agents WHERE id = $1`,
+      [req.user.id]
+    );
+    const agent = agentRes.rows[0];
+    if (!agent) return res.status(403).json({ error: 'Agente não encontrado.' });
+
+    const agentType = (agent.agent_type || '').toLowerCase();
+    const isAdmin = agentType === 'admin' || (req.user.role || '').toLowerCase() === 'admin';
+    const isSupervisor = !isAdmin && ['supervisor', 'bom_auto_supervisor', 'sales_supervisor', 'upsell_supervisor'].includes(agentType);
+
+    let erpIds = [];
+
+    if (isAdmin) {
+      const allRes = await query(
+        `SELECT erp_agent_id FROM agents WHERE erp_agent_id IS NOT NULL ORDER BY name`
+      );
+      erpIds = allRes.rows.map(r => Number(r.erp_agent_id));
+    } else if (isSupervisor) {
+      const teamRes = await query(
+        `SELECT erp_agent_id FROM agents WHERE supervisor_id = $1 AND erp_agent_id IS NOT NULL ORDER BY name`,
+        [agent.id]
+      );
+      erpIds = teamRes.rows.map(r => Number(r.erp_agent_id));
+      if (agent.erp_agent_id) erpIds.push(Number(agent.erp_agent_id));
+    }
+
+    if (erpIds.length === 0) return res.json({ vendedores: [] });
+
+    const loginsMap = await getErpLoginsByIds(erpIds);
+    const vendedores = Object.values(loginsMap)
+      .filter(v => v.login)
+      .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+
+    return res.json({ vendedores });
+  } catch (err) {
+    console.error('[ERP Proxy] GET /relatorio-orcamentos/vendedores error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/erp/relatorio-orcamentos
+ * Retorna orçamentos do ERP com permissão aplicada automaticamente pelo JWT.
+ * Query params: start_date, end_date, situacao, vendedor_login, canal_id, limit
+ */
+router.get('/relatorio-orcamentos', authMiddleware, async (req, res) => {
+  try {
+    const { start_date, end_date, situacao, vendedor_login, canal_id, limit = 500 } = req.query;
+
+    const agentRes = await query(
+      `SELECT id, agent_type, erp_agent_id, supervisor_id FROM agents WHERE id = $1`,
+      [req.user.id]
+    );
+    const agent = agentRes.rows[0];
+    if (!agent) return res.status(403).json({ error: 'Agente não encontrado.' });
+
+    const agentType = (agent.agent_type || '').toLowerCase();
+    const isAdmin = agentType === 'admin' || (req.user.role || '').toLowerCase() === 'admin';
+    const isSupervisor = !isAdmin && ['supervisor', 'bom_auto_supervisor', 'sales_supervisor', 'upsell_supervisor'].includes(agentType);
+
+    // logins = null → admin vê tudo (sem filtro por usuario_inclusao)
+    // logins = []   → sem acesso (retorna vazio imediatamente)
+    // logins = [..] → filtro por lista de logins
+    let logins = null;
+
+    if (!isAdmin) {
+      if (isSupervisor) {
+        const teamRes = await query(
+          `SELECT erp_agent_id FROM agents WHERE supervisor_id = $1 AND erp_agent_id IS NOT NULL`,
+          [agent.id]
+        );
+        const erpIds = teamRes.rows.map(r => Number(r.erp_agent_id));
+        if (agent.erp_agent_id) erpIds.push(Number(agent.erp_agent_id));
+
+        if (erpIds.length > 0) {
+          const loginsMap = await getErpLoginsByIds(erpIds);
+          logins = Object.values(loginsMap).map(v => v.login).filter(Boolean);
+        } else {
+          logins = [];
+        }
+      } else {
+        const erpLogin = agent.erp_agent_id
+          ? await getLoginByUsuarioId(Number(agent.erp_agent_id))
+          : null;
+        logins = erpLogin ? [erpLogin] : [];
+      }
+    }
+
+    // Filtro adicional de vendedor_login (supervisor/admin escolhem um específico)
+    if (vendedor_login && vendedor_login !== 'todos') {
+      if (logins === null) {
+        logins = [vendedor_login];
+      } else {
+        logins = logins.filter(l => l === vendedor_login);
+      }
+    }
+
+    const items = await getRelatorioOrcamentos({
+      logins,
+      startDate: start_date || null,
+      endDate: end_date || null,
+      situacao: situacao && situacao !== 'todos' ? situacao : null,
+      canalId: canal_id && canal_id !== 'todos' ? canal_id : null,
+      limit: Math.min(Number(limit) || 500, 1000),
+      offset: 0,
+    });
+
+    return res.json({ items });
+  } catch (err) {
+    console.error('[ERP Proxy] GET /relatorio-orcamentos error:', err.message);
     return res.status(500).json({ error: err.message });
   }
 });

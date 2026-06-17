@@ -899,3 +899,115 @@ export async function applyFechamentoEPagamento(pedidoInternalId, opts = {}) {
     client.release();
   }
 }
+
+/**
+ * Busca logins e nomes de usuários ERP a partir de uma lista de IDs (agents.erp_agent_id).
+ * Retorna um mapa { [id]: { login, nome } }.
+ * Usado para popular o seletor de vendedores no relatório de orçamentos.
+ *
+ * @param {number[]} usuarioIds
+ * @returns {Promise<Record<number, { login: string, nome: string }>>}
+ */
+export async function getErpLoginsByIds(usuarioIds) {
+  if (!Array.isArray(usuarioIds) || usuarioIds.length === 0) return {};
+  const db = getPool();
+  const ids = usuarioIds.map(Number).filter(n => !isNaN(n));
+  if (ids.length === 0) return {};
+  const res = await db.query(
+    `SELECT id, login, nome_completo FROM usuarios WHERE id = ANY($1::bigint[]) AND login IS NOT NULL`,
+    [ids]
+  );
+  const map = {};
+  for (const row of res.rows) {
+    map[Number(row.id)] = { login: row.login, nome: row.nome_completo || row.login };
+  }
+  return map;
+}
+
+/**
+ * Retorna a lista paginada de orçamentos do ERP (tabela pedidos) com dados do titular,
+ * vendedor e canal de vendas. Filtros opcionais: logins (array de usuario_inclusao),
+ * startDate/endDate, situacao, canalId.
+ *
+ * @param {object} params
+ * @param {string[]|null} params.logins  - null = sem filtro (admin vê tudo); [] = nenhum acesso
+ * @param {string|null}   params.startDate
+ * @param {string|null}   params.endDate
+ * @param {string|null}   params.situacao  - 'M', 'I', 'C', etc.
+ * @param {number|null}   params.canalId
+ * @param {number}        params.limit
+ * @param {number}        params.offset
+ * @returns {Promise<object[]>}
+ */
+export async function getRelatorioOrcamentos({
+  logins = null,
+  startDate = null,
+  endDate = null,
+  situacao = null,
+  canalId = null,
+  limit = 500,
+  offset = 0,
+} = {}) {
+  if (Array.isArray(logins) && logins.length === 0) return [];
+
+  const db = getPool();
+  const params = [];
+  const conditions = ['1=1'];
+
+  if (Array.isArray(logins)) {
+    params.push(logins);
+    conditions.push(`p.usuario_inclusao = ANY($${params.length})`);
+  }
+  if (startDate) {
+    params.push(startDate);
+    conditions.push(`p.data_inclusao >= $${params.length}::date`);
+  }
+  if (endDate) {
+    params.push(endDate);
+    conditions.push(`p.data_inclusao < ($${params.length}::date + interval '1 day')`);
+  }
+  if (situacao) {
+    params.push(situacao);
+    conditions.push(`p.situacao = $${params.length}`);
+  }
+  if (canalId) {
+    params.push(Number(canalId));
+    conditions.push(`p.contrato_id = $${params.length}`);
+  }
+
+  const limitParam = Math.min(Number(limit) || 500, 1000);
+  const offsetParam = Number(offset) || 0;
+  params.push(limitParam, offsetParam);
+
+  const sql = `
+    SELECT
+      p.id                                          AS erp_id,
+      p.pedido                                      AS numero_orcamento,
+      p.data_inclusao                               AS data_venda,
+      p.data_alteracao                              AS data_ultima_alteracao,
+      p.situacao,
+      p.usuario_inclusao                            AS login_vendedor,
+      COALESCE(p.valor_total, 0)::numeric           AS valor_total,
+      pp.nome_pessoa                                AS nome_titular,
+      pp.cpf                                        AS cpf_titular,
+      c.titulo_contrato                             AS canal_venda,
+      p.contrato_id                                 AS canal_id,
+      u.nome_completo                               AS nome_vendedor
+    FROM pedidos p
+    LEFT JOIN LATERAL (
+      SELECT nome_pessoa, cpf
+      FROM pedidos_pessoas
+      WHERE pedido_id = p.id AND pessoa_id IS NOT NULL
+      ORDER BY id
+      LIMIT 1
+    ) pp ON true
+    LEFT JOIN contratos c ON c.id = p.contrato_id
+    LEFT JOIN usuarios u ON u.login = p.usuario_inclusao
+    WHERE ${conditions.join(' AND ')}
+    ORDER BY p.data_inclusao DESC
+    LIMIT $${params.length - 1} OFFSET $${params.length}
+  `;
+
+  const r = await db.query(sql, params);
+  return r.rows;
+}
