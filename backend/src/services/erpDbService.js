@@ -956,7 +956,7 @@ export async function getRelatorioOrcamentos({
 
   if (Array.isArray(logins)) {
     params.push(logins);
-    conditions.push(`p.usuario_inclusao = ANY($${params.length})`);
+    conditions.push(`p.usuario_inclusao_id IN (SELECT id FROM usuarios WHERE login = ANY($${params.length}))`);
   }
   if (startDate) {
     params.push(startDate);
@@ -986,7 +986,7 @@ export async function getRelatorioOrcamentos({
       p.data_inclusao                               AS data_venda,
       p.data_alteracao                              AS data_ultima_alteracao,
       p.situacao,
-      p.usuario_inclusao                            AS login_vendedor,
+      u.login                                       AS login_vendedor,
       COALESCE(p.valor_total, 0)::numeric           AS valor_total,
       pp.nome_pessoa                                AS nome_titular,
       pp.cpf                                        AS cpf_titular,
@@ -1000,7 +1000,7 @@ export async function getRelatorioOrcamentos({
       ORDER BY id
       LIMIT 1
     ) pp ON true
-    LEFT JOIN usuarios u ON u.login = p.usuario_inclusao
+    LEFT JOIN usuarios u ON u.id = p.usuario_inclusao_id
     WHERE ${conditions.join(' AND ')}
     ORDER BY p.data_inclusao DESC
     LIMIT $${params.length - 1} OFFSET $${params.length}
