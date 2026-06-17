@@ -922,6 +922,8 @@ router.get('/produtos', authMiddleware, async (req, res) => {
  */
 router.get('/relatorio-orcamentos/vendedores', authMiddleware, async (req, res) => {
   try {
+    const { team_id } = req.query;
+
     const agentRes = await query(
       `SELECT id, agent_type, erp_agent_id, supervisor_id FROM agents WHERE id = $1`,
       [req.user.id]
@@ -931,15 +933,23 @@ router.get('/relatorio-orcamentos/vendedores', authMiddleware, async (req, res) 
 
     const agentType = (agent.agent_type || '').toLowerCase();
     const isAdmin = agentType === 'admin' || (req.user.role || '').toLowerCase() === 'admin';
-    const isSupervisor = !isAdmin && ['supervisor', 'bom_auto_supervisor', 'sales_supervisor', 'upsell_supervisor'].includes(agentType);
+    const isSupervisor = !isAdmin && agentType.includes('supervisor');
 
     let erpIds = [];
 
     if (isAdmin) {
-      const allRes = await query(
-        `SELECT erp_agent_id FROM agents WHERE erp_agent_id IS NOT NULL ORDER BY name`
-      );
-      erpIds = allRes.rows.map(r => Number(r.erp_agent_id));
+      if (team_id && team_id !== 'todos') {
+        const allRes = await query(
+          `SELECT erp_agent_id FROM agents WHERE team_id = $1 AND erp_agent_id IS NOT NULL ORDER BY name`,
+          [team_id]
+        );
+        erpIds = allRes.rows.map(r => Number(r.erp_agent_id));
+      } else {
+        const allRes = await query(
+          `SELECT erp_agent_id FROM agents WHERE erp_agent_id IS NOT NULL ORDER BY name`
+        );
+        erpIds = allRes.rows.map(r => Number(r.erp_agent_id));
+      }
     } else if (isSupervisor) {
       const teamRes = await query(
         `SELECT erp_agent_id FROM agents WHERE supervisor_id = $1 AND erp_agent_id IS NOT NULL ORDER BY name`,
@@ -966,11 +976,11 @@ router.get('/relatorio-orcamentos/vendedores', authMiddleware, async (req, res) 
 /**
  * GET /api/erp/relatorio-orcamentos
  * Retorna orçamentos do ERP com permissão aplicada automaticamente pelo JWT.
- * Query params: start_date, end_date, situacao, vendedor_login, canal_id, limit
+ * Query params: start_date, end_date, situacao, vendedor_login, canal_id, team_id, limit
  */
 router.get('/relatorio-orcamentos', authMiddleware, async (req, res) => {
   try {
-    const { start_date, end_date, situacao, vendedor_login, canal_id, limit = 500 } = req.query;
+    const { start_date, end_date, situacao, vendedor_login, canal_id, team_id, limit = 500 } = req.query;
 
     const agentRes = await query(
       `SELECT id, agent_type, erp_agent_id, supervisor_id FROM agents WHERE id = $1`,
@@ -981,7 +991,7 @@ router.get('/relatorio-orcamentos', authMiddleware, async (req, res) => {
 
     const agentType = (agent.agent_type || '').toLowerCase();
     const isAdmin = agentType === 'admin' || (req.user.role || '').toLowerCase() === 'admin';
-    const isSupervisor = !isAdmin && ['supervisor', 'bom_auto_supervisor', 'sales_supervisor', 'upsell_supervisor'].includes(agentType);
+    const isSupervisor = !isAdmin && agentType.includes('supervisor');
 
     // logins = null → admin vê tudo (sem filtro por usuario_inclusao)
     // logins = []   → sem acesso (retorna vazio imediatamente)
@@ -1008,6 +1018,21 @@ router.get('/relatorio-orcamentos', authMiddleware, async (req, res) => {
           ? await getLoginByUsuarioId(Number(agent.erp_agent_id))
           : null;
         logins = erpLogin ? [erpLogin] : [];
+      }
+    }
+
+    // Admin: escopo por time — aplicado antes do filtro de vendedor_login
+    if (isAdmin && team_id && team_id !== 'todos') {
+      const teamAgents = await query(
+        `SELECT erp_agent_id FROM agents WHERE team_id = $1 AND erp_agent_id IS NOT NULL`,
+        [team_id]
+      );
+      const teamErpIds = teamAgents.rows.map(r => Number(r.erp_agent_id));
+      if (teamErpIds.length > 0) {
+        const loginsMap = await getErpLoginsByIds(teamErpIds);
+        logins = Object.values(loginsMap).map(v => v.login).filter(Boolean);
+      } else {
+        logins = [];
       }
     }
 

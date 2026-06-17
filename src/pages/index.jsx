@@ -215,7 +215,10 @@ import SalesUpsellAgenda from "./SalesUpsellAgenda";
 import UpsellLeadGenerator from "./UpsellLeadGenerator";
 import ErpOrcamentoForm from "./ErpOrcamentoForm";
 import UpsellNovoOrcamento from "./UpsellNovoOrcamento";
-import OrcamentoRelatorio from "./OrcamentoRelatorio";
+import SalesOrcamentoRelatorio from "./SalesOrcamentoRelatorio";
+import SalesPJOrcamentoRelatorio from "./SalesPJOrcamentoRelatorio";
+import ReferralOrcamentoRelatorio from "./ReferralOrcamentoRelatorio";
+import SalesUpsellOrcamentoRelatorio from "./SalesUpsellOrcamentoRelatorio";
 import ReferralWonReport from "./ReferralWonReport";
 
 import Login from "./Login";
@@ -434,7 +437,10 @@ const PAGES = {
     UpsellLeadGenerator: UpsellLeadGenerator,
     ErpOrcamentoForm: ErpOrcamentoForm,
     UpsellNovoOrcamento: UpsellNovoOrcamento,
-    OrcamentoRelatorio: OrcamentoRelatorio,
+    SalesOrcamentoRelatorio: SalesOrcamentoRelatorio,
+    SalesPJOrcamentoRelatorio: SalesPJOrcamentoRelatorio,
+    ReferralOrcamentoRelatorio: ReferralOrcamentoRelatorio,
+    SalesUpsellOrcamentoRelatorio: SalesUpsellOrcamentoRelatorio,
     ReferralWonReport: ReferralWonReport,
     
 }
@@ -684,7 +690,10 @@ function PagesContent() {
                 <Route path="/UpsellLeadGenerator" element={<UpsellLeadGenerator />} />
                 <Route path="/ErpOrcamentoForm" element={<ErpOrcamentoForm />} />
                 <Route path="/UpsellNovoOrcamento" element={<UpsellNovoOrcamento />} />
-                <Route path="/OrcamentoRelatorio" element={<OrcamentoRelatorio />} />
+                <Route path="/SalesOrcamentoRelatorio" element={<SalesOrcamentoRelatorio />} />
+                <Route path="/SalesPJOrcamentoRelatorio" element={<SalesPJOrcamentoRelatorio />} />
+                <Route path="/ReferralOrcamentoRelatorio" element={<ReferralOrcamentoRelatorio />} />
+                <Route path="/SalesUpsellOrcamentoRelatorio" element={<SalesUpsellOrcamentoRelatorio />} />
                 <Route path="/ReferralWonReport" element={<ReferralWonReport />} />
                 
             </Routes>
