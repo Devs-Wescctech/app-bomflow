@@ -1008,6 +1008,7 @@ export default function ReferralDetail() {
               <TabsContent value="orcamento" className="mt-6">
                 <UpsellNovoOrcamento
                   embedded
+                  modulo="referral"
                   initialLead={{
                     nome: referral.referredName,
                     cpf: referral.referredCpf,

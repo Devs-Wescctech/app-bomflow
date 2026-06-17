@@ -992,6 +992,7 @@ export default function LeadPJDetail() {
               <TabsContent value="orcamento" className="mt-6">
                 <UpsellNovoOrcamento
                   embedded
+                  modulo="sales_pj"
                   initialLead={{
                     nome:
                       lead.nomeFantasia ||

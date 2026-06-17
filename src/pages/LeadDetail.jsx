@@ -1074,6 +1074,7 @@ export default function LeadDetail() {
               <TabsContent value="orcamento" className="mt-6">
                 <UpsellNovoOrcamento
                   embedded
+                  modulo="sales"
                   initialLead={{
                     nome: lead.name,
                     cpf: lead.cpf,

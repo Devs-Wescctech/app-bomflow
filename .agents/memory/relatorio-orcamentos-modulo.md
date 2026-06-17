@@ -34,9 +34,17 @@ envia `vendedor_id` (antigo `vendedor_login`) e o select usa `v.id`/`v.nome`.
 `sales_upsell`->Upsell, `referral`->Indicações; admin=`{all}`. PF/PJ se sobrepõem
 no tipo `sales` (aceito).
 
-**Limitação conhecida:** só orçamentos com `modulo` no payload são rastreados.
-Hoje só `UpsellNovoOrcamento` envia `modulo` (`sales_upsell`). PF/PJ/Indicações
-não têm fluxo de criação Bom Flow em produção (só `ErpOrcamentoForm`, legacy/
-teste3-only). Quando esses fluxos existirem, basta o frontend enviar `modulo` que
-o hook em `/pre-proposta` (ou `/orcamento`) já registra. Orçamentos antigos sob
-`acesso.api` não têm como ser atribuídos retroativamente com segurança.
+**Form de criação é COMPARTILHADO entre módulos:** o componente
+`UpsellNovoOrcamento` (export `Upsellln`, apesar do nome) é o único form de "Novo
+Orçamento" e é embutido (`embedded` + `initialLead`) na aba "Orçamento" dos quatro
+detalhes de lead: `LeadDetail` (PF), `LeadPJDetail` (PJ), `LeadUpsellDetail`
+(Upsell), `ReferralDetail` (Indicações). Todos chamam `POST /orcamento`.
+**Why:** ele aceita prop `modulo` (default `'sales_upsell'`); cada embed passa o
+módulo correto (`sales`/`sales_pj`/`sales_upsell`/`referral`). NÃO voltar a fixar
+`modulo` no componente — isso fazia orçamentos de PF/PJ/Indicações caírem no
+relatório do Upsell. A rota standalone `/Upsellln` usa o default.
+
+**Limitação:** só orçamentos com `modulo` válido no payload são rastreados.
+`ErpOrcamentoForm` (`/pre-proposta`, legacy/teste3-only) não envia `modulo`.
+Orçamentos antigos sob `acesso.api` não têm como ser atribuídos retroativamente
+com segurança.

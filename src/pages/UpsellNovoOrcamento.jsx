@@ -284,7 +284,7 @@ function useCanAccessOrcamento(user) {
   return user.role === "admin" || NOVO_ORCAMENTO_ALLOWED_EMAILS.includes(user.email);
 }
 
-export default function UpsellNovoOrcamento({ embedded = false, initialLead = null } = {}) {
+export default function UpsellNovoOrcamento({ embedded = false, initialLead = null, modulo = "sales_upsell" } = {}) {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [cpfLookup, setCpfLookup] = useState(null);
@@ -822,10 +822,10 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       prazo_pagamento_id: form.plano_pagamento_id ? Number(form.plano_pagamento_id) : undefined,
       observacoes: form.observacoes || undefined,
       // Metadado do Bom Flow (rastreio CRM por módulo). O backend remove antes de enviar ao ERP.
-      modulo: "sales_upsell",
+      modulo: modulo || "sales_upsell",
     };
     return Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
-  }, [form, itensSel, produtosFiltrados, erpProdutos, planoSelecionado, beneficiarios, erpAgenteVendaId, user]);
+  }, [form, itensSel, produtosFiltrados, erpProdutos, planoSelecionado, beneficiarios, erpAgenteVendaId, user, modulo]);
 
   const submitMutation = useMutation({
     mutationFn: async () => {
