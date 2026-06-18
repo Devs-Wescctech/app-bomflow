@@ -2038,7 +2038,7 @@ router.put('/referrals/:id', authMiddleware, async (req, res) => {
           `UPDATE erp_perspectivas_negocios
            SET cpf_indicado = $1, sincronizado_em = NOW()
            WHERE origem = 'crm'
-             AND cpf_indicado IS NULL
+             AND (cpf_indicado IS NULL OR regexp_replace(cpf_indicado, '[^0-9]', '', 'g') = '')
              AND nome_indicado IS NOT DISTINCT FROM $2
              AND regexp_replace(COALESCE(cpf_indicador, ''), '[^0-9]', '', 'g') IS NOT DISTINCT FROM $3`,
           [

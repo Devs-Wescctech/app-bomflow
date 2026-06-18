@@ -1079,7 +1079,7 @@ export async function syncPerspectivaNegociosFromERP() {
       SET cpf_indicado = NULLIF(regexp_replace(COALESCE(r.referred_cpf, ''), '[^0-9]', '', 'g'), ''), sincronizado_em = NOW()
       FROM referrals r
       WHERE p.origem = 'crm'
-        AND p.cpf_indicado IS NULL
+        AND (p.cpf_indicado IS NULL OR regexp_replace(p.cpf_indicado, '[^0-9]', '', 'g') = '')
         AND r.referred_cpf IS NOT NULL AND r.referred_cpf != ''
         AND r.stage = 'fechado_ganho'
         AND p.nome_indicado IS NOT DISTINCT FROM r.referred_name

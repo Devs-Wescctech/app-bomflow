@@ -21,3 +21,4 @@
 - [ERP dependentes como Pessoa + CPF](erp-dependente-pessoa.md) — CPF vive em documentos_pessoas tipo 580 formatado; dependentes (0,01 e pago) viram Pessoa global (lookup-first), condutor/veículo/pet não.
 - [Perspectivas CPF format](perspectivas-cpf-format.md) — CPF canônico = só dígitos; filtros de exclusão usam regexp_replace NOT IN (NULL preservado); nunca coalesce ('' incluiria CPFs NULL).
 - [Relatório Orçamentos por módulo](relatorio-orcamentos-modulo.md) — só orçamentos Bom Flow (agentes com erp_agent_id) escopados por agent_types.modules; nunca logins=null.
+- [Perspectivas cpf_indicado '' vs NULL](perspectivas-cpf-vazio-placeholder.md) — '' placeholder duplica comissão; unificação deve casar ''+NULL; cleanup script one-off.
