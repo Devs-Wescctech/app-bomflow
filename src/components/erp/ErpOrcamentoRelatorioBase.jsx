@@ -11,7 +11,7 @@ import { useToast } from "@/components/ui/use-toast";
 import {
   Search, Filter, Loader2,
   Calendar, ChevronDown, ChevronUp, FileSpreadsheet, FileText,
-  User, Hash, CreditCard, Clock, Tag, Store, TrendingUp,
+  User, Hash, Clock, Tag, Store, TrendingUp,
   CheckCircle2, XCircle, Receipt, Users,
   X, Wallet, Sparkles, History, BadgeCheck
 } from "lucide-react";
@@ -197,47 +197,55 @@ function KpiCard({ icon: Icon, label, value, tone = 'slate', clickable = false, 
   );
 }
 
-// Tema visual do header do modal por código de situação (gradiente, dot, soft bg).
+// Tema visual do header do modal por código de situação.
+// Gradientes dessaturados (tons profundos 600→700/800) p/ leitura premium e sóbria.
 const STATUS_THEME = {
-  I: { grad: 'from-blue-500 to-blue-600',     soft: 'bg-blue-50 dark:bg-blue-900/30',    dot: 'bg-blue-500',    accentText: 'text-blue-600 dark:text-blue-400' },
-  A: { grad: 'from-emerald-500 to-emerald-600', soft: 'bg-emerald-50 dark:bg-emerald-900/30', dot: 'bg-emerald-500', accentText: 'text-emerald-600 dark:text-emerald-400' },
-  C: { grad: 'from-red-500 to-rose-600',      soft: 'bg-red-50 dark:bg-red-900/30',      dot: 'bg-red-500',     accentText: 'text-red-600 dark:text-red-400' },
-  P: { grad: 'from-amber-500 to-orange-500',  soft: 'bg-amber-50 dark:bg-amber-900/30',  dot: 'bg-amber-500',   accentText: 'text-amber-600 dark:text-amber-400' },
-  R: { grad: 'from-slate-500 to-slate-600',   soft: 'bg-slate-50 dark:bg-slate-800/50',  dot: 'bg-slate-500',   accentText: 'text-slate-600 dark:text-slate-400' },
-  M: { grad: 'from-indigo-500 to-violet-600', soft: 'bg-indigo-50 dark:bg-indigo-900/30', dot: 'bg-indigo-500', accentText: 'text-indigo-600 dark:text-indigo-400' },
+  I: { grad: 'from-blue-600 to-blue-800',       soft: 'bg-blue-50 dark:bg-blue-900/20',    dot: 'bg-blue-500',    accentText: 'text-blue-600 dark:text-blue-400',    ring: 'ring-blue-200/70 dark:ring-blue-900/40',    glow: 'bg-blue-400/25' },
+  A: { grad: 'from-emerald-600 to-teal-800',    soft: 'bg-emerald-50 dark:bg-emerald-900/20', dot: 'bg-emerald-500', accentText: 'text-emerald-600 dark:text-emerald-400', ring: 'ring-emerald-200/70 dark:ring-emerald-900/40', glow: 'bg-emerald-400/25' },
+  C: { grad: 'from-rose-600 to-red-800',        soft: 'bg-red-50 dark:bg-red-900/20',      dot: 'bg-red-500',     accentText: 'text-red-600 dark:text-red-400',      ring: 'ring-red-200/70 dark:ring-red-900/40',      glow: 'bg-rose-400/25' },
+  P: { grad: 'from-amber-500 to-orange-700',    soft: 'bg-amber-50 dark:bg-amber-900/20',  dot: 'bg-amber-500',   accentText: 'text-amber-600 dark:text-amber-400',  ring: 'ring-amber-200/70 dark:ring-amber-900/40',  glow: 'bg-amber-400/25' },
+  R: { grad: 'from-slate-600 to-slate-800',     soft: 'bg-slate-50 dark:bg-slate-800/50',  dot: 'bg-slate-500',   accentText: 'text-slate-600 dark:text-slate-400',  ring: 'ring-slate-200/70 dark:ring-slate-700/50',  glow: 'bg-slate-400/25' },
+  M: { grad: 'from-indigo-600 to-violet-800',   soft: 'bg-indigo-50 dark:bg-indigo-900/20', dot: 'bg-indigo-500', accentText: 'text-indigo-600 dark:text-indigo-400', ring: 'ring-indigo-200/70 dark:ring-indigo-900/40', glow: 'bg-indigo-400/25' },
 };
 
-// Card de informação do modal moderno (glassy, hover-lift, entrada animada escalonada).
-function InfoCard({ icon: Icon, label, value, mono = false, delay = 0 }) {
+// Card de informação do modal (glassmorphism, hover-lift, entrada animada escalonada).
+// `sub` é uma linha secundária de-emphasizada (ex.: CPF abaixo do nome).
+function InfoCard({ icon: Icon, label, value, sub, subMono = false, delay = 0, className = '' }) {
   return (
     <div
-      className="group rounded-xl border border-gray-200/70 dark:border-gray-700/60 bg-white/70 dark:bg-gray-800/40 backdrop-blur-sm p-3.5 shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 hover:border-gray-300 dark:hover:border-gray-600 animate-in fade-in slide-in-from-bottom-2"
+      className={`group rounded-2xl border border-gray-200/60 dark:border-gray-700/50 bg-white/55 dark:bg-gray-800/35 backdrop-blur-md p-4 shadow-sm ring-1 ring-black/[0.02] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:bg-white/80 dark:hover:bg-gray-800/55 animate-in fade-in slide-in-from-bottom-3 ${className}`}
       style={{ animationDelay: `${delay}ms`, animationFillMode: 'both' }}
     >
-      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1.5">
+      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1.5">
         <Icon className="w-3.5 h-3.5 shrink-0" />{label}
       </div>
-      <p className={`text-sm font-semibold text-gray-800 dark:text-gray-100 break-words ${mono ? 'font-mono' : ''}`}>
+      <p className="text-sm font-semibold leading-snug text-gray-800 dark:text-gray-100 break-words">
         {value}
       </p>
+      {sub && (
+        <p className={`mt-1 text-xs text-gray-400 dark:text-gray-500 break-words ${subMono ? 'font-mono tracking-tight' : ''}`}>
+          {sub}
+        </p>
+      )}
     </div>
   );
 }
 
-// Nó da timeline/histórico do modal.
-function TimelineNode({ icon: Icon, title, time, dotClass, last = false, delay = 0 }) {
+// Nó da timeline/histórico do modal (entrada animada lateral; dot com anel e ping no atual).
+function TimelineNode({ icon: Icon, title, time, dotClass, last = false, active = false, delay = 0 }) {
   return (
     <div
-      className="relative flex gap-3 pb-4 last:pb-0 animate-in fade-in slide-in-from-bottom-2"
+      className="relative flex gap-3 pb-5 last:pb-0 animate-in fade-in slide-in-from-left-3"
       style={{ animationDelay: `${delay}ms`, animationFillMode: 'both' }}
     >
-      {!last && <span className="absolute left-[11px] top-7 bottom-1 w-px bg-gray-200 dark:bg-gray-700" />}
-      <span className={`relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white shadow-sm ${dotClass}`}>
-        <Icon className="w-3 h-3" />
+      {!last && <span className="absolute left-[13px] top-8 bottom-1 w-px bg-gradient-to-b from-gray-200 to-gray-200/30 dark:from-gray-700 dark:to-gray-700/20" />}
+      <span className={`relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-white shadow-sm ring-4 ring-white dark:ring-gray-900 ${dotClass}`}>
+        {active && <span className={`absolute inset-0 rounded-full ${dotClass} opacity-40 animate-ping`} />}
+        <Icon className="relative h-3 w-3" />
       </span>
-      <div className="-mt-0.5 min-w-0">
+      <div className="min-w-0 pt-0.5">
         <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{title}</p>
-        {time && <p className="text-xs text-gray-400 dark:text-gray-500">{time}</p>}
+        {time && <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{time}</p>}
       </div>
     </div>
   );
@@ -990,86 +998,113 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
               const approved = selectedItem.situacao === 'A';
               const temValor = Number(selectedItem.valor_total) > 0;
               const canal = selectedItem.canal_id ? canaisMap[selectedItem.canal_id] : null;
+              const updatedDate = selectedItem.data_ultima_alteracao ? new Date(selectedItem.data_ultima_alteracao) : null;
+              const updatedAgo = updatedDate && !isNaN(updatedDate.getTime()) ? timeAgo(updatedDate) : null;
               return (
                 <div className="flex max-h-[88vh] flex-col">
-                  {/* Header com gradiente + status visual */}
-                  <div className={`relative shrink-0 overflow-hidden bg-gradient-to-br ${th.grad} px-6 pt-6 pb-9`}>
-                    <div className="pointer-events-none absolute inset-0 opacity-25 bg-[radial-gradient(circle_at_top_right,white,transparent_55%)]" />
-                    <div className="pointer-events-none absolute -right-10 -top-14 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
-                    <DialogClose className="absolute right-4 top-4 z-10 rounded-full bg-white/15 p-1.5 text-white/90 backdrop-blur-sm transition hover:bg-white/30 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/50">
+                  {/* Header dessaturado + status visual + resumo contextual */}
+                  <div className={`relative shrink-0 overflow-hidden bg-gradient-to-br ${th.grad} px-6 pt-6 pb-10`}>
+                    <div className="pointer-events-none absolute inset-0 opacity-[0.12] bg-[radial-gradient(circle_at_top_right,white,transparent_60%)]" />
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
+                    <div className={`pointer-events-none absolute -right-12 -top-16 h-44 w-44 rounded-full ${th.glow} blur-3xl`} />
+                    <DialogClose className="absolute right-4 top-4 z-10 rounded-full bg-white/10 p-1.5 text-white/80 ring-1 ring-white/15 backdrop-blur-md transition hover:bg-white/25 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/50">
                       <X className="h-4 w-4" />
                       <span className="sr-only">Fechar</span>
                     </DialogClose>
 
                     <div className="relative flex items-start gap-3">
-                      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/20 ring-1 ring-white/30 backdrop-blur-sm">
+                      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25 backdrop-blur-md">
                         <Receipt className="h-5 w-5 text-white" />
                       </span>
                       <div className="min-w-0">
-                        <p className="text-[11px] font-medium uppercase tracking-wider text-white/70">Orçamento</p>
-                        <h2 className="truncate text-2xl font-bold text-white">#{selectedItem.numero_orcamento || '-'}</h2>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">Orçamento</p>
+                        <h2 className="truncate text-2xl font-bold tracking-tight text-white">#{selectedItem.numero_orcamento || '-'}</h2>
                       </div>
                     </div>
 
                     <div className="relative mt-4 flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/25 backdrop-blur-sm">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/20 backdrop-blur-md">
                         <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" /> {sit.label}
                       </span>
                       {canal && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-medium text-white/90 backdrop-blur-sm">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/90 backdrop-blur-md">
                           <Store className="h-3 w-3" /> {canal}
                         </span>
                       )}
                     </div>
+
+                    {/* Resumo contextual: criado + última atualização */}
+                    <p className="relative mt-3 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-medium text-white/60">
+                      <span className="inline-flex items-center gap-1">
+                        <Calendar className="h-3 w-3" /> Criado em {formatDateOnly(selectedItem.data_venda)}
+                      </span>
+                      {updatedAgo && (
+                        <>
+                          <span className="text-white/30">•</span>
+                          <span className="inline-flex items-center gap-1">
+                            <Clock className="h-3 w-3" /> Atualizado {updatedAgo}
+                          </span>
+                        </>
+                      )}
+                    </p>
                   </div>
 
                   {/* Corpo rolável */}
-                  <div className="flex-1 overflow-y-auto bg-gray-50/70 px-6 pb-6 dark:bg-gray-900">
-                    {/* Valor em destaque (sobreposto ao header) */}
+                  <div className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-gray-50/80 to-gray-100/40 px-6 pb-6 dark:from-gray-900 dark:to-gray-900">
+                    {/* Valor em destaque (sobreposto ao header) com accent dinâmico de status */}
                     <div
-                      className="relative -mt-6 rounded-2xl border border-gray-200/70 bg-white px-5 py-4 shadow-lg dark:border-gray-700/60 dark:bg-gray-800 animate-in fade-in zoom-in-95"
+                      className={`relative -mt-7 rounded-2xl border border-gray-200/60 bg-white/80 px-5 py-4 shadow-xl ring-1 ${th.ring} backdrop-blur-xl dark:border-gray-700/50 dark:bg-gray-800/80 animate-in fade-in zoom-in-95`}
                       style={{ animationFillMode: 'both' }}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Valor Total</p>
-                          <p className={`mt-0.5 truncate text-3xl font-extrabold tracking-tight ${approved ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-800 dark:text-gray-100'}`}>
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Valor Total</p>
+                          <p className={`mt-1 truncate text-[2rem] font-extrabold leading-none tracking-tight ${approved ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-800 dark:text-gray-100'}`}>
                             {temValor ? formatCurrency(selectedItem.valor_total) : '—'}
                           </p>
                         </div>
-                        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${approved ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300' : `${th.soft} ${th.accentText}`}`}>
+                        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${approved ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300' : `${th.soft} ${th.accentText}`}`}>
                           {approved ? <BadgeCheck className="h-6 w-6" /> : <Wallet className="h-6 w-6" />}
                         </span>
                       </div>
                       {!approved && (
-                        <p className="mt-2 flex items-center gap-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+                        <p className="mt-2.5 flex items-center gap-1.5 text-[11px] text-gray-400 dark:text-gray-500">
                           <Sparkles className="h-3 w-3 shrink-0" /> Orçamento não aprovado — valor sujeito a alteração.
                         </p>
                       )}
                     </div>
 
-                    {/* Cards de informação */}
-                    <div className="mt-5 grid grid-cols-2 gap-3">
-                      <div className="col-span-2">
-                        <InfoCard icon={User} label="Nome do Titular" value={selectedItem.nome_titular || '-'} delay={40} />
-                      </div>
-                      <InfoCard icon={CreditCard} label="CPF" value={selectedItem.cpf_titular || '-'} mono delay={80} />
-                      <InfoCard icon={Users} label="Vendedor" value={selectedItem.nome_vendedor || selectedItem.login_vendedor || '-'} delay={120} />
+                    {/* Cards de informação (CPF de-emphasizado como subtítulo do titular) */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <InfoCard
+                        icon={User}
+                        label="Titular"
+                        value={selectedItem.nome_titular || '-'}
+                        sub={selectedItem.cpf_titular ? `CPF ${selectedItem.cpf_titular}` : null}
+                        subMono
+                        delay={60}
+                        className="col-span-2"
+                      />
+                      <InfoCard
+                        icon={Users}
+                        label="Vendedor"
+                        value={selectedItem.nome_vendedor || selectedItem.login_vendedor || '-'}
+                        delay={110}
+                        className={canal ? '' : 'col-span-2'}
+                      />
                       {canal && (
-                        <div className="col-span-2">
-                          <InfoCard icon={Store} label="Canal de Vendas" value={canal} delay={160} />
-                        </div>
+                        <InfoCard icon={Store} label="Canal de Vendas" value={canal} delay={160} />
                       )}
                     </div>
 
                     {/* Timeline / Histórico */}
-                    <div className="mt-5 rounded-2xl border border-gray-200/70 bg-white p-4 dark:border-gray-700/60 dark:bg-gray-800/50">
-                      <p className="mb-3 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                    <div className="rounded-2xl border border-gray-200/60 bg-white/70 p-4 shadow-sm ring-1 ring-black/[0.02] backdrop-blur-md dark:border-gray-700/50 dark:bg-gray-800/40">
+                      <p className="mb-4 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
                         <History className="h-3.5 w-3.5" /> Histórico
                       </p>
-                      <TimelineNode icon={Calendar} title="Orçamento registrado" time={formatDateOnly(selectedItem.data_venda)} dotClass={th.dot} delay={80} />
-                      <TimelineNode icon={Clock} title="Última alteração" time={formatDateTime(selectedItem.data_ultima_alteracao)} dotClass="bg-gray-400 dark:bg-gray-600" delay={140} />
-                      <TimelineNode icon={BadgeCheck} title={`Situação atual • ${sit.label}`} dotClass={th.dot} last delay={200} />
+                      <TimelineNode icon={Calendar} title="Orçamento registrado" time={formatDateOnly(selectedItem.data_venda)} dotClass={th.dot} delay={120} />
+                      <TimelineNode icon={Clock} title="Última alteração" time={formatDateTime(selectedItem.data_ultima_alteracao)} dotClass="bg-gray-400 dark:bg-gray-600" delay={190} />
+                      <TimelineNode icon={BadgeCheck} title={`Situação atual • ${sit.label}`} dotClass={th.dot} active last delay={260} />
                     </div>
                   </div>
                 </div>
