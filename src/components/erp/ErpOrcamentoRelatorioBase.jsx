@@ -8,11 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import {
-  FileBarChart, Search, Filter, Loader2,
+  Search, Filter, Loader2,
   Calendar, ChevronDown, ChevronUp, FileSpreadsheet, FileText,
   User, Hash, CreditCard, Clock, Tag, Store, TrendingUp,
   CheckCircle2, XCircle, Receipt, Users
 } from "lucide-react";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RTooltip } from "recharts";
 
 const API_BASE = '/api';
 
@@ -46,6 +47,26 @@ function formatCurrency(val) {
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+// Formata 'YYYY-MM-DD' (input date) como DD/MM/YYYY sem deslocamento de fuso.
+function fmtBR(isoDate) {
+  if (!isoDate) return '-';
+  const [y, m, d] = String(isoDate).split('-');
+  return d && m && y ? `${d}/${m}/${y}` : isoDate;
+}
+
+function timeAgo(date) {
+  if (!date) return null;
+  const sec = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (sec < 45) return 'agora mesmo';
+  const min = Math.floor(sec / 60);
+  if (min < 1) return 'há menos de 1 min';
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h} h`;
+  const d = Math.floor(h / 24);
+  return `há ${d} ${d === 1 ? 'dia' : 'dias'}`;
+}
+
 function formatDateForFile() {
   const d = new Date();
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
@@ -60,6 +81,27 @@ const SITUACOES = {
   'P': { label: 'Pendente / Proposta', color: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700' },
   'R': { label: 'Perdido',             color: 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-600' },
   'M': { label: 'Em manutenção',       color: 'bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-700' },
+};
+
+// Cores sólidas (hex) por código de situação — usadas no gráfico donut.
+const STATUS_COLORS = {
+  'I': '#3b82f6', // blue   — Emitido / Análise
+  'A': '#10b981', // emerald— Aprovado
+  'C': '#ef4444', // red    — Cancelado
+  'P': '#f59e0b', // amber  — Pendente / Proposta
+  'R': '#64748b', // slate  — Perdido
+  'M': '#6366f1', // indigo — Em manutenção
+};
+
+// Tons dos cards de KPI (estilo SaaS: card branco + leve gradiente + chip do ícone).
+const KPI_TONES = {
+  slate:   { ring: 'ring-slate-200 dark:ring-gray-800',   icon: 'bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300',       value: 'text-slate-900 dark:text-slate-100',     grad: 'from-white to-slate-50/70' },
+  emerald: { ring: 'ring-emerald-200 dark:ring-emerald-900/40', icon: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300', value: 'text-emerald-700 dark:text-emerald-300', grad: 'from-white to-emerald-50/70' },
+  blue:    { ring: 'ring-blue-200 dark:ring-blue-900/40',  icon: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300',          value: 'text-blue-700 dark:text-blue-300',       grad: 'from-white to-blue-50/70' },
+  red:     { ring: 'ring-red-200 dark:ring-red-900/40',    icon: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-300',             value: 'text-red-700 dark:text-red-300',         grad: 'from-white to-red-50/70' },
+  sky:     { ring: 'ring-sky-200 dark:ring-sky-900/40',    icon: 'bg-sky-100 text-sky-600 dark:bg-sky-900/40 dark:text-sky-300',             value: 'text-sky-700 dark:text-sky-300',         grad: 'from-white to-sky-50/70' },
+  teal:    { ring: 'ring-teal-200 dark:ring-teal-900/40',  icon: 'bg-teal-100 text-teal-600 dark:bg-teal-900/40 dark:text-teal-300',          value: 'text-teal-700 dark:text-teal-300',       grad: 'from-white to-teal-50/70' },
+  violet:  { ring: 'ring-violet-200 dark:ring-violet-900/40', icon: 'bg-violet-100 text-violet-600 dark:bg-violet-900/40 dark:text-violet-300', value: 'text-violet-700 dark:text-violet-300',   grad: 'from-white to-violet-50/70' },
 };
 
 function SituacaoBadge({ situacao }) {
@@ -115,18 +157,17 @@ const ACCENT = {
   },
 };
 
-function KpiCard({ icon: Icon, label, value, kpiBg }) {
+function KpiCard({ icon: Icon, label, value, tone = 'slate' }) {
+  const t = KPI_TONES[tone] || KPI_TONES.slate;
   return (
-    <div className={`rounded-2xl border p-4 bg-gradient-to-br backdrop-blur-sm ${kpiBg}`}>
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-xl bg-white/10">
-          <Icon className="w-5 h-5 text-white/80" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs text-white/70 font-medium truncate">{label}</p>
-          <p className="text-xl font-bold text-white truncate">{value}</p>
-        </div>
+    <div className={`group rounded-2xl bg-gradient-to-br ${t.grad} dark:from-gray-900 dark:to-gray-900 p-4 md:p-5 ring-1 ${t.ring} shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200`}>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 truncate">{label}</p>
+        <span className={`p-1.5 rounded-lg shrink-0 ${t.icon}`}>
+          <Icon className="w-4 h-4" />
+        </span>
       </div>
+      <p className={`mt-2 text-2xl md:text-3xl font-bold tracking-tight truncate ${t.value}`}>{value}</p>
     </div>
   );
 }
@@ -163,8 +204,9 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
   const [loadingUser, setLoadingUser]     = useState(true);
   const [orcamentos, setOrcamentos]       = useState([]);
   const [loading, setLoading]             = useState(false);
-  const [filtersOpen, setFiltersOpen]     = useState(true);
+  const [filtersOpen, setFiltersOpen]     = useState(false);
   const [selectedItem, setSelectedItem]   = useState(null);
+  const [lastUpdated, setLastUpdated]     = useState(null);
   const [vendedores, setVendedores]       = useState([]);
   const [canais, setCanais]               = useState([]);
   const [times, setTimes]                 = useState([]);
@@ -268,6 +310,7 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
       }
       const d = await res.json();
       setOrcamentos(d.items || []);
+      setLastUpdated(new Date());
     } catch (err) {
       toast({ title: 'Erro', description: err.message, variant: 'destructive' });
     } finally {
@@ -282,6 +325,20 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
     const cancelados = orcamentos.filter(o => o.situacao === 'C').length;
     const valorTotal = orcamentos.filter(o => o.situacao === 'A').reduce((acc, o) => acc + Number(o.valor_total || 0), 0);
     return { total, aprovados, emitidos, cancelados, valorTotal };
+  }, [orcamentos]);
+
+  // Distribuição por situação para o gráfico donut (apenas códigos presentes).
+  const distribuicao = useMemo(() => {
+    const counts = {};
+    orcamentos.forEach(o => { const s = o.situacao || '?'; counts[s] = (counts[s] || 0) + 1; });
+    return Object.entries(counts)
+      .map(([code, value]) => ({
+        code,
+        name: SITUACOES[code]?.label || code,
+        value,
+        color: STATUS_COLORS[code] || '#94a3b8',
+      }))
+      .sort((a, b) => b.value - a.value);
   }, [orcamentos]);
 
   function handleFilter(e) {
@@ -387,92 +444,166 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+  const periodoLabel = `${fmtBR(filterDateStart)} – ${fmtBR(filterDateEnd)}`;
 
-      {/* ── Hero Header ──────────────────────────────────────────── */}
-      <div className={`bg-gradient-to-br ${gradient} px-4 md:px-8 pt-8 pb-6`}>
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-start gap-4 mb-7">
-            <div className="p-3 rounded-2xl bg-white/15 shadow-lg ring-1 ring-white/20 shrink-0">
-              <Receipt className="w-7 h-7 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-white leading-tight">
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-gray-950">
+
+      {/* ── Cabeçalho inteligente ─────────────────────────────────── */}
+      <div className={`bg-gradient-to-br ${gradient} px-4 md:px-8 pt-6 pb-6`}>
+        <div className="max-w-7xl mx-auto flex items-center gap-3.5">
+          <div className="p-2.5 rounded-xl bg-white/15 ring-1 ring-white/20 shrink-0">
+            <Receipt className="w-6 h-6 text-white" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl md:text-2xl font-bold text-white leading-tight">
                 Relatório de Orçamentos
               </h1>
-              <p className="text-white/70 text-sm mt-1 font-medium">{moduloNome}</p>
-              <p className="text-white/50 text-xs mt-0.5">
-                {isAdmin ? 'Visão completa — todos os vendedores e canais' :
-                 isSupervisor ? 'Visão da equipe — seus vendedores' :
-                 'Seus orçamentos no ERP'}
-              </p>
+              <span className="px-2 py-0.5 rounded-md bg-white/15 text-white text-xs font-semibold">
+                {moduloNome}
+              </span>
             </div>
-          </div>
-
-          {/* KPI strip */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            <KpiCard icon={Hash}         label="Total"               value={kpis.total}                      kpiBg="from-white/10 to-white/5 border-white/20" />
-            <KpiCard icon={CheckCircle2} label="Aprovados"           value={kpis.aprovados}                  kpiBg="from-emerald-500/30 to-emerald-600/20 border-emerald-400/30" />
-            <KpiCard icon={FileText}     label="Emitido / Análise"   value={kpis.emitidos}                   kpiBg="from-blue-500/30 to-blue-600/20 border-blue-400/30" />
-            <KpiCard icon={XCircle}      label="Cancelados"          value={kpis.cancelados}                 kpiBg="from-red-500/30 to-red-600/20 border-red-400/30" />
-            <KpiCard icon={TrendingUp}   label="Receita (Aprovados)" value={formatCurrency(kpis.valorTotal)} kpiBg="from-white/15 to-white/5 border-white/25" />
+            <p className="text-white/75 text-xs md:text-sm mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+              {hasSearched && !loading && (
+                <span className="font-medium">
+                  {orcamentos.length} {orcamentos.length === 1 ? 'registro encontrado' : 'registros encontrados'}
+                </span>
+              )}
+              {hasSearched && !loading && <span className="text-white/40">•</span>}
+              <span>Período {periodoLabel}</span>
+              {lastUpdated && <span className="text-white/40">•</span>}
+              {lastUpdated && (
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> Atualizado {timeAgo(lastUpdated)}
+                </span>
+              )}
+            </p>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-5">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-6">
 
-        {/* ── Filters ──────────────────────────────────────────────── */}
-        <Card className="border-0 shadow-md dark:shadow-gray-900/30">
-          <CardHeader className="pb-2 pt-4">
-            <button
-              type="button"
-              onClick={() => setFiltersOpen(v => !v)}
-              className="flex items-center gap-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:opacity-80 transition-opacity w-fit"
-            >
-              <span className={`p-1.5 rounded-lg ${ac.filterBg}`}>
-                <Filter className={`w-3.5 h-3.5 ${ac.filterIcon}`} />
-              </span>
-              Filtros Avançados
-              {filtersOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-          </CardHeader>
+        {/* ── Indicadores (KPIs) ───────────────────────────────────── */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
+          <KpiCard icon={Hash}         label="Total"      value={kpis.total}                      tone="slate" />
+          <KpiCard icon={CheckCircle2} label="Aprovados"  value={kpis.aprovados}                  tone="emerald" />
+          <KpiCard icon={FileText}     label="Em Análise" value={kpis.emitidos}                   tone="blue" />
+          <KpiCard icon={XCircle}      label="Cancelados" value={kpis.cancelados}                 tone="red" />
+          <KpiCard icon={TrendingUp}   label="Receita"    value={formatCurrency(kpis.valorTotal)} tone={accentColor} />
+        </div>
 
-          {filtersOpen && (
-            <CardContent className="pt-3">
-              <form onSubmit={handleFilter}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-5">
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
-                      <Calendar className={`w-3.5 h-3.5 ${ac.iconField}`} /> Data Início
-                    </Label>
-                    <Input type="date" value={filterDateStart} onChange={e => setFilterDateStart(e.target.value)} />
+        {/* ── Resumo visual (donut por situação) ───────────────────── */}
+        {!loading && orcamentos.length > 0 && (
+          <Card className="border-0 shadow-sm rounded-2xl">
+            <CardHeader className="pb-2 pt-4">
+              <CardTitle className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                Distribuição por Situação
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-2">
+              <div className="grid md:grid-cols-2 gap-6 items-center">
+                <div className="relative h-[210px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={distribuicao}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius={62}
+                        outerRadius={92}
+                        paddingAngle={2}
+                        stroke="none"
+                      >
+                        {distribuicao.map(d => <Cell key={d.code} fill={d.color} />)}
+                      </Pie>
+                      <RTooltip formatter={(v, n) => [`${v} orçamento${v === 1 ? '' : 's'}`, n]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-3xl font-bold text-gray-900 dark:text-gray-100">{kpis.total}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">orçamentos</span>
                   </div>
+                </div>
+                <div className="space-y-2.5">
+                  {distribuicao.map(d => (
+                    <div key={d.code} className="flex items-center justify-between text-sm">
+                      <span className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: d.color }} />
+                        {d.name}
+                      </span>
+                      <span className="font-semibold tabular-nums text-gray-800 dark:text-gray-100">
+                        {d.value}
+                        <span className="ml-1 text-gray-400 font-normal">
+                          ({kpis.total ? Math.round((d.value / kpis.total) * 100) : 0}%)
+                        </span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
-                      <Calendar className={`w-3.5 h-3.5 ${ac.iconField}`} /> Data Fim
-                    </Label>
-                    <Input type="date" value={filterDateEnd} onChange={e => setFilterDateEnd(e.target.value)} />
+        {/* ── Filtros ──────────────────────────────────────────────── */}
+        <Card className="border-0 shadow-sm rounded-2xl">
+          <CardContent className="pt-5 pb-5">
+            <form onSubmit={handleFilter} className="space-y-4">
+
+              {/* Filtros principais — sempre visíveis */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
+                    <Calendar className={`w-3.5 h-3.5 ${ac.iconField}`} /> Data Início
+                  </Label>
+                  <Input type="date" value={filterDateStart} onChange={e => setFilterDateStart(e.target.value)} />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
+                    <Calendar className={`w-3.5 h-3.5 ${ac.iconField}`} /> Data Fim
+                  </Label>
+                  <Input type="date" value={filterDateEnd} onChange={e => setFilterDateEnd(e.target.value)} />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
+                    <Tag className={`w-3.5 h-3.5 ${ac.iconField}`} /> Situação
+                  </Label>
+                  <Select value={filterSituacao} onValueChange={setFilterSituacao}>
+                    <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todas</SelectItem>
+                      {Object.entries(SITUACOES).map(([code, { label }]) => (
+                        <SelectItem key={code} value={code}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Toggle dos filtros avançados */}
+                {(isAdmin || showVendedor) && (
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={() => setFiltersOpen(v => !v)}
+                      className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:opacity-80 transition-opacity"
+                    >
+                      <span className={`p-1.5 rounded-lg ${ac.filterBg}`}>
+                        <Filter className={`w-3.5 h-3.5 ${ac.filterIcon}`} />
+                      </span>
+                      Filtros avançados
+                      {filtersOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
                   </div>
+                )}
+              </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
-                      <Tag className={`w-3.5 h-3.5 ${ac.iconField}`} /> Situação
-                    </Label>
-                    <Select value={filterSituacao} onValueChange={setFilterSituacao}>
-                      <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="todos">Todas</SelectItem>
-                        {Object.entries(SITUACOES).map(([code, { label }]) => (
-                          <SelectItem key={code} value={code}>{label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
+              {/* Filtros avançados — recolhidos por padrão */}
+              {filtersOpen && (isAdmin || showVendedor) && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-4 border-t border-gray-100 dark:border-gray-800">
                   {/* Time — admin only */}
                   {isAdmin && times.length > 0 && (
                     <div className="space-y-1.5">
@@ -532,23 +663,24 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
                       </Select>
                     </div>
                   )}
-
                 </div>
+              )}
 
-                <div className="flex gap-3 flex-wrap">
-                  <Button type="submit" disabled={loading} className={`text-white shadow-sm ${ac.btn}`}>
-                    {loading
-                      ? <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                      : <Search className="w-4 h-4 mr-2" />}
-                    Buscar
-                  </Button>
-                  <Button type="button" variant="outline" onClick={handleClear} disabled={loading}>
-                    Limpar
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          )}
+              <div className="flex gap-3 flex-wrap pt-1">
+                <Button type="submit" disabled={loading}
+                  className={`text-white shadow-sm transition-transform hover:scale-[1.02] active:scale-95 ${ac.btn}`}>
+                  {loading
+                    ? <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    : <Search className="w-4 h-4 mr-2" />}
+                  Buscar
+                </Button>
+                <Button type="button" variant="outline" onClick={handleClear} disabled={loading}
+                  className="transition-transform hover:scale-[1.02] active:scale-95">
+                  Limpar
+                </Button>
+              </div>
+            </form>
+          </CardContent>
         </Card>
 
         {/* ── Loading ───────────────────────────────────────────────── */}
@@ -563,8 +695,8 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
 
         {/* ── Results table ─────────────────────────────────────────── */}
         {!loading && orcamentos.length > 0 && (
-          <Card className="border-0 shadow-md dark:shadow-gray-900/30 overflow-hidden">
-            <CardHeader className="pb-3 border-b border-gray-100 dark:border-gray-800">
+          <Card className="border-0 shadow-sm rounded-2xl overflow-hidden">
+            <CardHeader className="pb-3 pt-4 border-b border-gray-100 dark:border-gray-800">
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <CardTitle className="text-base flex items-center gap-2">
                   <span>Resultados</span>
@@ -587,20 +719,18 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
               </div>
             </CardHeader>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[640px]">
               <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 dark:bg-gray-800/60 text-left border-b border-gray-100 dark:border-gray-800">
-                    <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Nº Orçamento</th>
-                    <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">CPF Titular</th>
-                    <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Nome Titular</th>
-                    <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Data Venda</th>
-                    <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Situação</th>
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-gray-50/95 dark:bg-gray-800/95 backdrop-blur text-left border-b border-gray-200 dark:border-gray-700">
+                    <th className="px-5 py-3.5 font-semibold text-gray-500 dark:text-gray-300 text-xs uppercase tracking-wide whitespace-nowrap">Nº Orçamento</th>
+                    <th className="px-5 py-3.5 font-semibold text-gray-500 dark:text-gray-300 text-xs uppercase tracking-wide whitespace-nowrap">Cliente</th>
                     {showVendedor && (
-                      <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Vendedor</th>
+                      <th className="px-5 py-3.5 font-semibold text-gray-500 dark:text-gray-300 text-xs uppercase tracking-wide whitespace-nowrap">Vendedor</th>
                     )}
-                    <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Canal</th>
-                    <th className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap text-right">Valor</th>
+                    <th className="px-5 py-3.5 font-semibold text-gray-500 dark:text-gray-300 text-xs uppercase tracking-wide whitespace-nowrap">Status</th>
+                    <th className="px-5 py-3.5 font-semibold text-gray-500 dark:text-gray-300 text-xs uppercase tracking-wide whitespace-nowrap">Data</th>
+                    <th className="px-5 py-3.5 font-semibold text-gray-500 dark:text-gray-300 text-xs uppercase tracking-wide whitespace-nowrap text-right">Valor</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -610,37 +740,32 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
                       onClick={() => setSelectedItem(o)}
                       className={`cursor-pointer transition-colors group ${ac.rowHover}`}
                     >
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-5 py-4 whitespace-nowrap">
                         <span className={`inline-flex items-center gap-1.5 font-mono font-bold text-sm transition-colors ${ac.numColor}`}>
                           <Hash className="w-3.5 h-3.5 opacity-60" />
                           {o.numero_orcamento || '-'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap font-mono text-xs text-gray-500 dark:text-gray-400">
-                        {o.cpf_titular || '-'}
-                      </td>
-                      <td className="px-4 py-3 max-w-[200px]">
-                        <span className="block truncate text-gray-800 dark:text-gray-200 font-medium" title={o.nome_titular}>
+                      <td className="px-5 py-4 max-w-[280px]">
+                        <span
+                          className="block truncate font-medium text-gray-800 dark:text-gray-100"
+                          title={o.cpf_titular ? `CPF: ${o.cpf_titular}` : (o.nome_titular || '')}
+                        >
                           {o.nome_titular || '-'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
-                        {formatDateOnly(o.data_venda)}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <SituacaoBadge situacao={o.situacao} />
-                      </td>
                       {showVendedor && (
-                        <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-600 dark:text-gray-300">
+                        <td className="px-5 py-4 whitespace-nowrap text-xs text-gray-600 dark:text-gray-300">
                           {o.nome_vendedor || o.login_vendedor || '-'}
                         </td>
                       )}
-                      <td className="px-4 py-3 max-w-[160px]">
-                        <span className="block truncate text-xs text-gray-500 dark:text-gray-400" title={o.canal_id ? canaisMap[o.canal_id] : ''}>
-                          {o.canal_id ? (canaisMap[o.canal_id] || String(o.canal_id)) : '-'}
-                        </span>
+                      <td className="px-5 py-4 whitespace-nowrap">
+                        <SituacaoBadge situacao={o.situacao} />
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-right font-semibold">
+                      <td className="px-5 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
+                        {formatDateOnly(o.data_venda)}
+                      </td>
+                      <td className="px-5 py-4 whitespace-nowrap text-right font-semibold">
                         {o.situacao === 'A'
                           ? <span className="text-emerald-700 dark:text-emerald-400">{formatCurrency(o.valor_total)}</span>
                           : <span className="text-gray-400">-</span>}
@@ -655,7 +780,7 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
 
         {/* ── Empty state ───────────────────────────────────────────── */}
         {!loading && hasSearched && orcamentos.length === 0 && (
-          <Card className="border-0 shadow-md">
+          <Card className="border-0 shadow-sm rounded-2xl">
             <CardContent className="py-20 text-center">
               <div className={`mx-auto w-16 h-16 rounded-full ${ac.filterBg} flex items-center justify-center mb-4`}>
                 <Receipt className={`w-8 h-8 ${ac.filterIcon} opacity-60`} />
