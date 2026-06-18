@@ -157,10 +157,28 @@ const ACCENT = {
   },
 };
 
-function KpiCard({ icon: Icon, label, value, tone = 'slate' }) {
+// Anel reforçado quando o KPI está ativo (filtrando).
+const KPI_ACTIVE_RING = {
+  slate:   'ring-2 ring-slate-400 dark:ring-slate-500',
+  emerald: 'ring-2 ring-emerald-400 dark:ring-emerald-500',
+  blue:    'ring-2 ring-blue-400 dark:ring-blue-500',
+  red:     'ring-2 ring-red-400 dark:ring-red-500',
+  sky:     'ring-2 ring-sky-400 dark:ring-sky-500',
+  teal:    'ring-2 ring-teal-400 dark:ring-teal-500',
+  violet:  'ring-2 ring-violet-400 dark:ring-violet-500',
+};
+
+function KpiCard({ icon: Icon, label, value, tone = 'slate', clickable = false, active = false, onClick }) {
   const t = KPI_TONES[tone] || KPI_TONES.slate;
+  const ringCls = active ? (KPI_ACTIVE_RING[tone] || KPI_ACTIVE_RING.slate) : `ring-1 ${t.ring}`;
+  const Comp = clickable ? 'button' : 'div';
   return (
-    <div className={`group rounded-2xl bg-gradient-to-br ${t.grad} dark:from-gray-900 dark:to-gray-900 p-4 md:p-5 ring-1 ${t.ring} shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200`}>
+    <Comp
+      {...(clickable ? { type: 'button', onClick } : {})}
+      className={`group text-left w-full rounded-2xl bg-gradient-to-br ${t.grad} dark:from-gray-900 dark:to-gray-900 p-4 md:p-5 ${ringCls} shadow-sm transition-all duration-200
+        ${clickable ? 'cursor-pointer hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98]' : ''}
+        ${active ? 'shadow-md -translate-y-0.5' : ''}`}
+    >
       <div className="flex items-start justify-between gap-2">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 truncate">{label}</p>
         <span className={`p-1.5 rounded-lg shrink-0 ${t.icon}`}>
@@ -168,7 +186,12 @@ function KpiCard({ icon: Icon, label, value, tone = 'slate' }) {
         </span>
       </div>
       <p className={`mt-2 text-2xl md:text-3xl font-bold tracking-tight truncate ${t.value}`}>{value}</p>
-    </div>
+      {clickable && (
+        <p className="mt-1 text-[10px] font-medium text-gray-400 dark:text-gray-500 truncate">
+          {active ? 'Filtrando • clique p/ limpar' : 'Clique para filtrar'}
+        </p>
+      )}
+    </Comp>
   );
 }
 
@@ -219,6 +242,10 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
   const [filterVendedor,  setFilterVendedor]  = useState('todos');
   const [filterCanal,     setFilterCanal]     = useState('todos');
   const [filterTime,      setFilterTime]      = useState('todos');
+
+  // Filtros locais (client-side) aplicados sobre o resultado já carregado
+  const [activeStatus,    setActiveStatus]    = useState(null); // código de situação ou null
+  const [searchQuery,     setSearchQuery]     = useState('');
 
   const canaisMap = useMemo(() => {
     const m = {};
@@ -310,6 +337,8 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
       }
       const d = await res.json();
       setOrcamentos(d.items || []);
+      setActiveStatus(null);
+      setSearchQuery('');
       setLastUpdated(new Date());
     } catch (err) {
       toast({ title: 'Erro', description: err.message, variant: 'destructive' });
@@ -327,10 +356,32 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
     return { total, aprovados, emitidos, cancelados, valorTotal };
   }, [orcamentos]);
 
-  // Distribuição por situação para o gráfico donut (apenas códigos presentes).
+  // Resultado visível: aplica filtro de status (clique no KPI) + busca rápida.
+  const filteredOrcamentos = useMemo(() => {
+    let list = orcamentos;
+    if (activeStatus) list = list.filter(o => o.situacao === activeStatus);
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter(o =>
+        String(o.numero_orcamento || '').toLowerCase().includes(q) ||
+        String(o.nome_titular || '').toLowerCase().includes(q) ||
+        String(o.cpf_titular || '').toLowerCase().includes(q) ||
+        String(o.nome_vendedor || o.login_vendedor || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [orcamentos, activeStatus, searchQuery]);
+
+  // Receita do subconjunto visível (aprovados dentro do filtro local).
+  const viewReceita = useMemo(
+    () => filteredOrcamentos.filter(o => o.situacao === 'A').reduce((acc, o) => acc + Number(o.valor_total || 0), 0),
+    [filteredOrcamentos]
+  );
+
+  // Distribuição por situação para o gráfico donut (sobre o resultado visível).
   const distribuicao = useMemo(() => {
     const counts = {};
-    orcamentos.forEach(o => { const s = o.situacao || '?'; counts[s] = (counts[s] || 0) + 1; });
+    filteredOrcamentos.forEach(o => { const s = o.situacao || '?'; counts[s] = (counts[s] || 0) + 1; });
     return Object.entries(counts)
       .map(([code, value]) => ({
         code,
@@ -339,7 +390,33 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
         color: STATUS_COLORS[code] || '#94a3b8',
       }))
       .sort((a, b) => b.value - a.value);
-  }, [orcamentos]);
+  }, [filteredOrcamentos]);
+
+  // Insights automáticos do período (sobre o conjunto carregado, sem filtro local).
+  const insights = useMemo(() => {
+    const t = orcamentos.length;
+    if (!t) return [];
+    const pct = (n) => Math.round((n / t) * 100);
+    const arr = [];
+    if (kpis.aprovados) {
+      arr.push(`${kpis.aprovados} de ${t} ${t === 1 ? 'orçamento' : 'orçamentos'} aprovado${kpis.aprovados > 1 ? 's' : ''} (${pct(kpis.aprovados)}%).`);
+    } else {
+      arr.push('Nenhum orçamento foi aprovado no período.');
+    }
+    if (kpis.emitidos) arr.push(`${pct(kpis.emitidos)}% dos orçamentos estão em análise.`);
+    arr.push(`Receita acumulada no período: ${formatCurrency(kpis.valorTotal)}.`);
+    if (kpis.aprovados) arr.push(`Ticket médio dos aprovados: ${formatCurrency(kpis.valorTotal / kpis.aprovados)}.`);
+    if (kpis.cancelados) {
+      arr.push(`${kpis.cancelados} cancelamento${kpis.cancelados > 1 ? 's' : ''} (${pct(kpis.cancelados)}%).`);
+    } else {
+      arr.push('Não houve cancelamentos.');
+    }
+    return arr;
+  }, [orcamentos, kpis]);
+
+  function toggleStatus(code) {
+    setActiveStatus(prev => (prev === code ? null : code));
+  }
 
   function handleFilter(e) {
     e.preventDefault();
@@ -353,6 +430,8 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
     setFilterVendedor('todos');
     setFilterCanal('todos');
     setFilterTime('todos');
+    setActiveStatus(null);
+    setSearchQuery('');
     setOrcamentos([]);
     setHasSearched(false);
   }
@@ -444,7 +523,7 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
     );
   }
 
-  const periodoLabel = `${fmtBR(filterDateStart)} – ${fmtBR(filterDateEnd)}`;
+  const periodoLabel = `${fmtBR(filterDateStart)} até ${fmtBR(filterDateEnd)}`;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-gray-950">
@@ -485,66 +564,113 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-6">
 
-        {/* ── Indicadores (KPIs) ───────────────────────────────────── */}
+        {/* ── Indicadores (KPIs) — clicáveis p/ filtrar tabela + gráfico ── */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
-          <KpiCard icon={Hash}         label="Total"      value={kpis.total}                      tone="slate" />
-          <KpiCard icon={CheckCircle2} label="Aprovados"  value={kpis.aprovados}                  tone="emerald" />
-          <KpiCard icon={FileText}     label="Em Análise" value={kpis.emitidos}                   tone="blue" />
-          <KpiCard icon={XCircle}      label="Cancelados" value={kpis.cancelados}                 tone="red" />
+          <KpiCard icon={Hash}         label="Total"      value={kpis.total}      tone="slate"
+            clickable active={activeStatus === null} onClick={() => setActiveStatus(null)} />
+          <KpiCard icon={CheckCircle2} label="Aprovados"  value={kpis.aprovados}  tone="emerald"
+            clickable active={activeStatus === 'A'} onClick={() => toggleStatus('A')} />
+          <KpiCard icon={FileText}     label="Em Análise" value={kpis.emitidos}   tone="blue"
+            clickable active={activeStatus === 'I'} onClick={() => toggleStatus('I')} />
+          <KpiCard icon={XCircle}      label="Cancelados" value={kpis.cancelados} tone="red"
+            clickable active={activeStatus === 'C'} onClick={() => toggleStatus('C')} />
           <KpiCard icon={TrendingUp}   label="Receita"    value={formatCurrency(kpis.valorTotal)} tone={accentColor} />
         </div>
 
-        {/* ── Resumo visual (donut por situação) ───────────────────── */}
+        {/* ── Resumo visual (donut) + Insights ─────────────────────── */}
         {!loading && orcamentos.length > 0 && (
-          <Card className="border-0 shadow-sm rounded-2xl">
-            <CardHeader className="pb-2 pt-4">
-              <CardTitle className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                Distribuição por Situação
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-2">
-              <div className="grid md:grid-cols-2 gap-6 items-center">
-                <div className="relative h-[210px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={distribuicao}
-                        dataKey="value"
-                        nameKey="name"
-                        innerRadius={62}
-                        outerRadius={92}
-                        paddingAngle={2}
-                        stroke="none"
-                      >
-                        {distribuicao.map(d => <Cell key={d.code} fill={d.color} />)}
-                      </Pie>
-                      <RTooltip formatter={(v, n) => [`${v} orçamento${v === 1 ? '' : 's'}`, n]} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-3xl font-bold text-gray-900 dark:text-gray-100">{kpis.total}</span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">orçamentos</span>
+          <div className="grid lg:grid-cols-3 gap-5">
+            {/* Donut + resumo textual */}
+            <Card className="border-0 shadow-sm rounded-2xl lg:col-span-2">
+              <CardHeader className="pb-1 pt-4">
+                <CardTitle className="text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">
+                  Distribuição por Situação
+                  {activeStatus && (
+                    <Badge variant="outline" className="text-[10px] font-normal text-gray-500 border-gray-200">
+                      filtrado: {SITUACOES[activeStatus]?.label || activeStatus}
+                    </Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-1 pb-4">
+                <div className="grid sm:grid-cols-2 gap-4 items-center">
+                  <div className="relative h-[230px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={distribuicao}
+                          dataKey="value"
+                          nameKey="name"
+                          innerRadius={64}
+                          outerRadius={96}
+                          paddingAngle={2}
+                          stroke="none"
+                          isAnimationActive
+                          animationDuration={450}
+                        >
+                          {distribuicao.map(d => <Cell key={d.code} fill={d.color} />)}
+                        </Pie>
+                        <RTooltip formatter={(v, n) => [`${v} orçamento${v === 1 ? '' : 's'}`, n]} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                      <span className="text-3xl font-bold text-gray-900 dark:text-gray-100">{filteredOrcamentos.length}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">orçamentos</span>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    {/* Resumo textual (Total + Receita) */}
+                    <div className="flex gap-6 pb-3 border-b border-gray-100 dark:border-gray-800">
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wide text-gray-400">Total</p>
+                        <p className="text-lg font-bold text-gray-900 dark:text-gray-100 tabular-nums">{filteredOrcamentos.length}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wide text-gray-400">Receita</p>
+                        <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">{formatCurrency(viewReceita)}</p>
+                      </div>
+                    </div>
+                    {/* % por status */}
+                    <div className="space-y-2.5">
+                      {distribuicao.map(d => (
+                        <div key={d.code} className="flex items-center justify-between text-sm">
+                          <span className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: d.color }} />
+                            {d.name}
+                          </span>
+                          <span className="font-semibold tabular-nums text-gray-800 dark:text-gray-100">
+                            {d.value}
+                            <span className="ml-1 text-gray-400 font-normal">
+                              ({filteredOrcamentos.length ? Math.round((d.value / filteredOrcamentos.length) * 100) : 0}%)
+                            </span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
-                <div className="space-y-2.5">
-                  {distribuicao.map(d => (
-                    <div key={d.code} className="flex items-center justify-between text-sm">
-                      <span className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
-                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: d.color }} />
-                        {d.name}
-                      </span>
-                      <span className="font-semibold tabular-nums text-gray-800 dark:text-gray-100">
-                        {d.value}
-                        <span className="ml-1 text-gray-400 font-normal">
-                          ({kpis.total ? Math.round((d.value / kpis.total) * 100) : 0}%)
-                        </span>
-                      </span>
-                    </div>
+              </CardContent>
+            </Card>
+
+            {/* Insights automáticos */}
+            <Card className="border-0 shadow-sm rounded-2xl">
+              <CardHeader className="pb-1 pt-4">
+                <CardTitle className="text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">
+                  <TrendingUp className={`w-4 h-4 ${ac.filterIcon}`} /> Insights do Período
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-2 pb-4">
+                <ul className="space-y-2.5">
+                  {insights.map((txt, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300">
+                      <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${ac.filterIcon} bg-current`} />
+                      <span>{txt}</span>
+                    </li>
                   ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                </ul>
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {/* ── Filtros ──────────────────────────────────────────────── */}
@@ -696,26 +822,38 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
         {/* ── Results table ─────────────────────────────────────────── */}
         {!loading && orcamentos.length > 0 && (
           <Card className="border-0 shadow-sm rounded-2xl overflow-hidden">
-            <CardHeader className="pb-3 pt-4 border-b border-gray-100 dark:border-gray-800">
+            <CardHeader className="pb-3 pt-4 border-b border-gray-100 dark:border-gray-800 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <CardTitle className="text-base flex items-center gap-2">
                   <span>Resultados</span>
                   <Badge className={ac.badge}>
-                    {orcamentos.length} registro{orcamentos.length !== 1 ? 's' : ''}
+                    {(activeStatus || searchQuery.trim())
+                      ? `${filteredOrcamentos.length} de ${orcamentos.length}`
+                      : `${orcamentos.length} registro${orcamentos.length !== 1 ? 's' : ''}`}
                   </Badge>
                 </CardTitle>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={!!exporting}
-                    className="text-emerald-700 border-emerald-300 hover:bg-emerald-50 dark:text-emerald-400 dark:border-emerald-700 dark:hover:bg-emerald-900/20">
+                    className="text-emerald-700 border-emerald-300 hover:bg-emerald-50 dark:text-emerald-400 dark:border-emerald-700 dark:hover:bg-emerald-900/20 transition-colors">
                     {exporting === 'excel' ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <FileSpreadsheet className="w-4 h-4 mr-1.5" />}
                     Excel
                   </Button>
                   <Button variant="outline" size="sm" onClick={handleExportPDF} disabled={!!exporting}
-                    className="text-red-700 border-red-300 hover:bg-red-50 dark:text-red-400 dark:border-red-700 dark:hover:bg-red-900/20">
+                    className="text-red-700 border-red-300 hover:bg-red-50 dark:text-red-400 dark:border-red-700 dark:hover:bg-red-900/20 transition-colors">
                     {exporting === 'pdf' ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <FileText className="w-4 h-4 mr-1.5" />}
                     PDF
                   </Button>
                 </div>
+              </div>
+              {/* Busca rápida em tempo real */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <Input
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Buscar por Nº, cliente, CPF ou vendedor…"
+                  className="pl-9 h-9"
+                />
               </div>
             </CardHeader>
 
@@ -734,11 +872,18 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {orcamentos.map((o, idx) => (
+                  {filteredOrcamentos.length === 0 && (
+                    <tr>
+                      <td colSpan={showVendedor ? 6 : 5} className="px-5 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
+                        Nenhum resultado para os filtros aplicados.
+                      </td>
+                    </tr>
+                  )}
+                  {filteredOrcamentos.map((o, idx) => (
                     <tr
                       key={o.erp_id || idx}
                       onClick={() => setSelectedItem(o)}
-                      className={`cursor-pointer transition-colors group ${ac.rowHover}`}
+                      className={`cursor-pointer transition-colors duration-150 group ${ac.rowHover}`}
                     >
                       <td className="px-5 py-4 whitespace-nowrap">
                         <span className={`inline-flex items-center gap-1.5 font-mono font-bold text-sm transition-colors ${ac.numColor}`}>
