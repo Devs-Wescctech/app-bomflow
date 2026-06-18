@@ -1667,6 +1667,40 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_perspectivas_crm_par
   ON erp_perspectivas_negocios (cpf_indicador, cpf_indicado)
   WHERE origem = 'crm' AND cpf_indicador IS NOT NULL AND cpf_indicado IS NOT NULL;
 
+-- Remove duplicatas CRM "placeholder" (registros criados no fechamento antes de
+-- o CPF do indicado chegar) por par cpf_indicador(normalizado) + nome_indicado,
+-- mantendo apenas um registro por par antes de criar o índice único parcial.
+-- Mesma prioridade do bloco acima: 1) vinculado a lote, 2) já pago, 3) menor id.
+WITH ranked_crm_placeholder AS (
+  SELECT id,
+    ROW_NUMBER() OVER (
+      PARTITION BY regexp_replace(COALESCE(cpf_indicador, ''), '[^0-9]', '', 'g'), nome_indicado
+      ORDER BY
+        (lote_pagamento_id IS NOT NULL) DESC,
+        (status_pagamento = 'pago') DESC,
+        id ASC
+    ) AS rn
+  FROM erp_perspectivas_negocios
+  WHERE origem = 'crm'
+    AND (cpf_indicado IS NULL OR regexp_replace(COALESCE(cpf_indicado, ''), '[^0-9]', '', 'g') = '')
+)
+DELETE FROM erp_perspectivas_negocios
+WHERE id IN (SELECT id FROM ranked_crm_placeholder WHERE rn > 1);
+
+-- Fecha a lacuna no nível do banco para registros "placeholder" (sem cpf_indicado):
+-- impede dois registros CRM para o mesmo par indicador+indicado enquanto o CPF do
+-- indicado ainda não foi informado. Garante unicidade por cpf_indicador(normalizado)
+-- + nome_indicado, prevenindo duplicatas mesmo em condições de corrida. A linha sai
+-- deste índice automaticamente quando o cpf_indicado é preenchido (passa a ser
+-- coberta por idx_erp_perspectivas_crm_par).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_erp_perspectivas_crm_placeholder
+  ON erp_perspectivas_negocios (
+    regexp_replace(COALESCE(cpf_indicador, ''), '[^0-9]', '', 'g'),
+    nome_indicado
+  )
+  WHERE origem = 'crm'
+    AND (cpf_indicado IS NULL OR regexp_replace(COALESCE(cpf_indicado, ''), '[^0-9]', '', 'g') = '');
+
 CREATE TABLE IF NOT EXISTS commission_perspectiva_control (
     id                            SERIAL PRIMARY KEY,
     perspectiva_id                INTEGER UNIQUE,

@@ -1995,18 +1995,28 @@ router.put('/referrals/:id', authMiddleware, async (req, res) => {
         // comissão quando já existe um registro (qualquer origem) com o mesmo
         // cpf_indicador e cpf_indicado. A checagem é por par independente da origem,
         // alinhada ao backfill (automationService) e ao alerta sem-registro-erp.
-        // Quando o cpf_indicado ainda está nulo no fechamento ($4 IS NULL), a checagem
-        // não bloqueia o insert — o preenchimento posterior do CPF é tratado pelo
-        // bloco de UPDATE de cpf_indicado abaixo.
+        // Dois casos de dedup:
+        //  - Com CPF do indicado ($4 IS NOT NULL): dedup por par cpf_indicador + cpf_indicado.
+        //  - Sem CPF do indicado ($4 IS NULL, registro "placeholder"): dedup por
+        //    cpf_indicador + nome_indicado contra outros placeholders, espelhando o
+        //    índice único parcial idx_erp_perspectivas_crm_placeholder (schema.sql).
+        //    Isso evita criar um segundo placeholder e mantém o insert controlado
+        //    mesmo em condições de corrida (o índice é o backstop no nível do banco).
         const perspInsert = await query(
           `INSERT INTO erp_perspectivas_negocios
             (nome_indicador, cpf_indicador, nome_indicado, cpf_indicado, nome_vendedor, sit_perspectiva, origem, sincronizado_em)
-           SELECT $1,$2,$3,$4,$5,'NEGOCIO FECHADO','crm',NOW()
+           SELECT $1,$2::text,$3::text,$4::text,$5,'NEGOCIO FECHADO','crm',NOW()
            WHERE NOT EXISTS (
              SELECT 1 FROM erp_perspectivas_negocios p
-             WHERE $4 IS NOT NULL
-               AND regexp_replace(COALESCE(p.cpf_indicador, ''), '[^0-9]', '', 'g') IS NOT DISTINCT FROM $2
-               AND regexp_replace(COALESCE(p.cpf_indicado, ''), '[^0-9]', '', 'g')  IS NOT DISTINCT FROM $4
+             WHERE regexp_replace(COALESCE(p.cpf_indicador, ''), '[^0-9]', '', 'g') IS NOT DISTINCT FROM $2::text
+               AND (
+                 ($4 IS NOT NULL
+                   AND regexp_replace(COALESCE(p.cpf_indicado, ''), '[^0-9]', '', 'g') IS NOT DISTINCT FROM $4::text)
+                 OR
+                 ($4 IS NULL
+                   AND (p.cpf_indicado IS NULL OR regexp_replace(COALESCE(p.cpf_indicado, ''), '[^0-9]', '', 'g') = '')
+                   AND p.nome_indicado IS NOT DISTINCT FROM $3::text)
+               )
            )`,
           [
             referral.referrer_name || null,
