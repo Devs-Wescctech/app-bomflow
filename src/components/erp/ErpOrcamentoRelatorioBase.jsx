@@ -911,8 +911,8 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
                         {formatDateOnly(o.data_venda)}
                       </td>
                       <td className="px-5 py-4 whitespace-nowrap text-right font-semibold">
-                        {o.situacao === 'A'
-                          ? <span className="text-emerald-700 dark:text-emerald-400">{formatCurrency(o.valor_total)}</span>
+                        {Number(o.valor_total) > 0
+                          ? <span className={o.situacao === 'A' ? 'text-emerald-700 dark:text-emerald-400' : 'text-gray-700 dark:text-gray-200'}>{formatCurrency(o.valor_total)}</span>
                           : <span className="text-gray-400">-</span>}
                       </td>
                     </tr>
