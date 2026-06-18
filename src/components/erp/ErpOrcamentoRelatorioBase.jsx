@@ -11,7 +11,7 @@ import {
   FileBarChart, Search, Filter, Loader2,
   Calendar, ChevronDown, ChevronUp, FileSpreadsheet, FileText,
   User, Hash, CreditCard, Clock, Tag, Store, TrendingUp,
-  CheckCircle2, XCircle, RefreshCw, Receipt, Users
+  CheckCircle2, XCircle, Receipt, Users
 } from "lucide-react";
 
 const API_BASE = '/api';
@@ -51,10 +51,15 @@ function formatDateForFile() {
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// DE > PARA das situações do ERP (código cru I/A/C/P/R/M -> rótulo de exibição).
+// Fonte única para badge, filtro e exportações. A ordem define a listagem do filtro.
 const SITUACOES = {
-  'I': { label: 'Finalizado',   color: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700' },
-  'M': { label: 'Em Montagem', color: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700' },
-  'C': { label: 'Cancelado',   color: 'bg-red-100 text-red-800 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700' },
+  'I': { label: 'Emitido / Análise',   color: 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700' },
+  'A': { label: 'Aprovado',            color: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700' },
+  'C': { label: 'Cancelado',           color: 'bg-red-100 text-red-800 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700' },
+  'P': { label: 'Pendente / Proposta', color: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700' },
+  'R': { label: 'Perdido',             color: 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-600' },
+  'M': { label: 'Em manutenção',       color: 'bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-700' },
 };
 
 function SituacaoBadge({ situacao }) {
@@ -272,11 +277,11 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
 
   const kpis = useMemo(() => {
     const total      = orcamentos.length;
-    const finalizados = orcamentos.filter(o => o.situacao === 'I').length;
-    const montagem   = orcamentos.filter(o => o.situacao === 'M').length;
+    const aprovados  = orcamentos.filter(o => o.situacao === 'A').length;
+    const emitidos   = orcamentos.filter(o => o.situacao === 'I').length;
     const cancelados = orcamentos.filter(o => o.situacao === 'C').length;
-    const valorTotal = orcamentos.filter(o => o.situacao === 'I').reduce((acc, o) => acc + Number(o.valor_total || 0), 0);
-    return { total, finalizados, montagem, cancelados, valorTotal };
+    const valorTotal = orcamentos.filter(o => o.situacao === 'A').reduce((acc, o) => acc + Number(o.valor_total || 0), 0);
+    return { total, aprovados, emitidos, cancelados, valorTotal };
   }, [orcamentos]);
 
   function handleFilter(e) {
@@ -340,7 +345,7 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
       doc.text(`Relatório de Orçamentos — ${moduloNome}`, 14, 18);
       doc.setFontSize(9); doc.setFont('helvetica', 'normal');
       doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 25);
-      doc.text(`Total: ${orcamentos.length} | Finalizados: ${kpis.finalizados} | Receita: ${formatCurrency(kpis.valorTotal)}`, 14, 30);
+      doc.text(`Total: ${orcamentos.length} | Aprovados: ${kpis.aprovados} | Receita: ${formatCurrency(kpis.valorTotal)}`, 14, 30);
 
       const fn = typeof doc.autoTable === 'function' ? doc.autoTable.bind(doc) : (o) => autoTable(doc, o);
       fn({
@@ -407,11 +412,11 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
 
           {/* KPI strip */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            <KpiCard icon={Hash}         label="Total"           value={kpis.total}                      kpiBg="from-white/10 to-white/5 border-white/20" />
-            <KpiCard icon={CheckCircle2} label="Finalizados"     value={kpis.finalizados}                kpiBg="from-emerald-500/30 to-emerald-600/20 border-emerald-400/30" />
-            <KpiCard icon={RefreshCw}    label="Em Montagem"     value={kpis.montagem}                   kpiBg="from-amber-500/30 to-amber-600/20 border-amber-400/30" />
-            <KpiCard icon={XCircle}      label="Cancelados"      value={kpis.cancelados}                 kpiBg="from-red-500/30 to-red-600/20 border-red-400/30" />
-            <KpiCard icon={TrendingUp}   label="Receita (Final)" value={formatCurrency(kpis.valorTotal)} kpiBg="from-white/15 to-white/5 border-white/25" />
+            <KpiCard icon={Hash}         label="Total"               value={kpis.total}                      kpiBg="from-white/10 to-white/5 border-white/20" />
+            <KpiCard icon={CheckCircle2} label="Aprovados"           value={kpis.aprovados}                  kpiBg="from-emerald-500/30 to-emerald-600/20 border-emerald-400/30" />
+            <KpiCard icon={FileText}     label="Emitido / Análise"   value={kpis.emitidos}                   kpiBg="from-blue-500/30 to-blue-600/20 border-blue-400/30" />
+            <KpiCard icon={XCircle}      label="Cancelados"          value={kpis.cancelados}                 kpiBg="from-red-500/30 to-red-600/20 border-red-400/30" />
+            <KpiCard icon={TrendingUp}   label="Receita (Aprovados)" value={formatCurrency(kpis.valorTotal)} kpiBg="from-white/15 to-white/5 border-white/25" />
           </div>
         </div>
       </div>
@@ -461,9 +466,9 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
                       <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="todos">Todas</SelectItem>
-                        <SelectItem value="I">Finalizado</SelectItem>
-                        <SelectItem value="M">Em Montagem</SelectItem>
-                        <SelectItem value="C">Cancelado</SelectItem>
+                        {Object.entries(SITUACOES).map(([code, { label }]) => (
+                          <SelectItem key={code} value={code}>{label}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -636,7 +641,7 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
                         </span>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right font-semibold">
-                        {o.situacao === 'I'
+                        {o.situacao === 'A'
                           ? <span className="text-emerald-700 dark:text-emerald-400">{formatCurrency(o.valor_total)}</span>
                           : <span className="text-gray-400">-</span>}
                       </td>
@@ -700,9 +705,9 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
                 )}
               </div>
 
-              {selectedItem.situacao !== 'I' && (
+              {selectedItem.situacao !== 'A' && (
                 <p className="text-xs text-gray-400 dark:text-gray-500 italic">
-                  * Orçamento não finalizado — valor sujeito a alteração.
+                  * Orçamento não aprovado — valor sujeito a alteração.
                 </p>
               )}
             </div>

@@ -48,3 +48,20 @@ relatório do Upsell. A rota standalone `/Upsellln` usa o default.
 `ErpOrcamentoForm` (`/pre-proposta`, legacy/teste3-only) não envia `modulo`.
 Orçamentos antigos sob `acesso.api` não têm como ser atribuídos retroativamente
 com segurança.
+
+## Situação vem crua do ERP; DE>PARA é só de exibição
+O campo `situacao` no relatório é o código cru de `pedidos.situacao` do ERP
+(`I/A/C/P/R/M`), retornado por `getRelatorioOrcamentos`. O DE>PARA (rótulo +
+cor) é **puramente presentacional** e centralizado no mapa `SITUACOES` do
+componente compartilhado `ErpOrcamentoRelatorioBase.jsx` — fonte única para
+badge, dropdown de filtro (gerado por `Object.entries(SITUACOES)`) e exportação
+Excel/PDF. Filtro e export operam pelo **código cru**, nunca pelo rótulo.
+Rótulos: I=Emitido/Análise, A=Aprovado, C=Cancelado, P=Pendente/Proposta,
+R=Perdido, M=Em manutenção.
+**Why:** mexer num lugar só vale para os 4 módulos (PF/PJ/Upsell/Indicações).
+**Decisão de negócio (confirmada pelo usuário):** "venda ganha/receita" = código
+**`A` (Aprovado)**, não `I`. Isso governa a Receita do KPI (soma de `valor_total`
+onde `situacao==='A'`), a coluna "Valor Total" da tabela (só mostra valor quando
+`A`) e a nota do modal. KPIs atuais: Total, Aprovados(A), Emitido/Análise(I),
+Cancelados(C), Receita(A). Se mudar o critério de "ganho", ajuste os três pontos
+juntos.
