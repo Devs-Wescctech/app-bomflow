@@ -695,8 +695,8 @@ export default function LeadsUpsellKanban() {
       );
     },
     enabled: !!user && (isAdmin || !!currentAgent),
-    staleTime: 10000,
-    refetchInterval: 15000,
+    staleTime: 60000,
+    refetchInterval: 60000,
   });
 
   const salesAgents = allAgents;
@@ -713,8 +713,8 @@ export default function LeadsUpsellKanban() {
   const { data: allActivities = [] } = useQuery({
     queryKey: ['allActivities'],
     queryFn: () => upsell.entities.ActivityUpsell.list(),
-    staleTime: 15000,
-    refetchInterval: 30000,
+    staleTime: 60000,
+    refetchInterval: 60000,
   });
 
   const leadsQueryKey = ['leads', isAdmin ? 'admin' : currentAgent?.id];
