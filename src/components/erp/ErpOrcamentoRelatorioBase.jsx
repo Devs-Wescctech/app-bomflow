@@ -988,7 +988,7 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
           <DialogOverlay className="bg-black/40 backdrop-blur-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
           <DialogPrimitive.Content
             aria-describedby={undefined}
-            className="fixed left-[50%] top-[50%] z-50 w-[calc(100%-2rem)] max-w-lg translate-x-[-50%] translate-y-[-50%] overflow-hidden rounded-2xl border border-white/40 dark:border-gray-700/60 bg-white dark:bg-gray-900 shadow-2xl duration-300 focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-top-[46%] data-[state=open]:slide-in-from-top-[46%]"
+            className="fixed left-[50%] top-[50%] z-50 w-[calc(100%-2rem)] max-w-lg translate-x-[-50%] translate-y-[-50%] overflow-hidden rounded-3xl border border-white/40 dark:border-gray-700/60 bg-white dark:bg-gray-900 shadow-2xl shadow-black/20 duration-300 focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-bottom-3 data-[state=open]:slide-in-from-bottom-3"
           >
             <DialogTitle className="sr-only">Detalhes do Orçamento</DialogTitle>
 
@@ -1003,10 +1003,12 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
               return (
                 <div className="flex max-h-[88vh] flex-col">
                   {/* Header dessaturado + status visual + resumo contextual */}
-                  <div className={`relative shrink-0 overflow-hidden bg-gradient-to-br ${th.grad} px-6 pt-6 pb-10`}>
+                  <div className={`relative shrink-0 overflow-hidden bg-gradient-to-br ${th.grad} px-6 pt-7 pb-16`}>
                     <div className="pointer-events-none absolute inset-0 opacity-[0.12] bg-[radial-gradient(circle_at_top_right,white,transparent_60%)]" />
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" />
                     <div className={`pointer-events-none absolute -right-12 -top-16 h-44 w-44 rounded-full ${th.glow} blur-3xl`} />
+                    {/* Fade suave na base do header → transição elegante para o card flutuante */}
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-b from-transparent to-black/15" />
                     <DialogClose className="absolute right-4 top-4 z-10 rounded-full bg-white/10 p-1.5 text-white/80 ring-1 ring-white/15 backdrop-blur-md transition hover:bg-white/25 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/50">
                       <X className="h-4 w-4" />
                       <span className="sr-only">Fechar</span>
@@ -1053,22 +1055,31 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
                   <div className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-gray-50/80 to-gray-100/40 px-6 pb-6 dark:from-gray-900 dark:to-gray-900">
                     {/* Valor em destaque (sobreposto ao header) com accent dinâmico de status */}
                     <div
-                      className={`relative -mt-7 rounded-2xl border border-gray-200/60 bg-white/80 px-5 py-4 shadow-xl ring-1 ${th.ring} backdrop-blur-xl dark:border-gray-700/50 dark:bg-gray-800/80 animate-in fade-in zoom-in-95`}
-                      style={{ animationFillMode: 'both' }}
+                      className={`relative -mt-14 overflow-hidden rounded-3xl border border-gray-200/70 bg-white/90 px-6 py-6 shadow-2xl shadow-black/10 ring-1 ${th.ring} backdrop-blur-2xl dark:border-gray-700/50 dark:bg-gray-800/85 animate-in fade-in slide-in-from-bottom-3 duration-300`}
+                      style={{ animationFillMode: 'both', animationDelay: '80ms' }}
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Valor Total</p>
-                          <p className={`mt-1 truncate text-[2rem] font-extrabold leading-none tracking-tight ${approved ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-800 dark:text-gray-100'}`}>
-                            {temValor ? formatCurrency(selectedItem.valor_total) : '—'}
-                          </p>
-                        </div>
-                        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${approved ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300' : `${th.soft} ${th.accentText}`}`}>
-                          {approved ? <BadgeCheck className="h-6 w-6" /> : <Wallet className="h-6 w-6" />}
-                        </span>
+                      {/* Carteira como marca d'água decorativa — não compete com o valor */}
+                      <Wallet
+                        className={`pointer-events-none absolute -bottom-5 -right-4 h-28 w-28 opacity-[0.06] ${approved ? 'text-emerald-500 dark:text-emerald-400' : th.accentText}`}
+                        strokeWidth={1.25}
+                      />
+
+                      <div className="relative flex items-center gap-2">
+                        <span className={`h-1.5 w-1.5 rounded-full ${approved ? 'bg-emerald-500' : th.dot}`} />
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Valor Total</p>
+                        {approved && (
+                          <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300">
+                            <BadgeCheck className="h-3 w-3" /> Aprovado
+                          </span>
+                        )}
                       </div>
+
+                      <p className={`relative mt-2 truncate text-[2.75rem] font-black leading-none tracking-tight ${approved ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-white'}`}>
+                        {temValor ? formatCurrency(selectedItem.valor_total) : '—'}
+                      </p>
+
                       {!approved && (
-                        <p className="mt-2.5 flex items-center gap-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+                        <p className="relative mt-3 flex items-center gap-1.5 text-[11px] text-gray-400 dark:text-gray-500">
                           <Sparkles className="h-3 w-3 shrink-0" /> Orçamento não aprovado — valor sujeito a alteração.
                         </p>
                       )}
