@@ -1001,7 +1001,7 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
               const updatedDate = selectedItem.data_ultima_alteracao ? new Date(selectedItem.data_ultima_alteracao) : null;
               const updatedAgo = updatedDate && !isNaN(updatedDate.getTime()) ? timeAgo(updatedDate) : null;
               return (
-                <div className="flex max-h-[88vh] flex-col">
+                <div className="flex max-h-[88vh] flex-col bg-gray-50 dark:bg-gray-900">
                   {/* Header dessaturado + status visual + resumo contextual */}
                   <div className={`relative shrink-0 overflow-hidden bg-gradient-to-br ${th.grad} px-6 pt-7 pb-16`}>
                     <div className="pointer-events-none absolute inset-0 opacity-[0.12] bg-[radial-gradient(circle_at_top_right,white,transparent_60%)]" />
@@ -1051,11 +1051,10 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
                     </p>
                   </div>
 
-                  {/* Corpo rolável */}
-                  <div className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-gray-50/80 to-gray-100/40 px-6 pb-6 dark:from-gray-900 dark:to-gray-900">
-                    {/* Valor em destaque (sobreposto ao header) com accent dinâmico de status */}
+                  {/* Valor em destaque — fora da área rolável para sobrepor o header sem ser recortado */}
+                  <div className="relative z-10 -mt-14 shrink-0 px-6">
                     <div
-                      className={`relative -mt-14 overflow-hidden rounded-3xl border border-gray-200/70 bg-white/90 px-6 py-6 shadow-2xl shadow-black/10 ring-1 ${th.ring} backdrop-blur-2xl dark:border-gray-700/50 dark:bg-gray-800/85 animate-in fade-in slide-in-from-bottom-3 duration-300`}
+                      className={`relative overflow-hidden rounded-3xl border border-gray-200/70 bg-white/95 px-6 py-6 shadow-2xl shadow-black/10 ring-1 ${th.ring} backdrop-blur-2xl dark:border-gray-700/50 dark:bg-gray-800/90 animate-in fade-in slide-in-from-bottom-3 duration-300`}
                       style={{ animationFillMode: 'both', animationDelay: '80ms' }}
                     >
                       {/* Carteira como marca d'água decorativa — não compete com o valor */}
@@ -1084,7 +1083,10 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
                         </p>
                       )}
                     </div>
+                  </div>
 
+                  {/* Corpo rolável */}
+                  <div className="flex-1 space-y-4 overflow-y-auto px-6 pt-5 pb-6">
                     {/* Cards de informação (CPF de-emphasizado como subtítulo do titular) */}
                     <div className="grid grid-cols-2 gap-3">
                       <InfoCard
