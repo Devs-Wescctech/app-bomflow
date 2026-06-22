@@ -220,6 +220,7 @@ import SalesPJOrcamentoRelatorio from "./SalesPJOrcamentoRelatorio";
 import ReferralOrcamentoRelatorio from "./ReferralOrcamentoRelatorio";
 import SalesUpsellOrcamentoRelatorio from "./SalesUpsellOrcamentoRelatorio";
 import ReferralWonReport from "./ReferralWonReport";
+import UpsellLeadRedesignDemo from "./UpsellLeadRedesignDemo";
 
 import Login from "./Login";
 
@@ -442,6 +443,7 @@ const PAGES = {
     ReferralOrcamentoRelatorio: ReferralOrcamentoRelatorio,
     SalesUpsellOrcamentoRelatorio: SalesUpsellOrcamentoRelatorio,
     ReferralWonReport: ReferralWonReport,
+    UpsellLeadRedesignDemo: UpsellLeadRedesignDemo,
     
 }
 
@@ -695,6 +697,7 @@ function PagesContent() {
                 <Route path="/ReferralOrcamentoRelatorio" element={<ReferralOrcamentoRelatorio />} />
                 <Route path="/SalesUpsellOrcamentoRelatorio" element={<SalesUpsellOrcamentoRelatorio />} />
                 <Route path="/ReferralWonReport" element={<ReferralWonReport />} />
+                <Route path="/UpsellLeadRedesignDemo" element={<UpsellLeadRedesignDemo />} />
                 
             </Routes>
         </Layout>

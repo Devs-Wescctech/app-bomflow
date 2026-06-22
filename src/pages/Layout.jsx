@@ -109,6 +109,7 @@ const PUBLIC_PAGES = [
   'PortalReferralList', 'PublicSignature', 'PublicProposal',
   'NPSSurvey', 'npssurvey',
   'ApiDocumentation', 'apidocumentation', 'api-documentation',
+  'UpsellLeadRedesignDemo', 'upsellleadredesigndemo',
 ];
 
 const isPublicRoute = (pathname) => {
