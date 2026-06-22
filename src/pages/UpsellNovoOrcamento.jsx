@@ -872,6 +872,13 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       }
       setSubmitResult({ type: "success", data });
       toast.success("Orçamento enviado com sucesso!");
+      // Avisa a área de Documentos (componente irmão) para recarregar a lista e já
+      // exibir o orçamento recém-criado com os campos de upload + Adesão Zero.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("orcamento:created", { detail: { modulo: modulo || "sales_upsell" } })
+        );
+      }
     },
     onError: (err) => {
       setSubmitResult({ type: "error", message: err.message });

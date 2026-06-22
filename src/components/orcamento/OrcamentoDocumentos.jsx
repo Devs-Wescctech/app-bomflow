@@ -72,6 +72,16 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
     fetchOrcamentos();
   }, [fetchOrcamentos]);
 
+  // Recarrega a lista quando um orçamento é criado no formulário irmão (mesmo módulo),
+  // para o orçamento recém-criado já aparecer com os campos de upload + Adesão Zero.
+  useEffect(() => {
+    const handler = (e) => {
+      if (!e?.detail?.modulo || e.detail.modulo === modulo) fetchOrcamentos();
+    };
+    window.addEventListener("orcamento:created", handler);
+    return () => window.removeEventListener("orcamento:created", handler);
+  }, [modulo, fetchOrcamentos]);
+
   const docFor = (orc, tipo) => (orc.documentos || []).find((d) => d.tipo === tipo) || null;
 
   async function handleUpload(orc, tipo, file) {
