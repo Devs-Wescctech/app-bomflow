@@ -22,6 +22,7 @@ import {
   Gauge,
   ChevronRight,
   ShieldCheck,
+  Wallet,
 } from "lucide-react";
 
 const STAGES = [
@@ -171,7 +172,8 @@ export function Redesign() {
             <div className="relative flex items-start justify-between gap-6">
               <div className="flex items-center gap-5">
                 <div className="relative">
-                  <div className="absolute -inset-1.5 rounded-full bg-gradient-to-br from-violet-400 to-fuchsia-400 opacity-30 blur-md" />
+                  <div className="absolute -inset-2 animate-pulse rounded-full bg-gradient-to-br from-violet-400 to-fuchsia-400 opacity-30 blur-lg" />
+                  <div className="absolute -inset-0.5 rounded-full bg-gradient-to-br from-violet-300/40 to-fuchsia-300/40" />
                   <div className="relative flex h-[68px] w-[68px] items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 text-2xl font-semibold text-white shadow-lg shadow-violet-300/50 ring-[3px] ring-white">
                     T
                   </div>
@@ -191,7 +193,7 @@ export function Redesign() {
                       Agente TESTE3
                     </span>
                   </div>
-                  <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] text-gray-400">
+                  <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[12px] text-gray-400">
                     <span>Lead criado há 6 dias</span>
                     <span className="text-gray-300">•</span>
                     <span className="inline-flex items-center gap-1">
@@ -201,6 +203,13 @@ export function Redesign() {
                     <span>2 dependentes</span>
                     <span className="text-gray-300">•</span>
                     <span>Plano Familiar</span>
+                    <span className="mx-0.5 h-3.5 w-px bg-gray-200" />
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-2.5 py-1 font-semibold text-violet-700 ring-1 ring-violet-100">
+                      <Wallet className="h-3.5 w-3.5" /> R$ 139,90
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700 ring-1 ring-emerald-100">
+                      <TrendingUp className="h-3.5 w-3.5" /> 82% fechamento
+                    </span>
                   </div>
                 </div>
               </div>
@@ -383,8 +392,14 @@ export function Redesign() {
                         </div>
                         <div className="flex-1 pt-1">
                           <div className="flex items-baseline justify-between gap-3">
-                            <p className="text-[14px] font-medium text-gray-800">{item.title}</p>
-                            <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                            <p
+                              className={`text-[14px] ${
+                                highlighted ? "font-semibold text-gray-900" : "font-medium text-gray-700"
+                              }`}
+                            >
+                              {item.title}
+                            </p>
+                            <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-gray-400 [font-variant-numeric:tabular-nums]">
                               {item.when}
                             </span>
                           </div>
