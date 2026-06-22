@@ -130,6 +130,33 @@ pool.query(`
 `).then(() => console.log('[Migration] bomflow_orcamentos OK'))
   .catch(e => console.error('[Migration] bomflow_orcamentos error:', e.message));
 
+// Documentos anexados a cada orçamento (Documento CPF/RG, comprovante de residência,
+// taxa de adesão, cópia de contrato) + flag "Adesão Zero" por orçamento. Vínculo duplo:
+// erp_pedido_id (orçamento) e lead_id/modulo (lead). Os ARQUIVOS ficam no disco do servidor
+// (pasta ORCAMENTO_DOCS_DIR, fora da área pública); aqui no banco ficam só os metadados.
+pool.query(`
+  ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS adesao_zero BOOLEAN;
+  ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS adesao_zero_updated_by UUID;
+  ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS adesao_zero_updated_at TIMESTAMPTZ;
+  CREATE TABLE IF NOT EXISTS orcamento_documentos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    erp_pedido_id BIGINT NOT NULL,
+    lead_id VARCHAR(64),
+    modulo VARCHAR(32) NOT NULL,
+    tipo VARCHAR(40) NOT NULL,
+    stored_name VARCHAR(255) NOT NULL,
+    original_name VARCHAR(255),
+    mime_type VARCHAR(128),
+    size_bytes BIGINT,
+    uploaded_by UUID,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_orcamento_documentos_pedido ON orcamento_documentos(erp_pedido_id);
+  CREATE INDEX IF NOT EXISTS idx_orcamento_documentos_lead ON orcamento_documentos(lead_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_orcamento_documentos_pedido_tipo ON orcamento_documentos(erp_pedido_id, tipo);
+`).then(() => console.log('[Migration] orcamento_documentos OK'))
+  .catch(e => console.error('[Migration] orcamento_documentos error:', e.message));
+
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }

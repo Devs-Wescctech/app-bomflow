@@ -62,6 +62,7 @@ import {
   ArrowLeftRight,
 } from "lucide-react";
 import UpsellNovoOrcamento from "./UpsellNovoOrcamento";
+import OrcamentoDocumentos from "@/components/orcamento/OrcamentoDocumentos";
 import { createPageUrl } from "@/utils";
 import ReassignLeadModal from "@/components/sales/ReassignLeadModal";
 import ReassignmentLog from "@/components/sales/ReassignmentLog";
@@ -1015,6 +1016,12 @@ export default function ReferralDetail() {
                     telefone: referral.referredPhone,
                     email: referral.referredEmail,
                   }}
+                />
+                <OrcamentoDocumentos
+                  modulo="referral"
+                  cpf={referral.referredCpf}
+                  leadId={referralId}
+                  canManage={isAdmin || isSupervisor || String(referralAgentId) === String(currentAgent?.id)}
                 />
               </TabsContent>
 

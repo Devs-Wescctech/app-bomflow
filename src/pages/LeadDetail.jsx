@@ -54,6 +54,7 @@ import {
   ArrowLeftRight,
 } from "lucide-react";
 import UpsellNovoOrcamento from "./UpsellNovoOrcamento";
+import OrcamentoDocumentos from "@/components/orcamento/OrcamentoDocumentos";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { createPageUrl } from "@/utils";
@@ -1081,6 +1082,12 @@ export default function LeadDetail() {
                     telefone: lead.phone,
                     email: lead.email,
                   }}
+                />
+                <OrcamentoDocumentos
+                  modulo="sales"
+                  cpf={lead.cpf}
+                  leadId={leadId}
+                  canManage={isAdmin || isSupervisor || String(leadAgentId) === String(user?.agent?.id)}
                 />
               </TabsContent>
 
