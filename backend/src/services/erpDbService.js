@@ -981,7 +981,7 @@ export async function getRelatorioOrcamentos({
   }
   if (canalId) {
     params.push(Number(canalId));
-    conditions.push(`p.contrato_id = $${params.length}`);
+    conditions.push(`pcv.contrato_id = $${params.length}`);
   }
 
   const limitParam = Math.min(Number(limit) || 500, 1000);
@@ -999,7 +999,7 @@ export async function getRelatorioOrcamentos({
       COALESCE(p.valor_total, 0)::numeric           AS valor_total,
       pp.nome_pessoa                                AS nome_titular,
       pp.cpf                                        AS cpf_titular,
-      p.contrato_id                                 AS canal_id,
+      pcv.contrato_id                               AS canal_id,
       u.nome_completo                               AS nome_vendedor
     FROM pedidos p
     LEFT JOIN LATERAL (
@@ -1009,6 +1009,7 @@ export async function getRelatorioOrcamentos({
       ORDER BY id
       LIMIT 1
     ) pp ON true
+    LEFT JOIN pessoas_contratos pcv ON pcv.id = p.agente_venda_id
     LEFT JOIN usuarios u ON u.id = p.usuario_inclusao_id
     WHERE ${conditions.join(' AND ')}
     ORDER BY p.data_inclusao DESC
