@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   Phone,
@@ -119,6 +120,13 @@ function ScoreRing({ score }: { score: number }) {
           strokeLinecap="round"
           strokeDasharray={c}
           strokeDashoffset={offset}
+          style={
+            {
+              "--ring-c": c,
+              animation: "lead-ring 1000ms ease-out both",
+              animationDelay: "300ms",
+            } as React.CSSProperties
+          }
         />
         <defs>
           <linearGradient id="scoreGrad" x1="0" y1="0" x2="1" y2="1">
@@ -134,9 +142,103 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
+const MOTION_CSS = `
+@keyframes lead-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes lead-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes lead-bar {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes lead-ring {
+  from { stroke-dashoffset: var(--ring-c); }
+}
+@keyframes lead-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.lead-skeleton {
+  background: linear-gradient(90deg, #eceaf4 25%, #f6f3ff 37%, #eceaf4 63%);
+  background-size: 200% 100%;
+  animation: lead-shimmer 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  [style*="lead-enter"], [style*="lead-grow"], [style*="lead-ring"], [style*="lead-bar"] {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+`;
+
+function MainSkeleton() {
+  return (
+    <div className="mt-6 space-y-8">
+      <div className="rounded-[28px] bg-white/95 p-9 shadow-[0_1px_3px_rgba(16,24,40,0.04),0_28px_70px_-28px_rgba(91,33,182,0.18)] ring-1 ring-gray-100/80">
+        <div className="flex items-center gap-5">
+          <div className="lead-skeleton h-[68px] w-[68px] rounded-full" />
+          <div className="space-y-3">
+            <div className="lead-skeleton h-9 w-64 rounded-lg" />
+            <div className="flex gap-2">
+              <div className="lead-skeleton h-6 w-24 rounded-full" />
+              <div className="lead-skeleton h-6 w-20 rounded-full" />
+              <div className="lead-skeleton h-6 w-28 rounded-full" />
+            </div>
+          </div>
+        </div>
+        <div className="mt-9 flex items-center gap-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex flex-1 items-center gap-2 last:flex-none">
+              <div className="lead-skeleton h-5 w-5 rounded-full" />
+              <div className="lead-skeleton h-3 w-20 rounded" />
+              {i < 4 && <div className="lead-skeleton mx-3 h-1 flex-1 rounded-full" />}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px]">
+        <div className="space-y-5 rounded-[24px] bg-white p-8 shadow-[0_1px_3px_rgba(16,24,40,0.04),0_18px_44px_-22px_rgba(76,29,149,0.12)] ring-1 ring-gray-100/80">
+          <div className="flex gap-7">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="lead-skeleton h-4 w-20 rounded" />
+            ))}
+          </div>
+          <div className="lead-skeleton h-12 w-full rounded-xl" />
+          <div className="space-y-5 pt-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex gap-4">
+                <div className="lead-skeleton h-8 w-8 shrink-0 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <div className="lead-skeleton h-4 w-1/2 rounded" />
+                  <div className="lead-skeleton h-3 w-3/4 rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-6">
+          <div className="lead-skeleton h-64 rounded-[24px]" />
+          <div className="lead-skeleton h-80 rounded-[24px]" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Redesign() {
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setLoading(false), 750);
+    return () => clearTimeout(t);
+  }, []);
   return (
     <div className="relative min-h-screen bg-gradient-to-b from-[#f5f3ff] via-[#fbfaff] to-white font-['Inter'] text-gray-900 antialiased">
+      <style>{MOTION_CSS}</style>
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[440px] bg-[radial-gradient(55%_100%_at_18%_0%,rgba(167,139,250,0.18),transparent),radial-gradient(45%_85%_at_88%_0%,rgba(232,121,249,0.12),transparent)]" />
 
       {/* Top bar */}
@@ -164,8 +266,15 @@ export function Redesign() {
       </header>
 
       <main className="relative mx-auto max-w-[1180px] px-8 pb-16">
+        {loading ? (
+          <MainSkeleton />
+        ) : (
+        <>
         {/* ===== Premium hero panel ===== */}
-        <div className="mt-6 overflow-hidden rounded-[28px] bg-white/95 shadow-[0_1px_3px_rgba(16,24,40,0.04),0_28px_70px_-28px_rgba(91,33,182,0.3)] ring-1 ring-white/70 backdrop-blur">
+        <div
+          style={{ animation: "lead-enter 450ms cubic-bezier(0.16,1,0.3,1) both" }}
+          className="mt-6 overflow-hidden rounded-[28px] bg-white/95 shadow-[0_1px_3px_rgba(16,24,40,0.04),0_28px_70px_-28px_rgba(91,33,182,0.3)] ring-1 ring-white/70 backdrop-blur"
+        >
           <div className="relative bg-gradient-to-b from-violet-50/70 via-white to-white px-9 pb-8 pt-9">
             <div className="pointer-events-none absolute -right-16 -top-24 h-60 w-60 rounded-full bg-gradient-to-br from-violet-300/30 to-fuchsia-300/20 blur-3xl" />
 
@@ -214,10 +323,10 @@ export function Redesign() {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <button className="flex items-center gap-2 rounded-lg bg-white/70 px-3 py-1.5 text-[13px] font-medium text-gray-600 ring-1 ring-gray-200/70 transition-all duration-200 hover:bg-white hover:text-gray-900 hover:shadow-sm">
+                <button className="flex items-center gap-2 rounded-lg bg-white/70 px-3 py-1.5 text-[13px] font-medium text-gray-600 ring-1 ring-gray-200/70 transition-all duration-200 hover:-translate-y-px hover:bg-white hover:text-gray-900 hover:shadow-md">
                   <Phone className="h-4 w-4" /> WhatsApp
                 </button>
-                <button className="flex items-center gap-2 rounded-lg bg-white/70 px-3 py-1.5 text-[13px] font-medium text-gray-600 ring-1 ring-gray-200/70 transition-all duration-200 hover:bg-white hover:text-gray-900 hover:shadow-sm">
+                <button className="flex items-center gap-2 rounded-lg bg-white/70 px-3 py-1.5 text-[13px] font-medium text-gray-600 ring-1 ring-gray-200/70 transition-all duration-200 hover:-translate-y-px hover:bg-white hover:text-gray-900 hover:shadow-md">
                   <Mail className="h-4 w-4" /> E-mail
                 </button>
                 <button className="flex items-center gap-2 rounded-lg bg-gradient-to-b from-gray-800 to-gray-900 px-3.5 py-1.5 text-[13px] font-medium text-white shadow-sm shadow-gray-300 transition-all duration-200 hover:from-gray-700 hover:to-gray-800 active:scale-[0.98]">
@@ -235,7 +344,7 @@ export function Redesign() {
                   <div key={s.value} className="flex flex-1 items-center last:flex-none">
                     <div className="group flex cursor-pointer items-center gap-2">
                       <span
-                        className={`relative flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold transition-all duration-200 ${
+                        className={`relative flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold transition-all duration-200 group-hover:scale-110 ${
                           done
                             ? "bg-violet-100 text-violet-600 group-hover:bg-violet-200"
                             : current
@@ -263,6 +372,15 @@ export function Redesign() {
                     {i !== STAGES.length - 1 && (
                       <div className="mx-3 h-1 flex-1 rounded-full bg-gray-100">
                         <div
+                          style={
+                            done
+                              ? {
+                                  animation: "lead-grow 700ms cubic-bezier(0.16,1,0.3,1) both",
+                                  animationDelay: `${250 + i * 130}ms`,
+                                  transformOrigin: "left",
+                                }
+                              : undefined
+                          }
                           className={`h-full rounded-full ${
                             done ? "bg-gradient-to-r from-violet-300 to-violet-400" : "bg-transparent"
                           }`}
@@ -319,7 +437,10 @@ export function Redesign() {
         {/* ===== Body ===== */}
         <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px]">
           {/* Main column — single elevated panel, no inner cards */}
-          <div className="rounded-[24px] bg-white px-8 pb-8 pt-7 shadow-[0_1px_3px_rgba(16,24,40,0.04),0_18px_44px_-22px_rgba(76,29,149,0.18)] ring-1 ring-gray-100/80">
+          <div
+            style={{ animation: "lead-enter 450ms cubic-bezier(0.16,1,0.3,1) both", animationDelay: "100ms" }}
+            className="rounded-[24px] bg-white px-8 pb-8 pt-7 shadow-[0_1px_3px_rgba(16,24,40,0.04),0_18px_44px_-22px_rgba(76,29,149,0.18)] ring-1 ring-gray-100/80 transition-shadow duration-300 hover:shadow-[0_1px_3px_rgba(16,24,40,0.05),0_26px_60px_-24px_rgba(76,29,149,0.26)]"
+          >
             <div className="flex items-center gap-7 border-b border-gray-100">
               {TABS.map((t) => {
                 const active = t.value === "activities";
@@ -378,11 +499,15 @@ export function Redesign() {
                     return (
                       <div
                         key={i}
-                        className="group/item relative -mx-3 flex gap-4 rounded-xl py-3.5 pl-3 pr-3 transition-all duration-200 hover:bg-gray-50/80"
+                        style={{
+                          animation: "lead-enter 380ms cubic-bezier(0.16,1,0.3,1) both",
+                          animationDelay: `${300 + i * 80}ms`,
+                        }}
+                        className="group/item relative -mx-3 flex gap-4 rounded-xl py-3.5 pl-3 pr-3 transition-all duration-200 hover:translate-x-0.5 hover:bg-gray-50/80 hover:shadow-sm"
                       >
                         {highlighted && (
                           <span
-                            className={`absolute left-0 top-1/2 h-7 w-[3px] -translate-y-1/2 rounded-full ${a.bar}`}
+                            className={`absolute left-0 top-1/2 h-7 w-[3px] -translate-y-1/2 rounded-full transition-all duration-200 group-hover/item:h-9 ${a.bar}`}
                           />
                         )}
                         <div
@@ -419,7 +544,10 @@ export function Redesign() {
           {/* Right rail */}
           <aside className="space-y-6">
             {/* ===== Negócio — THE focal point (wow) ===== */}
-            <div className="group relative overflow-hidden rounded-[24px] bg-gradient-to-br from-violet-600 via-violet-700 to-indigo-800 p-6 text-white shadow-[0_12px_50px_-12px_rgba(91,33,182,0.7)] ring-1 ring-white/10 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_60px_-12px_rgba(91,33,182,0.8)]">
+            <div
+              style={{ animation: "lead-enter 450ms cubic-bezier(0.16,1,0.3,1) both", animationDelay: "160ms" }}
+              className="group relative overflow-hidden rounded-[24px] bg-gradient-to-br from-violet-600 via-violet-700 to-indigo-800 p-6 text-white shadow-[0_12px_50px_-12px_rgba(91,33,182,0.7)] ring-1 ring-white/10 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_70px_-12px_rgba(91,33,182,0.85)]"
+            >
               {/* layered light: glossy sheen + glow + dotted texture */}
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/15 to-transparent" />
               <div className="pointer-events-none absolute -right-14 -top-14 h-48 w-48 rounded-full bg-fuchsia-400/25 blur-3xl" />
@@ -465,15 +593,23 @@ export function Redesign() {
                 </div>
                 <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/15">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-emerald-300 to-green-400 shadow-[0_0_14px_rgba(52,211,153,0.7)] transition-all duration-500"
-                    style={{ width: "82%" }}
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-300 to-green-400 shadow-[0_0_14px_rgba(52,211,153,0.7)]"
+                    style={{
+                      width: "82%",
+                      transformOrigin: "left",
+                      animation: "lead-bar 900ms cubic-bezier(0.16,1,0.3,1) both",
+                      animationDelay: "450ms",
+                    }}
                   />
                 </div>
               </div>
             </div>
 
             {/* ===== Unified info panel (Detalhes + Valores + ERP) ===== */}
-            <div className="rounded-[24px] bg-white shadow-[0_1px_3px_rgba(16,24,40,0.04),0_18px_44px_-22px_rgba(76,29,149,0.16)] ring-1 ring-gray-100/80">
+            <div
+              style={{ animation: "lead-enter 450ms cubic-bezier(0.16,1,0.3,1) both", animationDelay: "220ms" }}
+              className="rounded-[24px] bg-white shadow-[0_1px_3px_rgba(16,24,40,0.04),0_18px_44px_-22px_rgba(76,29,149,0.16)] ring-1 ring-gray-100/80 transition-shadow duration-300 hover:shadow-[0_1px_3px_rgba(16,24,40,0.05),0_26px_56px_-24px_rgba(76,29,149,0.24)]"
+            >
               <div className="px-6 pb-5 pt-6">
                 <SectionLabel>Detalhes</SectionLabel>
                 <div className="mt-2 divide-y divide-gray-50">
@@ -539,6 +675,8 @@ export function Redesign() {
             </div>
           </aside>
         </div>
+        </>
+        )}
       </main>
     </div>
   );
