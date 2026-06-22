@@ -22,3 +22,5 @@ data/bom-auto-images/*
 !data/bom-auto-images/.gitkeep
 attached_assets/
 .replit_integration_files/
+.agents/
+.canvas/
