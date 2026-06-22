@@ -887,6 +887,8 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       if (form.celular.trim() && !isMobilePhone(form.celular)) {
         toast.error("Celular deve ser um número de celular válido (DDD + 9 dígitos)"); return false;
       }
+      if (!form.email_contato.trim()) { toast.error("E-mail obrigatório"); return false; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email_contato.trim())) { toast.error("E-mail inválido"); return false; }
     }
     if (step === 2) {
       if (form.un_codigo_postal.replace(/\D/g, "").length !== 8) { toast.error("CEP inválido (8 dígitos)"); return false; }
@@ -1400,7 +1402,7 @@ function Step1({ form, set, cpfLookup, setCpfLookup, lookupCpfMutation }) {
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1">
-          <Label>E-mail</Label>
+          <Label>E-mail <span className="text-red-500">*</span></Label>
           <Input
             type="email"
             value={form.email_contato}
