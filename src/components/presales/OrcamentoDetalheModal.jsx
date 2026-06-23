@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import {
-  X, FileText, Eye, Loader2, FileWarning, User, Calendar, Layers,
+  X, FileText, Eye, Loader2, User, Calendar, Layers,
   CreditCard, Hash, Building2, Package, BadgeCheck, Users, PawPrint,
-  Car, Phone, ShoppingBag,
+  Car, Phone, ShoppingBag, CheckCircle2, AlertTriangle, XCircle,
+  ClipboardCheck, ThumbsUp, PencilLine, Ban, MapPin,
 } from "lucide-react";
 
 const API_BASE = "/api";
@@ -19,6 +20,9 @@ const DOC_TIPO_LABEL = {
   taxa_adesao: "Taxa de adesão",
   copia_contrato: "Cópia do contrato",
 };
+
+// Documentos exigidos para a auditoria considerar o orçamento completo.
+const REQUIRED_DOCS = ["documento_identidade", "comprovante_residencia"];
 
 function formatBytes(bytes) {
   if (bytes == null) return "";
@@ -95,10 +99,33 @@ const GROUP_META = {
   beneficiario: { title: "Beneficiários", icon: Users, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-950/40" },
 };
 
+// Resultado da auditoria (derivado do checklist). Não há fluxo de aprovação real aqui —
+// é o grau de completude dos dados/documentos do orçamento.
+const RESULT_META = {
+  pronto: {
+    label: "PRONTO PARA APROVAÇÃO", icon: CheckCircle2,
+    chip: "bg-emerald-500 text-white",
+    soft: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300",
+    bar: "bg-emerald-500",
+  },
+  revisar: {
+    label: "REVISÃO NECESSÁRIA", icon: AlertTriangle,
+    chip: "bg-amber-500 text-white",
+    soft: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300",
+    bar: "bg-amber-500",
+  },
+  bloqueado: {
+    label: "BLOQUEADO", icon: XCircle,
+    chip: "bg-red-500 text-white",
+    soft: "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300",
+    bar: "bg-red-500",
+  },
+};
+
 function InfoRow({ icon: Icon, label, value, title }) {
   return (
     <div className="flex items-start gap-3 py-2.5">
-      <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400">
+      <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 dark:bg-gray-800 dark:text-slate-400">
         <Icon className="h-4 w-4" />
       </span>
       <div className="min-w-0">
@@ -113,8 +140,8 @@ function InfoRow({ icon: Icon, label, value, title }) {
 
 function SectionTitle({ children, count }) {
   return (
-    <div className="mb-2.5 mt-5 flex items-center justify-between">
-      <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500">
+    <div className="mb-2.5 mt-6 flex items-center justify-between border-b border-slate-100 pb-1.5 dark:border-gray-800">
+      <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
         {children}
       </h3>
       {count != null && (
@@ -122,6 +149,21 @@ function SectionTitle({ children, count }) {
           {count} {count === 1 ? "item" : "itens"}
         </span>
       )}
+    </div>
+  );
+}
+
+function ChecklistItem({ ok, label }) {
+  return (
+    <div className="flex items-center gap-2 text-[13px]">
+      {ok ? (
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+      ) : (
+        <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+      )}
+      <span className={ok ? "text-slate-600 dark:text-slate-300" : "font-medium text-amber-700 dark:text-amber-400"}>
+        {label}
+      </span>
     </div>
   );
 }
@@ -178,6 +220,15 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
     }
   };
 
+  // Ações de auditoria são apenas visuais (protótipo) — o fluxo real de aprovação
+  // vive no ERP e não é alterado por esta tela.
+  const handleAuditAction = (label) => {
+    toast({
+      title: `${label} — em definição`,
+      description: "Esta ação ainda é visual (protótipo). O fluxo de aprovação será definido em uma próxima etapa.",
+    });
+  };
+
   if (!orcamento) return null;
 
   const numero = orcamento.numero_orcamento || orcamento.erp_id;
@@ -199,27 +250,60 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
     grupos[c.kind].push({ ...p, _classified: c });
   }
 
+  // ----- Checklist / resultado da auditoria -----
+  const attachedTipos = new Set(documentos.map((d) => d.tipo));
+  const cpfOk = !!(titular?.cpf || orcamento.cpf_titular);
+  const nomeOk = !!(titular?.nome || orcamento.nome_titular);
+  const produtoOk = produtos.length > 0;
+  const telOk = !!titular?.telefone;
+  const nascOk = !!titular?.data_nascimento;
+  const docIdOk = attachedTipos.has("documento_identidade");
+  const compResOk = attachedTipos.has("comprovante_residencia");
+  const hasVeiculo = grupos.veiculo.length > 0;
+
+  const checklist = [
+    { label: "CPF informado", ok: cpfOk, level: "critico" },
+    { label: "Nome completo", ok: nomeOk, level: "critico" },
+    { label: "Produto selecionado", ok: produtoOk, level: "critico" },
+    { label: "Telefone informado", ok: telOk, level: "rec" },
+    { label: "Data de nascimento", ok: nascOk, level: "rec" },
+    { label: "Documento (CPF/RG) anexado", ok: docIdOk, level: "doc" },
+    { label: "Comprovante de residência anexado", ok: compResOk, level: "doc" },
+    ...(hasVeiculo ? [{ label: "Veículo cadastrado", ok: true, level: "rec" }] : []),
+  ];
+
+  const totalCheck = checklist.length;
+  const doneCheck = checklist.filter((c) => c.ok).length;
+  const faltaCritico = checklist.some((c) => c.level === "critico" && !c.ok);
+  const faltaDoc = checklist.some((c) => c.level === "doc" && !c.ok);
+  const result = loading || !detalhe
+    ? null
+    : faltaCritico ? "bloqueado" : faltaDoc ? "revisar" : "pronto";
+  const rmeta = result ? RESULT_META[result] : null;
+  const pct = totalCheck ? Math.round((doneCheck / totalCheck) * 100) : 0;
+
+  const missingRequired = REQUIRED_DOCS.filter((t) => !attachedTipos.has(t));
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-      <div onClick={onClose} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+      <div onClick={onClose} className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
       <div
         role="dialog"
         aria-modal="true"
         aria-label={`Orçamento Nº ${numero}`}
-        className="relative z-10 flex max-h-[92vh] w-full max-w-[680px] flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl dark:bg-gray-900"
+        className="relative z-10 flex max-h-[94vh] w-full max-w-[720px] flex-col overflow-hidden rounded-t-2xl bg-slate-50 shadow-2xl sm:rounded-2xl dark:bg-gray-950"
       >
         {/* Header */}
-        <div className="relative shrink-0 overflow-hidden bg-gradient-to-r from-violet-600 via-violet-600 to-fuchsia-600 px-6 py-5">
-          <div className="absolute -top-8 -right-8 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
-          <div className="relative flex items-start justify-between gap-4">
+        <div className="relative shrink-0 bg-violet-600 px-6 py-4 dark:bg-violet-700">
+          <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 text-white ring-1 ring-white/30">
-                <FileText className="h-5 w-5" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 text-white ring-1 ring-white/25">
+                <ClipboardCheck className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-lg font-bold leading-tight text-white">Orçamento Nº {numero}</h2>
+                <h2 className="text-lg font-bold leading-tight text-white">Auditoria · Orçamento Nº {numero}</h2>
                 <p className="text-[12.5px] text-violet-100/90">
-                  {orcamento.modulo_nome ? `${orcamento.modulo_nome} · ` : ""}Detalhes e anexos
+                  {orcamento.modulo_nome ? `${orcamento.modulo_nome} · ` : ""}Conferência de dados e documentos
                 </p>
               </div>
             </div>
@@ -235,12 +319,63 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          {/* Dados do orçamento */}
-          <div className="mb-2 flex items-center gap-2">
-            <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500">
-              Dados do orçamento
-            </h3>
+          {/* RESUMO DA AUDITORIA */}
+          <div className={`rounded-2xl border bg-white p-4 shadow-sm dark:bg-gray-900 ${rmeta ? rmeta.soft : "border-slate-200 dark:border-gray-800"}`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+                  Resumo da auditoria
+                </span>
+              </div>
+              {loading ? (
+                <span className="inline-flex items-center gap-1.5 text-[12px] text-slate-400">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Calculando…
+                </span>
+              ) : rmeta && (
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-bold ${rmeta.chip}`}>
+                  <rmeta.icon className="h-3.5 w-3.5" />
+                  {rmeta.label}
+                </span>
+              )}
+            </div>
+
+            {loading ? (
+              <div className="mt-4 flex items-center gap-2 text-[13px] text-slate-400">
+                <Loader2 className="h-4 w-4 animate-spin" /> Carregando validações…
+              </div>
+            ) : (
+              <>
+                {/* Progresso */}
+                <div className="mt-3">
+                  <div className="mb-1 flex items-center justify-between text-[12px] text-slate-500 dark:text-slate-400">
+                    <span>{doneCheck} de {totalCheck} validações concluídas</span>
+                    <span className="font-semibold">{pct}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-gray-800">
+                    <div className={`h-full rounded-full transition-all ${rmeta ? rmeta.bar : "bg-slate-300"}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+
+                {/* Checklist */}
+                <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+                  {checklist.map((c, i) => <ChecklistItem key={i} ok={c.ok} label={c.label} />)}
+                </div>
+              </>
+            )}
           </div>
+
+          {/* DADOS DO CLIENTE */}
+          <SectionTitle>Dados do cliente</SectionTitle>
+          <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
+            <InfoRow icon={User} label="Nome" value={titular?.nome || orcamento.nome_titular} />
+            <InfoRow icon={CreditCard} label="CPF" value={formatCpf(titular?.cpf || orcamento.cpf_titular)} />
+            <InfoRow icon={Calendar} label="Nascimento" value={formatDateOnly(titular?.data_nascimento)} />
+            <InfoRow icon={User} label="Sexo" value={titular ? (SEXO_LABEL[titular.sexo] || titular.sexo) : null} />
+            <InfoRow icon={Phone} label="Telefone" value={titular?.telefone} />
+          </div>
+
+          {/* DADOS DA VENDA */}
+          <SectionTitle>Dados da venda</SectionTitle>
           <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
             <InfoRow icon={Hash} label="Número" value={String(numero)} />
             <InfoRow icon={BadgeCheck} label="Status" value={situacaoBadge || orcamento.situacao} />
@@ -250,16 +385,6 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
             <InfoRow icon={Layers} label="Módulo de origem" value={orcamento.modulo_nome} />
             {produto && <InfoRow icon={Package} label="Produto(s)" value={produto} />}
             {valor && <InfoRow icon={CreditCard} label="Valor total" value={valor} />}
-          </div>
-
-          {/* Dados cadastrais (titular) */}
-          <SectionTitle>Dados cadastrais do titular</SectionTitle>
-          <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
-            <InfoRow icon={User} label="Nome" value={titular?.nome || orcamento.nome_titular} />
-            <InfoRow icon={CreditCard} label="CPF" value={formatCpf(titular?.cpf || orcamento.cpf_titular)} />
-            <InfoRow icon={Calendar} label="Nascimento" value={formatDateOnly(titular?.data_nascimento)} />
-            <InfoRow icon={User} label="Sexo" value={titular ? (SEXO_LABEL[titular.sexo] || titular.sexo) : null} />
-            <InfoRow icon={Phone} label="Telefone" value={titular?.telefone} />
           </div>
 
           {/* Produtos adquiridos */}
@@ -357,33 +482,17 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
             );
           })}
 
-          {/* Anexos */}
-          <div className="mt-5 mb-2.5 flex items-center justify-between">
-            <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500">
-              Arquivos anexados
-            </h3>
-            {!loading && documentos.length > 0 && (
-              <span className="text-[12px] font-medium text-slate-400 dark:text-slate-500">
-                {documentos.length} {documentos.length === 1 ? "arquivo" : "arquivos"}
-              </span>
-            )}
-          </div>
+          {/* DOCUMENTOS */}
+          <SectionTitle count={!loading ? documentos.length : undefined}>Documentos</SectionTitle>
 
           {loading ? (
             <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-100 py-10 text-slate-400 dark:border-gray-800">
-              <Loader2 className="h-5 w-5 animate-spin" /> Carregando detalhes…
-            </div>
-          ) : documentos.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-amber-200 bg-amber-50/50 py-10 text-center dark:border-amber-900 dark:bg-amber-950/20">
-              <FileWarning className="h-8 w-8 text-amber-500" />
-              <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Nenhum documento anexado</p>
-              <p className="text-[12.5px] text-amber-600/80 dark:text-amber-500/80">
-                Este orçamento não possui arquivos anexados.
-              </p>
+              <Loader2 className="h-5 w-5 animate-spin" /> Carregando documentos…
             </div>
           ) : (
             <div className="space-y-2.5">
               {documentos.map((doc) => {
+                const isRequired = REQUIRED_DOCS.includes(doc.tipo);
                 return (
                   <div
                     key={doc.id}
@@ -393,11 +502,21 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
                       <FileText className="h-5 w-5" />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100" title={doc.original_name}>
-                        {DOC_TIPO_LABEL[doc.tipo] || doc.tipo}
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100" title={doc.original_name}>
+                          {DOC_TIPO_LABEL[doc.tipo] || doc.tipo}
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                          <CheckCircle2 className="h-3 w-3" /> Anexado
+                        </span>
+                        {isRequired && (
+                          <span className="hidden text-[10.5px] font-medium text-slate-400 sm:inline">obrigatório</span>
+                        )}
                       </div>
-                      <div className="truncate text-[12px] text-slate-400 dark:text-slate-500" title={doc.original_name}>
-                        {doc.original_name}{doc.size_bytes != null ? ` · ${formatBytes(doc.size_bytes)}` : ""}
+                      <div className="mt-0.5 truncate text-[12px] text-slate-400 dark:text-slate-500" title={doc.original_name}>
+                        {doc.original_name}
+                        {doc.size_bytes != null ? ` · ${formatBytes(doc.size_bytes)}` : ""}
+                        {doc.created_at ? ` · ${formatDateOnly(doc.created_at)}` : ""}
                       </div>
                     </div>
                     <button
@@ -412,12 +531,85 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
                   </div>
                 );
               })}
+
+              {/* Documentos obrigatórios faltando */}
+              {missingRequired.map((tipo) => (
+                <div
+                  key={tipo}
+                  className="flex items-center gap-3 rounded-xl border border-dashed border-red-200 bg-red-50/60 p-3.5 dark:border-red-900 dark:bg-red-950/20"
+                >
+                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-600 dark:bg-red-950/50 dark:text-red-400">
+                    <XCircle className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-semibold text-red-700 dark:text-red-300">
+                        {tipo === "comprovante_residencia" ? <MapPin className="mr-1 inline h-3.5 w-3.5" /> : null}
+                        {DOC_TIPO_LABEL[tipo] || tipo}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10.5px] font-semibold text-red-700 dark:bg-red-950/50 dark:text-red-300">
+                        Faltando
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-[12px] text-red-600/80 dark:text-red-400/80">
+                      Documento obrigatório não anexado.
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {documentos.length === 0 && missingRequired.length === 0 && (
+                <div className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400 dark:border-gray-800">
+                  Nenhum documento anexado.
+                </div>
+              )}
             </div>
           )}
 
           <p className="mt-4 text-[11px] text-slate-400 dark:text-slate-500">
             Os documentos são privados e acessíveis apenas a usuários autorizados.
           </p>
+        </div>
+
+        {/* Rodapé de aprovação (sticky) */}
+        <div className="shrink-0 border-t border-slate-200 bg-white px-5 py-3 dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              {rmeta ? (
+                <span className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-bold ${rmeta.soft}`}>
+                  <rmeta.icon className="h-3.5 w-3.5" />
+                  {rmeta.label}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-[12px] text-slate-400">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Avaliando…
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleAuditAction("Solicitar ajuste")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12.5px] font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+              >
+                <PencilLine className="h-3.5 w-3.5" /> Solicitar ajuste
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAuditAction("Rejeitar orçamento")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[12.5px] font-semibold text-red-700 transition-colors hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300"
+              >
+                <Ban className="h-3.5 w-3.5" /> Rejeitar
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAuditAction("Aprovar orçamento")}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm shadow-emerald-500/30 transition-colors hover:bg-emerald-700"
+              >
+                <ThumbsUp className="h-3.5 w-3.5" /> Aprovar
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
