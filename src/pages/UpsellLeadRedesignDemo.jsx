@@ -49,6 +49,7 @@ const TIMELINE = [
     by: "TESTE3",
     when: "Hoje · 17:42",
     accent: "violet",
+    tier: 2,
   },
   {
     icon: MessageSquare,
@@ -56,7 +57,8 @@ const TIMELINE = [
     desc: "Cliente demonstrou interesse no Plano Familiar. Tem 2 dependentes e quer incluir telemedicina.",
     by: "TESTE3",
     when: "Hoje · 17:38",
-    accent: "gray",
+    accent: "slate",
+    tier: 4,
   },
   {
     icon: Phone,
@@ -65,6 +67,8 @@ const TIMELINE = [
     by: "TESTE3",
     when: "Hoje · 17:30",
     accent: "emerald",
+    tier: 1,
+    tag: "Cliente",
   },
   {
     icon: Sparkles,
@@ -73,12 +77,14 @@ const TIMELINE = [
     by: "Sistema",
     when: "16/06 · 09:12",
     accent: "gray",
+    tier: 5,
   },
 ];
 
 const ACCENTS = {
   violet: { node: "bg-violet-100 text-violet-600", bar: "bg-violet-400" },
-  emerald: { node: "bg-emerald-100 text-emerald-600", bar: "bg-emerald-400" },
+  emerald: { node: "bg-emerald-500 text-white shadow-sm shadow-emerald-300/60", bar: "bg-emerald-500" },
+  slate: { node: "bg-slate-100 text-slate-500", bar: "bg-slate-300" },
   gray: { node: "bg-gray-100 text-gray-400", bar: "bg-transparent" },
 };
 
@@ -316,9 +322,9 @@ export default function UpsellLeadRedesignDemo() {
   }, []);
   const dealValue = useCountUp(139.9, { duration: 1100, delay: 450, start: !loading });
   return (
-    <div className="relative min-h-screen bg-gradient-to-b from-[#f5f3ff] via-[#fbfaff] to-white font-['Inter'] text-gray-900 antialiased">
+    <div className="relative min-h-screen bg-gradient-to-b from-[#faf9fe] via-[#fdfcff] to-white font-['Inter'] text-gray-900 antialiased">
       <style>{MOTION_CSS}</style>
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-[440px] bg-[radial-gradient(55%_100%_at_18%_0%,rgba(167,139,250,0.18),transparent),radial-gradient(45%_85%_at_88%_0%,rgba(232,121,249,0.12),transparent)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[400px] bg-[radial-gradient(55%_100%_at_18%_0%,rgba(167,139,250,0.10),transparent),radial-gradient(45%_85%_at_88%_0%,rgba(232,121,249,0.06),transparent)]" />
 
       {/* Top bar */}
       <header className="sticky top-0 z-30 bg-white/60 backdrop-blur-xl">
@@ -394,7 +400,7 @@ export default function UpsellLeadRedesignDemo() {
                 <button className="flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 text-[13px] font-medium text-gray-600 ring-1 ring-gray-200/70 transition-all duration-200 hover:-translate-y-px hover:text-gray-900 hover:shadow-md">
                   <Mail className="h-4 w-4" /> E-mail
                 </button>
-                <button className="flex items-center gap-2 rounded-lg bg-gradient-to-b from-gray-800 to-gray-900 px-3.5 py-1.5 text-[13px] font-medium text-white shadow-sm shadow-gray-300 transition-all duration-200 hover:from-gray-700 hover:to-gray-800 active:scale-[0.98]">
+                <button className="flex items-center gap-2 rounded-lg bg-gradient-to-b from-gray-800 to-gray-900 px-3.5 py-1.5 text-[13px] font-medium text-white shadow-sm shadow-gray-300 transition-all duration-200 hover:-translate-y-px hover:from-gray-700 hover:to-gray-800 hover:shadow-md hover:shadow-gray-400/50 active:scale-[0.98]">
                   Avançar etapa <ArrowUpRight className="h-4 w-4" />
                 </button>
               </div>
@@ -459,6 +465,9 @@ export default function UpsellLeadRedesignDemo() {
                     }}
                   />
                 </div>
+                <p className="mt-2.5 flex items-center gap-1.5 text-[12px] font-medium text-emerald-600">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Forte oportunidade de venda
+                </p>
               </div>
 
               {/* Próxima ação */}
@@ -474,7 +483,7 @@ export default function UpsellLeadRedesignDemo() {
                     Enviar mensagem via WhatsApp
                   </p>
                 </div>
-                <button className="mt-3 flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-b from-violet-600 to-violet-700 px-3 py-2 text-[12px] font-semibold text-white shadow-md shadow-violet-300/50 transition-all duration-200 hover:from-violet-500 hover:to-violet-600 active:scale-[0.97]">
+                <button className="mt-3 flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-b from-violet-600 to-violet-700 px-3 py-2 text-[12px] font-semibold text-white shadow-md shadow-violet-300/50 transition-all duration-200 hover:-translate-y-px hover:from-violet-500 hover:to-violet-600 hover:shadow-lg hover:shadow-violet-400/50 active:scale-[0.97]">
                   Executar <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
@@ -615,7 +624,20 @@ export default function UpsellLeadRedesignDemo() {
                       {TIMELINE.map((item, i) => {
                         const Icon = item.icon;
                         const a = ACCENTS[item.accent];
-                        const highlighted = item.accent !== "gray";
+                        const isPrimary = item.tier === 1;
+                        const isHigh = item.tier <= 2;
+                        const isMuted = item.tier >= 5;
+                        const nodeSize = isPrimary ? "h-9 w-9" : isMuted ? "h-7 w-7" : "h-8 w-8";
+                        const iconSize = isPrimary
+                          ? "h-4 w-4"
+                          : isMuted
+                            ? "h-3.5 w-3.5"
+                            : "h-[15px] w-[15px]";
+                        const titleCls = isHigh
+                          ? "text-[14px] font-semibold text-gray-900"
+                          : item.tier === 4
+                            ? "text-[13.5px] font-medium text-gray-700"
+                            : "text-[12.5px] font-medium text-gray-400";
                         return (
                           <div
                             key={i}
@@ -623,33 +645,44 @@ export default function UpsellLeadRedesignDemo() {
                               animation: "lead-enter 380ms cubic-bezier(0.16,1,0.3,1) both",
                               animationDelay: `${400 + i * 80}ms`,
                             }}
-                            className="group/item relative -mx-3 flex gap-4 rounded-xl py-3.5 pl-3 pr-3 transition-all duration-200 hover:translate-x-0.5 hover:bg-gray-50/80 hover:shadow-sm"
+                            className={`group/item relative -mx-3 flex gap-4 rounded-xl py-3.5 pl-3 pr-3 transition-all duration-200 hover:translate-x-0.5 hover:shadow-sm ${
+                              isPrimary
+                                ? "bg-emerald-50/40 ring-1 ring-emerald-100/70 hover:bg-emerald-50/70"
+                                : "hover:bg-gray-50/80"
+                            }`}
                           >
-                            {highlighted && (
+                            {isHigh && (
                               <span
                                 className={`absolute left-0 top-1/2 h-7 w-[3px] -translate-y-1/2 rounded-full transition-all duration-200 group-hover/item:h-9 ${a.bar}`}
                               />
                             )}
                             <div
-                              className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-4 ring-white transition-transform duration-200 group-hover/item:scale-110 ${a.node}`}
+                              className={`relative z-10 flex shrink-0 items-center justify-center rounded-full ring-4 ring-white transition-transform duration-200 group-hover/item:scale-110 ${nodeSize} ${a.node}`}
                             >
-                              <Icon className="h-[15px] w-[15px]" />
+                              <Icon className={iconSize} />
                             </div>
                             <div className="flex-1 pt-1">
                               <div className="flex items-baseline justify-between gap-3">
-                                <p
-                                  className={`text-[14px] ${
-                                    highlighted ? "font-semibold text-gray-900" : "font-medium text-gray-700"
-                                  }`}
-                                >
+                                <p className={`flex items-center gap-2 ${titleCls}`}>
                                   {item.title}
+                                  {item.tag && (
+                                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                                      {item.tag}
+                                    </span>
+                                  )}
                                 </p>
                                 <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-gray-400 [font-variant-numeric:tabular-nums]">
                                   {item.when}
                                 </span>
                               </div>
                               {item.desc && (
-                                <p className="mt-1.5 text-[13px] leading-relaxed text-gray-500">{item.desc}</p>
+                                <p
+                                  className={`mt-1.5 text-[13px] leading-relaxed ${
+                                    isMuted ? "text-gray-400" : "text-gray-500"
+                                  }`}
+                                >
+                                  {item.desc}
+                                </p>
                               )}
                               <p className="mt-1.5 text-[12px] text-gray-300">{item.by}</p>
                             </div>
@@ -692,7 +725,7 @@ export default function UpsellLeadRedesignDemo() {
                   </div>
                 </Collapsible>
 
-                <Collapsible icon={Wallet} label="Valores" defaultOpen>
+                <Collapsible icon={Wallet} label="Valores">
                   <div className="divide-y divide-gray-50">
                     <MetaRow label="Mensal" value="R$ 89,90" />
                     <MetaRow label="Adesão" value="R$ 50,00" />
