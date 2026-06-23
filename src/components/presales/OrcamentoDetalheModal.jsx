@@ -222,7 +222,11 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
   const valor = formatMoney(orcamento.valor_total);
 
   const pessoas = Array.isArray(detalhe?.pessoas) ? detalhe.pessoas : [];
-  const produtos = Array.isArray(detalhe?.produtos) ? detalhe.produtos : [];
+  // Produtos "placeholder" de R$ 0,01 (vagas de dependente/pet/condutor/veículo) não são
+  // exibidos — não representam um produto adquirido de fato.
+  const produtos = (Array.isArray(detalhe?.produtos) ? detalhe.produtos : []).filter(
+    (pr) => !(pr.preco != null && Math.abs(Number(pr.preco) - 0.01) < 0.001)
+  );
   const titular = pessoas.find((p) => p.is_titular) || null;
 
   // Agrupa beneficiários (titular fora) por tipo classificado.
