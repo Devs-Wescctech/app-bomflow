@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import {
   Search, RefreshCw, Calendar, ShieldCheck, Clock, CheckCircle2,
-  Loader2, AlertTriangle, XCircle, ThumbsUp, PencilLine, Ban, Eye, Timer,
-  Inbox, AlertCircle, User as UserIcon,
+  Loader2, AlertTriangle, XCircle, ThumbsUp, PencilLine, Ban, Eye,
+  Inbox, AlertCircle, User as UserIcon, Layers, ArrowRight,
 } from "lucide-react";
 import OrcamentoDetalheModal from "@/components/presales/OrcamentoDetalheModal";
 
@@ -72,7 +72,7 @@ const PENDING_SITUACOES = new Set(['I', 'P', 'M']);
 const CRITICAL_HOURS = 24;
 const REVIEW_HOURS = 8;
 
-// Cores por módulo de origem (badge discreto na tabela).
+// Cores por módulo de origem (badge discreto no card).
 const MODULO_BADGE = {
   sales:        'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800',
   sales_pj:     'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-800',
@@ -113,6 +113,7 @@ const ISSUE_TONE = {
   ok:   'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800',
   muted:'bg-slate-50 text-slate-500 border-slate-200 dark:bg-slate-800/40 dark:text-slate-400 dark:border-slate-700',
 };
+const ISSUE_ICON = { crit: AlertCircle, warn: AlertTriangle, info: Clock, ok: CheckCircle2, muted: XCircle };
 
 function getPendingIssues(o) {
   if (o.situacao === 'A') return [{ label: 'Sem pendências', tone: 'ok' }];
@@ -124,6 +125,15 @@ function getPendingIssues(o) {
   else if (o._priority === 'revisar') issues.push({ label: `Aguardando revisão · ${humanizeMs(o._waitMs)}`, tone: 'warn' });
   else if (o._priority === 'novo') issues.push({ label: 'Aguardando análise', tone: 'info' });
   return issues.length ? issues : [{ label: 'Aguardando análise', tone: 'info' }];
+}
+
+// Ação recomendada (texto-guia) derivada da prioridade/status.
+function getRecommendedAction(o) {
+  if (o.situacao === 'A') return 'Concluído';
+  if (o.situacao === 'C' || o.situacao === 'R') return 'Encerrado';
+  if (o._priority === 'critico') return 'Auditar agora';
+  if (o._priority === 'revisar') return 'Revisar pendências';
+  return 'Iniciar auditoria';
 }
 
 function SituacaoBadge({ situacao }) {
@@ -141,26 +151,22 @@ function PriorityBadge({ priority }) {
   );
 }
 
-function StatPill({ label, value, tone = 'slate', icon: Icon, muted }) {
-  const TONES = {
-    red:     'text-red-700 dark:text-red-300',
-    amber:   'text-amber-700 dark:text-amber-300',
-    emerald: 'text-emerald-700 dark:text-emerald-300',
-    sky:     'text-sky-700 dark:text-sky-300',
-    slate:   'text-slate-700 dark:text-slate-200',
+// Botão de ação do card (prominente, com rótulo).
+function CardAction({ variant = 'ghost', icon: Icon, label, onClick, className = '' }) {
+  const VARIANTS = {
+    primary: 'bg-violet-600 text-white hover:bg-violet-700 shadow-sm shadow-violet-500/30',
+    approve: 'border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70',
+    adjust:  'border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-950/70',
+    reject:  'border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-950/70',
   };
   return (
-    <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-gray-800 dark:bg-gray-900">
-      {Icon && (
-        <span className={`shrink-0 ${muted ? 'text-slate-300 dark:text-slate-600' : TONES[tone]}`}>
-          <Icon className="w-4 h-4" />
-        </span>
-      )}
-      <div className="leading-tight">
-        <div className="text-[10.5px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500 whitespace-nowrap">{label}</div>
-        <div className={`text-[15px] font-bold ${muted ? 'text-slate-300 dark:text-slate-600' : TONES[tone]}`}>{value}</div>
-      </div>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-semibold transition-colors ${VARIANTS[variant]} ${className}`}
+    >
+      {Icon && <Icon className="h-3.5 w-3.5" />} {label}
+    </button>
   );
 }
 
@@ -295,15 +301,14 @@ export default function PreSalesOrcamentoRelatorio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enriched, search, tab, currentUser]);
 
-  // KPIs operacionais.
+  // KPIs operacionais (resumo compacto e secundário).
   const stats = useMemo(() => {
     const pendentes = enriched.filter(o => PENDING_SITUACOES.has(o.situacao));
     const aguardando = pendentes.length;
-    const precisaRevisao = pendentes.filter(o => o._priority === 'critico' || o._priority === 'revisar').length;
     const criticos = pendentes.filter(o => o._priority === 'critico').length;
     const aprovados = enriched.filter(o => o.situacao === 'A').length;
     const oldest = pendentes.reduce((acc, o) => Math.max(acc, o._waitMs ?? 0), 0);
-    return { total: enriched.length, aguardando, precisaRevisao, criticos, aprovados, oldestMs: pendentes.length ? oldest : null };
+    return { total: enriched.length, aguardando, criticos, aprovados, oldestMs: pendentes.length ? oldest : null };
   }, [enriched]);
 
   // Barra de alerta operacional (compacta) — comunica urgência imediatamente.
@@ -348,17 +353,17 @@ export default function PreSalesOrcamentoRelatorio() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-gray-950 -m-3 md:-m-6 p-3 md:p-5">
-      <div className="max-w-[1600px] mx-auto flex flex-col gap-3">
+      <div className="max-w-[1400px] mx-auto flex flex-col gap-3">
 
-        {/* Header compacto */}
+        {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600 text-white shadow-sm shadow-violet-500/30">
               <ShieldCheck className="w-5 h-5" />
             </span>
             <div>
-              <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100 leading-tight">Central de Auditoria de Orçamentos</h1>
-              <p className="text-[12.5px] text-slate-500 dark:text-slate-400">Vendas PF, PJ, Upsell e Indicações · processe a fila com prioridade</p>
+              <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100 leading-tight">Caixa de Auditoria</h1>
+              <p className="text-[12.5px] text-slate-500 dark:text-slate-400">Vendas PF, PJ, Upsell e Indicações · processe os orçamentos por prioridade</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -374,15 +379,19 @@ export default function PreSalesOrcamentoRelatorio() {
           </div>
         </div>
 
-        {/* Faixa compacta de KPIs (KPIs + carga de trabalho em uma linha) */}
-        <div className="flex flex-wrap items-stretch gap-2">
-          <StatPill label="Aguardando" value={stats.aguardando} tone="red" icon={Inbox} />
-          <StatPill label="Precisa revisão" value={stats.precisaRevisao} tone="amber" icon={AlertTriangle} />
-          <StatPill label="Críticos" value={stats.criticos} tone="red" icon={AlertCircle} />
-          <StatPill label="Pendente + antigo" value={humanizeMs(stats.oldestMs)} tone="amber" icon={Clock} />
-          <StatPill label="Aprovados (período)" value={stats.aprovados} tone="emerald" icon={CheckCircle2} />
-          <StatPill label="Aprovados hoje" value="—" icon={CheckCircle2} muted />
-          <StatPill label="Tempo médio" value="—" icon={Timer} muted />
+        {/* Resumo operacional compacto (secundário) */}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 px-1 text-[12.5px]">
+          <span className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+            <Inbox className="w-3.5 h-3.5 text-violet-500" />
+            <b className="text-slate-800 dark:text-slate-100">{stats.aguardando}</b> aguardando auditoria
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+            <span className="h-2 w-2 rounded-full bg-red-500" />
+            <b className="text-red-600 dark:text-red-400">{stats.criticos}</b> críticos
+          </span>
+          <span className="text-slate-500 dark:text-slate-400">Pendente mais antigo: <b className="text-slate-700 dark:text-slate-200">{humanizeMs(stats.oldestMs)}</b></span>
+          <span className="text-slate-500 dark:text-slate-400">Aprovados hoje: <b className="text-slate-300 dark:text-slate-600">—</b></span>
+          <span className="text-slate-500 dark:text-slate-400">Aprovados no período: <b className="text-emerald-600 dark:text-emerald-400">{stats.aprovados}</b></span>
         </div>
 
         {/* Filtros compactos (período/status/busca preservados) */}
@@ -435,166 +444,139 @@ export default function PreSalesOrcamentoRelatorio() {
           </div>
         )}
 
-        {/* Fila de auditoria (elemento dominante) */}
-        <div className="rounded-2xl bg-white dark:bg-gray-900 ring-1 ring-slate-200 dark:ring-gray-800 shadow-sm overflow-hidden flex flex-col">
-          {/* Abas de filtro rápido */}
-          <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-100 dark:border-gray-800 px-2 py-2">
-            {TABS.map(t => {
-              const active = tab === t.key;
-              const n = counts[t.key] ?? 0;
-              return (
-                <button
-                  key={t.key}
-                  type="button"
-                  onClick={() => setTab(t.key)}
-                  className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
-                    active
-                      ? 'bg-violet-600 text-white shadow-sm shadow-violet-500/30'
-                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-gray-800'
-                  }`}
-                >
-                  {t.key === 'meus' && <UserIcon className="w-3.5 h-3.5" />}
-                  {t.label}
-                  <span className={`rounded-full px-1.5 py-0.5 text-[10.5px] font-bold ${
-                    active ? 'bg-white/25 text-white' : 'bg-slate-200 text-slate-600 dark:bg-gray-700 dark:text-slate-300'
-                  }`}>
-                    {n}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+        {/* Abas de filtro rápido (estilo inbox) */}
+        <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+          {TABS.map(t => {
+            const active = tab === t.key;
+            const n = counts[t.key] ?? 0;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTab(t.key)}
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
+                  active
+                    ? 'bg-violet-600 text-white shadow-sm shadow-violet-500/30'
+                    : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100 dark:bg-gray-900 dark:text-slate-300 dark:ring-gray-800 dark:hover:bg-gray-800'
+                }`}
+              >
+                {t.key === 'meus' && <UserIcon className="w-3.5 h-3.5" />}
+                {t.label}
+                <span className={`rounded-full px-1.5 py-0.5 text-[10.5px] font-bold ${
+                  active ? 'bg-white/25 text-white' : 'bg-slate-200 text-slate-600 dark:bg-gray-700 dark:text-slate-300'
+                }`}>
+                  {n}
+                </span>
+              </button>
+            );
+          })}
+        </div>
 
-          <div className="overflow-auto max-h-[calc(100vh-280px)] min-h-[320px]">
-            <table className="w-full text-sm border-collapse">
-              <thead className="sticky top-0 z-10">
-                <tr className="bg-slate-100/95 backdrop-blur dark:bg-gray-800/95 text-left">
-                  {['Prioridade', 'Nº', 'Cliente', 'Pendências', 'Aguardando', 'Vendedor / Canal', 'Módulo', 'Status', 'Ações'].map(h => (
-                    <th key={h} className="px-3 py-2.5 text-[10.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-gray-800">
-                {loading ? (
-                  <tr><td colSpan={9} className="px-4 py-16 text-center text-slate-400">
-                    <Loader2 className="w-6 h-6 mx-auto animate-spin mb-2" /> Carregando fila de auditoria…
-                  </td></tr>
-                ) : filtered.length === 0 ? (
-                  <tr><td colSpan={9} className="px-4 py-16 text-center text-slate-400">
-                    <Inbox className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                    Nenhum orçamento encontrado para os filtros selecionados.
-                  </td></tr>
-                ) : filtered.map((o, i) => {
-                  const pm = PRIORITY_META[o._priority] || PRIORITY_META.novo;
-                  const issues = getPendingIssues(o);
-                  return (
-                    <tr
-                      key={`${o.erp_id}-${i}`}
-                      className={`group border-l-4 ${pm.accent} transition-all hover:bg-violet-50/50 hover:shadow-[inset_0_0_0_9999px_rgba(139,92,246,0.04)] dark:hover:bg-violet-900/10`}
+        {/* Caixa de auditoria (lista de cards — elemento herói) */}
+        <div className="flex flex-col gap-2 overflow-auto max-h-[calc(100vh-250px)] min-h-[320px] pr-0.5">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+              <Loader2 className="w-7 h-7 animate-spin mb-3" />
+              Carregando caixa de auditoria…
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white py-20 text-slate-400 dark:border-gray-800 dark:bg-gray-900">
+              <Inbox className="w-9 h-9 mb-3 opacity-40" />
+              Nenhum orçamento na fila para os filtros selecionados.
+            </div>
+          ) : filtered.map((o, i) => {
+            const pm = PRIORITY_META[o._priority] || PRIORITY_META.novo;
+            const issues = getPendingIssues(o);
+            const recommended = getRecommendedAction(o);
+            const pending = PENDING_SITUACOES.has(o.situacao);
+            const canal = o.canal_id ? (canaisMap[o.canal_id] || String(o.canal_id)) : null;
+            return (
+              <div
+                key={`${o.erp_id}-${i}`}
+                className={`group flex flex-col md:flex-row md:items-stretch gap-3 md:gap-4 rounded-xl border border-slate-200 dark:border-gray-800 border-l-[5px] ${pm.accent} bg-white dark:bg-gray-900 px-4 py-3 shadow-sm transition-all hover:shadow-md hover:-translate-y-px`}
+              >
+                {/* Conteúdo do item */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelected(o)}
+                      className="rounded text-[15px] font-bold text-slate-800 dark:text-slate-100 hover:text-violet-700 dark:hover:text-violet-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-1"
+                      title="Abrir auditoria"
+                      aria-label={`Abrir auditoria do orçamento ${o.numero_orcamento || o.erp_id}`}
                     >
-                      <td className="px-3 py-2 whitespace-nowrap align-middle">
-                        <PriorityBadge priority={o._priority} />
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap align-middle">
-                        <button
-                          type="button"
-                          onClick={() => setSelected(o)}
-                          className="font-semibold text-violet-700 underline-offset-2 hover:underline focus:outline-none focus-visible:underline dark:text-violet-400"
-                          title="Abrir auditoria"
-                        >
-                          {o.numero_orcamento || '-'}
-                        </button>
-                      </td>
-                      <td className="px-3 py-2 align-middle max-w-[220px]">
-                        <div className="truncate font-medium text-slate-800 dark:text-slate-100" title={o.nome_titular || ''}>
-                          {o.nome_titular || '-'}
-                        </div>
-                        <div className="font-mono text-[11px] text-slate-400 dark:text-slate-500">{formatCpf(o.cpf_titular)}</div>
-                      </td>
-                      <td className="px-3 py-2 align-middle max-w-[220px]">
-                        <div className="flex flex-wrap gap-1">
-                          {issues.map((iss, j) => (
-                            <span key={j} className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium ${ISSUE_TONE[iss.tone]}`}>
-                              {iss.label}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap align-middle" title={`Criação: ${formatDateOnly(o.data_venda)}`}>
-                        {PENDING_SITUACOES.has(o.situacao) ? (
-                          <span className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-                            <span className={`h-2 w-2 rounded-full ${pm.dot}`} />
-                            {humanizeMs(o._waitMs)}
-                          </span>
-                        ) : (
-                          <span className="text-slate-300 dark:text-slate-600">{formatDateOnly(o.data_venda)}</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 align-middle max-w-[180px]">
-                        <div className="truncate text-slate-700 dark:text-slate-200" title={o.nome_vendedor || ''}>{o.nome_vendedor || '-'}</div>
-                        <div className="truncate text-[11px] text-slate-400 dark:text-slate-500" title={o.canal_id ? canaisMap[o.canal_id] || String(o.canal_id) : ''}>
-                          {o.canal_id ? canaisMap[o.canal_id] || String(o.canal_id) : '—'}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap align-middle">
-                        <Badge variant="outline" className={`${MODULO_BADGE[o.modulo] || 'bg-gray-50 text-gray-600 border-gray-200'} text-[11px] font-medium`}>
-                          {o.modulo_nome || '-'}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap align-middle">
-                        <SituacaoBadge situacao={o.situacao} />
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap align-middle">
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setSelected(o)}
-                            className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[11.5px] font-semibold text-violet-700 transition-colors hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-300"
-                          >
-                            <Eye className="h-3.5 w-3.5" /> Auditar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleQuickAction('Aprovar', o)}
-                            title="Aprovar"
-                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11.5px] font-semibold text-emerald-700 opacity-70 transition-all hover:bg-emerald-50 group-hover:opacity-100 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
-                          >
-                            <ThumbsUp className="h-3.5 w-3.5" /> <span className="hidden lg:inline">Aprovar</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleQuickAction('Solicitar ajuste', o)}
-                            title="Solicitar ajuste"
-                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11.5px] font-semibold text-amber-700 opacity-70 transition-all hover:bg-amber-50 group-hover:opacity-100 dark:text-amber-300 dark:hover:bg-amber-950/30"
-                          >
-                            <PencilLine className="h-3.5 w-3.5" /> <span className="hidden lg:inline">Ajuste</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleQuickAction('Rejeitar', o)}
-                            title="Rejeitar"
-                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11.5px] font-semibold text-red-700 opacity-70 transition-all hover:bg-red-50 group-hover:opacity-100 dark:text-red-300 dark:hover:bg-red-950/30"
-                          >
-                            <Ban className="h-3.5 w-3.5" /> <span className="hidden lg:inline">Rejeitar</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      #{o.numero_orcamento || o.erp_id}
+                    </button>
+                    <PriorityBadge priority={o._priority} />
+                    <SituacaoBadge situacao={o.situacao} />
+                    {pending && (
+                      <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-slate-500 dark:text-slate-400">
+                        <span className={`h-1.5 w-1.5 rounded-full ${pm.dot}`} />
+                        Aguardando {humanizeMs(o._waitMs)}
+                      </span>
+                    )}
+                  </div>
 
-          {/* Rodapé da fila */}
-          <div className="flex items-center justify-between border-t border-slate-100 dark:border-gray-800 px-4 py-2.5 text-[12px] text-slate-500 dark:text-slate-400">
+                  <div className="mt-1.5 flex items-baseline gap-2 flex-wrap">
+                    <span className="text-[15px] font-semibold text-slate-900 dark:text-white truncate max-w-full" title={o.nome_titular || ''}>
+                      {o.nome_titular || '-'}
+                    </span>
+                    <span className="font-mono text-[11.5px] text-slate-400 dark:text-slate-500">{formatCpf(o.cpf_titular)}</span>
+                  </div>
+
+                  {/* Pendências (evidentes) */}
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {issues.map((iss, j) => {
+                      const Icon = ISSUE_ICON[iss.tone] || AlertCircle;
+                      return (
+                        <span key={j} className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11.5px] font-medium ${ISSUE_TONE[iss.tone]}`}>
+                          <Icon className="w-3 h-3" /> {iss.label}
+                        </span>
+                      );
+                    })}
+                  </div>
+
+                  {/* Meta: vendedor · canal · módulo */}
+                  <div className="mt-2.5 flex items-center flex-wrap gap-x-4 gap-y-1 text-[12px] text-slate-500 dark:text-slate-400">
+                    <span className="inline-flex items-center gap-1.5" title="Vendedor responsável">
+                      <UserIcon className="w-3.5 h-3.5" /> {o.nome_vendedor || '-'}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5" title="Canal">
+                      <Layers className="w-3.5 h-3.5" /> {canal || '—'}
+                    </span>
+                    <Badge variant="outline" className={`${MODULO_BADGE[o.modulo] || 'bg-gray-50 text-gray-600 border-gray-200'} text-[11px] font-medium`}>
+                      {o.modulo_nome || '-'}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Ações operacionais (prominentes, com rótulo) */}
+                <div className="flex flex-col gap-2 shrink-0 md:w-[184px] md:border-l md:border-slate-100 md:dark:border-gray-800 md:pl-4 md:justify-center">
+                  <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    <ArrowRight className="w-3 h-3" /> {recommended}
+                  </span>
+                  <div className="grid grid-cols-2 md:grid-cols-1 gap-2">
+                    <CardAction variant="primary" icon={Eye} label="Auditar" onClick={() => setSelected(o)} className="col-span-2 md:col-span-1" />
+                    <CardAction variant="approve" icon={ThumbsUp} label="Aprovar" onClick={() => handleQuickAction('Aprovar', o)} />
+                    <CardAction variant="adjust" icon={PencilLine} label="Ajuste" onClick={() => handleQuickAction('Solicitar ajuste', o)} />
+                    <CardAction variant="reject" icon={Ban} label="Rejeitar" onClick={() => handleQuickAction('Rejeitar', o)} className="col-span-2 md:col-span-1" />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Rodapé da fila */}
+        {!loading && filtered.length > 0 && (
+          <div className="flex items-center justify-between px-1 text-[12px] text-slate-500 dark:text-slate-400">
             <span className="inline-flex items-center gap-1.5">
               <Inbox className="w-3.5 h-3.5 text-violet-500" />
               {filtered.length} {filtered.length === 1 ? 'orçamento na fila' : 'orçamentos na fila'}
             </span>
             <span>{stats.total} no período</span>
           </div>
-        </div>
+        )}
       </div>
 
       {selected && (
