@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   Phone,
-  Mail,
   Calendar,
   MapPin,
   FileText,
@@ -412,16 +411,10 @@ export default function UpsellLeadRedesignDemo() {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <button className="flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 text-[13px] font-medium text-gray-600 ring-1 ring-gray-200/70 transition-all duration-200 hover:-translate-y-px hover:text-gray-900 hover:shadow-md">
-                  <Phone className="h-4 w-4" /> WhatsApp
-                </button>
-                <button className="flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 text-[13px] font-medium text-gray-600 ring-1 ring-gray-200/70 transition-all duration-200 hover:-translate-y-px hover:text-gray-900 hover:shadow-md">
-                  <Mail className="h-4 w-4" /> E-mail
-                </button>
                 <button className="flex items-center gap-2 rounded-lg bg-gradient-to-b from-gray-800 to-gray-900 px-3.5 py-1.5 text-[13px] font-medium text-white shadow-sm shadow-gray-300 transition-all duration-200 hover:-translate-y-px hover:from-gray-700 hover:to-gray-800 hover:shadow-md hover:shadow-gray-400/50 active:scale-[0.98]">
                   Avançar etapa <ArrowUpRight className="h-4 w-4" />
                 </button>
-                <button className="flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 text-[13px] font-medium text-gray-600 ring-1 ring-gray-200/70 transition-all duration-200 hover:-translate-y-px hover:text-gray-900 hover:shadow-md">
+                <button className="flex items-center gap-2 rounded-lg bg-gradient-to-b from-gray-800 to-gray-900 px-3.5 py-1.5 text-[13px] font-medium text-white shadow-sm shadow-gray-300 transition-all duration-200 hover:-translate-y-px hover:from-gray-700 hover:to-gray-800 hover:shadow-md hover:shadow-gray-400/50 active:scale-[0.98]">
                   <ArrowLeftRight className="h-4 w-4" /> Redistribuir
                 </button>
                 <button
