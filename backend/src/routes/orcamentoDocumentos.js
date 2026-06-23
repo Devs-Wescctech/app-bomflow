@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import { authMiddleware } from '../middleware/auth.js';
 import { query, pool } from '../config/database.js';
-import { getProdutosByPedidoIds } from '../services/erpDbService.js';
+import { getProdutosByPedidoIds, getOrcamentoDetalhe } from '../services/erpDbService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -223,10 +223,20 @@ router.get('/by-pedido/:erpPedidoId', authMiddleware, async (req, res) => {
       console.error('[OrcamentoDocs] lookup de produto (by-pedido) falhou (não crítico):', e.message);
     }
 
+    // Detalhe completo do orçamento (produtos + pessoas) do ERP, somente leitura.
+    // Best-effort: o modal continua funcionando (dados básicos + anexos) mesmo se o ERP falhar.
+    let detalhe = null;
+    try {
+      detalhe = await getOrcamentoDetalhe(pedidoId);
+    } catch (e) {
+      console.error('[OrcamentoDocs] lookup de detalhe (by-pedido) falhou (não crítico):', e.message);
+    }
+
     res.json({
       erp_pedido_id: pedidoId,
       adesao_zero: orc ? orc.adesao_zero : null,
       produto,
+      detalhe,
       documentos,
     });
   } catch (e) {

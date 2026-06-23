@@ -176,6 +176,97 @@ export async function getProdutosByPedidoIds(pedidoIds) {
 }
 
 /**
+ * Lê (somente leitura) o detalhe completo de UM orçamento (pedido) do ERP para exibição
+ * no modal do Relatório Consolidado de Orçamentos:
+ *   - produtos: cada item do pedido (descrição, quantidade, preço, valor total)
+ *   - pessoas:  titular + beneficiários (dependentes/pets/veículos/condutores)
+ *
+ * Importante sobre pet/veículo: o ERP NÃO guarda campos estruturados para pet/veículo neste
+ * fluxo — esses dados são gravados como o NOME da pessoa beneficiária no formato montado
+ * (pet: NOME/TIPO/RAÇA/COR/PORTE; veículo: MODELO/COR/PLACA/ANO). Devolvemos o nome cru e o
+ * frontend faz o parsing/classificação por produto vinculado + formato do nome.
+ *
+ * O titular/contratante é a PRIMEIRA pessoa (menor id) com pessoa_id NOT NULL — dependentes
+ * resolvidos para uma Pessoa global do ERP também têm pessoa_id, por isso não basta "tem pessoa_id".
+ *
+ * @param {number} pedidoId - id interno do pedido (erp_pedido_id)
+ * @returns {Promise<{ produtos: Array, pessoas: Array }|null>}
+ */
+export async function getOrcamentoDetalhe(pedidoId) {
+  const id = Number(pedidoId);
+  if (!Number.isFinite(id)) return null;
+  const db = getPool();
+
+  const itensRes = await db.query(
+    `SELECT ip.sequencia,
+            COALESCE(NULLIF(TRIM(p.descricao), ''), NULLIF(TRIM(ip.descricao), '')) AS descricao,
+            ip.quantidade::numeric            AS quantidade,
+            ip.preco::double precision        AS preco,
+            ip.valor_total_item::numeric      AS valor_total
+       FROM itens_pedidos ip
+       LEFT JOIN produtos p ON p.id = ip.produto_id
+      WHERE ip.pedido_id = $1
+      ORDER BY ip.sequencia`,
+    [id]
+  );
+
+  const pessoasRes = await db.query(
+    `SELECT pp.id            AS pessoa_row_id,
+            pp.nome_pessoa,
+            pp.cpf,
+            pp.parentesco,
+            pp.data_nascimento,
+            pp.sexo,
+            pp.telefone,
+            pp.pessoa_id,
+            COALESCE(NULLIF(TRIM(pr.descricao), ''), NULLIF(TRIM(ipx.descricao), '')) AS produto_descricao
+       FROM pedidos_pessoas pp
+       LEFT JOIN pedidos_pessoas_produtos ppp ON ppp.titular_id = pp.id AND ppp.pedido_id = pp.pedido_id
+       LEFT JOIN itens_pedidos ipx ON ipx.id = ppp.item_pedido_id
+       LEFT JOIN produtos pr ON pr.id = ipx.produto_id
+      WHERE pp.pedido_id = $1
+      ORDER BY pp.id`,
+    [id]
+  );
+
+  const produtos = itensRes.rows.map((r) => ({
+    descricao: r.descricao || null,
+    quantidade: r.quantidade != null ? Number(r.quantidade) : null,
+    preco: r.preco != null ? Number(r.preco) : null,
+    valor_total: r.valor_total != null ? Number(r.valor_total) : null,
+  }));
+
+  // 1ª pessoa (menor id) com pessoa_id NOT NULL = titular/contratante.
+  let titularRowId = null;
+  for (const row of pessoasRes.rows) {
+    if (row.pessoa_id != null) { titularRowId = Number(row.pessoa_row_id); break; }
+  }
+
+  // Agrupa por pessoa: uma mesma pessoa pode estar vinculada a vários itens.
+  const pessoaMap = new Map();
+  for (const row of pessoasRes.rows) {
+    const key = Number(row.pessoa_row_id);
+    if (!pessoaMap.has(key)) {
+      pessoaMap.set(key, {
+        nome: row.nome_pessoa || null,
+        cpf: row.cpf || null,
+        parentesco: row.parentesco || null,
+        data_nascimento: row.data_nascimento || null,
+        sexo: row.sexo || null,
+        telefone: row.telefone || null,
+        is_titular: key === titularRowId,
+        produtos: [],
+      });
+    }
+    const desc = (row.produto_descricao || '').trim();
+    const entry = pessoaMap.get(key);
+    if (desc && !entry.produtos.includes(desc)) entry.produtos.push(desc);
+  }
+
+  return { produtos, pessoas: Array.from(pessoaMap.values()) };
+}
+
+/**
  * Registra um agente no canal de vendas do ERP inserindo um registro
  * em pessoas_contratos. Se o par (pessoa_id, contrato_id) já existir,
  * retorna o id existente sem criar duplicata.
