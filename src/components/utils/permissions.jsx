@@ -349,7 +349,12 @@ export function filterMenuItems(agent, menuItems, user = null) {
   const isSupervisor = isSupervisorType(agentType);
   const isAdmin = agentType === 'admin' || user?.role === 'admin';
   const isSalesAgentOnly = agentType === 'sales';
-  
+
+  // Elegibilidade para relatórios de auditoria (flag `auditReport`):
+  // admin, tipo "auditoria" e supervisores do time "Auditoria".
+  const teamName = (agent?.teamName || agent?.team_name || '').trim().toLowerCase();
+  const isAuditEligible = isAdmin || agentType === 'auditoria' || (isSupervisor && teamName === 'auditoria');
+
   // Get allowed submenus from agent type config (loaded from database)
   const allowedSubmenus = agent.allowedSubmenus || [];
   const hasSubmenuRestrictions = allowedSubmenus.length > 0;
@@ -364,7 +369,13 @@ export function filterMenuItems(agent, menuItems, user = null) {
       
       // Check if agent can access this module (use moduleId alias if present)
       const effectiveModuleId = item.moduleId || item.id;
-      if (!canAccessModule(agent, effectiveModuleId)) return false;
+      if (!canAccessModule(agent, effectiveModuleId)) {
+        // Exceção: se o módulo contém um relatório de auditoria e o usuário é
+        // elegível, deixa o módulo passar mesmo sem acesso operacional a ele.
+        const hasAuditItem = (item.items || []).some(si => si.auditReport);
+        if (hasAuditItem && isAuditEligible) return true;
+        return false;
+      }
       
       if (item.requiredSubmenu) {
         if (hasSubmenuRestrictions && !allowedSubmenus.includes(item.requiredSubmenu)) {
@@ -380,9 +391,19 @@ export function filterMenuItems(agent, menuItems, user = null) {
       
       // If no sub-items, return as-is
       if (!item.items || item.items.length === 0) return item;
-      
+
+      // Se o usuário só enxerga este módulo por causa da exceção de auditoria
+      // (sem acesso operacional), mostramos apenas os itens auditReport.
+      const moduleAccessible = canAccessModule(agent, item.moduleId || item.id);
+
       // Filter sub-items based on permissions (create new array to avoid mutation)
       const filteredItems = item.items.filter(subItem => {
+        // Relatório de auditoria: visível somente a usuários elegíveis
+        // (admin / tipo auditoria / supervisor do time Auditoria).
+        if (subItem.auditReport) return isAuditEligible;
+        // Módulo exibido só pela exceção de auditoria → esconde os demais itens.
+        if (!moduleAccessible) return false;
+
         // Extract page name from URL (remove leading slash)
         const urlPageName = subItem.url ? subItem.url.replace(/^\//, '').split('?')[0] : null;
         const submenuKey = urlPageName || subItem.title;

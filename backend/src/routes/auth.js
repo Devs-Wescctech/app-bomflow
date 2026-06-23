@@ -68,6 +68,7 @@ function buildAgentResponse(agent, agentTypeConfig = { modules: [], allowedSubme
       name: agent.name,
       agentType: agent.agent_type,
       teamId: agent.team_id,
+      teamName: agent.team_name ?? null,
       online: agent.online,
       active: agent.active,
       level: agent.level,
@@ -109,7 +110,7 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Email and password are required' });
     }
     
-    const result = await query('SELECT * FROM agents WHERE email = $1', [email]);
+    const result = await query('SELECT a.*, t.name AS team_name FROM agents a LEFT JOIN teams t ON t.id = a.team_id WHERE a.email = $1', [email]);
     
     if (result.rows.length === 0) {
       return res.status(401).json({ message: 'Invalid credentials' });
@@ -158,7 +159,7 @@ router.post('/refresh', async (req, res) => {
       return res.status(401).json({ message: 'Invalid refresh token' });
     }
     
-    const result = await query('SELECT * FROM agents WHERE id = $1', [decoded.id]);
+    const result = await query('SELECT a.*, t.name AS team_name FROM agents a LEFT JOIN teams t ON t.id = a.team_id WHERE a.id = $1', [decoded.id]);
     
     if (result.rows.length === 0) {
       return res.status(401).json({ message: 'User not found' });
@@ -180,7 +181,7 @@ router.post('/refresh', async (req, res) => {
 
 router.get('/me', authMiddleware, async (req, res) => {
   try {
-    const result = await query('SELECT * FROM agents WHERE id = $1', [req.user.id]);
+    const result = await query('SELECT a.*, t.name AS team_name FROM agents a LEFT JOIN teams t ON t.id = a.team_id WHERE a.id = $1', [req.user.id]);
     
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'User not found' });

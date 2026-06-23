@@ -1190,4 +1190,84 @@ router.get('/relatorio-orcamentos', authMiddleware, async (req, res) => {
   }
 });
 
+// ───────────────────────────────────────────────────────────────────────────
+// Relatório CONSOLIDADO de orçamentos (todos os módulos de vendas em uma lista).
+// Restrito a: admin, tipo "auditoria" e supervisores do time "Auditoria".
+// Usuários elegíveis enxergam TODOS os orçamentos (escopo de auditoria).
+// Endpoint aditivo — não altera o /relatorio-orcamentos por módulo.
+// ───────────────────────────────────────────────────────────────────────────
+const MODULO_LABELS = {
+  sales: 'Vendas PF',
+  sales_pj: 'Vendas PJ',
+  sales_upsell: 'Upsell',
+  referral: 'Indicações',
+};
+
+router.get('/relatorio-orcamentos/consolidado', authMiddleware, async (req, res) => {
+  try {
+    const { start_date, end_date, situacao, canal_id, limit = 1000 } = req.query;
+
+    const agentRes = await query(
+      `SELECT a.id, a.agent_type, t.name AS team_name
+         FROM agents a
+         LEFT JOIN teams t ON t.id = a.team_id
+        WHERE a.id = $1`,
+      [req.user.id]
+    );
+    const agent = agentRes.rows[0];
+    if (!agent) return res.status(403).json({ error: 'Agente não encontrado.' });
+
+    const agentType = (agent.agent_type || '').toLowerCase();
+    const isAdmin = agentType === 'admin' || (req.user.role || '').toLowerCase() === 'admin';
+    const isAuditoria = agentType === 'auditoria';
+    const isSupervisor = agentType.includes('supervisor');
+    const teamName = (agent.team_name || '').trim().toLowerCase();
+    const isAuditTeamSupervisor = isSupervisor && teamName === 'auditoria';
+
+    const eligible = isAdmin || isAuditoria || isAuditTeamSupervisor;
+    if (!eligible) {
+      return res.status(403).json({ error: 'Acesso restrito ao relatório consolidado de orçamentos.' });
+    }
+
+    // Rastreio CRM: todos os pedidos dos 4 módulos de vendas.
+    const crmRes = await query(
+      `SELECT erp_pedido_id, modulo, agent_name FROM bomflow_orcamentos WHERE modulo = ANY($1)`,
+      [VALID_MODULOS]
+    );
+    if (crmRes.rows.length === 0) return res.json({ items: [] });
+
+    const pedidoIds = crmRes.rows.map(r => Number(r.erp_pedido_id));
+    const metaById = new Map(
+      crmRes.rows.map(r => [Number(r.erp_pedido_id), { modulo: r.modulo, agent_name: r.agent_name }])
+    );
+
+    const rows = await getRelatorioOrcamentos({
+      pedidoIds,
+      startDate: start_date || null,
+      endDate: end_date || null,
+      situacao: situacao && situacao !== 'todos' ? situacao : null,
+      canalId: canal_id && canal_id !== 'todos' ? canal_id : null,
+      limit: Math.min(Number(limit) || 1000, 1000),
+      offset: 0,
+    });
+
+    // Sobrescreve o vendedor com o agente real do Bom Flow e etiqueta o módulo de origem.
+    const items = rows.map(row => {
+      const meta = metaById.get(Number(row.erp_id)) || {};
+      const realName = meta.agent_name;
+      return {
+        ...row,
+        modulo: meta.modulo || null,
+        modulo_nome: MODULO_LABELS[meta.modulo] || meta.modulo || '-',
+        ...(realName ? { nome_vendedor: realName, login_vendedor: realName } : {}),
+      };
+    });
+
+    return res.json({ items });
+  } catch (err) {
+    console.error('[ERP Proxy] GET /relatorio-orcamentos/consolidado error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
