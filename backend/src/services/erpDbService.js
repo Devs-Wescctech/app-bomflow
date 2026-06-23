@@ -137,6 +137,45 @@ export async function getLoginByUsuarioId(usuarioId) {
 }
 
 /**
+ * Resolve o nome do(s) produto(s) de cada pedido (orçamento) do ERP em uma única
+ * query batched. Usado apenas para exibição no card "Documentos & Adesão Zero".
+ * Quando um pedido tem mais de um produto, os nomes são unidos por " + ".
+ * Prioriza produtos.descricao (cadastro) e cai para itens_pedidos.descricao.
+ *
+ * @param {number[]} pedidoIds - ids internos dos pedidos (erp_pedido_id)
+ * @returns {Promise<Object<number,string>>} mapa { [pedido_id]: "Produto A + Produto B" }
+ */
+export async function getProdutosByPedidoIds(pedidoIds) {
+  const ids = (Array.isArray(pedidoIds) ? pedidoIds : [])
+    .map((n) => Number(n))
+    .filter((n) => Number.isFinite(n));
+  if (ids.length === 0) return {};
+  const db = getPool();
+  const res = await db.query(
+    `SELECT ip.pedido_id,
+            COALESCE(NULLIF(TRIM(p.descricao), ''), NULLIF(TRIM(ip.descricao), '')) AS descricao
+       FROM itens_pedidos ip
+       LEFT JOIN produtos p ON p.id = ip.produto_id
+      WHERE ip.pedido_id = ANY($1::bigint[])
+      ORDER BY ip.pedido_id, ip.sequencia`,
+    [ids]
+  );
+  const byPedido = {};
+  for (const row of res.rows) {
+    const desc = (row.descricao || '').trim();
+    if (!desc) continue;
+    const key = Number(row.pedido_id);
+    (byPedido[key] ||= []);
+    if (!byPedido[key].includes(desc)) byPedido[key].push(desc);
+  }
+  const out = {};
+  for (const [key, arr] of Object.entries(byPedido)) {
+    out[Number(key)] = arr.join(' + ');
+  }
+  return out;
+}
+
+/**
  * Registra um agente no canal de vendas do ERP inserindo um registro
  * em pessoas_contratos. Se o par (pessoa_id, contrato_id) já existir,
  * retorna o id existente sem criar duplicata.

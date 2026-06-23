@@ -9,6 +9,10 @@ import {
   RefreshCw,
   CheckCircle2,
   ShieldCheck,
+  ChevronRight,
+  Calendar,
+  Package,
+  X,
 } from "lucide-react";
 
 const DOC_TIPOS = [
@@ -32,6 +36,378 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const docFor = (orc, tipo) => (orc.documentos || []).find((d) => d.tipo === tipo) || null;
+const loadedCount = (orc) => DOC_TIPOS.filter(({ tipo }) => docFor(orc, tipo)).length;
+
+const MOTION_CSS = `
+@keyframes od-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes od-backdrop {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes od-modal {
+  from { opacity: 0; transform: translateY(18px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes od-bar {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [style*="od-enter"], [style*="od-modal"], [style*="od-backdrop"], [style*="od-bar"] {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+`;
+
+/* ---------------------------- list pieces ---------------------------- */
+
+function DocCounter({ loaded, total }) {
+  const complete = loaded === total;
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold ${
+        complete
+          ? "bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:ring-emerald-900"
+          : "bg-amber-50 text-amber-600 ring-1 ring-amber-100 dark:bg-amber-950/40 dark:text-amber-400 dark:ring-amber-900"
+      }`}
+    >
+      {complete ? <CheckCircle2 className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
+      {loaded}/{total}
+    </span>
+  );
+}
+
+function AdesaoChip({ value }) {
+  const map = {
+    true: {
+      label: "Adesão Zero",
+      cls: "bg-violet-50 text-violet-600 ring-violet-100 dark:bg-violet-950/40 dark:text-violet-400 dark:ring-violet-900",
+    },
+    false: {
+      label: "Sem adesão",
+      cls: "bg-gray-100 text-gray-500 ring-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:ring-gray-700",
+    },
+  };
+  const cfg = map[String(value)];
+  if (!cfg) return null;
+  return (
+    <span
+      className={`hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium ring-1 sm:inline-flex ${cfg.cls}`}
+    >
+      <ShieldCheck className="h-3.5 w-3.5" />
+      {cfg.label}
+    </span>
+  );
+}
+
+function OrcamentoRow({ orc, index, onOpen }) {
+  const loaded = loadedCount(orc);
+  const numero = orc.erp_numero || orc.erp_pedido_id;
+  const dataCriacao = orc.created_at
+    ? new Date(orc.created_at).toLocaleDateString("pt-BR")
+    : null;
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(orc)}
+      style={{ animation: "od-enter 450ms cubic-bezier(0.16,1,0.3,1) both", animationDelay: `${80 + index * 60}ms` }}
+      className="group flex w-full items-center gap-4 rounded-xl border border-gray-100 bg-white px-4 py-3.5 text-left transition-all duration-200 hover:-translate-y-px hover:border-violet-200/70 hover:shadow-[0_10px_30px_-18px_rgba(76,29,149,0.35)] dark:border-gray-700 dark:bg-gray-900 dark:hover:border-violet-700/60"
+    >
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-50 to-fuchsia-50 text-violet-600 ring-1 ring-violet-100 dark:from-violet-950/40 dark:to-fuchsia-950/30 dark:text-violet-400 dark:ring-violet-900">
+        <FileText className="h-5 w-5" />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-gray-900 transition-colors duration-200 group-hover:text-violet-700 dark:text-gray-100 dark:group-hover:text-violet-300">
+            Nº {numero}
+          </span>
+          {dataCriacao && (
+            <span className="hidden items-center gap-1 text-[12.5px] text-gray-400 sm:inline-flex dark:text-gray-500">
+              <Calendar className="h-3.5 w-3.5" />
+              {dataCriacao}
+            </span>
+          )}
+        </div>
+        {orc.produto && (
+          <div className="mt-0.5 flex items-center gap-1.5 truncate text-[13px] text-gray-500 dark:text-gray-400">
+            <Package className="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />
+            <span className="truncate">{orc.produto}</span>
+          </div>
+        )}
+      </div>
+
+      <AdesaoChip value={orc.adesao_zero} />
+      <DocCounter loaded={loaded} total={DOC_TIPOS.length} />
+
+      <ChevronRight className="h-5 w-5 shrink-0 text-gray-300 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-violet-400 dark:text-gray-600" />
+    </button>
+  );
+}
+
+/* ---------------------------- modal pieces ---------------------------- */
+
+function SegToggle({ value, disabled, onChange }) {
+  const options = [
+    { label: "Sim", v: true },
+    { label: "Não", v: false },
+  ];
+  return (
+    <div className="flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800">
+      {options.map((opt) => {
+        const active = value === opt.v;
+        return (
+          <button
+            key={opt.label}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(opt.v)}
+            className={`rounded-md px-5 py-1.5 text-[13px] font-medium transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 ${
+              active
+                ? "bg-white text-violet-700 shadow-sm dark:bg-gray-900 dark:text-violet-300"
+                : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            }`}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function DocSlot({ label, doc, canManage, uploading, deleting, onView, onUpload, onDelete }) {
+  if (doc) {
+    return (
+      <div className="rounded-xl border border-gray-100 bg-white p-4 ring-1 ring-transparent transition-all duration-200 hover:ring-emerald-100 dark:border-gray-700 dark:bg-gray-900 dark:hover:ring-emerald-900">
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+          <span className="text-[13px] font-semibold text-gray-800 dark:text-gray-200">{label}</span>
+        </div>
+        <p className="mt-1.5 truncate text-[12px] text-gray-400 dark:text-gray-500" title={doc.original_name}>
+          {doc.original_name} · {formatBytes(doc.size_bytes)}
+        </p>
+        <div className="mt-3 flex items-center justify-between border-t border-gray-50 pt-2.5 dark:border-gray-800">
+          <button
+            type="button"
+            onClick={onView}
+            className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-violet-600 transition-colors duration-200 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-300"
+          >
+            <Eye className="h-3.5 w-3.5" /> Visualizar
+          </button>
+          {canManage && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                title="Reenviar"
+                aria-label="Reenviar documento"
+                disabled={uploading}
+                onClick={onUpload}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors duration-200 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-60 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+              >
+                {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              </button>
+              <button
+                type="button"
+                title="Excluir"
+                aria-label="Excluir documento"
+                disabled={deleting}
+                onClick={onDelete}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors duration-200 hover:bg-red-50 hover:text-red-500 disabled:opacity-60 dark:hover:bg-red-950/40"
+              >
+                {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-xl border border-gray-100 bg-gray-50/40 p-4 dark:border-gray-700 dark:bg-gray-800/40">
+      <div className="flex items-center gap-2">
+        <FileText className="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
+        <span className="text-[13px] font-semibold text-gray-500 dark:text-gray-400">{label}</span>
+      </div>
+      {canManage ? (
+        <button
+          type="button"
+          disabled={uploading}
+          onClick={onUpload}
+          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-violet-200 py-2.5 text-[12.5px] font-medium text-violet-600 transition-all duration-200 hover:border-violet-300 hover:bg-violet-50 disabled:opacity-60 dark:border-violet-800 dark:text-violet-400 dark:hover:bg-violet-950/30"
+        >
+          {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+          Enviar arquivo
+        </button>
+      ) : (
+        <p className="mt-3 text-[12px] text-gray-400 dark:text-gray-500">Nenhum arquivo enviado</p>
+      )}
+    </div>
+  );
+}
+
+function OrcamentoModal({ orc, canManage, busyKey, fileInputs, onClose, onView, onDelete, onAdesao }) {
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const loaded = loadedCount(orc);
+  const total = DOC_TIPOS.length;
+  const pct = Math.round((loaded / total) * 100);
+  const complete = loaded === total;
+  const numero = orc.erp_numero || orc.erp_pedido_id;
+  const dataCriacao = orc.created_at
+    ? new Date(orc.created_at).toLocaleDateString("pt-BR")
+    : null;
+  const azBusy = busyKey === `az:${orc.erp_pedido_id}`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+      <div
+        onClick={onClose}
+        style={{ animation: "od-backdrop 220ms ease-out both" }}
+        className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Orçamento Nº ${numero}`}
+        style={{ animation: "od-modal 320ms cubic-bezier(0.16,1,0.3,1) both" }}
+        className="relative z-10 flex max-h-[92vh] w-full max-w-[640px] flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl dark:bg-gray-900"
+      >
+        {/* header */}
+        <div className="relative shrink-0 overflow-hidden border-b border-gray-100 px-6 py-5 dark:border-gray-700">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_120%_at_0%_0%,rgba(167,139,250,0.10),transparent)]" />
+          <div className="relative flex items-start justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-100 text-violet-600 dark:bg-violet-950/50 dark:text-violet-400">
+                <FileText className="h-[18px] w-[18px]" />
+              </div>
+              <div>
+                <h2 className="text-[17px] font-bold leading-tight text-gray-900 dark:text-gray-100">
+                  Orçamento Nº {numero}
+                </h2>
+                <p className="text-[12.5px] text-gray-400 dark:text-gray-500">
+                  {dataCriacao ? `Criado em ${dataCriacao}` : "Orçamento"}
+                  {orc.produto ? ` · ${orc.produto}` : ""}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              aria-label="Fechar"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors duration-200 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+            >
+              <X className="h-[18px] w-[18px]" />
+            </button>
+          </div>
+
+          {/* progresso documentos */}
+          <div className="relative mt-4">
+            <div className="flex items-center justify-between text-[12px]">
+              <span className="font-medium text-gray-500 dark:text-gray-400">
+                {loaded} de {total} documentos
+              </span>
+              <span className={`font-semibold ${complete ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
+                {complete ? "Completo" : `${pct}%`}
+              </span>
+            </div>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+              <div
+                style={{ width: `${pct}%`, animation: "od-bar 700ms ease-out both", transformOrigin: "left" }}
+                className={`h-full rounded-full ${complete ? "bg-emerald-500" : "bg-gradient-to-r from-violet-500 to-fuchsia-500"}`}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {/* Adesão Zero */}
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-violet-100 bg-violet-50/50 px-4 py-3 dark:border-violet-900 dark:bg-violet-950/20">
+            <div className="flex items-center gap-2.5">
+              <ShieldCheck className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+              <p className="text-[13.5px] font-semibold text-gray-900 dark:text-gray-100">
+                Adesão Zero <span className="text-red-500">*</span>
+              </p>
+            </div>
+            <SegToggle
+              value={orc.adesao_zero}
+              disabled={!canManage || azBusy}
+              onChange={(v) => onAdesao(orc, v)}
+            />
+          </div>
+
+          {/* documentos */}
+          <div className="mt-5">
+            <div className="mb-2.5 flex items-center justify-between">
+              <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-400 dark:text-gray-500">
+                Documentos
+              </h3>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {DOC_TIPOS.map(({ tipo, label }) => {
+                const doc = docFor(orc, tipo);
+                const inputKey = `${orc.erp_pedido_id}:${tipo}`;
+                return (
+                  <DocSlot
+                    key={tipo}
+                    label={label}
+                    doc={doc}
+                    canManage={canManage}
+                    uploading={busyKey === inputKey}
+                    deleting={doc && busyKey === `del:${doc.id}`}
+                    onView={() => onView(doc)}
+                    onUpload={() => fileInputs.current[inputKey]?.click()}
+                    onDelete={() => onDelete(doc)}
+                  />
+                );
+              })}
+            </div>
+          </div>
+
+          <p className="mt-4 text-[11px] text-gray-400 dark:text-gray-500">
+            Formatos aceitos: PDF, JPG ou PNG (até 15 MB). Os documentos são privados e
+            acessíveis apenas a usuários autorizados.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------- skeleton ---------------------------- */
+
+function ListSkeleton() {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-4 rounded-xl border border-gray-100 px-4 py-3.5 dark:border-gray-700"
+        >
+          <div className="h-11 w-11 animate-pulse rounded-xl bg-gray-100 dark:bg-gray-800" />
+          <div className="flex-1 space-y-2">
+            <div className="h-4 w-40 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
+            <div className="h-3 w-56 animate-pulse rounded bg-gray-100 dark:bg-gray-800" />
+          </div>
+          <div className="h-6 w-16 animate-pulse rounded-full bg-gray-100 dark:bg-gray-800" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ---------------------------- component ---------------------------- */
+
 /**
  * Documentos & Adesão Zero por orçamento do lead.
  * Props:
@@ -44,6 +420,7 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
   const [orcamentos, setOrcamentos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [busyKey, setBusyKey] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
   const fileInputs = useRef({});
 
   const fetchOrcamentos = useCallback(async () => {
@@ -82,7 +459,10 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
     return () => window.removeEventListener("orcamento:created", handler);
   }, [modulo, fetchOrcamentos]);
 
-  const docFor = (orc, tipo) => (orc.documentos || []).find((d) => d.tipo === tipo) || null;
+  // Mantém o modal em sincronia com os dados após cada refetch (docs/adesão atualizados).
+  const selected = selectedId != null
+    ? orcamentos.find((o) => o.erp_pedido_id === selectedId) || null
+    : null;
 
   async function handleUpload(orc, tipo, file) {
     if (!file) return;
@@ -117,6 +497,7 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
   }
 
   async function handleView(doc) {
+    if (!doc) return;
     try {
       const res = await fetch(`/api/orcamento-documentos/${doc.id}/download`, {
         headers: authHeaders(),
@@ -132,6 +513,7 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
   }
 
   async function handleDelete(doc) {
+    if (!doc) return;
     if (!window.confirm("Excluir este documento? Esta ação não pode ser desfeita.")) return;
     const key = `del:${doc.id}`;
     setBusyKey(key);
@@ -172,201 +554,91 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
   }
 
   return (
-    <div className="mt-6 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center gap-2">
-          <FileText className="w-5 h-5 text-violet-600" />
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100">
-            Documentos &amp; Adesão Zero
-          </h3>
+    <div className="mt-6 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
+      <style>{MOTION_CSS}</style>
+
+      <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-gray-700">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-100 text-violet-600 dark:bg-violet-950/50 dark:text-violet-400">
+            <FileText className="h-[18px] w-[18px]" />
+          </div>
+          <div>
+            <h3 className="text-[15px] font-bold leading-tight text-gray-900 dark:text-gray-100">
+              Documentos &amp; Adesão Zero
+            </h3>
+            <p className="text-[12.5px] text-gray-400 dark:text-gray-500">
+              {orcamentos.length > 0
+                ? `${orcamentos.length} ${orcamentos.length === 1 ? "orçamento" : "orçamentos"} · clique no número para gerenciar`
+                : "Documentos por orçamento do lead"}
+            </p>
+          </div>
         </div>
         <button
           type="button"
           onClick={fetchOrcamentos}
-          className="inline-flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300 hover:text-violet-600 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-gray-500 transition-colors duration-200 hover:bg-gray-100 hover:text-violet-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-violet-400"
         >
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           Atualizar
         </button>
       </div>
 
-      <div className="p-5 space-y-5">
-        {loading && orcamentos.length === 0 && (
-          <div className="flex items-center gap-2 text-gray-500 text-sm py-6 justify-center">
-            <Loader2 className="w-4 h-4 animate-spin" /> Carregando orçamentos...
-          </div>
-        )}
-
-        {!loading && orcamentos.length === 0 && (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm">
-            <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
+      <div className="p-5">
+        {loading && orcamentos.length === 0 ? (
+          <ListSkeleton />
+        ) : !loading && orcamentos.length === 0 ? (
+          <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+            <FileText className="mx-auto mb-2 h-8 w-8 opacity-40" />
             Nenhum orçamento encontrado para este lead. Os documentos ficam disponíveis
             após a criação de um orçamento.
           </div>
+        ) : (
+          <div className="space-y-3">
+            {orcamentos.map((orc, i) => (
+              <OrcamentoRow
+                key={orc.erp_pedido_id}
+                orc={orc}
+                index={i}
+                onOpen={(o) => setSelectedId(o.erp_pedido_id)}
+              />
+            ))}
+          </div>
         )}
-
-        {orcamentos.map((orc) => {
-          const azPending = orc.adesao_zero === null || orc.adesao_zero === undefined;
-          return (
-            <div
-              key={orc.erp_pedido_id}
-              className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700">
-                <div className="text-sm">
-                  <span className="font-semibold text-gray-900 dark:text-gray-100">
-                    Orçamento Nº {orc.erp_numero || orc.erp_pedido_id}
-                  </span>
-                  {orc.created_at && (
-                    <span className="text-gray-500 ml-2">
-                      {new Date(orc.created_at).toLocaleDateString("pt-BR")}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="p-4 space-y-4">
-                {/* Adesão Zero (obrigatório) */}
-                <div className="flex flex-wrap items-center gap-3 rounded-lg bg-violet-50 dark:bg-violet-950/30 border border-violet-100 dark:border-violet-900 px-3 py-2.5">
-                  <ShieldCheck className="w-4 h-4 text-violet-600 shrink-0" />
-                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                    Adesão Zero <span className="text-red-500">*</span>
-                  </span>
-                  <div className="flex gap-2 ml-auto">
-                    {[
-                      { label: "Sim", value: true },
-                      { label: "Não", value: false },
-                    ].map((opt) => {
-                      const active = orc.adesao_zero === opt.value;
-                      return (
-                        <button
-                          key={opt.label}
-                          type="button"
-                          disabled={!canManage || busyKey === `az:${orc.erp_pedido_id}`}
-                          onClick={() => handleAdesaoZero(orc, opt.value)}
-                          className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors disabled:opacity-60 ${
-                            active
-                              ? "bg-violet-600 text-white border-violet-600"
-                              : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:border-violet-400"
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {azPending && (
-                    <span className="w-full sm:w-auto text-xs text-amber-600 dark:text-amber-400">
-                      Preenchimento obrigatório
-                    </span>
-                  )}
-                </div>
-
-                {/* 4 slots de documentos */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {DOC_TIPOS.map(({ tipo, label }) => {
-                    const doc = docFor(orc, tipo);
-                    const inputKey = `${orc.erp_pedido_id}:${tipo}`;
-                    const uploading = busyKey === inputKey;
-                    return (
-                      <div
-                        key={tipo}
-                        className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 flex flex-col gap-2"
-                      >
-                        <div className="flex items-center gap-2">
-                          {doc ? (
-                            <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
-                          ) : (
-                            <FileText className="w-4 h-4 text-gray-400 shrink-0" />
-                          )}
-                          <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                            {label}
-                          </span>
-                        </div>
-
-                        {doc ? (
-                          <div className="flex flex-col gap-1">
-                            <span className="text-xs text-gray-500 truncate" title={doc.original_name}>
-                              {doc.original_name} · {formatBytes(doc.size_bytes)}
-                            </span>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <button
-                                type="button"
-                                onClick={() => handleView(doc)}
-                                className="inline-flex items-center gap-1 text-xs text-violet-600 hover:underline"
-                              >
-                                <Eye className="w-3.5 h-3.5" /> Visualizar
-                              </button>
-                              {canManage && (
-                                <>
-                                  <button
-                                    type="button"
-                                    disabled={uploading}
-                                    onClick={() => fileInputs.current[inputKey]?.click()}
-                                    className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300 hover:underline disabled:opacity-60"
-                                  >
-                                    {uploading ? (
-                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                    ) : (
-                                      <Upload className="w-3.5 h-3.5" />
-                                    )}
-                                    Reenviar
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={busyKey === `del:${doc.id}`}
-                                    onClick={() => handleDelete(doc)}
-                                    className="inline-flex items-center gap-1 text-xs text-red-600 hover:underline disabled:opacity-60"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" /> Excluir
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        ) : canManage ? (
-                          <button
-                            type="button"
-                            disabled={uploading}
-                            onClick={() => fileInputs.current[inputKey]?.click()}
-                            className="inline-flex items-center justify-center gap-1.5 text-xs text-violet-600 border border-dashed border-violet-300 dark:border-violet-700 rounded-md py-2 hover:bg-violet-50 dark:hover:bg-violet-950/30 disabled:opacity-60"
-                          >
-                            {uploading ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Upload className="w-3.5 h-3.5" />
-                            )}
-                            Enviar arquivo
-                          </button>
-                        ) : (
-                          <span className="text-xs text-gray-400">Nenhum arquivo enviado</span>
-                        )}
-
-                        <input
-                          ref={(el) => (fileInputs.current[inputKey] = el)}
-                          type="file"
-                          accept={ACCEPT}
-                          className="hidden"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            e.target.value = "";
-                            handleUpload(orc, tipo, f);
-                          }}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <p className="text-[11px] text-gray-400">
-                  Formatos aceitos: PDF, JPG ou PNG (até 15 MB). Os documentos são privados e
-                  acessíveis apenas a usuários autorizados.
-                </p>
-              </div>
-            </div>
-          );
-        })}
       </div>
+
+      {/* Inputs de arquivo (ficam montados fora do modal para sobreviverem ao refetch). */}
+      {orcamentos.map((orc) =>
+        DOC_TIPOS.map(({ tipo }) => {
+          const inputKey = `${orc.erp_pedido_id}:${tipo}`;
+          return (
+            <input
+              key={inputKey}
+              ref={(el) => (fileInputs.current[inputKey] = el)}
+              type="file"
+              accept={ACCEPT}
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                handleUpload(orc, tipo, f);
+              }}
+            />
+          );
+        })
+      )}
+
+      {selected && (
+        <OrcamentoModal
+          orc={selected}
+          canManage={canManage}
+          busyKey={busyKey}
+          fileInputs={fileInputs}
+          onClose={() => setSelectedId(null)}
+          onView={handleView}
+          onDelete={handleDelete}
+          onAdesao={handleAdesaoZero}
+        />
+      )}
     </div>
   );
 }

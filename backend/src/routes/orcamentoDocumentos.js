@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import { authMiddleware } from '../middleware/auth.js';
 import { query, pool } from '../config/database.js';
+import { getProdutosByPedidoIds } from '../services/erpDbService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -134,6 +135,17 @@ router.get('/orcamentos', authMiddleware, async (req, res) => {
       }
     }
 
+    // Nome do produto por orçamento (ERP, somente leitura). Best-effort: se a
+    // consulta ao ERP falhar, o card continua funcionando sem o nome do produto.
+    let produtoByPedido = {};
+    if (ids.length) {
+      try {
+        produtoByPedido = await getProdutosByPedidoIds(ids);
+      } catch (e) {
+        console.error('[OrcamentoDocs] lookup de produto falhou (não crítico):', e.message);
+      }
+    }
+
     const items = orcs.rows.map((o) => ({
       erp_pedido_id: Number(o.erp_pedido_id),
       erp_numero: o.erp_numero != null ? Number(o.erp_numero) : null,
@@ -141,6 +153,7 @@ router.get('/orcamentos', authMiddleware, async (req, res) => {
       cliente_nome: o.cliente_nome,
       adesao_zero: o.adesao_zero,
       created_at: o.created_at,
+      produto: produtoByPedido[Number(o.erp_pedido_id)] || null,
       documentos: docsByPedido[Number(o.erp_pedido_id)] || [],
     }));
 
