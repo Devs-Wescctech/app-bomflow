@@ -110,6 +110,7 @@ const PUBLIC_PAGES = [
   'NPSSurvey', 'npssurvey',
   'ApiDocumentation', 'apidocumentation', 'api-documentation',
   'UpsellLeadRedesignDemo', 'upsellleadredesigndemo',
+  'OrcamentoDocumentosRedesignDemo', 'orcamentodocumentosredesigndemo',
 ];
 
 const isPublicRoute = (pathname) => {
