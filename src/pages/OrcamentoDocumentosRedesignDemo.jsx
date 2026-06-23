@@ -58,7 +58,7 @@ const ORCAMENTOS = [
     numero: "71990",
     fechamento: "11/06/2026",
     produto: "Plano Familiar + Odonto",
-    adesaoZero: null,
+    adesaoZero: false,
     docs: {
       documento_identidade: { file: "cpf.pdf", size: "340 KB" },
       comprovante_residencia: null,
@@ -127,7 +127,6 @@ function AdesaoChip({ value }) {
   const map = {
     true: { label: "Adesão Zero", cls: "bg-violet-50 text-violet-600 ring-violet-100" },
     false: { label: "Sem adesão", cls: "bg-gray-100 text-gray-500 ring-gray-200" },
-    null: { label: "Adesão pendente", cls: "bg-amber-50 text-amber-600 ring-amber-100" },
   };
   const cfg = map[String(value)];
   return (
@@ -335,9 +334,6 @@ function OrcamentoModal({ orc, onClose }) {
                 <p className="text-[13.5px] font-semibold text-gray-900">
                   Adesão Zero <span className="text-red-500">*</span>
                 </p>
-                {orc.adesaoZero === null && (
-                  <p className="text-[11.5px] text-amber-600">Preenchimento obrigatório</p>
-                )}
               </div>
             </div>
             <SegToggle value={orc.adesaoZero} />
