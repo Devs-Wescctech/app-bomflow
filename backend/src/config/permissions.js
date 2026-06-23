@@ -5,7 +5,8 @@ export const AGENT_TYPES = {
   SALES: 'sales',
   PRE_SALES: 'pre_sales',
   POST_SALES: 'post_sales',
-  COLLECTION: 'collection'
+  COLLECTION: 'collection',
+  AUDITORIA: 'auditoria'
 };
 
 export const AGENT_LEVELS = {
@@ -115,6 +116,16 @@ export const ROLE_PERMISSIONS = {
     canManageAgents: false,
     canManageSettings: false,
     canAccessReports: false
+  },
+  [AGENT_TYPES.AUDITORIA]: {
+    modules: [MODULES.SALES, MODULES.REFERRALS, MODULES.REPORTS],
+    canViewAllTickets: false,
+    canViewTeamTickets: false,
+    canViewAllLeads: false,
+    canViewTeamLeads: false,
+    canManageAgents: false,
+    canManageSettings: false,
+    canAccessReports: true
   }
 };
 

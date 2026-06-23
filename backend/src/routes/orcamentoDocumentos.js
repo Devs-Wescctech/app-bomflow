@@ -73,7 +73,7 @@ async function isPrivileged(req) {
   if (!req.user?.id) return false;
   const r = await query('SELECT agent_type FROM agents WHERE id = $1', [req.user.id]);
   const at = r.rows[0]?.agent_type || '';
-  return at === 'admin' || at.includes('supervisor');
+  return at === 'admin' || at.includes('supervisor') || at === 'auditoria';
 }
 
 // Permissão: dono do orçamento + supervisor + admin.

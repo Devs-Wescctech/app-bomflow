@@ -159,6 +159,16 @@ export const AGENT_PERMISSIONS = {
     canManageAgents: true,
     canManageSettings: false,
   },
+  auditoria: {
+    modules: ['sales', 'sales_pj', 'sales_upsell', 'referral'],
+    canViewAllTickets: false,
+    canViewTeamTickets: false,
+    canViewAllLeads: false,
+    canViewTeamLeads: false,
+    canAccessReports: true,
+    canManageAgents: false,
+    canManageSettings: false,
+  },
 };
 
 const MODULE_ALIASES = {

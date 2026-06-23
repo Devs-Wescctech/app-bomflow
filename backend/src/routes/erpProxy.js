@@ -1115,12 +1115,13 @@ router.get('/relatorio-orcamentos', authMiddleware, async (req, res) => {
     const agentType = (agent.agent_type || '').toLowerCase();
     const isAdmin = agentType === 'admin' || (req.user.role || '').toLowerCase() === 'admin';
     const isSupervisor = !isAdmin && agentType.includes('supervisor');
+    const isAuditoria = !isAdmin && agentType === 'auditoria';
 
     // ─── Escopo do visualizador (permissão) por agente CRM ─────────────────
-    // scopeAgentIds = null → admin sem restrição (todos os agentes do módulo).
+    // scopeAgentIds = null → admin/auditoria sem restrição (todos os agentes do módulo).
     let scopeAgentIds = null;
 
-    if (!isAdmin) {
+    if (!isAdmin && !isAuditoria) {
       if (isSupervisor) {
         const teamRes = await query(
           `SELECT id FROM agents WHERE supervisor_id = $1`,
@@ -1133,8 +1134,8 @@ router.get('/relatorio-orcamentos', authMiddleware, async (req, res) => {
       }
     }
 
-    // Admin: escopo por time
-    if (isAdmin && team_id && team_id !== 'todos') {
+    // Admin/auditoria: escopo por time (filtro opcional do frontend)
+    if ((isAdmin || isAuditoria) && team_id && team_id !== 'todos') {
       const teamAgents = await query(
         `SELECT id FROM agents WHERE team_id = $1`,
         [team_id]
