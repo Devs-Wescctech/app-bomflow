@@ -84,6 +84,29 @@ async function canManage(req, erpPedidoId) {
   return !!orc.agent_id && orc.agent_id === req.user?.id;
 }
 
+// Elegibilidade ESPECÍFICA do Relatório Consolidado de Orçamentos (mais restrita que
+// canManage): admin, agent_type 'auditoria' ou supervisor do time "Auditoria". Demais
+// usuários só acessam se forem donos do orçamento. Mantém a mesma regra do endpoint
+// /relatorio-orcamentos/consolidado, sem alterar canManage/isPrivileged (compartilhados).
+async function canViewConsolidadoDocs(req, erpPedidoId) {
+  if ((req.user?.role || '').toLowerCase() === 'admin') return true;
+  if (!req.user?.id) return false;
+  const r = await query(
+    `SELECT a.agent_type, t.name AS team_name
+       FROM agents a
+       LEFT JOIN teams t ON t.id = a.team_id
+      WHERE a.id = $1`,
+    [req.user.id]
+  );
+  const row = r.rows[0] || {};
+  const at = (row.agent_type || '').toLowerCase();
+  const team = (row.team_name || '').trim().toLowerCase();
+  if (at === 'admin' || at === 'auditoria') return true;
+  if (at.includes('supervisor') && team === 'auditoria') return true;
+  const orc = await getOrcamento(erpPedidoId);
+  return !!(orc && orc.agent_id && orc.agent_id === req.user?.id);
+}
+
 // GET /api/orcamento-documentos/orcamentos?modulo=&cpf=
 // Lista os orçamentos do lead (por módulo + CPF) com os documentos anexados e a flag Adesão Zero.
 router.get('/orcamentos', authMiddleware, async (req, res) => {
@@ -160,6 +183,54 @@ router.get('/orcamentos', authMiddleware, async (req, res) => {
     res.json({ items });
   } catch (e) {
     console.error('[OrcamentoDocs] GET /orcamentos error:', e.message);
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// GET /api/orcamento-documentos/by-pedido/:erpPedidoId
+// Lista os documentos anexados a UM orçamento específico (busca direta por erp_pedido_id,
+// sem indireção por CPF). Usado pelo modal de detalhe do Relatório Consolidado de Orçamentos.
+router.get('/by-pedido/:erpPedidoId', authMiddleware, async (req, res) => {
+  try {
+    const pedidoId = Number(req.params.erpPedidoId);
+    if (!pedidoId) return res.status(400).json({ message: 'Orçamento inválido' });
+    if (!(await canViewConsolidadoDocs(req, pedidoId))) return res.status(403).json({ message: 'Sem permissão' });
+
+    const orc = await getOrcamento(pedidoId);
+
+    const docsRes = await query(
+      `SELECT id, erp_pedido_id, tipo, original_name, mime_type, size_bytes, created_at
+         FROM orcamento_documentos
+        WHERE erp_pedido_id = $1
+        ORDER BY created_at`,
+      [pedidoId]
+    );
+    const documentos = docsRes.rows.map((d) => ({
+      id: d.id,
+      tipo: d.tipo,
+      original_name: d.original_name,
+      mime_type: d.mime_type,
+      size_bytes: d.size_bytes != null ? Number(d.size_bytes) : null,
+      created_at: d.created_at,
+    }));
+
+    // Nome do produto (ERP, somente leitura). Best-effort: não derruba o modal se falhar.
+    let produto = null;
+    try {
+      const map = await getProdutosByPedidoIds([pedidoId]);
+      produto = map[pedidoId] || null;
+    } catch (e) {
+      console.error('[OrcamentoDocs] lookup de produto (by-pedido) falhou (não crítico):', e.message);
+    }
+
+    res.json({
+      erp_pedido_id: pedidoId,
+      adesao_zero: orc ? orc.adesao_zero : null,
+      produto,
+      documentos,
+    });
+  } catch (e) {
+    console.error('[OrcamentoDocs] GET /by-pedido error:', e.message);
     res.status(500).json({ message: e.message });
   }
 });

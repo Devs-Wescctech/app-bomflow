@@ -9,6 +9,7 @@ import {
   FileBarChart, Search, RefreshCw, Filter, Calendar, ShieldCheck,
   Users, Layers, CheckCircle2, Loader2,
 } from "lucide-react";
+import OrcamentoDetalheModal from "@/components/presales/OrcamentoDetalheModal";
 
 const API_BASE = '/api';
 
@@ -77,6 +78,7 @@ export default function PreSalesOrcamentoRelatorio() {
   const [endDate, setEndDate] = useState(todayISO());
   const [statusFilter, setStatusFilter] = useState('todos');
   const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(null);
 
   const canaisMap = useMemo(() => {
     const m = {};
@@ -300,8 +302,15 @@ export default function PreSalesOrcamentoRelatorio() {
                   </td></tr>
                 ) : filtered.map((o, i) => (
                   <tr key={`${o.erp_id}-${i}`} className="hover:bg-violet-50/50 dark:hover:bg-violet-900/10 transition-colors">
-                    <td className="px-4 py-3 font-semibold text-violet-700 dark:text-violet-400 whitespace-nowrap">
-                      {o.numero_orcamento || '-'}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => setSelected(o)}
+                        className="font-semibold text-violet-700 underline-offset-2 hover:underline focus:outline-none focus-visible:underline dark:text-violet-400"
+                        title="Ver detalhes e anexos"
+                      >
+                        {o.numero_orcamento || '-'}
+                      </button>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap">
                       {formatCpf(o.cpf_titular)}
@@ -333,6 +342,15 @@ export default function PreSalesOrcamentoRelatorio() {
           </div>
         </div>
       </div>
+
+      {selected && (
+        <OrcamentoDetalheModal
+          orcamento={selected}
+          situacaoBadge={<SituacaoBadge situacao={selected.situacao} />}
+          canalLabel={selected.canal_id ? (canaisMap[selected.canal_id] || String(selected.canal_id)) : '-'}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </div>
   );
 }
