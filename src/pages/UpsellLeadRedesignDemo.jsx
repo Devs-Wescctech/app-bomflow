@@ -419,7 +419,7 @@ export default function UpsellLeadRedesignDemo() {
                 </button>
                 <button
                   title="Marcar como perdido"
-                  className="flex h-[34px] w-[34px] items-center justify-center rounded-lg bg-white text-red-500 ring-1 ring-red-200/70 transition-all duration-200 hover:-translate-y-px hover:bg-red-50 hover:text-red-600 hover:shadow-md"
+                  className="flex items-center justify-center rounded-lg bg-gradient-to-b from-red-500 to-red-600 px-2.5 py-1.5 text-white shadow-sm shadow-red-200 transition-all duration-200 hover:-translate-y-px hover:from-red-600 hover:to-red-700 hover:shadow-md hover:shadow-red-400/50 active:scale-[0.98]"
                 >
                   <XCircle className="h-[18px] w-[18px]" />
                 </button>
