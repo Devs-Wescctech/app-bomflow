@@ -30,7 +30,7 @@ const ORCAMENTOS = [
   {
     id: 72240,
     numero: "72240",
-    fechamento: "22/06/2026",
+    data: "22/06/2026",
     produto: "Plano Familiar",
     adesaoZero: true,
     docs: {
@@ -43,7 +43,7 @@ const ORCAMENTOS = [
   {
     id: 72118,
     numero: "72118",
-    fechamento: "18/06/2026",
+    data: "18/06/2026",
     produto: "Plano Individual + Telemedicina",
     adesaoZero: false,
     docs: {
@@ -56,7 +56,7 @@ const ORCAMENTOS = [
   {
     id: 71990,
     numero: "71990",
-    fechamento: "11/06/2026",
+    data: "11/06/2026",
     produto: "Plano Familiar + Odonto",
     adesaoZero: false,
     docs: {
@@ -157,7 +157,7 @@ function OrcamentoRow({ orc, index, onOpen }) {
           </span>
           <span className="hidden items-center gap-1 text-[12.5px] text-gray-400 sm:inline-flex">
             <Calendar className="h-3.5 w-3.5" />
-            {orc.fechamento}
+            {orc.data}
           </span>
         </div>
         <div className="mt-0.5 flex items-center gap-1.5 truncate text-[13px] text-gray-500">
@@ -291,7 +291,7 @@ function OrcamentoModal({ orc, onClose }) {
                     Orçamento Nº {orc.numero}
                   </h2>
                   <p className="text-[12.5px] text-gray-400">
-                    Fechamento {orc.fechamento} · {orc.produto}
+                    Criado em {orc.data} · {orc.produto}
                   </p>
                 </div>
               </div>
