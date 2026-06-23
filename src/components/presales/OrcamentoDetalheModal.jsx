@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import {
   X, FileText, Eye, Loader2, FileWarning, User, Calendar, Layers,
@@ -133,8 +133,6 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
   const [produto, setProduto] = useState(null);
   const [detalhe, setDetalhe] = useState(null);
   const [viewingId, setViewingId] = useState(null);
-  const [previews, setPreviews] = useState({});
-  const previewUrlsRef = useRef([]);
 
   const pedidoId = orcamento?.erp_id;
 
@@ -158,37 +156,6 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
 
   useEffect(() => { loadDocs(); }, [loadDocs]);
 
-  // Pré-carrega thumbnails dos anexos de imagem (lazy, um blob autenticado por imagem).
-  // PDFs não geram prévia — exibem só o botão "Visualizar".
-  useEffect(() => {
-    let cancelled = false;
-    // Revoga prévias anteriores ao trocar a lista de documentos (evita leak de object URL).
-    previewUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
-    previewUrlsRef.current = [];
-    setPreviews({});
-    const imgs = documentos.filter((d) => (d.mime_type || "").startsWith("image/"));
-    if (imgs.length === 0) return () => { cancelled = true; };
-    (async () => {
-      for (const doc of imgs) {
-        try {
-          const res = await fetch(`${API_BASE}/orcamento-documentos/${doc.id}/download`, { headers: authHeaders() });
-          if (!res.ok) continue;
-          const blob = await res.blob();
-          if (cancelled) return;
-          const url = URL.createObjectURL(blob);
-          previewUrlsRef.current.push(url);
-          setPreviews((prev) => ({ ...prev, [doc.id]: url }));
-        } catch { /* ignora prévia que falhar */ }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [documentos]);
-
-  useEffect(() => () => {
-    previewUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
-    previewUrlsRef.current = [];
-  }, []);
-
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -198,11 +165,6 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
   const handleView = async (doc) => {
     setViewingId(doc.id);
     try {
-      const url = previews[doc.id];
-      if (url) {
-        window.open(url, "_blank", "noopener");
-        return;
-      }
       const res = await fetch(`${API_BASE}/orcamento-documentos/${doc.id}/download`, { headers: authHeaders() });
       if (!res.ok) throw new Error("Falha ao abrir o documento.");
       const blob = await res.blob();
@@ -422,30 +384,14 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
           ) : (
             <div className="space-y-2.5">
               {documentos.map((doc) => {
-                const isImg = (doc.mime_type || "").startsWith("image/");
-                const previewUrl = previews[doc.id];
                 return (
                   <div
                     key={doc.id}
                     className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3.5 transition-colors hover:border-violet-200 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-violet-800"
                   >
-                    {isImg && previewUrl ? (
-                      <button
-                        type="button"
-                        onClick={() => handleView(doc)}
-                        className="group relative h-12 w-12 shrink-0 overflow-hidden rounded-lg ring-1 ring-slate-200 dark:ring-gray-700"
-                        title="Abrir imagem"
-                      >
-                        <img src={previewUrl} alt={doc.original_name} className="h-full w-full object-cover" />
-                        <span className="absolute inset-0 hidden items-center justify-center bg-black/40 group-hover:flex">
-                          <Eye className="h-4 w-4 text-white" />
-                        </span>
-                      </button>
-                    ) : (
-                      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400">
-                        {isImg ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-5 w-5" />}
-                      </span>
-                    )}
+                    <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400">
+                      <FileText className="h-5 w-5" />
+                    </span>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100" title={doc.original_name}>
                         {DOC_TIPO_LABEL[doc.tipo] || doc.tipo}
