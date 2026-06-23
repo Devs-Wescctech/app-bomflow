@@ -23,6 +23,9 @@ import {
   ChevronRight,
   Wallet,
   Zap,
+  ArrowLeftRight,
+  XCircle,
+  User,
 } from "lucide-react";
 
 const STAGES = [
@@ -97,6 +100,21 @@ function MetaRow({ label, value, mono }) {
       >
         {value}
       </span>
+    </div>
+  );
+}
+
+function Field({ label, value, mono }) {
+  return (
+    <div>
+      <label className="text-[11px] font-medium uppercase tracking-[0.06em] text-gray-400">
+        {label}
+      </label>
+      <input
+        readOnly
+        value={value}
+        className={`mt-1.5 w-full rounded-lg border border-gray-200 bg-gray-50/70 px-3 py-2 text-[13px] text-gray-800 outline-none transition-all duration-200 focus:border-violet-400 focus:bg-white focus:ring-2 focus:ring-violet-100 ${mono ? "font-mono tracking-tight" : ""}`}
+      />
     </div>
   );
 }
@@ -403,6 +421,15 @@ export default function UpsellLeadRedesignDemo() {
                 <button className="flex items-center gap-2 rounded-lg bg-gradient-to-b from-gray-800 to-gray-900 px-3.5 py-1.5 text-[13px] font-medium text-white shadow-sm shadow-gray-300 transition-all duration-200 hover:-translate-y-px hover:from-gray-700 hover:to-gray-800 hover:shadow-md hover:shadow-gray-400/50 active:scale-[0.98]">
                   Avançar etapa <ArrowUpRight className="h-4 w-4" />
                 </button>
+                <button className="flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 text-[13px] font-medium text-gray-600 ring-1 ring-gray-200/70 transition-all duration-200 hover:-translate-y-px hover:text-gray-900 hover:shadow-md">
+                  <ArrowLeftRight className="h-4 w-4" /> Redistribuir
+                </button>
+                <button
+                  title="Marcar como perdido"
+                  className="flex h-[34px] w-[34px] items-center justify-center rounded-lg bg-white text-red-500 ring-1 ring-red-200/70 transition-all duration-200 hover:-translate-y-px hover:bg-red-50 hover:text-red-600 hover:shadow-md"
+                >
+                  <XCircle className="h-[18px] w-[18px]" />
+                </button>
               </div>
             </section>
 
@@ -699,7 +726,35 @@ export default function UpsellLeadRedesignDemo() {
                 style={{ animation: "lead-enter 450ms cubic-bezier(0.16,1,0.3,1) both", animationDelay: "420ms" }}
                 className="space-y-4"
               >
-                <Collapsible icon={Phone} label="Contato" defaultOpen>
+                <Collapsible icon={User} label="Dados do Lead" defaultOpen>
+                  <div className="space-y-3.5">
+                    <Field label="Nome" value="TAIS DEQUI" />
+                    <Field label="CPF" value="008.452.460-03" mono />
+                    <div>
+                      <label className="text-[11px] font-medium uppercase tracking-[0.06em] text-gray-400">
+                        Telefone
+                      </label>
+                      <div className="mt-1.5 flex gap-2">
+                        <input
+                          readOnly
+                          value="(51) 99999-0000"
+                          className="flex-1 rounded-lg border border-gray-200 bg-gray-50/70 px-3 py-2 text-[13px] text-gray-800 outline-none transition-all duration-200 focus:border-violet-400 focus:bg-white focus:ring-2 focus:ring-violet-100"
+                        />
+                        <button
+                          title="Abrir no WhatsApp"
+                          className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-all duration-200 hover:-translate-y-px hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-600"
+                        >
+                          <Phone className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <Field label="E-mail" value="tais.dequi@email.com" />
+                    <Field label="Interesse" value="Plano Familiar" />
+                    <Field label="Fonte do Lead" value="Indicação" />
+                  </div>
+                </Collapsible>
+
+                <Collapsible icon={Phone} label="Contato">
                   <div className="divide-y divide-gray-50">
                     <MetaRow label="Telefone" value="(51) 99999-0000" />
                     <MetaRow label="E-mail" value="tais.dequi@email.com" />
