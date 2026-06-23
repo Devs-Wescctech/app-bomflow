@@ -160,6 +160,14 @@ const MOTION_CSS = `
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
+@keyframes lead-avatar-glow {
+  0%, 100% { opacity: 0.24; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.05); }
+}
+@keyframes lead-halo {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.08; transform: scale(1.4); }
+}
 .lead-skeleton {
   background: linear-gradient(90deg, #eceaf4 25%, #f6f3ff 37%, #eceaf4 63%);
   background-size: 200% 100%;
@@ -170,6 +178,9 @@ const MOTION_CSS = `
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
+  }
+  [style*="lead-avatar-glow"], [style*="lead-halo"] {
+    animation: none !important;
   }
 }
 `;
@@ -228,12 +239,48 @@ function MainSkeleton() {
   );
 }
 
+const fmtBRL = (n) =>
+  n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function useCountUp(target, { duration = 1100, delay = 0, start = true } = {}) {
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    if (!start) return undefined;
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      setValue(target);
+      return undefined;
+    }
+    let raf;
+    let startTs;
+    const timeout = setTimeout(() => {
+      const tick = (ts) => {
+        if (startTs === undefined) startTs = ts;
+        const p = Math.min((ts - startTs) / duration, 1);
+        const eased = 1 - Math.pow(1 - p, 3);
+        setValue(target * eased);
+        if (p < 1) raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    }, delay);
+    return () => {
+      clearTimeout(timeout);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [target, duration, delay, start]);
+  return value;
+}
+
 export default function UpsellLeadRedesignDemo() {
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     const t = setTimeout(() => setLoading(false), 750);
     return () => clearTimeout(t);
   }, []);
+  const dealValue = useCountUp(139.9, { duration: 1100, delay: 450, start: !loading });
   return (
     <div className="relative min-h-screen bg-gradient-to-b from-[#f5f3ff] via-[#fbfaff] to-white font-['Inter'] text-gray-900 antialiased">
       <style>{MOTION_CSS}</style>
@@ -279,7 +326,10 @@ export default function UpsellLeadRedesignDemo() {
             <div className="relative flex items-start justify-between gap-6">
               <div className="flex items-center gap-5">
                 <div className="relative">
-                  <div className="absolute -inset-2 animate-pulse rounded-full bg-gradient-to-br from-violet-400 to-fuchsia-400 opacity-30 blur-lg" />
+                  <div
+                    style={{ animation: "lead-avatar-glow 6s ease-in-out infinite" }}
+                    className="absolute -inset-2 rounded-full bg-gradient-to-br from-violet-400 to-fuchsia-400 opacity-30 blur-lg"
+                  />
                   <div className="absolute -inset-0.5 rounded-full bg-gradient-to-br from-violet-300/40 to-fuchsia-300/40" />
                   <div className="relative flex h-[68px] w-[68px] items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 text-2xl font-semibold text-white shadow-lg shadow-violet-300/50 ring-[3px] ring-white">
                     T
@@ -351,7 +401,10 @@ export default function UpsellLeadRedesignDemo() {
                         }`}
                       >
                         {current && (
-                          <span className="absolute inset-0 animate-ping rounded-full bg-violet-400 opacity-30" />
+                          <span
+                            style={{ animation: "lead-halo 3.6s ease-in-out infinite" }}
+                            className="absolute inset-0 rounded-full bg-violet-400"
+                          />
                         )}
                         {done ? <Check className="h-3 w-3" /> : i + 1}
                       </span>
@@ -571,7 +624,7 @@ export default function UpsellLeadRedesignDemo() {
                 Valor estimado
               </p>
               <p className="relative mt-0.5 text-[40px] font-semibold leading-none tracking-[-0.03em] text-white [font-variant-numeric:tabular-nums] drop-shadow-sm">
-                R$ 139,90
+                R$ {fmtBRL(dealValue)}
               </p>
               <p className="relative mt-1.5 text-[12px] text-violet-200/80">mensal · adesão inclusa</p>
 
