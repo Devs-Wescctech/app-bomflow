@@ -188,6 +188,15 @@ const MOTION_CSS = `
   0%, 100% { opacity: 0.4; transform: scale(1); }
   50% { opacity: 0.08; transform: scale(1.4); }
 }
+@keyframes lead-pulse {
+  0% { opacity: 0.6; transform: scale(1); }
+  70% { opacity: 0; transform: scale(2.1); }
+  100% { opacity: 0; transform: scale(2.1); }
+}
+@keyframes lead-pulse-node {
+  0%, 100% { box-shadow: 0 4px 6px -1px rgba(167,139,250,0.6), 0 0 0 0 rgba(167,139,250,0.45); }
+  50% { box-shadow: 0 4px 10px -1px rgba(167,139,250,0.8), 0 0 0 5px rgba(167,139,250,0); }
+}
 .lead-skeleton {
   background: linear-gradient(90deg, #eceaf4 25%, #f6f3ff 37%, #eceaf4 63%);
   background-size: 200% 100%;
@@ -199,7 +208,7 @@ const MOTION_CSS = `
     opacity: 1 !important;
     transform: none !important;
   }
-  [style*="lead-avatar-glow"], [style*="lead-halo"] {
+  [style*="lead-avatar-glow"], [style*="lead-halo"], [style*="lead-pulse"] {
     animation: none !important;
   }
 }
@@ -484,19 +493,28 @@ export default function UpsellLeadRedesignDemo() {
                     <div key={s.value} className="flex flex-1 items-center last:flex-none">
                       <div className="group flex cursor-pointer items-center gap-2">
                         <span
+                          style={
+                            current ? { animation: "lead-pulse-node 2.2s ease-in-out infinite" } : undefined
+                          }
                           className={`relative flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold transition-all duration-200 group-hover:scale-110 ${
                             done
                               ? "bg-violet-100 text-violet-600 group-hover:bg-violet-200"
                               : current
-                                ? "bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-md shadow-violet-300/60 ring-4 ring-violet-100"
+                                ? "bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white ring-4 ring-violet-100"
                                 : "bg-gray-100 text-gray-400 group-hover:bg-gray-200"
                           }`}
                         >
                           {current && (
-                            <span
-                              style={{ animation: "lead-halo 3.6s ease-in-out infinite" }}
-                              className="absolute inset-0 rounded-full bg-violet-400"
-                            />
+                            <>
+                              <span
+                                style={{ animation: "lead-pulse 2.2s ease-out infinite" }}
+                                className="absolute inset-0 rounded-full ring-2 ring-violet-400/70"
+                              />
+                              <span
+                                style={{ animation: "lead-pulse 2.2s ease-out infinite", animationDelay: "1.1s" }}
+                                className="absolute inset-0 rounded-full ring-2 ring-violet-400/70"
+                              />
+                            </>
                           )}
                           {done ? <Check className="h-3 w-3" /> : i + 1}
                         </span>
