@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import {
@@ -52,7 +51,7 @@ const norm = (s) => String(s || '').trim().toLowerCase();
 // DE > PARA das situações do ERP — chips suaves, sem bordas. Vermelho reservado
 // apenas para criticidade real; status negativos ficam neutros.
 const SITUACOES = {
-  'I': { label: 'Em análise', color: 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300' },
+  'I': { label: 'Emitido / Análise', color: 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300' },
   'A': { label: 'Aprovado',   color: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300' },
   'C': { label: 'Cancelado',  color: 'bg-slate-100 text-slate-500 dark:bg-slate-700/40 dark:text-slate-300' },
   'P': { label: 'Proposta',   color: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300' },
@@ -140,7 +139,6 @@ const TABS = [
   { key: 'critico',   label: 'Crítico' },
   { key: 'revisar',   label: 'Revisar' },
   { key: 'novo',      label: 'Novos' },
-  { key: 'aprovado',  label: 'Aprovados' },
   { key: 'meus',      label: 'Meus' },
 ];
 
@@ -155,7 +153,6 @@ export default function PreSalesOrcamentoRelatorio() {
 
   const [startDate, setStartDate] = useState(monthStartISO());
   const [endDate, setEndDate] = useState(todayISO());
-  const [statusFilter, setStatusFilter] = useState('todos');
   const [tab, setTab] = useState('todas');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
@@ -182,7 +179,7 @@ export default function PreSalesOrcamentoRelatorio() {
       const params = new URLSearchParams();
       if (startDate) params.set('start_date', startDate);
       if (endDate) params.set('end_date', endDate);
-      if (statusFilter && statusFilter !== 'todos') params.set('situacao', statusFilter);
+      params.set('situacao', 'I');
       params.set('limit', '1000');
 
       const res = await fetch(`${API_BASE}/erp/relatorio-orcamentos/consolidado?${params}`, { headers: getAuthHeaders() });
@@ -212,7 +209,7 @@ export default function PreSalesOrcamentoRelatorio() {
 
   // Enriquecemos cada item com prioridade + tempo de espera.
   const enriched = useMemo(() => {
-    return items.map(o => ({
+    return items.filter(o => o.situacao === 'I').map(o => ({
       ...o,
       _priority: getPriority(o),
       _waitMs: waitingMs(o.data_venda),
@@ -256,9 +253,8 @@ export default function PreSalesOrcamentoRelatorio() {
     const pendentes = enriched.filter(o => PENDING_SITUACOES.has(o.situacao));
     const aguardando = pendentes.length;
     const criticos = pendentes.filter(o => o._priority === 'critico').length;
-    const aprovados = enriched.filter(o => o.situacao === 'A').length;
     const oldest = pendentes.reduce((acc, o) => Math.max(acc, o._waitMs ?? 0), 0);
-    return { total: enriched.length, aguardando, criticos, aprovados, oldestMs: pendentes.length ? oldest : null };
+    return { total: enriched.length, aguardando, criticos, oldestMs: pendentes.length ? oldest : null };
   }, [enriched]);
 
   // Item mais urgente da fila — alvo do CTA "Auditar Agora".
@@ -295,15 +291,13 @@ export default function PreSalesOrcamentoRelatorio() {
                 <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25 backdrop-blur">
                   <ShieldCheck className="w-4 h-4" />
                 </span>
-                <h1 className="text-[20px] md:text-[22px] font-semibold tracking-tight leading-none">Caixa de Auditoria</h1>
+                <h1 className="text-[20px] md:text-[22px] font-semibold tracking-tight leading-none">Fila Pré Vendas</h1>
               </div>
               <p className="mt-2.5 text-[14px] md:text-[15px] font-medium text-white/90">{heroMessage}</p>
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-white/70">
                 <span><b className="font-semibold text-white tabular-nums">{stats.aguardando}</b> aguardando</span>
                 <span className="h-1 w-1 rounded-full bg-white/30" />
                 <span><b className="font-semibold text-white tabular-nums">{stats.criticos}</b> críticos</span>
-                <span className="h-1 w-1 rounded-full bg-white/30" />
-                <span><b className="font-semibold text-white tabular-nums">{stats.aprovados}</b> aprovados no período</span>
               </div>
             </div>
 
@@ -342,18 +336,6 @@ export default function PreSalesOrcamentoRelatorio() {
           <div className="space-y-1.5">
             <Label className="text-[10.5px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1"><Calendar className="w-3 h-3 text-violet-500" /> Até</Label>
             <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="h-9 w-[150px] border-slate-200 dark:border-gray-800" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-[10.5px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">Status</Label>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="h-9 w-[170px] border-slate-200 dark:border-gray-800"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos os status</SelectItem>
-                {Object.entries(SITUACOES).map(([code, { label }]) => (
-                  <SelectItem key={code} value={code}>{label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
           <div className="space-y-1.5 flex-1 min-w-[200px]">
             <Label className="text-[10.5px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">Busca rápida</Label>
@@ -407,7 +389,7 @@ export default function PreSalesOrcamentoRelatorio() {
           {loading ? (
             <div className="flex flex-col items-center justify-center py-24 text-slate-400">
               <Loader2 className="w-7 h-7 animate-spin mb-3" />
-              Carregando caixa de auditoria…
+              Carregando fila pré vendas…
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl bg-white ring-1 ring-slate-200/70 py-24 text-slate-400 dark:bg-gray-900 dark:ring-gray-800">
