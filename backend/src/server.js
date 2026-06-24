@@ -15,6 +15,7 @@ import erpProxyRoutes from './routes/erpProxy.js';
 import apiKeyRoutes from './routes/apiKeys.js';
 import externalRoutes from './routes/external.js';
 import orcamentoDocumentosRoutes from './routes/orcamentoDocumentos.js';
+import presalesAjustesRoutes from './routes/presalesAjustes.js';
 import { runAllAutomations } from './services/automationService.js';
 import cron from 'node-cron';
 import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport, runPerspectivaBatch, sendPerspectivaReport } from './routes/functions.js';
@@ -69,6 +70,7 @@ app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/bom-auto', bomAutoRoutes);
 app.use('/api/erp', erpProxyRoutes);
 app.use('/api/orcamento-documentos', orcamentoDocumentosRoutes);
+app.use('/api/presales-ajustes', presalesAjustesRoutes);
 
 app.use(express.static(distPath));
 

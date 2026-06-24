@@ -1251,15 +1251,36 @@ router.get('/relatorio-orcamentos/consolidado', authMiddleware, async (req, res)
       offset: 0,
     });
 
+    // Último pedido de ajuste por orçamento (para sinalizar na fila os que aguardam
+    // o vendedor ou já voltaram ajustados para reauditoria).
+    const ajusteByPedido = new Map();
+    try {
+      const ajRes = await query(
+        `SELECT DISTINCT ON (erp_pedido_id)
+                erp_pedido_id, status, texto, created_at, ajustado_at, vendedor_nome
+           FROM presales_ajustes
+          WHERE erp_pedido_id = ANY($1)
+          ORDER BY erp_pedido_id, created_at DESC`,
+        [pedidoIds]
+      );
+      ajRes.rows.forEach(r => ajusteByPedido.set(Number(r.erp_pedido_id), r));
+    } catch (e) {
+      console.error('[consolidado] falha ao carregar ajustes:', e.message);
+    }
+
     // Sobrescreve o vendedor com o agente real do Bom Flow e etiqueta o módulo de origem.
     const items = rows.map(row => {
       const meta = metaById.get(Number(row.erp_id)) || {};
       const realName = meta.agent_name;
+      const aj = ajusteByPedido.get(Number(row.erp_id));
       return {
         ...row,
         modulo: meta.modulo || null,
         modulo_nome: MODULO_LABELS[meta.modulo] || meta.modulo || '-',
         ...(realName ? { nome_vendedor: realName, login_vendedor: realName } : {}),
+        ajuste_status: aj?.status || null,
+        ajuste_texto: aj?.texto || null,
+        ajuste_at: aj?.ajustado_at || aj?.created_at || null,
       };
     });
 

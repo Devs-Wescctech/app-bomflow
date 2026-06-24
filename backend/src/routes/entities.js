@@ -157,6 +157,35 @@ pool.query(`
 `).then(() => console.log('[Migration] orcamento_documentos OK'))
   .catch(e => console.error('[Migration] orcamento_documentos error:', e.message));
 
+// Pedidos de ajuste da Fila Pré Vendas. O auditor descreve o que falta no orçamento;
+// o vendedor que cadastrou (vendedor_id) é notificado e acompanha pelo painel próprio.
+// status: 'pendente' (aguardando o vendedor) -> 'ajustado' (vendedor corrigiu e devolveu
+// para a fila do mesmo auditor que solicitou).
+pool.query(`
+  CREATE TABLE IF NOT EXISTS presales_ajustes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    erp_pedido_id BIGINT NOT NULL,
+    erp_numero BIGINT,
+    modulo VARCHAR(32),
+    vendedor_id UUID,
+    vendedor_nome VARCHAR(255),
+    cliente_nome VARCHAR(255),
+    cliente_cpf VARCHAR(32),
+    texto TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pendente',
+    auditor_id UUID,
+    auditor_nome VARCHAR(255),
+    auditor_email VARCHAR(255),
+    vendedor_comentario TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    ajustado_at TIMESTAMPTZ
+  );
+  CREATE INDEX IF NOT EXISTS idx_presales_ajustes_vendedor ON presales_ajustes(vendedor_id);
+  CREATE INDEX IF NOT EXISTS idx_presales_ajustes_pedido ON presales_ajustes(erp_pedido_id);
+  CREATE INDEX IF NOT EXISTS idx_presales_ajustes_status ON presales_ajustes(status);
+`).then(() => console.log('[Migration] presales_ajustes OK'))
+  .catch(e => console.error('[Migration] presales_ajustes error:', e.message));
+
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }

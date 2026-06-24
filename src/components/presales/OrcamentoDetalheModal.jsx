@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import {
   X, FileText, Eye, Loader2, User, Calendar, Layers,
   CreditCard, Hash, Building2, Package, BadgeCheck, Users, PawPrint,
   Car, Phone, ShoppingBag, CheckCircle2, AlertTriangle, XCircle,
-  ClipboardCheck, ThumbsUp, PencilLine, Ban, MapPin,
+  ClipboardCheck, ThumbsUp, PencilLine, Ban, MapPin, Send, Clock,
 } from "lucide-react";
 
 const API_BASE = "/api";
@@ -175,6 +175,10 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
   const [produto, setProduto] = useState(null);
   const [detalhe, setDetalhe] = useState(null);
   const [viewingId, setViewingId] = useState(null);
+  const [ajustes, setAjustes] = useState([]);
+  const [ajusteTexto, setAjusteTexto] = useState("");
+  const [savingAjuste, setSavingAjuste] = useState(false);
+  const ajusteRef = useRef(null);
 
   const pedidoId = orcamento?.erp_id;
 
@@ -197,6 +201,50 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
   }, [pedidoId, toast]);
 
   useEffect(() => { loadDocs(); }, [loadDocs]);
+
+  const loadAjustes = useCallback(async () => {
+    if (!pedidoId) return;
+    try {
+      const res = await fetch(`${API_BASE}/presales-ajustes/by-pedido/${pedidoId}`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      setAjustes(Array.isArray(data.items) ? data.items : []);
+    } catch {
+      /* silencioso — a seção apenas não lista o histórico */
+    }
+  }, [pedidoId]);
+
+  useEffect(() => { loadAjustes(); }, [loadAjustes]);
+
+  const handleSaveAjuste = async () => {
+    const texto = ajusteTexto.trim();
+    if (!texto) {
+      ajusteRef.current?.focus();
+      return;
+    }
+    setSavingAjuste(true);
+    try {
+      const res = await fetch(`${API_BASE}/presales-ajustes`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ erp_pedido_id: pedidoId, texto }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Falha ao solicitar o ajuste.");
+      toast({ title: "Ajuste solicitado", description: "O vendedor e o supervisor foram notificados." });
+      setAjusteTexto("");
+      loadAjustes();
+    } catch (e) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    } finally {
+      setSavingAjuste(false);
+    }
+  };
+
+  const focusAjuste = () => {
+    ajusteRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTimeout(() => ajusteRef.current?.focus(), 300);
+  };
 
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
@@ -570,6 +618,72 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
             </div>
           )}
 
+          {/* SOLICITAR AJUSTE */}
+          <SectionTitle>Solicitar ajuste ao vendedor</SectionTitle>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
+            {ajustes.length > 0 && (
+              <div className="mb-3 space-y-2">
+                {ajustes.map((a) => {
+                  const done = a.status === "ajustado";
+                  return (
+                    <div
+                      key={a.id}
+                      className="rounded-xl border border-slate-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900"
+                    >
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${
+                            done
+                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+                              : "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
+                          }`}
+                        >
+                          {done ? <CheckCircle2 className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+                          {done ? "Ajustado pelo vendedor" : "Aguardando vendedor"}
+                        </span>
+                        <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                          {formatDateOnly(a.created_at)}
+                        </span>
+                      </div>
+                      <p className="whitespace-pre-wrap text-[13px] text-slate-700 dark:text-slate-200">{a.texto}</p>
+                      {done && a.vendedor_comentario && (
+                        <p className="mt-1.5 border-t border-slate-100 pt-1.5 text-[12px] text-emerald-700 dark:border-gray-800 dark:text-emerald-300">
+                          <span className="font-semibold">Resposta do vendedor:</span> {a.vendedor_comentario}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <label className="mb-1.5 block text-[12px] font-medium text-slate-600 dark:text-slate-300">
+              Descreva o que precisa ser ajustado
+            </label>
+            <textarea
+              ref={ajusteRef}
+              value={ajusteTexto}
+              onChange={(e) => setAjusteTexto(e.target.value)}
+              rows={4}
+              placeholder="Ex.: faltou o comprovante de residência e o telefone do titular está incorreto…"
+              className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition-colors placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200 dark:border-gray-700 dark:bg-gray-900 dark:text-slate-100 dark:focus:ring-amber-900"
+            />
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                O vendedor e o supervisor serão notificados.
+              </span>
+              <button
+                type="button"
+                onClick={handleSaveAjuste}
+                disabled={savingAjuste || !ajusteTexto.trim()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm shadow-amber-500/30 transition-colors hover:bg-amber-700 disabled:opacity-50"
+              >
+                {savingAjuste ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                Solicitar ajuste
+              </button>
+            </div>
+          </div>
+
           <p className="mt-4 text-[11px] text-slate-400 dark:text-slate-500">
             Os documentos são privados e acessíveis apenas a usuários autorizados.
           </p>
@@ -593,7 +707,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => handleAuditAction("Solicitar ajuste")}
+                onClick={focusAjuste}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12.5px] font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
               >
                 <PencilLine className="h-3.5 w-3.5" /> Solicitar ajuste

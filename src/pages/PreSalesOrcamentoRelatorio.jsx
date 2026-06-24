@@ -301,6 +301,10 @@ export default function PreSalesOrcamentoRelatorio() {
       : 'Tudo em dia — nenhuma auditoria pendente';
 
   const handleQuickAction = (label, o) => {
+    if (label === 'Solicitar ajuste') {
+      setSelected(o);
+      return;
+    }
     toast({
       title: `${label} — em definição`,
       description: `Ação visual (protótipo) para o orçamento Nº ${o.numero_orcamento || o.erp_id}. O fluxo de aprovação será definido em uma próxima etapa.`,
@@ -448,6 +452,15 @@ export default function PreSalesOrcamentoRelatorio() {
                       {o.nome_titular || '-'}
                     </button>
                     {pending ? <PriorityChip priority={o._priority} /> : <SituacaoChip situacao={o.situacao} />}
+                    {o.ajuste_status === 'ajustado' ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300" title="O vendedor ajustou — reauditar">
+                        <CheckCircle2 className="h-3 w-3" /> Ajustado — reauditar
+                      </span>
+                    ) : o.ajuste_status === 'pendente' ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] font-bold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300" title="Ajuste solicitado — aguardando o vendedor">
+                        <PencilLine className="h-3 w-3" /> Ajuste solicitado
+                      </span>
+                    ) : null}
                   </div>
 
                   <div className="mt-1.5 flex items-center flex-wrap gap-x-2.5 gap-y-1 text-[11.5px] text-slate-400 dark:text-slate-500">
