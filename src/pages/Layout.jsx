@@ -170,7 +170,7 @@ const menuModules = [
       { title: "Board de Vendas", url: createPageUrl("SalesQueueBoard"), icon: Inbox },
       { title: "Criar Ticket", url: createPageUrl("CreateSalesTicket"), icon: Plus, highlight: true },
       { title: "Tickets de Vendas", url: createPageUrl("SalesTickets"), icon: ShoppingCart },
-      { title: "Rel. de Orçamentos", url: createPageUrl("PreSalesOrcamentoRelatorio"), icon: FileBarChart, auditReport: true },
+      { title: "Fila Pré Vendas", url: createPageUrl("PreSalesOrcamentoRelatorio"), icon: FileBarChart, auditReport: true },
     ]
   },
   {
