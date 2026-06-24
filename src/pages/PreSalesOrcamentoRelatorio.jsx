@@ -46,6 +46,24 @@ function humanizeMs(ms) {
   return d === 1 ? '1 dia' : `${d} dias`;
 }
 
+// Última atividade real (data_alteracao do ERP) — relativa nas últimas 24h
+// ("há X min" / "há Xh"); "Ontem HH:MM" ou data curta + hora para mais antigos.
+function formatLastActivity(dateStr) {
+  if (!dateStr) return null;
+  const t = new Date(dateStr).getTime();
+  if (Number.isNaN(t)) return null;
+  const diff = Date.now() - t;
+  if (diff < 36e5) return `há ${Math.max(1, Math.round(diff / 6e4))} min`;
+  if (diff < 24 * 36e5) return `há ${Math.round(diff / 36e5)}h`;
+  const d = new Date(t);
+  const today = new Date();
+  const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === today.toDateString()) return `Hoje ${time}`;
+  const yest = new Date(today); yest.setDate(today.getDate() - 1);
+  if (d.toDateString() === yest.toDateString()) return `Ontem ${time}`;
+  return `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${time}`;
+}
+
 const norm = (s) => String(s || '').trim().toLowerCase();
 
 // DE > PARA das situações do ERP — chips suaves, sem bordas. Vermelho reservado
@@ -89,11 +107,11 @@ function getPriority(o) {
 
 // Vermelho apenas para "crítico". Demais prioridades usam azul/âmbar/verde/cinza.
 const PRIORITY_META = {
-  critico:   { label: 'Crítico',   bar: 'bg-rose-400',    dot: 'bg-rose-500',    chip: 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300',       icon: AlertTriangle },
-  revisar:   { label: 'Revisar',   bar: 'bg-amber-400',   dot: 'bg-amber-500',   chip: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300',    icon: Clock },
-  novo:      { label: 'Novo',      bar: 'bg-sky-300',     dot: 'bg-sky-400',     chip: 'bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300',          icon: Inbox },
-  aprovado:  { label: 'Aprovado',  bar: 'bg-emerald-400', dot: 'bg-emerald-500', chip: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300', icon: CheckCircle2 },
-  encerrado: { label: 'Encerrado', bar: 'bg-slate-300',   dot: 'bg-slate-400',   chip: 'bg-slate-100 text-slate-500 dark:bg-slate-700/40 dark:text-slate-300', icon: XCircle },
+  critico:   { label: 'Crítico',   bar: 'bg-rose-400',    dot: 'bg-rose-500',    chip: 'bg-rose-50 text-rose-600 ring-1 ring-inset ring-rose-200/60 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20',       icon: AlertTriangle },
+  revisar:   { label: 'Revisar',   bar: 'bg-amber-400',   dot: 'bg-amber-500',   chip: 'bg-amber-50 text-amber-600 ring-1 ring-inset ring-amber-200/60 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20',    icon: Clock },
+  novo:      { label: 'Novo',      bar: 'bg-sky-300',     dot: 'bg-sky-400',     chip: 'bg-sky-50 text-sky-600 ring-1 ring-inset ring-sky-200/60 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-500/20',          icon: Inbox },
+  aprovado:  { label: 'Aprovado',  bar: 'bg-emerald-400', dot: 'bg-emerald-500', chip: 'bg-emerald-50 text-emerald-600 ring-1 ring-inset ring-emerald-200/60 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20', icon: CheckCircle2 },
+  encerrado: { label: 'Encerrado', bar: 'bg-slate-300',   dot: 'bg-slate-400',   chip: 'bg-slate-100 text-slate-500 ring-1 ring-inset ring-slate-200 dark:bg-slate-700/40 dark:text-slate-300 dark:ring-slate-600/30', icon: XCircle },
 };
 
 const PRIORITY_ORDER = { critico: 0, revisar: 1, novo: 2, aprovado: 3, encerrado: 4 };
@@ -107,7 +125,7 @@ function sortByUrgency(a, b) {
 
 function Chip({ className = '', children }) {
   return (
-    <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${className}`}>
+    <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-all duration-200 ${className}`}>
       {children}
     </span>
   );
@@ -121,8 +139,12 @@ function SituacaoChip({ situacao }) {
 function PriorityChip({ priority }) {
   const m = PRIORITY_META[priority] || PRIORITY_META.novo;
   const Icon = m.icon;
-  const glow = priority === 'critico' ? 'shadow-[0_0_12px_rgba(239,68,68,0.15)]' : '';
-  return <Chip className={`${m.chip} font-semibold ${glow}`}><Icon className="w-3 h-3" /> {m.label}</Chip>;
+  const critical = priority === 'critico';
+  return (
+    <Chip className={`${m.chip} font-semibold ${critical ? 'tracking-wide shadow-[0_0_12px_rgba(239,68,68,0.18)]' : ''}`}>
+      <Icon className="w-3 h-3" /> {m.label}
+    </Chip>
+  );
 }
 
 function todayISO() {
@@ -266,10 +288,10 @@ export default function PreSalesOrcamentoRelatorio() {
   }, [enriched]);
 
   const heroMessage = stats.criticos > 0
-    ? `${stats.criticos} ${stats.criticos === 1 ? 'orçamento crítico requer' : 'orçamentos críticos requerem'} atenção imediata`
+    ? `${stats.criticos} ${stats.criticos === 1 ? 'orçamento aguardando decisão prioritária' : 'orçamentos aguardando decisão prioritária'}`
     : stats.aguardando > 0
-      ? `${stats.aguardando} ${stats.aguardando === 1 ? 'orçamento aguardando' : 'orçamentos aguardando'} auditoria`
-      : 'Tudo em dia — nenhuma pendência crítica na fila';
+      ? `${stats.aguardando} ${stats.aguardando === 1 ? 'auditoria pendente requer análise' : 'auditorias pendentes requerem análise'}`
+      : 'Tudo em dia — nenhuma auditoria pendente';
 
   const handleQuickAction = (label, o) => {
     toast({
@@ -340,7 +362,7 @@ export default function PreSalesOrcamentoRelatorio() {
               <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Nº, CPF, cliente ou vendedor" className="h-9 pl-9 border-slate-200 dark:border-gray-800" />
             </div>
           </div>
-          <Button onClick={loadReport} disabled={loading} size="sm" className="h-9 bg-[linear-gradient(135deg,#7C3AED,#9333EA)] text-white shadow-sm transition-all hover:brightness-110">
+          <Button onClick={loadReport} disabled={loading} size="sm" className="h-9 bg-[linear-gradient(135deg,#7C3AED,#9333EA)] text-white shadow-sm transition-all duration-200 hover:brightness-110">
             {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
             Aplicar
           </Button>
@@ -401,10 +423,10 @@ export default function PreSalesOrcamentoRelatorio() {
             return (
               <div
                 key={`${o.erp_id}-${i}`}
-                className="group relative flex items-center gap-3 rounded-xl bg-white dark:bg-gray-900 ring-1 ring-slate-200/60 dark:ring-gray-800 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:ring-slate-300/70 hover:shadow-[0_12px_28px_-14px_rgba(15,23,42,0.20)] pl-4 pr-2.5 py-3"
+                className="group relative flex items-center gap-3 rounded-xl bg-white dark:bg-gray-900 ring-1 ring-slate-200/60 dark:ring-gray-800 shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:ring-slate-300/70 hover:shadow-[0_12px_32px_rgba(0,0,0,0.08)] pl-4 pr-2.5 py-3.5"
               >
                 {/* Acento de prioridade (sutil) */}
-                <span className={`absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-full ${pm.bar} opacity-70 transition-opacity group-hover:opacity-100`} />
+                <span className={`absolute left-0 top-3 bottom-3 w-[3px] rounded-full ${pm.bar} opacity-70 transition-opacity group-hover:opacity-100`} />
 
                 {/* Conteúdo (escaneável em 2 linhas) */}
                 <div className="flex-1 min-w-0">
@@ -412,7 +434,7 @@ export default function PreSalesOrcamentoRelatorio() {
                     <button
                       type="button"
                       onClick={() => setSelected(o)}
-                      className="rounded text-[14.5px] font-semibold text-slate-900 dark:text-white truncate transition-colors hover:text-violet-600 dark:hover:text-violet-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60 focus-visible:ring-offset-1"
+                      className="rounded text-[15px] font-bold tracking-[-0.01em] text-slate-900 dark:text-white truncate transition-colors hover:text-violet-600 dark:hover:text-violet-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60 focus-visible:ring-offset-1"
                       title={o.nome_titular || 'Abrir auditoria'}
                       aria-label={`Abrir auditoria do orçamento ${o.numero_orcamento || o.erp_id} — ${o.nome_titular || ''}`}
                     >
@@ -421,24 +443,30 @@ export default function PreSalesOrcamentoRelatorio() {
                     {pending ? <PriorityChip priority={o._priority} /> : <SituacaoChip situacao={o.situacao} />}
                   </div>
 
-                  <div className="mt-1 flex items-center flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-slate-400 dark:text-slate-500">
+                  <div className="mt-1.5 flex items-center flex-wrap gap-x-2.5 gap-y-1 text-[11.5px] text-slate-400 dark:text-slate-500">
                     <span className="font-semibold text-slate-500 dark:text-slate-400 tabular-nums">#{o.numero_orcamento || o.erp_id}</span>
-                    <span className="font-mono tabular-nums">{formatCpf(o.cpf_titular)}</span>
+                    <span className="font-mono tabular-nums text-slate-400 dark:text-slate-500">{formatCpf(o.cpf_titular)}</span>
                     {pending && (
-                      <span className="inline-flex items-center gap-1">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-slate-100/80 px-1.5 py-0.5 font-medium text-slate-500 transition-colors duration-200 dark:bg-gray-800/60 dark:text-slate-300">
                         <Clock className="w-3.5 h-3.5" /> {humanizeMs(o._waitMs)} aguardando
                       </span>
                     )}
                     <span className="inline-flex items-center gap-1" title="Vendedor">
-                      <UserIcon className="w-3.5 h-3.5" /> <span className="text-slate-500 dark:text-slate-400 truncate max-w-[160px]">{o.nome_vendedor || '-'}</span>
+                      <UserIcon className="w-3.5 h-3.5" /> <span className="truncate max-w-[150px]">{o.nome_vendedor || '-'}</span>
                     </span>
                     {canal && (
                       <span className="hidden lg:inline-flex items-center gap-1" title="Canal">
-                        <Layers className="w-3.5 h-3.5" /> <span className="text-slate-500 dark:text-slate-400 truncate max-w-[160px]">{canal}</span>
+                        <Layers className="w-3.5 h-3.5" /> <span className="truncate max-w-[150px]">{canal}</span>
                       </span>
                     )}
                     <Chip className={MODULO_BADGE[o.modulo] || 'bg-slate-100 text-slate-500'}>{o.modulo_nome || '-'}</Chip>
                   </div>
+
+                  {o.data_ultima_alteracao && (
+                    <div className="mt-1 text-[11px] text-slate-400/80 dark:text-slate-500">
+                      Última atualização: <span className="font-medium text-slate-500 dark:text-slate-400">{formatLastActivity(o.data_ultima_alteracao)}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Ação primária dominante + menu de contexto */}
@@ -446,7 +474,7 @@ export default function PreSalesOrcamentoRelatorio() {
                   <button
                     type="button"
                     onClick={() => setSelected(o)}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-[linear-gradient(135deg,#7C3AED,#9333EA)] px-3 py-1.5 text-[12.5px] font-semibold text-white shadow-sm transition-all hover:brightness-110 group-hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[linear-gradient(135deg,#7C3AED,#9333EA)] px-3 py-1.5 text-[12.5px] font-semibold text-white shadow-sm transition-all duration-200 hover:brightness-110 group-hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50"
                   >
                     <Eye className="h-3.5 w-3.5" /> Auditar
                   </button>
