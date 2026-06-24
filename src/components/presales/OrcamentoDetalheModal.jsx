@@ -22,7 +22,7 @@ const DOC_TIPO_LABEL = {
 };
 
 // Documentos exigidos para a auditoria considerar o orçamento completo.
-const REQUIRED_DOCS = ["documento_identidade", "comprovante_residencia"];
+const REQUIRED_DOCS = ["documento_identidade", "comprovante_residencia", "taxa_adesao", "copia_contrato"];
 
 function formatBytes(bytes) {
   if (bytes == null) return "";
@@ -259,6 +259,8 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
   const nascOk = !!titular?.data_nascimento;
   const docIdOk = attachedTipos.has("documento_identidade");
   const compResOk = attachedTipos.has("comprovante_residencia");
+  const taxaAdesaoOk = attachedTipos.has("taxa_adesao");
+  const copiaContratoOk = attachedTipos.has("copia_contrato");
   const hasVeiculo = grupos.veiculo.length > 0;
 
   const checklist = [
@@ -269,6 +271,8 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
     { label: "Data de nascimento", ok: nascOk, level: "rec" },
     { label: "Documento (CPF/RG) anexado", ok: docIdOk, level: "doc" },
     { label: "Comprovante de residência anexado", ok: compResOk, level: "doc" },
+    { label: "Taxa de adesão anexada", ok: taxaAdesaoOk, level: "doc" },
+    { label: "Cópia do contrato anexada", ok: copiaContratoOk, level: "doc" },
     ...(hasVeiculo ? [{ label: "Veículo cadastrado", ok: true, level: "rec" }] : []),
   ];
 
