@@ -294,11 +294,6 @@ export default function PreSalesOrcamentoRelatorio() {
                 <h1 className="text-[20px] md:text-[22px] font-semibold tracking-tight leading-none">Fila Pré Vendas</h1>
               </div>
               <p className="mt-2.5 text-[14px] md:text-[15px] font-medium text-white/90">{heroMessage}</p>
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-white/70">
-                <span><b className="font-semibold text-white tabular-nums">{stats.aguardando}</b> aguardando</span>
-                <span className="h-1 w-1 rounded-full bg-white/30" />
-                <span><b className="font-semibold text-white tabular-nums">{stats.criticos}</b> críticos</span>
-              </div>
             </div>
 
             <div className="flex items-center gap-4 sm:gap-5">
