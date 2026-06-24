@@ -344,7 +344,7 @@ export default function PreSalesOrcamentoRelatorio() {
               <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Nº, CPF, cliente ou vendedor" className="h-9 pl-9 border-slate-200 dark:border-gray-800" />
             </div>
           </div>
-          <Button onClick={loadReport} disabled={loading} size="sm" className="h-9 bg-slate-900 hover:bg-slate-800 text-white shadow-sm dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100">
+          <Button onClick={loadReport} disabled={loading} size="sm" className="h-9 bg-[linear-gradient(135deg,#7C3AED,#9333EA)] text-white shadow-sm transition-all hover:brightness-110">
             {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
             Aplicar
           </Button>
@@ -450,7 +450,7 @@ export default function PreSalesOrcamentoRelatorio() {
                   <button
                     type="button"
                     onClick={() => setSelected(o)}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-[12.5px] font-semibold text-white shadow-sm transition-all hover:bg-slate-800 group-hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[linear-gradient(135deg,#7C3AED,#9333EA)] px-3 py-1.5 text-[12.5px] font-semibold text-white shadow-sm transition-all hover:brightness-110 group-hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50"
                   >
                     <Eye className="h-3.5 w-3.5" /> Auditar
                   </button>
