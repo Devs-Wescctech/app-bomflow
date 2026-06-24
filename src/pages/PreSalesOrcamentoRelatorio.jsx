@@ -121,7 +121,8 @@ function SituacaoChip({ situacao }) {
 function PriorityChip({ priority }) {
   const m = PRIORITY_META[priority] || PRIORITY_META.novo;
   const Icon = m.icon;
-  return <Chip className={`${m.chip} font-semibold`}><Icon className="w-3 h-3" /> {m.label}</Chip>;
+  const glow = priority === 'critico' ? 'shadow-[0_0_12px_rgba(239,68,68,0.15)]' : '';
+  return <Chip className={`${m.chip} font-semibold ${glow}`}><Icon className="w-3 h-3" /> {m.label}</Chip>;
 }
 
 function todayISO() {
