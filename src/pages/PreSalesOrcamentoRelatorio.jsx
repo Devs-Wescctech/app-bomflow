@@ -282,7 +282,7 @@ export default function PreSalesOrcamentoRelatorio() {
       <div className="max-w-[1280px] mx-auto flex flex-col gap-3.5">
 
         {/* Hero — âncora visual */}
-        <div className="relative overflow-hidden rounded-2xl px-5 py-4 md:px-6 md:py-5 text-white shadow-xl shadow-violet-500/20 bg-gradient-to-br from-violet-600 via-violet-600 to-indigo-600">
+        <div className="relative overflow-hidden rounded-2xl px-5 py-4 md:px-6 md:py-5 text-white shadow-[0_20px_40px_rgba(124,58,237,0.18)] bg-gradient-to-br from-violet-600 via-violet-600 to-indigo-600">
           <div className="pointer-events-none absolute -top-16 -right-8 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-24 left-1/3 h-44 w-44 rounded-full bg-fuchsia-400/20 blur-3xl" />
           <div className="relative flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
