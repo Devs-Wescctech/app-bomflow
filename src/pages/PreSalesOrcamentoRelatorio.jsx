@@ -29,12 +29,20 @@ function formatCpf(cpf) {
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
 }
 
+// O ERP armazena datas no horário de Brasília (UTC-3), mas o driver pg as
+// serializa sem fuso (como se fossem UTC). Corrige somando 3h ao valor lido.
+const ERP_TZ_OFFSET_MS = 3 * 60 * 60 * 1000; // UTC-3 → UTC
+function parseErpTs(dateStr) {
+  if (!dateStr) return NaN;
+  const t = new Date(dateStr).getTime();
+  return Number.isNaN(t) ? NaN : t + ERP_TZ_OFFSET_MS;
+}
+
 // Tempo de espera desde a criação (proxy de "aguardando há"). Retorna ms ou null.
 function waitingMs(dateStr) {
-  if (!dateStr) return null;
-  const t = new Date(dateStr).getTime();
+  const t = parseErpTs(dateStr);
   if (Number.isNaN(t)) return null;
-  return Date.now() - t;
+  return Math.max(0, Date.now() - t);
 }
 
 function humanizeMs(ms) {
@@ -49,8 +57,7 @@ function humanizeMs(ms) {
 // Última atividade real (data_alteracao do ERP) — relativa nas últimas 24h
 // ("há X min" / "há Xh"); "Ontem HH:MM" ou data curta + hora para mais antigos.
 function formatLastActivity(dateStr) {
-  if (!dateStr) return null;
-  const t = new Date(dateStr).getTime();
+  const t = parseErpTs(dateStr);
   if (Number.isNaN(t)) return null;
   const diff = Date.now() - t;
   if (diff < 36e5) return `há ${Math.max(1, Math.round(diff / 6e4))} min`;
