@@ -401,7 +401,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
                   return (
                     <div
                       key={i}
-                      className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3 dark:border-gray-800 dark:bg-gray-900"
+                      className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_32px_rgba(0,0,0,0.08)] dark:border-gray-800 dark:bg-gray-900"
                     >
                       <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400">
                         <ShoppingBag className="h-4 w-4" />
@@ -436,7 +436,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
                   {list.map((p, i) => (
                     <div
                       key={i}
-                      className="flex items-start gap-3 rounded-xl border border-slate-100 bg-white p-3 dark:border-gray-800 dark:bg-gray-900"
+                      className="flex items-start gap-3 rounded-xl border border-slate-100 bg-white p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_32px_rgba(0,0,0,0.08)] dark:border-gray-800 dark:bg-gray-900"
                     >
                       <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${meta.bg} ${meta.color}`}>
                         <Icon className="h-4 w-4" />
@@ -500,7 +500,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
                 return (
                   <div
                     key={doc.id}
-                    className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3.5 transition-colors hover:border-violet-200 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-violet-800"
+                    className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3.5 transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_12px_32px_rgba(0,0,0,0.08)] dark:border-gray-800 dark:bg-gray-900 dark:hover:border-violet-800"
                   >
                     <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400">
                       <FileText className="h-5 w-5" />
