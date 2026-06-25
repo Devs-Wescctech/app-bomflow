@@ -270,6 +270,7 @@ const menuModules = [
       { title: "Tarefas", url: createPageUrl("ReferralTasks"), icon: CheckSquare },
       { title: "Relatórios", url: createPageUrl("ReferralReports"), icon: FileBarChart, supervisorOnly: true },
       { title: "Rel. de Orçamentos", url: createPageUrl("ReferralOrcamentoRelatorio"), icon: FileBarChart, supervisorOnly: true },
+      { title: "Retornos da Auditoria", url: createPageUrl("PreSalesAjustes"), icon: ClipboardCheck },
       { title: "Rel. de Convertidos", url: createPageUrl("ReferralWonReport"), icon: Trophy },
       { title: "Rel. de Reativações", url: createPageUrl("ReferralReactivationReport"), icon: FileBarChart, requiredSubmenu: "ReferralReactivationReport" },
       { title: "Comissões ERP", url: createPageUrl("CommissionPerspectivaControl"), icon: FileCheck, requiredSubmenu: "CommissionPaymentControl" },
