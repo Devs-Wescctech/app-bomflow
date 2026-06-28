@@ -12,6 +12,15 @@ const MODULO_LABELS = {
   indicacoes: 'Indicações',
 };
 
+// Mapeia o módulo do orçamento para a tabela de leads, a coluna do documento
+// do cliente e a página de detalhe do lead no frontend.
+const MODULO_LEAD_MAP = {
+  sales: { table: 'leads', cpfCol: 'cpf', page: 'LeadDetail' },
+  sales_pj: { table: 'leads_pj', cpfCol: 'cnpj', page: 'LeadPJDetail' },
+  referral: { table: 'referrals', cpfCol: 'referred_cpf', page: 'ReferralDetail' },
+  sales_upsell: { table: 'leads_upsell', cpfCol: 'cpf', page: 'LeadUpsellDetail' },
+};
+
 // Mesma regra de elegibilidade da Fila Pré Vendas (relatório consolidado):
 // admin, agente do tipo "auditoria" ou supervisor do time "Auditoria".
 async function resolveAuditor(req) {
@@ -175,6 +184,42 @@ router.get('/by-pedido/:pedidoId', authMiddleware, async (req, res) => {
   } catch (e) {
     console.error('[presales-ajustes] GET /by-pedido error:', e.message);
     return res.status(500).json({ error: 'Falha ao carregar os ajustes do orçamento.' });
+  }
+});
+
+// GET /:id/lead — localiza o lead do cliente do orçamento para abrir a tela de detalhe.
+router.get('/:id/lead', authMiddleware, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const ajusteRes = await query(`SELECT * FROM presales_ajustes WHERE id = $1`, [id]);
+    const ajuste = ajusteRes.rows[0];
+    if (!ajuste) return res.status(404).json({ error: 'Ajuste não encontrado.' });
+    if (ajuste.vendedor_id !== req.user.id) {
+      return res.status(403).json({ error: 'Você só pode abrir os leads das suas próprias vendas.' });
+    }
+    const map = MODULO_LEAD_MAP[ajuste.modulo];
+    if (!map) {
+      return res.status(422).json({ error: 'Módulo do orçamento não suporta abertura de lead.' });
+    }
+    const cpfDigits = String(ajuste.cliente_cpf || '').replace(/\D/g, '');
+    if (!cpfDigits) {
+      return res.status(404).json({ error: 'Orçamento sem documento do cliente para localizar o lead.' });
+    }
+    const leadRes = await query(
+      `SELECT id FROM ${map.table}
+        WHERE regexp_replace(COALESCE(${map.cpfCol}, ''), '[^0-9]', '', 'g') = $1
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [cpfDigits]
+    );
+    const lead = leadRes.rows[0];
+    if (!lead) {
+      return res.status(404).json({ error: 'Lead do cliente não encontrado neste módulo.' });
+    }
+    return res.json({ page: map.page, lead_id: lead.id, modulo: ajuste.modulo });
+  } catch (e) {
+    console.error('[presales-ajustes] GET /:id/lead error:', e.message);
+    return res.status(500).json({ error: 'Falha ao localizar o lead do cliente.' });
   }
 });
 

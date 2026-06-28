@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
 import { useToast } from "@/components/ui/use-toast";
 import {
   ClipboardCheck, Loader2, Clock, CheckCircle2, RefreshCw,
-  User as UserIcon, Layers, Hash, Send, AlertTriangle,
+  User as UserIcon, Layers, Hash, Send, AlertTriangle, ExternalLink,
 } from "lucide-react";
 
 const API_BASE = "/api";
@@ -36,10 +38,28 @@ const TABS = [
 
 function AjusteCard({ ajuste, onMarked }) {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [comentario, setComentario] = useState("");
   const [saving, setSaving] = useState(false);
+  const [opening, setOpening] = useState(false);
   const done = ajuste.status === "ajustado";
+
+  const handleOpenLead = async () => {
+    if (opening) return;
+    setOpening(true);
+    try {
+      const res = await fetch(`${API_BASE}/presales-ajustes/${ajuste.id}/lead`, {
+        headers: authHeaders(),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Não foi possível abrir o lead do cliente.");
+      navigate(createPageUrl(data.page, { id: data.lead_id }));
+    } catch (e) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+      setOpening(false);
+    }
+  };
 
   const handleMark = async () => {
     setSaving(true);
@@ -63,9 +83,25 @@ function AjusteCard({ ajuste, onMarked }) {
   const numero = ajuste.erp_numero || ajuste.erp_pedido_id;
 
   return (
-    <div className={`rounded-2xl border bg-white p-4 shadow-sm transition-all dark:bg-gray-900 ${
-      done ? "border-emerald-200 dark:border-emerald-900/60" : "border-amber-200 dark:border-amber-900/60"
-    }`}>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={handleOpenLead}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleOpenLead();
+        }
+      }}
+      title="Abrir o lead do cliente"
+      className={`group relative cursor-pointer rounded-2xl border bg-white p-4 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-violet-300 dark:bg-gray-900 ${
+        done ? "border-emerald-200 dark:border-emerald-900/60" : "border-amber-200 dark:border-amber-900/60"
+      } ${opening ? "opacity-70" : ""}`}
+    >
+      <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 dark:text-slate-600">
+        {opening ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+      </div>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -111,7 +147,7 @@ function AjusteCard({ ajuste, onMarked }) {
           </p>
         )
       ) : open ? (
-        <div className="mt-3">
+        <div className="mt-3" onClick={(e) => e.stopPropagation()}>
           <textarea
             value={comentario}
             onChange={(e) => setComentario(e.target.value)}
@@ -122,14 +158,14 @@ function AjusteCard({ ajuste, onMarked }) {
           <div className="mt-2 flex items-center justify-end gap-2">
             <button
               type="button"
-              onClick={() => setOpen(false)}
+              onClick={(e) => { e.stopPropagation(); setOpen(false); }}
               className="rounded-lg px-3 py-2 text-[12.5px] font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-gray-800"
             >
               Cancelar
             </button>
             <button
               type="button"
-              onClick={handleMark}
+              onClick={(e) => { e.stopPropagation(); handleMark(); }}
               disabled={saving}
               className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm shadow-emerald-500/30 transition-colors hover:bg-emerald-700 disabled:opacity-50"
             >
@@ -139,10 +175,10 @@ function AjusteCard({ ajuste, onMarked }) {
           </div>
         </div>
       ) : (
-        <div className="mt-3 flex justify-end">
+        <div className="mt-3 flex justify-end" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
-            onClick={() => setOpen(true)}
+            onClick={(e) => { e.stopPropagation(); setOpen(true); }}
             className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm shadow-emerald-500/30 transition-colors hover:bg-emerald-700"
           >
             <CheckCircle2 className="h-3.5 w-3.5" /> Marcar como ajustado
