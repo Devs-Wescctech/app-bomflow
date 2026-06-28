@@ -404,6 +404,10 @@ export function filterMenuItems(agent, menuItems, user = null) {
         // Módulo exibido só pela exceção de auditoria → esconde os demais itens.
         if (!moduleAccessible) return false;
 
+        // alwaysVisible: visível a qualquer agente com acesso ao módulo,
+        // ignorando restrições de submenu (allowedSubmenus) do tipo de agente.
+        if (subItem.alwaysVisible) return true;
+
         // Extract page name from URL (remove leading slash)
         const urlPageName = subItem.url ? subItem.url.replace(/^\//, '').split('?')[0] : null;
         const submenuKey = urlPageName || subItem.title;
