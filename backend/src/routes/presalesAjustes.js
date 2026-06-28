@@ -205,18 +205,35 @@ router.get('/:id/lead', authMiddleware, async (req, res) => {
     if (!cpfDigits) {
       return res.status(404).json({ error: 'Orçamento sem documento do cliente para localizar o lead.' });
     }
-    const leadRes = await query(
-      `SELECT id FROM ${map.table}
-        WHERE regexp_replace(COALESCE(${map.cpfCol}, ''), '[^0-9]', '', 'g') = $1
-        ORDER BY created_at DESC
-        LIMIT 1`,
-      [cpfDigits]
-    );
-    const lead = leadRes.rows[0];
-    if (!lead) {
-      return res.status(404).json({ error: 'Lead do cliente não encontrado neste módulo.' });
+    // Tenta primeiro na tabela do módulo do orçamento; se não achar,
+    // percorre os demais módulos em ordem de prioridade (fallback).
+    const ALL_MODULOS = ['sales', 'sales_upsell', 'referral', 'sales_pj'];
+    const searchOrder = [
+      ajuste.modulo,
+      ...ALL_MODULOS.filter((m) => m !== ajuste.modulo),
+    ];
+
+    let found = null;
+    for (const mod of searchOrder) {
+      const m = MODULO_LEAD_MAP[mod];
+      if (!m) continue;
+      const r = await query(
+        `SELECT id FROM ${m.table}
+          WHERE regexp_replace(COALESCE(${m.cpfCol}, ''), '[^0-9]', '', 'g') = $1
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [cpfDigits]
+      );
+      if (r.rows[0]) {
+        found = { page: m.page, lead_id: r.rows[0].id, modulo: mod };
+        break;
+      }
     }
-    return res.json({ page: map.page, lead_id: lead.id, modulo: ajuste.modulo });
+
+    if (!found) {
+      return res.status(404).json({ error: 'Lead do cliente não encontrado.' });
+    }
+    return res.json(found);
   } catch (e) {
     console.error('[presales-ajustes] GET /:id/lead error:', e.message);
     return res.status(500).json({ error: 'Falha ao localizar o lead do cliente.' });
