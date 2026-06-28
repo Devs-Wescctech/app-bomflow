@@ -1010,6 +1010,7 @@ export default function ReferralDetail() {
                 <UpsellNovoOrcamento
                   embedded
                   modulo="referral"
+                  leadId={referralId}
                   initialLead={{
                     nome: referral.referredName,
                     cpf: referral.referredCpf,

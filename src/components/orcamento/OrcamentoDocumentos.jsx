@@ -424,14 +424,17 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
   const fileInputs = useRef({});
 
   const fetchOrcamentos = useCallback(async () => {
-    if (!cpf || !modulo) {
+    if (!modulo || (!cpf && !leadId)) {
       setOrcamentos([]);
       return;
     }
     setLoading(true);
     try {
+      const params = new URLSearchParams({ modulo });
+      if (cpf) params.set("cpf", cpf);
+      if (leadId) params.set("lead_id", leadId);
       const res = await fetch(
-        `/api/orcamento-documentos/orcamentos?modulo=${encodeURIComponent(modulo)}&cpf=${encodeURIComponent(cpf)}`,
+        `/api/orcamento-documentos/orcamentos?${params.toString()}`,
         { headers: authHeaders() }
       );
       if (!res.ok) throw new Error("Falha ao carregar orçamentos");
@@ -443,7 +446,7 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
     } finally {
       setLoading(false);
     }
-  }, [cpf, modulo]);
+  }, [cpf, leadId, modulo]);
 
   useEffect(() => {
     fetchOrcamentos();

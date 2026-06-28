@@ -1196,6 +1196,7 @@ export default function LeadUpsellDetail() {
                 <UpsellNovoOrcamento
                   embedded
                   modulo="sales_upsell"
+                  leadId={leadId}
                   initialLead={{
                     nome: lead.name,
                     cpf: lead.cpf,

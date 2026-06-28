@@ -111,18 +111,19 @@ async function canViewConsolidadoDocs(req, erpPedidoId) {
 // Lista os orçamentos do lead (por módulo + CPF) com os documentos anexados e a flag Adesão Zero.
 router.get('/orcamentos', authMiddleware, async (req, res) => {
   try {
-    const { modulo, cpf } = req.query;
+    const { modulo, cpf, lead_id: leadId } = req.query;
     if (!modulo || !MODULOS_VALIDOS.includes(modulo)) return res.json({ items: [] });
     const cpfDigits = onlyDigits(cpf);
-    if (!cpfDigits) return res.json({ items: [] });
+    if (!cpfDigits && !leadId) return res.json({ items: [] });
 
     // Escopo de visibilidade: admin/supervisor veem todos; demais só os próprios orçamentos.
     const privileged = await isPrivileged(req);
-    const params = [modulo, cpfDigits];
+    // $1=modulo, $2=cpfDigits ('' when absent), $3=leadId (null when absent)
+    const params = [modulo, cpfDigits || '', leadId || null];
     let ownerFilter = '';
     if (!privileged) {
       params.push(req.user?.id || null);
-      ownerFilter = ' AND agent_id = $3';
+      ownerFilter = ` AND agent_id = $${params.length}`;
     }
 
     const orcs = await query(
@@ -130,7 +131,10 @@ router.get('/orcamentos', authMiddleware, async (req, res) => {
               adesao_zero, adesao_zero_updated_at, created_at
          FROM bomflow_orcamentos
         WHERE modulo = $1
-          AND regexp_replace(COALESCE(cliente_cpf, ''), '\\D', '', 'g') = $2${ownerFilter}
+          AND (
+            ($2 <> '' AND regexp_replace(COALESCE(cliente_cpf, ''), '\\D', '', 'g') = $2)
+            OR ($3::uuid IS NOT NULL AND lead_id = $3::uuid)
+          )${ownerFilter}
         ORDER BY created_at DESC`,
       params
     );

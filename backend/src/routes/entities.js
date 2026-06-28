@@ -138,6 +138,8 @@ pool.query(`
   ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS adesao_zero BOOLEAN;
   ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS adesao_zero_updated_by UUID;
   ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS adesao_zero_updated_at TIMESTAMPTZ;
+  ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS lead_id UUID;
+  CREATE INDEX IF NOT EXISTS idx_bomflow_orcamentos_lead ON bomflow_orcamentos(lead_id);
   CREATE TABLE IF NOT EXISTS orcamento_documentos (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     erp_pedido_id BIGINT NOT NULL,

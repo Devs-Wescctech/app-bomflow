@@ -994,6 +994,7 @@ export default function LeadPJDetail() {
                 <UpsellNovoOrcamento
                   embedded
                   modulo="sales_pj"
+                  leadId={leadId}
                   initialLead={{
                     nome:
                       lead.nomeFantasia ||
