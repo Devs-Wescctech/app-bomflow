@@ -132,7 +132,7 @@ function sortByUrgency(a, b) {
 
 function Chip({ className = '', children }) {
   return (
-    <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-all duration-200 ${className}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-all duration-200 ${className}`}>
       {children}
     </span>
   );
@@ -316,18 +316,20 @@ export default function PreSalesOrcamentoRelatorio() {
       <div className="max-w-[1280px] mx-auto flex flex-col gap-3.5">
 
         {/* Hero — âncora visual */}
-        <div className="relative overflow-hidden rounded-2xl px-5 py-4 md:px-6 md:py-5 text-white shadow-[0_20px_40px_rgba(124,58,237,0.18)] bg-gradient-to-br from-violet-600 via-violet-600 to-indigo-600">
+        <div className="relative overflow-hidden rounded-2xl px-5 py-4 md:px-6 md:py-5 text-white shadow-[0_24px_60px_-12px_rgba(91,33,182,0.45)] ring-1 ring-white/10 bg-[linear-gradient(135deg,#6d28d9_0%,#7c3aed_46%,#4f46e5_100%)]">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:radial-gradient(rgba(255,255,255,0.9)_1px,transparent_1px)] [background-size:16px_16px]" />
           <div className="pointer-events-none absolute -top-16 -right-8 h-48 w-48 rounded-full bg-white/10 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-24 left-1/3 h-44 w-44 rounded-full bg-fuchsia-400/20 blur-3xl" />
           <div className="relative flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
             <div className="min-w-0">
               <div className="flex items-center gap-2.5">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25 backdrop-blur">
-                  <ShieldCheck className="w-4 h-4" />
+                <span className="relative inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25 backdrop-blur shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]">
+                  <span className="pointer-events-none absolute -inset-2 rounded-full bg-white/30 blur-xl" />
+                  <ShieldCheck className="relative w-4 h-4" />
                 </span>
-                <h1 className="text-[20px] md:text-[22px] font-semibold tracking-tight leading-none">Fila Pré Vendas</h1>
+                <h1 className="text-[20px] md:text-[22px] font-bold tracking-tight leading-none drop-shadow-sm">Fila Pré Vendas</h1>
               </div>
-              <p className="mt-2.5 text-[14px] md:text-[15px] font-medium text-white/90">{heroMessage}</p>
+              <p className="mt-2.5 text-[14px] md:text-[15px] font-medium text-white/80">{heroMessage}</p>
             </div>
 
             <div className="flex items-center gap-4 sm:gap-5">
@@ -348,9 +350,9 @@ export default function PreSalesOrcamentoRelatorio() {
               <Button
                 onClick={() => topPending && setSelected(topPending)}
                 disabled={!topPending}
-                className="bg-white text-violet-700 hover:bg-violet-50 shadow-md shadow-violet-900/10 font-semibold disabled:opacity-60"
+                className="group/cta bg-white text-violet-700 hover:bg-violet-50 shadow-md shadow-violet-900/10 font-semibold transition-all duration-200 ease-out hover:-translate-y-px hover:shadow-lg hover:shadow-violet-900/20 disabled:opacity-60"
               >
-                Auditar Agora <ArrowRight className="w-4 h-4 ml-1.5" />
+                Auditar Agora <ArrowRight className="w-4 h-4 ml-1.5 transition-transform duration-200 group-hover/cta:translate-x-0.5" />
               </Button>
             </div>
           </div>
@@ -391,10 +393,10 @@ export default function PreSalesOrcamentoRelatorio() {
                   type="button"
                   onClick={() => setTab(t.key)}
                   aria-pressed={active}
-                  className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50 ${
+                  className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-all duration-200 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50 ${
                     active
-                      ? 'bg-white text-slate-900 shadow-sm dark:bg-gray-800 dark:text-white'
-                      : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                      ? 'bg-white text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.08),0_1px_1px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70 dark:bg-gray-800 dark:text-white dark:ring-gray-700'
+                      : 'text-slate-500 hover:text-slate-800 hover:bg-white/50 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-gray-800/40'
                   }`}
                 >
                   {t.key === 'meus' && <UserIcon className="w-3.5 h-3.5" />}
@@ -434,7 +436,7 @@ export default function PreSalesOrcamentoRelatorio() {
             return (
               <div
                 key={`${o.erp_id}-${i}`}
-                className="group relative flex items-center gap-3 rounded-xl bg-white dark:bg-gray-900 ring-1 ring-slate-200/60 dark:ring-gray-800 shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:ring-slate-300/70 hover:shadow-[0_12px_32px_rgba(0,0,0,0.08)] pl-4 pr-2.5 py-3.5"
+                className="group relative flex items-center gap-3 rounded-2xl bg-white dark:bg-gray-900 ring-1 ring-slate-200/60 dark:ring-gray-800 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_4px_12px_-6px_rgba(15,23,42,0.06)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:ring-violet-300/50 dark:hover:ring-violet-500/30 hover:shadow-[0_18px_44px_-16px_rgba(76,29,149,0.28)] pl-4 pr-2.5 py-3.5"
               >
                 {/* Acento de prioridade (sutil) */}
                 <span className={`absolute left-0 top-3 bottom-3 w-[3px] rounded-full ${pm.bar} opacity-70 transition-opacity group-hover:opacity-100`} />
@@ -445,7 +447,7 @@ export default function PreSalesOrcamentoRelatorio() {
                     <button
                       type="button"
                       onClick={() => setSelected(o)}
-                      className="rounded text-[15px] font-bold tracking-[-0.01em] text-slate-900 dark:text-white truncate transition-colors hover:text-violet-600 dark:hover:text-violet-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60 focus-visible:ring-offset-1"
+                      className="rounded text-[18px] leading-tight font-bold tracking-[-0.015em] text-slate-900 dark:text-white truncate transition-colors hover:text-violet-600 dark:hover:text-violet-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60 focus-visible:ring-offset-1"
                       title={o.nome_titular || 'Abrir auditoria'}
                       aria-label={`Abrir auditoria do orçamento ${o.numero_orcamento || o.erp_id} — ${o.nome_titular || ''}`}
                     >
@@ -467,7 +469,7 @@ export default function PreSalesOrcamentoRelatorio() {
                     <span className="font-semibold text-slate-500 dark:text-slate-400 tabular-nums">#{o.numero_orcamento || o.erp_id}</span>
                     <span className="font-mono tabular-nums text-slate-400 dark:text-slate-500">{formatCpf(o.cpf_titular)}</span>
                     {pending && (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-slate-100/80 px-1.5 py-0.5 font-medium text-slate-500 transition-colors duration-200 dark:bg-gray-800/60 dark:text-slate-300">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-slate-100/80 px-1.5 py-0.5 font-semibold tabular-nums text-slate-600 transition-colors duration-200 dark:bg-gray-800/60 dark:text-slate-200">
                         <Clock className="w-3.5 h-3.5" /> {humanizeMs(o._waitMs)} aguardando
                       </span>
                     )}
@@ -494,7 +496,7 @@ export default function PreSalesOrcamentoRelatorio() {
                   <button
                     type="button"
                     onClick={() => setSelected(o)}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-[linear-gradient(135deg,#7C3AED,#9333EA)] px-3 py-1.5 text-[12.5px] font-semibold text-white shadow-sm transition-all duration-200 hover:brightness-110 group-hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[linear-gradient(135deg,#7C3AED,#9333EA)] px-2.5 py-1 text-[12px] font-semibold text-white shadow-sm shadow-violet-600/20 transition-all duration-200 ease-out hover:-translate-y-px hover:brightness-110 hover:shadow-md hover:shadow-violet-600/30 group-hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50"
                   >
                     <Eye className="h-3.5 w-3.5" /> Auditar
                   </button>
