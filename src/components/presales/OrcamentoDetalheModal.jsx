@@ -130,12 +130,6 @@ const RESULT_META = {
     soft: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300",
     bar: "bg-amber-500",
   },
-  bloqueado: {
-    label: "BLOQUEADO", icon: XCircle,
-    chip: "bg-red-500 text-white",
-    soft: "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300",
-    bar: "bg-red-500",
-  },
 };
 
 function InfoRow({ icon: Icon, label, value, title }) {
@@ -353,9 +347,11 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
   const doneCheck = checklist.filter((c) => c.ok).length;
   const faltaCritico = checklist.some((c) => c.level === "critico" && !c.ok);
   const faltaDoc = checklist.some((c) => c.level === "doc" && !c.ok);
+  // O "Resumo da auditoria" não bloqueia o orçamento: quando faltam dados obrigatórios
+  // ou documentos, sinaliza apenas "REVISÃO NECESSÁRIA". Não existe estado "BLOQUEADO".
   const result = loading || !detalhe
     ? null
-    : faltaCritico ? "bloqueado" : faltaDoc ? "revisar" : "pronto";
+    : (faltaCritico || faltaDoc) ? "revisar" : "pronto";
   const rmeta = result ? RESULT_META[result] : null;
   const pct = totalCheck ? Math.round((doneCheck / totalCheck) * 100) : 0;
 
