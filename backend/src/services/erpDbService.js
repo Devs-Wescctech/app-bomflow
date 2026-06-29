@@ -238,8 +238,88 @@ export async function getOrcamentoDetalhe(pedidoId) {
 
   // 1ª pessoa (menor id) com pessoa_id NOT NULL = titular/contratante.
   let titularRowId = null;
+  let contratantePessoaId = null;
   for (const row of pessoasRes.rows) {
-    if (row.pessoa_id != null) { titularRowId = Number(row.pessoa_row_id); break; }
+    if (row.pessoa_id != null) {
+      titularRowId = Number(row.pessoa_row_id);
+      contratantePessoaId = Number(row.pessoa_id);
+      break;
+    }
+  }
+
+  // Cabeçalho do pedido: e-mail de contato, endereço do contratante e plano de pagamento.
+  // A API REST do ERP ignora esses campos; eles são gravados via DB no fechamento, então
+  // lemos direto da base para a auditoria refletir 100% dos obrigatórios do formulário.
+  const headerRes = await db.query(
+    `SELECT pe.email_contato,
+            pe.endereco_id,
+            pe.prazo_pagamento_id,
+            pl.plano_pagamento
+       FROM pedidos pe
+       LEFT JOIN planos_pagamentos pl ON pl.id = pe.prazo_pagamento_id
+      WHERE pe.id = $1
+      LIMIT 1`,
+    [id]
+  );
+  const header = headerRes.rows[0] || {};
+
+  // E-mail: pedidos.email_contato; fallback para o contato de e-mail (tipo 566) do contratante.
+  let email = header.email_contato || null;
+  if (!email && contratantePessoaId) {
+    const r = await db.query(
+      `SELECT endereco FROM enderecos
+        WHERE pessoa_id = $1 AND tipo_endereco_id = 566 AND ativo = 'S'
+        ORDER BY id DESC LIMIT 1`,
+      [contratantePessoaId]
+    );
+    email = r.rows[0]?.endereco || null;
+  }
+
+  // Endereço físico: pelo endereco_id do pedido; fallback para o residencial (tipo 577) do contratante.
+  let enderecoRow = null;
+  if (header.endereco_id) {
+    const r = await db.query(
+      `SELECT en.codigo_postal, en.endereco, en.numero, en.complemento, en.bairro, c.cidade
+         FROM enderecos en
+         LEFT JOIN cidades c ON c.id = en.cidade_id
+        WHERE en.id = $1 LIMIT 1`,
+      [Number(header.endereco_id)]
+    );
+    enderecoRow = r.rows[0] || null;
+  }
+  if (!enderecoRow && contratantePessoaId) {
+    const r = await db.query(
+      `SELECT en.codigo_postal, en.endereco, en.numero, en.complemento, en.bairro, c.cidade
+         FROM enderecos en
+         LEFT JOIN cidades c ON c.id = en.cidade_id
+        WHERE en.pessoa_id = $1 AND en.tipo_endereco_id = 577 AND en.ativo = 'S'
+        ORDER BY en.id DESC LIMIT 1`,
+      [contratantePessoaId]
+    );
+    enderecoRow = r.rows[0] || null;
+  }
+  const endereco = enderecoRow
+    ? {
+        cep: enderecoRow.codigo_postal || null,
+        logradouro: enderecoRow.endereco || null,
+        numero: enderecoRow.numero || null,
+        complemento: enderecoRow.complemento || null,
+        bairro: enderecoRow.bairro || null,
+        cidade: enderecoRow.cidade || null,
+      }
+    : null;
+
+  // Plano de pagamento: prazo_pagamento_id do pedido; fallback para modos_pagamentos.
+  let plano = header.plano_pagamento || null;
+  if (!plano) {
+    const r = await db.query(
+      `SELECT pl.plano_pagamento
+         FROM modos_pagamentos mp
+         JOIN planos_pagamentos pl ON pl.id = mp.plano_pagamento_id
+        WHERE mp.pedido_id = $1 LIMIT 1`,
+      [id]
+    );
+    plano = r.rows[0]?.plano_pagamento || null;
   }
 
   // Agrupa por pessoa: uma mesma pessoa pode estar vinculada a vários itens.
@@ -263,7 +343,14 @@ export async function getOrcamentoDetalhe(pedidoId) {
     if (desc && !entry.produtos.includes(desc)) entry.produtos.push(desc);
   }
 
-  return { produtos, pessoas: Array.from(pessoaMap.values()) };
+  const pessoas = Array.from(pessoaMap.values());
+  const titularObj = pessoas.find((p) => p.is_titular);
+  if (titularObj) {
+    titularObj.email = email;
+    titularObj.endereco = endereco;
+  }
+
+  return { produtos, pessoas, email, endereco, plano_pagamento: plano };
 }
 
 /**

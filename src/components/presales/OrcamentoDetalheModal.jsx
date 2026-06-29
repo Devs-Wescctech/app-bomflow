@@ -4,7 +4,7 @@ import {
   X, FileText, Eye, Loader2, User, Calendar, Layers,
   CreditCard, Hash, Building2, Package, BadgeCheck, Users, PawPrint,
   Car, Phone, ShoppingBag, CheckCircle2, AlertTriangle, XCircle,
-  ClipboardCheck, ThumbsUp, PencilLine, Ban, MapPin, Send, Clock,
+  ClipboardCheck, ThumbsUp, PencilLine, Ban, MapPin, Mail, Send, Clock,
 } from "lucide-react";
 
 const API_BASE = "/api";
@@ -52,6 +52,22 @@ function formatMoney(v) {
   const n = Number(v);
   if (Number.isNaN(n)) return null;
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function formatCep(cep) {
+  if (!cep) return "";
+  const d = String(cep).replace(/\D/g, "");
+  if (d.length !== 8) return cep;
+  return `${d.slice(0, 5)}-${d.slice(5)}`;
+}
+
+function formatEndereco(end) {
+  if (!end) return null;
+  const linha1 = [end.logradouro, end.numero].filter(Boolean).join(", ");
+  const compl = end.complemento ? ` (${end.complemento})` : "";
+  const linha2 = [end.bairro, end.cidade].filter(Boolean).join(" · ");
+  const cep = end.cep ? `CEP ${formatCep(end.cep)}` : "";
+  return [linha1 + compl, linha2, cep].filter((s) => s && s.trim()).join(" — ") || null;
 }
 
 const SEXO_LABEL = { M: "Masculino", F: "Feminino" };
@@ -304,18 +320,28 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
   const nomeOk = !!(titular?.nome || orcamento.nome_titular);
   const produtoOk = produtos.length > 0;
   const telOk = !!titular?.telefone;
+  const emailOk = !!(titular?.email || detalhe?.email);
+  const end = titular?.endereco || detalhe?.endereco || null;
+  const enderecoOk = !!(end && end.cep && end.logradouro && end.numero && end.bairro && end.cidade);
+  // Título do contrato == canal de vendas selecionado no formulário (já resolvido no relatório).
+  const tituloOk = !!(canalLabel && canalLabel !== "-");
+  const planoOk = !!detalhe?.plano_pagamento;
   const docIdOk = attachedTipos.has("documento_identidade");
   const compResOk = attachedTipos.has("comprovante_residencia");
   const taxaAdesaoOk = attachedTipos.has("taxa_adesao");
   const copiaContratoOk = attachedTipos.has("copia_contrato");
 
-  // Valida APENAS os campos de preenchimento obrigatório do formulário (CPF, Nome,
-  // Telefone e Produto) e os 4 documentos que o vendedor precisa anexar. Itens apenas
-  // recomendados (data de nascimento, veículo) não entram na validação da auditoria.
+  // Valida TODOS os campos de preenchimento obrigatório do formulário (CPF, Nome, Telefone,
+  // E-mail, Endereço, Título do contrato, Plano de pagamento e Produto) e os 4 documentos que o
+  // vendedor precisa anexar. Itens apenas recomendados (data de nascimento, veículo) ficam de fora.
   const checklist = [
     { label: "CPF informado", ok: cpfOk, level: "critico" },
     { label: "Nome completo", ok: nomeOk, level: "critico" },
     { label: "Telefone informado", ok: telOk, level: "critico" },
+    { label: "E-mail informado", ok: emailOk, level: "critico" },
+    { label: "Endereço completo", ok: enderecoOk, level: "critico" },
+    { label: "Título do contrato", ok: tituloOk, level: "critico" },
+    { label: "Plano de pagamento", ok: planoOk, level: "critico" },
     { label: "Produto selecionado", ok: produtoOk, level: "critico" },
     { label: "Documento (CPF/RG) anexado", ok: docIdOk, level: "doc" },
     { label: "Comprovante de residência anexado", ok: compResOk, level: "doc" },
@@ -423,6 +449,8 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
             <InfoRow icon={Calendar} label="Nascimento" value={formatDateOnly(titular?.data_nascimento)} />
             <InfoRow icon={User} label="Sexo" value={titular ? (SEXO_LABEL[titular.sexo] || titular.sexo) : null} />
             <InfoRow icon={Phone} label="Telefone" value={titular?.telefone} />
+            <InfoRow icon={Mail} label="E-mail" value={titular?.email || detalhe?.email} />
+            <InfoRow icon={MapPin} label="Endereço" value={formatEndereco(titular?.endereco || detalhe?.endereco)} />
           </div>
 
           {/* DADOS DA VENDA */}
@@ -435,6 +463,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
             <InfoRow icon={User} label="Vendedor" value={orcamento.nome_vendedor} />
             <InfoRow icon={Layers} label="Módulo de origem" value={orcamento.modulo_nome} />
             {produto && <InfoRow icon={Package} label="Produto(s)" value={produto} />}
+            {detalhe?.plano_pagamento && <InfoRow icon={CreditCard} label="Plano de pagamento" value={detalhe.plano_pagamento} />}
             {valor && <InfoRow icon={CreditCard} label="Valor total" value={valor} />}
           </div>
 
