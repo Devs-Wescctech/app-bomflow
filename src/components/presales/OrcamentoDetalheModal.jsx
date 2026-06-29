@@ -304,24 +304,23 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
   const nomeOk = !!(titular?.nome || orcamento.nome_titular);
   const produtoOk = produtos.length > 0;
   const telOk = !!titular?.telefone;
-  const nascOk = !!titular?.data_nascimento;
   const docIdOk = attachedTipos.has("documento_identidade");
   const compResOk = attachedTipos.has("comprovante_residencia");
   const taxaAdesaoOk = attachedTipos.has("taxa_adesao");
   const copiaContratoOk = attachedTipos.has("copia_contrato");
-  const hasVeiculo = grupos.veiculo.length > 0;
 
+  // Valida APENAS os campos de preenchimento obrigatório do formulário (CPF, Nome,
+  // Telefone e Produto) e os 4 documentos que o vendedor precisa anexar. Itens apenas
+  // recomendados (data de nascimento, veículo) não entram na validação da auditoria.
   const checklist = [
     { label: "CPF informado", ok: cpfOk, level: "critico" },
     { label: "Nome completo", ok: nomeOk, level: "critico" },
+    { label: "Telefone informado", ok: telOk, level: "critico" },
     { label: "Produto selecionado", ok: produtoOk, level: "critico" },
-    { label: "Telefone informado", ok: telOk, level: "rec" },
-    { label: "Data de nascimento", ok: nascOk, level: "rec" },
     { label: "Documento (CPF/RG) anexado", ok: docIdOk, level: "doc" },
     { label: "Comprovante de residência anexado", ok: compResOk, level: "doc" },
     { label: "Taxa de adesão anexada", ok: taxaAdesaoOk, level: "doc" },
     { label: "Cópia do contrato anexada", ok: copiaContratoOk, level: "doc" },
-    ...(hasVeiculo ? [{ label: "Veículo cadastrado", ok: true, level: "rec" }] : []),
   ];
 
   const totalCheck = checklist.length;
