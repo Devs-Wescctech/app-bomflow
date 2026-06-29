@@ -322,6 +322,20 @@ export async function getOrcamentoDetalhe(pedidoId) {
     plano = r.rows[0]?.plano_pagamento || null;
   }
 
+  // Telefone: pedidos_pessoas.telefone é praticamente sempre NULL neste fluxo; o ERP grava o
+  // número de contato em enderecos (tipo 565) do contratante. Fazemos o mesmo fallback usado
+  // para e-mail (566) e endereço (577) para a auditoria reconhecer o telefone preenchido.
+  let telefoneContratante = null;
+  if (contratantePessoaId) {
+    const r = await db.query(
+      `SELECT endereco FROM enderecos
+        WHERE pessoa_id = $1 AND tipo_endereco_id = 565 AND ativo = 'S'
+        ORDER BY id DESC LIMIT 1`,
+      [contratantePessoaId]
+    );
+    telefoneContratante = r.rows[0]?.endereco || null;
+  }
+
   // Agrupa por pessoa: uma mesma pessoa pode estar vinculada a vários itens.
   const pessoaMap = new Map();
   for (const row of pessoasRes.rows) {
@@ -348,6 +362,7 @@ export async function getOrcamentoDetalhe(pedidoId) {
   if (titularObj) {
     titularObj.email = email;
     titularObj.endereco = endereco;
+    if (!titularObj.telefone && telefoneContratante) titularObj.telefone = telefoneContratante;
   }
 
   return { produtos, pessoas, email, endereco, plano_pagamento: plano };
