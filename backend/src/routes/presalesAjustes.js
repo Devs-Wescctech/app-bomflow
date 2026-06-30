@@ -2,8 +2,28 @@ import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import { query } from '../config/database.js';
 import { createNotification } from '../services/notificationService.js';
+import { addBusinessDays, brtDateStr, preloadHolidays } from '../services/businessDaysService.js';
 
 const router = express.Router();
+
+// Mesma leitura de configuração do job de auto-cancelamento (functions.js), para que
+// o painel de acompanhamento exiba os mesmos prazos/flags que o cron usa de fato.
+function readAutocancelConfig() {
+  const enabled = process.env.PRESALES_AUTOCANCEL_ENABLED !== 'false';
+  const dryRun = process.env.PRESALES_AUTOCANCEL_DRYRUN !== 'false';
+  const warnFeature = process.env.PRESALES_AUTOCANCEL_WARN_ENABLED !== 'false';
+
+  const rawDeadline = Number(process.env.PRESALES_AUTOCANCEL_DEADLINE_DAYS);
+  let deadlineDays = 3;
+  if (Number.isInteger(rawDeadline) && rawDeadline > 0) deadlineDays = rawDeadline;
+
+  const rawWarn = Number(process.env.PRESALES_AUTOCANCEL_WARN_DAYS);
+  let warnDays = 1;
+  if (Number.isInteger(rawWarn) && rawWarn > 0) warnDays = rawWarn;
+  if (warnDays >= deadlineDays) warnDays = Math.max(deadlineDays - 1, 0);
+
+  return { enabled, dryRun, warnFeature, deadlineDays, warnDays };
+}
 
 const MODULO_LABELS = {
   vendas_pf: 'Vendas PF',
@@ -139,6 +159,113 @@ router.post('/', authMiddleware, async (req, res) => {
   } catch (e) {
     console.error('[presales-ajustes] POST error:', e.message);
     return res.status(500).json({ error: 'Falha ao registrar o pedido de ajuste.' });
+  }
+});
+
+// GET /monitor — painel admin/auditoria: lista os ajustes com prazo final calculado,
+// situação do aviso antecipado (aviso_prazo_info) e do cancelamento/simulação
+// (cancelamento_info). Read-only; não toca no ERP. Respeita a mesma elegibilidade da
+// Fila Pré Vendas (admin / auditoria / supervisor do time Auditoria).
+router.get('/monitor', authMiddleware, async (req, res) => {
+  try {
+    const { eligible } = await resolveAuditor(req);
+    if (!eligible) {
+      return res.status(403).json({ error: 'Acesso restrito à auditoria da Fila Pré Vendas.' });
+    }
+
+    const status = req.query.status;
+    const params = [];
+    let where = '';
+    if (status && status !== 'todos') {
+      params.push(status);
+      where = `WHERE status = $${params.length}`;
+    }
+
+    const result = await query(
+      `SELECT id, erp_pedido_id, erp_numero, modulo, vendedor_id, vendedor_nome,
+              cliente_nome, cliente_cpf, texto, status, auditor_nome, auditor_email,
+              created_at, ajustado_at, cancelado_at, vendedor_comentario,
+              aviso_prazo_info, cancelamento_info
+         FROM presales_ajustes ${where}
+        ORDER BY (status = 'pendente') DESC, created_at ASC`,
+      params
+    );
+
+    const cfg = readAutocancelConfig();
+    const todayYmd = brtDateStr();
+
+    // Pré-carrega feriados de todos os anos envolvidos para acelerar os cálculos por item.
+    // Se a API de feriados estiver indisponível, segue sem prazo calculado (read-only).
+    let holidaysOk = true;
+    try {
+      const currentYear = Number(todayYmd.slice(0, 4));
+      const years = new Set([currentYear, currentYear + 1]);
+      for (const r of result.rows) {
+        const y = Number(brtDateStr(r.created_at).slice(0, 4));
+        if (Number.isInteger(y)) { years.add(y); years.add(y + 1); }
+      }
+      await preloadHolidays([...years]);
+    } catch (e) {
+      holidaysOk = false;
+      console.warn('[presales-ajustes] GET /monitor: feriados indisponíveis; prazos não calculados.', e.message);
+    }
+
+    const items = [];
+    for (const r of result.rows) {
+      const startYmd = brtDateStr(r.created_at);
+      let deadlineYmd = null;
+      let diasUteisRestantes = null;
+      let overdue = null;
+
+      if (holidaysOk) {
+        try {
+          deadlineYmd = await addBusinessDays(startYmd, cfg.deadlineDays);
+          overdue = todayYmd > deadlineYmd;
+          // Quantos dias úteis faltam para o prazo final (0 = vence hoje; negativo = vencido).
+          if (overdue) {
+            diasUteisRestantes = -1; // marcador de "já venceu"
+          } else {
+            for (let n = 0; n <= cfg.deadlineDays; n++) {
+              const target = n === 0 ? todayYmd : await addBusinessDays(todayYmd, n);
+              if (target === deadlineYmd) { diasUteisRestantes = n; break; }
+              if (target > deadlineYmd) { diasUteisRestantes = 0; break; }
+            }
+          }
+        } catch {
+          deadlineYmd = null;
+        }
+      }
+
+      items.push({
+        ...r,
+        modulo_nome: MODULO_LABELS[r.modulo] || r.modulo || '-',
+        start_ymd: startYmd,
+        deadline_ymd: deadlineYmd,
+        today_ymd: todayYmd,
+        overdue,
+        dias_uteis_restantes: diasUteisRestantes,
+        avisado: !!r.aviso_prazo_info,
+        cancelamento_registrado: !!r.cancelamento_info,
+      });
+    }
+
+    const counts = {
+      pendente: result.rows.filter((r) => r.status === 'pendente').length,
+      ajustado: result.rows.filter((r) => r.status === 'ajustado').length,
+      cancelado_auto: result.rows.filter((r) => r.status === 'cancelado_auto').length,
+      todos: result.rows.length,
+    };
+
+    return res.json({
+      items,
+      counts,
+      config: cfg,
+      holidaysOk,
+      today_ymd: todayYmd,
+    });
+  } catch (e) {
+    console.error('[presales-ajustes] GET /monitor error:', e.message);
+    return res.status(500).json({ error: 'Falha ao carregar o painel de ajustes.' });
   }
 });
 

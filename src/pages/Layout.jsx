@@ -84,6 +84,7 @@ import {
   List,
   RefreshCw,
   LayoutGrid,
+  ShieldAlert,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -172,6 +173,7 @@ const menuModules = [
       { title: "Criar Ticket", url: createPageUrl("CreateSalesTicket"), icon: Plus, highlight: true },
       { title: "Tickets de Vendas", url: createPageUrl("SalesTickets"), icon: ShoppingCart },
       { title: "Fila Pré Vendas", url: createPageUrl("PreSalesOrcamentoRelatorio"), icon: FileBarChart, auditReport: true },
+      { title: "Avisos & Cancelamentos", url: createPageUrl("PreSalesAjustesMonitor"), icon: ShieldAlert, auditReport: true },
     ]
   },
   {

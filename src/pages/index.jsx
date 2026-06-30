@@ -221,6 +221,7 @@ import ReferralOrcamentoRelatorio from "./ReferralOrcamentoRelatorio";
 import SalesUpsellOrcamentoRelatorio from "./SalesUpsellOrcamentoRelatorio";
 import PreSalesOrcamentoRelatorio from "./PreSalesOrcamentoRelatorio";
 import PreSalesAjustes from "./PreSalesAjustes";
+import PreSalesAjustesMonitor from "./PreSalesAjustesMonitor";
 import ReferralWonReport from "./ReferralWonReport";
 import UpsellLeadRedesignDemo from "./UpsellLeadRedesignDemo";
 import OrcamentoDocumentosRedesignDemo from "./OrcamentoDocumentosRedesignDemo";
@@ -447,6 +448,7 @@ const PAGES = {
     SalesUpsellOrcamentoRelatorio: SalesUpsellOrcamentoRelatorio,
     PreSalesOrcamentoRelatorio: PreSalesOrcamentoRelatorio,
     PreSalesAjustes: PreSalesAjustes,
+    PreSalesAjustesMonitor: PreSalesAjustesMonitor,
     ReferralWonReport: ReferralWonReport,
     UpsellLeadRedesignDemo: UpsellLeadRedesignDemo,
     OrcamentoDocumentosRedesignDemo: OrcamentoDocumentosRedesignDemo,
@@ -704,6 +706,7 @@ function PagesContent() {
                 <Route path="/SalesUpsellOrcamentoRelatorio" element={<SalesUpsellOrcamentoRelatorio />} />
                 <Route path="/PreSalesOrcamentoRelatorio" element={<PreSalesOrcamentoRelatorio />} />
                 <Route path="/PreSalesAjustes" element={<PreSalesAjustes />} />
+                <Route path="/PreSalesAjustesMonitor" element={<PreSalesAjustesMonitor />} />
                 <Route path="/ReferralWonReport" element={<ReferralWonReport />} />
                 <Route path="/UpsellLeadRedesignDemo" element={<UpsellLeadRedesignDemo />} />
                 <Route path="/OrcamentoDocumentosRedesignDemo" element={<OrcamentoDocumentosRedesignDemo />} />
