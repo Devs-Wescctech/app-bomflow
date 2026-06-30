@@ -18,7 +18,7 @@ import orcamentoDocumentosRoutes from './routes/orcamentoDocumentos.js';
 import presalesAjustesRoutes from './routes/presalesAjustes.js';
 import { runAllAutomations } from './services/automationService.js';
 import cron from 'node-cron';
-import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport, runPerspectivaBatch, sendPerspectivaReport, runPresalesAjusteAutoCancel } from './routes/functions.js';
+import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport, runPerspectivaBatch, sendPerspectivaReport, runPresalesAjusteAutoCancel, runPresalesAjusteAvisoPrazo } from './routes/functions.js';
 import { recoverStuckQueues } from './services/whatsappQueueService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -215,6 +215,16 @@ initDatabase()
     console.log('[Perspectiva Email] Cron agendado: quartas-feiras às 08:00 (ERP).');
 
     cron.schedule('0 7 * * *', async () => {
+      // Aviso antecipado primeiro (não-destrutivo): avisa o vendedor cujo prazo vence
+      // no próximo dia útil, dando chance de evitar o cancelamento no ciclo seguinte.
+      console.log('[PreSales AvisoPrazo] Iniciando verificação diária de aviso antecipado de prazo...');
+      try {
+        const w = await runPresalesAjusteAvisoPrazo();
+        console.log(`[PreSales AvisoPrazo] Concluído. verificados=${w.checked} avisados=${w.warned} pulados=${w.skipped} erros=${w.errors}`);
+      } catch (error) {
+        console.error('[PreSales AvisoPrazo] Erro na verificação automática:', error.message);
+      }
+
       console.log('[PreSales AutoCancel] Iniciando verificação diária de auto-cancelamento de ajustes...');
       try {
         const r = await runPresalesAjusteAutoCancel();
@@ -223,7 +233,7 @@ initDatabase()
         console.error('[PreSales AutoCancel] Erro na verificação automática:', error.message);
       }
     });
-    console.log('[PreSales AutoCancel] Cron agendado: todos os dias às 07:00.');
+    console.log('[PreSales AutoCancel] Cron agendado: todos os dias às 07:00 (aviso antecipado + auto-cancelamento).');
 
     try {
       await recoverStuckQueues();

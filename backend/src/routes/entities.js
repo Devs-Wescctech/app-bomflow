@@ -190,6 +190,9 @@ pool.query(`
   -- cancelamento_info: observação de auditoria (modo, motivo, situação ERP, etc.).
   ALTER TABLE presales_ajustes ADD COLUMN IF NOT EXISTS cancelado_at TIMESTAMPTZ;
   ALTER TABLE presales_ajustes ADD COLUMN IF NOT EXISTS cancelamento_info TEXT;
+  -- Aviso antecipado de prazo: marcador de dedup p/ o aviso enviado ao vendedor antes do
+  -- vencimento (ex.: faltando 1 dia útil). Preenchido uma única vez quando o aviso é disparado.
+  ALTER TABLE presales_ajustes ADD COLUMN IF NOT EXISTS aviso_prazo_info TEXT;
 `).then(() => console.log('[Migration] presales_ajustes OK'))
   .catch(e => console.error('[Migration] presales_ajustes error:', e.message));
 

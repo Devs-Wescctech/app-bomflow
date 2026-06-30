@@ -12,7 +12,7 @@ import { runAllAutomations, runAutomationsForLead } from '../services/leadAutoma
 import { checkAndExecuteLeadUpsellAutomations, checkAndExecuteUpsellChannelAutomations, executeLeadCreatedAutomation, executeUpsellChannelLeadCreatedAutomation } from '../services/automationService.js';
 import { notifyLeadAssigned, createNotification } from '../services/notificationService.js';
 import { cancelOrcamentoDB } from '../services/erpDbService.js';
-import { isPastBusinessDayDeadline, preloadHolidays, brtDateStr } from '../services/businessDaysService.js';
+import { isPastBusinessDayDeadline, preloadHolidays, brtDateStr, addBusinessDays } from '../services/businessDaysService.js';
 import { generateProposalPDF, generateManualProposalPDF } from '../services/pdfService.js';
 import { sendWhatsAppMessage, sendDocument, sendTextMessage } from '../services/whatsappService.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -6615,6 +6615,18 @@ router.post('/presales-ajuste-auto-cancel/run', authMiddleware, loadAgentMiddlew
   }
 });
 
+// Disparo manual (admin) do aviso antecipado de prazo. Não toca no ERP; apenas notifica
+// os vendedores cujos ajustes vencem dentro da janela de aviso (e marca o dedup).
+router.post('/presales-ajuste-aviso-prazo/run', authMiddleware, loadAgentMiddleware, requireRole('admin'), async (req, res) => {
+  try {
+    const result = await runPresalesAjusteAvisoPrazo();
+    res.json({ success: true, result });
+  } catch (error) {
+    console.error('[PreSales AvisoPrazo] erro no disparo manual:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ============================================================================
 // AUTO-CANCELAMENTO DE AJUSTE PRÉ-VENDA
 // Quando o auditor solicita um ajuste na Fila Pré Vendas, o vendedor tem
@@ -6861,6 +6873,160 @@ async function runPresalesAjusteAutoCancel() {
   return result;
 }
 
-export { runPresalesAjusteAutoCancel };
+// ============================================================================
+// AVISO ANTECIPADO DE PRAZO DE AJUSTE PRÉ-VENDA
+// Antes de o orçamento ser auto-cancelado por falta de ajuste, avisa o vendedor
+// (e supervisores) com antecedência de PRESALES_AUTOCANCEL_WARN_DAYS dias úteis
+// (padrão 1) — ou seja, quando o prazo final cai no próximo dia útil. Isso dá ao
+// vendedor a chance de realizar o ajuste e evitar o cancelamento.
+//
+// Não escreve no ERP. Só notifica e marca um dedup próprio (aviso_prazo_info) para
+// não repetir o aviso a cada ciclo. Independente do dry-run do cancelamento (avisar
+// não é destrutivo); respeita apenas o flag geral PRESALES_AUTOCANCEL_ENABLED, pois
+// se o auto-cancelamento estiver desligado não há cancelamento a evitar.
+// ============================================================================
+async function runPresalesAjusteAvisoPrazo() {
+  const enabled = process.env.PRESALES_AUTOCANCEL_ENABLED !== 'false';
+  const warnFeature = process.env.PRESALES_AUTOCANCEL_WARN_ENABLED !== 'false';
+
+  const rawDeadline = Number(process.env.PRESALES_AUTOCANCEL_DEADLINE_DAYS);
+  let deadlineDays = 3;
+  if (Number.isInteger(rawDeadline) && rawDeadline > 0) {
+    deadlineDays = rawDeadline;
+  }
+
+  const rawWarn = Number(process.env.PRESALES_AUTOCANCEL_WARN_DAYS);
+  let warnDays = 1;
+  if (Number.isInteger(rawWarn) && rawWarn > 0) {
+    warnDays = rawWarn;
+  } else if (process.env.PRESALES_AUTOCANCEL_WARN_DAYS !== undefined) {
+    console.warn(`[PreSales AvisoPrazo] PRESALES_AUTOCANCEL_WARN_DAYS inválido ("${process.env.PRESALES_AUTOCANCEL_WARN_DAYS}"); usando padrão 1 dia útil.`);
+  }
+  // O aviso só faz sentido se a janela for menor que o prazo total.
+  if (warnDays >= deadlineDays) {
+    console.warn(`[PreSales AvisoPrazo] WARN_DAYS (${warnDays}) >= DEADLINE_DAYS (${deadlineDays}); ajustando para ${deadlineDays - 1}.`);
+    warnDays = deadlineDays - 1;
+  }
+
+  const result = {
+    enabled, warnFeature, deadlineDays, warnDays,
+    checked: 0, warned: 0, skipped: 0, errors: 0,
+  };
+
+  if (!enabled || !warnFeature || warnDays < 1) {
+    console.log(`[PreSales AvisoPrazo] desabilitado (enabled=${enabled} warnFeature=${warnFeature} warnDays=${warnDays}). Nada a fazer.`);
+    result.skippedAll = true;
+    return result;
+  }
+
+  // Só itens ainda pendentes e que ainda não receberam o aviso (dedup).
+  const pend = await query(
+    `SELECT id, erp_pedido_id, erp_numero, modulo, vendedor_id, vendedor_nome,
+            cliente_nome, auditor_id, auditor_email, created_at
+       FROM presales_ajustes
+      WHERE status = 'pendente' AND aviso_prazo_info IS NULL
+      ORDER BY created_at ASC`
+  );
+  result.checked = pend.rows.length;
+  console.log(`[PreSales AvisoPrazo] iniciando (prazo=${deadlineDays}du, aviso=${warnDays}du antes). Pendentes sem aviso: ${pend.rows.length}`);
+  if (pend.rows.length === 0) return result;
+
+  // Pré-carrega feriados de todos os anos necessários; se indisponível, aborta o ciclo
+  // sem avisar (não há risco de avisar com prazo errado).
+  try {
+    const currentYear = Number(brtDateStr().slice(0, 4));
+    const years = new Set([currentYear, currentYear + 1]);
+    for (const aj of pend.rows) {
+      const y = Number(brtDateStr(aj.created_at).slice(0, 4));
+      if (Number.isInteger(y)) { years.add(y); years.add(y + 1); }
+    }
+    await preloadHolidays([...years]);
+  } catch (e) {
+    console.error(`[PreSales AvisoPrazo] feriados indisponíveis (pré-carga), abortando ciclo sem avisar. Motivo: ${e.message}`);
+    result.aborted = true;
+    result.abortReason = 'holidays_unavailable';
+    return result;
+  }
+
+  // "Avisar quando faltam warnDays dias úteis" => o prazo final cai exatamente em
+  // addBusinessDays(hoje, warnDays). Calculado uma vez por ciclo.
+  const todayYmd = brtDateStr();
+  let warnTargetYmd;
+  try {
+    warnTargetYmd = await addBusinessDays(todayYmd, warnDays);
+  } catch (e) {
+    console.error(`[PreSales AvisoPrazo] feriados indisponíveis, abortando ciclo sem avisar. Motivo: ${e.message}`);
+    result.aborted = true;
+    result.abortReason = 'holidays_unavailable';
+    return result;
+  }
+
+  for (const aj of pend.rows) {
+    try {
+      const startYmd = brtDateStr(aj.created_at);
+      let deadlineYmd;
+      try {
+        deadlineYmd = await addBusinessDays(startYmd, deadlineDays);
+      } catch (e) {
+        console.error(`[PreSales AvisoPrazo] feriados indisponíveis, abortando ciclo sem avisar. Motivo: ${e.message}`);
+        result.aborted = true;
+        result.abortReason = 'holidays_unavailable';
+        return result;
+      }
+
+      // Só avisa quando o prazo final é exatamente o alvo (faltam warnDays dias úteis).
+      // Se já passou (deadline <= hoje) ou ainda falta mais que a janela, ignora neste ciclo.
+      if (deadlineYmd !== warnTargetYmd) continue;
+
+      const numero = aj.erp_numero || aj.erp_pedido_id;
+      const info = `aviso ${todayYmd}: prazo=${deadlineDays}du solicitado=${startYmd} venc=${deadlineYmd} (faltam ${warnDays}du)`;
+
+      const msgVend = `O orçamento Nº ${numero}${aj.cliente_nome ? ` (${aj.cliente_nome})` : ''} tem um ajuste solicitado pela auditoria ainda pendente. O prazo final é ${deadlineYmd}. Realize o ajuste até lá para evitar o cancelamento automático.`;
+
+      let notified = false;
+      if (aj.vendedor_id) {
+        const vendRes = await query(`SELECT email FROM agents WHERE id = $1`, [aj.vendedor_id]);
+        const vendEmail = vendRes.rows[0]?.email;
+        if (vendEmail) {
+          await createNotification({
+            userEmail: vendEmail, type: 'presales_ajuste',
+            title: 'Prazo de ajuste vencendo',
+            message: msgVend, link: '/PreSalesAjustes',
+            entityType: 'presales_ajuste', entityId: aj.id, priority: 'high',
+          });
+          notified = true;
+        }
+      }
+
+      const supEmails = await getVendedorSupervisorEmails(aj.vendedor_id);
+      for (const supEmail of supEmails) {
+        await createNotification({
+          userEmail: supEmail, type: 'presales_ajuste',
+          title: 'Prazo de ajuste vencendo',
+          message: `${msgVend}${aj.vendedor_nome ? ` (vendedor: ${aj.vendedor_nome})` : ''}`,
+          link: '/PreSalesOrcamentoRelatorio',
+          entityType: 'presales_ajuste', entityId: aj.id, priority: 'normal',
+        });
+        notified = true;
+      }
+
+      // Marca o dedup mesmo sem destinatário, para não reprocessar todo dia.
+      await query(
+        `UPDATE presales_ajustes SET aviso_prazo_info = $2 WHERE id = $1 AND status = 'pendente' AND aviso_prazo_info IS NULL`,
+        [aj.id, notified ? info : `${info} [sem destinatário]`]
+      );
+      result.warned++;
+      console.log(`[PreSales AvisoPrazo] aviso enviado p/ ajuste ${aj.id} (pedido ${aj.erp_pedido_id}, Nº ${numero}). ${info}`);
+    } catch (e) {
+      result.errors++;
+      console.error(`[PreSales AvisoPrazo] erro no ajuste ${aj.id} (pedido ${aj.erp_pedido_id}): ${e.message}`);
+    }
+  }
+
+  console.log('[PreSales AvisoPrazo] resumo:', JSON.stringify(result));
+  return result;
+}
+
+export { runPresalesAjusteAutoCancel, runPresalesAjusteAvisoPrazo };
 
 export default router;
