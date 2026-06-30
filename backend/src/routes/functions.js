@@ -12,7 +12,7 @@ import { runAllAutomations, runAutomationsForLead } from '../services/leadAutoma
 import { checkAndExecuteLeadUpsellAutomations, checkAndExecuteUpsellChannelAutomations, executeLeadCreatedAutomation, executeUpsellChannelLeadCreatedAutomation } from '../services/automationService.js';
 import { notifyLeadAssigned, createNotification } from '../services/notificationService.js';
 import { cancelOrcamentoDB } from '../services/erpDbService.js';
-import { isPastBusinessDayDeadline } from '../services/businessDaysService.js';
+import { isPastBusinessDayDeadline, preloadHolidays, brtDateStr } from '../services/businessDaysService.js';
 import { generateProposalPDF, generateManualProposalPDF } from '../services/pdfService.js';
 import { sendWhatsAppMessage, sendDocument, sendTextMessage } from '../services/whatsappService.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -6649,7 +6649,13 @@ async function getVendedorSupervisorEmails(vendedorId) {
 async function runPresalesAjusteAutoCancel() {
   const enabled = process.env.PRESALES_AUTOCANCEL_ENABLED !== 'false';
   const dryRun = process.env.PRESALES_AUTOCANCEL_DRYRUN !== 'false';
-  const deadlineDays = Number(process.env.PRESALES_AUTOCANCEL_DEADLINE_DAYS) || 3;
+  const rawDeadline = Number(process.env.PRESALES_AUTOCANCEL_DEADLINE_DAYS);
+  let deadlineDays = 3;
+  if (Number.isInteger(rawDeadline) && rawDeadline > 0) {
+    deadlineDays = rawDeadline;
+  } else if (process.env.PRESALES_AUTOCANCEL_DEADLINE_DAYS !== undefined) {
+    console.warn(`[PreSales AutoCancel] PRESALES_AUTOCANCEL_DEADLINE_DAYS inválido ("${process.env.PRESALES_AUTOCANCEL_DEADLINE_DAYS}"); usando padrão 3 dias úteis.`);
+  }
 
   const result = {
     enabled, dryRun, deadlineDays,
@@ -6672,6 +6678,25 @@ async function runPresalesAjusteAutoCancel() {
   result.checked = pend.rows.length;
   console.log(`[PreSales AutoCancel] iniciando (dryRun=${dryRun}, prazo=${deadlineDays}du). Pendentes: ${pend.rows.length}`);
   if (pend.rows.length === 0) return result;
+
+  // FAIL-SAFE TRANSACIONAL DO CICLO: pré-carrega/valida os feriados de TODOS os anos
+  // necessários ANTES de cancelar qualquer item. Assim, se a API de feriados estiver
+  // indisponível para algum ano, o ciclo aborta sem ter cancelado nada — evita o cenário
+  // multi-ano em que parte dos itens já foi cancelada antes de uma falha tardia.
+  try {
+    const currentYear = Number(brtDateStr().slice(0, 4));
+    const years = new Set([currentYear, currentYear + 1]);
+    for (const aj of pend.rows) {
+      const y = Number(brtDateStr(aj.created_at).slice(0, 4));
+      if (Number.isInteger(y)) { years.add(y); years.add(y + 1); }
+    }
+    await preloadHolidays([...years]);
+  } catch (e) {
+    console.error(`[PreSales AutoCancel] FAIL-SAFE: feriados indisponíveis (pré-carga), abortando ciclo sem cancelar. Motivo: ${e.message}`);
+    result.aborted = true;
+    result.abortReason = 'holidays_unavailable';
+    return result;
+  }
 
   for (const aj of pend.rows) {
     try {

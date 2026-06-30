@@ -80,6 +80,19 @@ async function getHolidaySet(year) {
   return set;
 }
 
+// Pré-carrega (e valida) os feriados de TODOS os anos necessários antes de qualquer
+// cancelamento. Se algum ano falhar, LANÇA erro — assim o ciclo aborta ANTES de cancelar,
+// evitando o cenário em que alguns itens já foram cancelados e outro item de outro ano
+// derruba o ciclo no meio (fail-safe transacional do ciclo). Após o sucesso, as consultas
+// por item são servidas do cache, sem rede.
+export async function preloadHolidays(years) {
+  const uniq = [...new Set((years || []).filter((y) => Number.isInteger(y)))];
+  for (const y of uniq) {
+    await getHolidaySet(y);
+  }
+  return uniq;
+}
+
 // Adiciona N dias úteis a partir de startYmd ('YYYY-MM-DD'), EXCLUINDO o próprio dia inicial.
 // Pula fins de semana e feriados (estado configurado). Carrega feriados sob demanda por ano.
 export async function addBusinessDays(startYmd, n) {
