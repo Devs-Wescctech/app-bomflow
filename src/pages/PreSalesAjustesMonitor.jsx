@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
 import { useToast } from "@/components/ui/use-toast";
 import {
   ShieldAlert, Loader2, RefreshCw, Clock, CheckCircle2, XCircle,
   AlertTriangle, BellRing, BellOff, PlayCircle, Hash, Layers, User as UserIcon,
-  CalendarClock, FlaskConical, Power,
+  CalendarClock, FlaskConical, Power, ExternalLink,
 } from "lucide-react";
 
 const API_BASE = "/api";
@@ -112,6 +114,7 @@ function ConfigPill({ icon: Icon, label, value, tone = "slate" }) {
 
 export default function PreSalesAjustesMonitor() {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const { data: user } = useQuery({
     queryKey: ["currentUser"],
     queryFn: () => base44.auth.me(),
@@ -125,6 +128,38 @@ export default function PreSalesAjustesMonitor() {
   const [tab, setTab] = useState("pendente");
   const [running, setRunning] = useState(null);
   const [lastRun, setLastRun] = useState(null);
+  const [openingId, setOpeningId] = useState(null);
+
+  // Abre o lead do cliente do orçamento; se não houver lead, cai na Fila Pré
+  // Vendas já filtrada pelo nº do orçamento para o auditor localizá-lo.
+  const openLead = useCallback(async (ajuste) => {
+    if (openingId) return;
+    setOpeningId(ajuste.id);
+    try {
+      const res = await fetch(`${API_BASE}/presales-ajustes/${ajuste.id}/lead`, {
+        headers: authHeaders(),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.page && json.lead_id) {
+        navigate(createPageUrl(json.page, { id: json.lead_id }));
+        return;
+      }
+      if (res.status === 404) {
+        const termo = ajuste.erp_numero || ajuste.cliente_cpf || ajuste.erp_pedido_id || "";
+        toast({
+          title: "Lead não encontrado",
+          description: "Abrindo o orçamento na Fila Pré Vendas.",
+        });
+        navigate(createPageUrl("PreSalesOrcamentoRelatorio", termo ? { q: termo } : undefined));
+        return;
+      }
+      throw new Error(json.error || "Não foi possível abrir o lead do cliente.");
+    } catch (e) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    } finally {
+      setOpeningId(null);
+    }
+  }, [openingId, navigate, toast]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -322,10 +357,31 @@ export default function PreSalesAjustesMonitor() {
                 <tbody className="divide-y divide-slate-50 dark:divide-gray-800/70">
                   {filtered.map((a) => {
                     const numero = a.erp_numero || a.erp_pedido_id;
+                    const opening = openingId === a.id;
                     return (
-                      <tr key={a.id} className="align-top hover:bg-slate-50/60 dark:hover:bg-gray-800/30">
+                      <tr
+                        key={a.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => openLead(a)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openLead(a);
+                          }
+                        }}
+                        title="Abrir o lead do cliente"
+                        className={`group cursor-pointer align-top transition-colors hover:bg-violet-50/60 focus:outline-none focus-visible:bg-violet-50/60 dark:hover:bg-violet-950/20 dark:focus-visible:bg-violet-950/20 ${opening ? "opacity-60" : ""}`}
+                      >
                         <td className="px-3 py-3">
-                          <div className="font-bold text-slate-900 dark:text-white">{a.cliente_nome || "Cliente"}</div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-900 dark:text-white">{a.cliente_nome || "Cliente"}</span>
+                            {opening ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-500" />
+                            ) : (
+                              <ExternalLink className="h-3.5 w-3.5 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 dark:text-slate-600" />
+                            )}
+                          </div>
                           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-400 dark:text-slate-500">
                             <span className="inline-flex items-center gap-1 font-semibold text-slate-500 dark:text-slate-400 tabular-nums"><Hash className="h-3 w-3" />{numero}</span>
                             <span className="font-mono tabular-nums">{formatCpf(a.cliente_cpf)}</span>

@@ -321,8 +321,14 @@ router.get('/:id/lead', authMiddleware, async (req, res) => {
     const ajusteRes = await query(`SELECT * FROM presales_ajustes WHERE id = $1`, [id]);
     const ajuste = ajusteRes.rows[0];
     if (!ajuste) return res.status(404).json({ error: 'Ajuste não encontrado.' });
-    if (ajuste.vendedor_id !== req.user.id) {
-      return res.status(403).json({ error: 'Você só pode abrir os leads das suas próprias vendas.' });
+    // O vendedor dono pode abrir o lead da própria venda; admin/auditoria (mesma
+    // elegibilidade da Fila Pré Vendas) também podem abrir para investigar.
+    const isOwner = ajuste.vendedor_id === req.user.id;
+    if (!isOwner) {
+      const { eligible } = await resolveAuditor(req);
+      if (!eligible) {
+        return res.status(403).json({ error: 'Você só pode abrir os leads das suas próprias vendas.' });
+      }
     }
     const map = MODULO_LEAD_MAP[ajuste.modulo];
     if (!map) {

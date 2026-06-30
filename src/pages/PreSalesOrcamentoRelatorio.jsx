@@ -184,7 +184,11 @@ export default function PreSalesOrcamentoRelatorio() {
   const [startDate, setStartDate] = useState(monthStartISO());
   const [endDate, setEndDate] = useState(todayISO());
   const [tab, setTab] = useState('todas');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('q') || '';
+    } catch { return ''; }
+  });
   const [selected, setSelected] = useState(null);
 
   const canaisMap = useMemo(() => {
