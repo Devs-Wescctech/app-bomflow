@@ -5,6 +5,7 @@ import {
   CreditCard, Hash, Building2, Package, BadgeCheck, Users, PawPrint,
   Car, Phone, ShoppingBag, CheckCircle2, AlertTriangle, XCircle,
   ClipboardCheck, ThumbsUp, PencilLine, Ban, MapPin, Mail, Send, Clock,
+  Lock, ShieldQuestion,
 } from "lucide-react";
 
 const API_BASE = "/api";
@@ -178,7 +179,7 @@ function ChecklistItem({ ok, label }) {
   );
 }
 
-export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalLabel, onClose }) {
+export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalLabel, initialLock = null, onLockChange, onClose }) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [documentos, setDocumentos] = useState([]);
@@ -190,7 +191,19 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
   const [savingAjuste, setSavingAjuste] = useState(false);
   const ajusteRef = useRef(null);
 
+  // Trava de auditoria: quem (se alguém) assumiu este orçamento. `mine` indica que é o
+  // próprio auditor logado. Inicia com o valor vindo da lista e é confirmado pelo backend.
+  const [lock, setLock] = useState(initialLock);
+  const [lockLoading, setLockLoading] = useState(true);
+  const [claiming, setClaiming] = useState(false);
+  const [concluding, setConcluding] = useState(false);
+
   const pedidoId = orcamento?.erp_id;
+
+  // É minha auditoria? (posso agir). Outro auditor com a trava => somente leitura.
+  const isMine = !!lock?.mine;
+  const lockedByOther = !!lock && !lock.mine;
+  const canAct = isMine; // só age quem assumiu a auditoria
 
   const loadDocs = useCallback(async () => {
     if (!pedidoId) return;
@@ -226,7 +239,81 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
 
   useEffect(() => { loadAjustes(); }, [loadAjustes]);
 
+  // Confirma com o backend o estado atual da trava ao abrir o orçamento.
+  const loadLock = useCallback(async () => {
+    if (!pedidoId) return;
+    setLockLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/presales-ajustes/locks/${pedidoId}`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      setLock(data.lock || null);
+    } catch {
+      /* silencioso — mantém o estado inicial vindo da lista */
+    } finally {
+      setLockLoading(false);
+    }
+  }, [pedidoId]);
+
+  useEffect(() => { loadLock(); }, [loadLock]);
+
+  // Assume a auditoria (trava o orçamento para o auditor logado).
+  const handleAssumir = async () => {
+    setClaiming(true);
+    try {
+      const res = await fetch(`${API_BASE}/presales-ajustes/locks/${pedidoId}/assumir`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 409) {
+        // Outro auditor assumiu primeiro — passa para somente leitura.
+        setLock(data.lock || null);
+        onLockChange?.(pedidoId, data.lock || null);
+        toast({ title: "Já está em auditoria", description: data.error, variant: "destructive" });
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || "Falha ao assumir a auditoria.");
+      setLock(data.lock || null);
+      onLockChange?.(pedidoId, data.lock || null);
+      toast({ title: "Auditoria assumida", description: "Você é o responsável por este orçamento." });
+    } catch (e) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    } finally {
+      setClaiming(false);
+    }
+  };
+
+  // Conclui a auditoria (libera a trava). Acionado pelo botão "Aprovar".
+  const handleConcluir = async () => {
+    setConcluding(true);
+    try {
+      const res = await fetch(`${API_BASE}/presales-ajustes/locks/${pedidoId}/concluir`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ resultado: "aprovado" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 409) {
+        setLock(data.lock || null);
+        onLockChange?.(pedidoId, data.lock || null);
+        toast({ title: "Não foi possível concluir", description: data.error, variant: "destructive" });
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || "Falha ao concluir a auditoria.");
+      setLock(null);
+      onLockChange?.(pedidoId, null);
+      toast({ title: "Auditoria concluída", description: "Orçamento aprovado e trava liberada." });
+      onClose();
+    } catch (e) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    } finally {
+      setConcluding(false);
+    }
+  };
+
   const handleSaveAjuste = async () => {
+    if (!canAct) return;
     const texto = ajusteTexto.trim();
     if (!texto) {
       ajusteRef.current?.focus();
@@ -392,6 +479,55 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
+          {/* TRAVA DE AUDITORIA */}
+          {!lockLoading && lockedByOther && (
+            <div className="mb-4 flex items-start gap-3 rounded-2xl border border-slate-300 bg-slate-100 p-3.5 dark:border-gray-700 dark:bg-gray-800/60">
+              <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-200 text-slate-600 dark:bg-gray-700 dark:text-slate-200">
+                <Lock className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <div className="text-[13px] font-semibold text-slate-700 dark:text-slate-100">
+                  Em auditoria por {lock?.auditor_nome || "outro auditor"}
+                </div>
+                <div className="text-[12px] text-slate-500 dark:text-slate-400">
+                  Somente leitura — apenas o auditor responsável pode solicitar ajuste, aprovar ou rejeitar.
+                </div>
+              </div>
+            </div>
+          )}
+          {!lockLoading && !lock && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-3.5 dark:border-violet-900/60 dark:bg-violet-950/30">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-600 dark:bg-violet-900/50 dark:text-violet-300">
+                  <ShieldQuestion className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold text-slate-700 dark:text-slate-100">
+                    Ninguém está auditando este orçamento
+                  </div>
+                  <div className="text-[12px] text-slate-500 dark:text-slate-400">
+                    Assuma a auditoria para poder solicitar ajuste, aprovar ou rejeitar.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleAssumir}
+                disabled={claiming}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm shadow-violet-500/30 transition-colors hover:bg-violet-700 disabled:opacity-60"
+              >
+                {claiming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Lock className="h-3.5 w-3.5" />}
+                Assumir auditoria
+              </button>
+            </div>
+          )}
+          {!lockLoading && isMine && (
+            <div className="mb-4 flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-[12.5px] font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+              <BadgeCheck className="h-4 w-4 shrink-0" />
+              Você assumiu esta auditoria. Conclua clicando em “Aprovar” para liberá-la.
+            </div>
+          )}
+
           {/* RESUMO DA AUDITORIA */}
           <div className={`rounded-2xl border bg-white p-4 shadow-sm dark:bg-gray-900 ${rmeta ? rmeta.soft : "border-slate-200 dark:border-gray-800"}`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -689,8 +825,9 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
               value={ajusteTexto}
               onChange={(e) => setAjusteTexto(e.target.value)}
               rows={4}
-              placeholder="Ex.: faltou o comprovante de residência e o telefone do titular está incorreto…"
-              className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition-colors placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200 dark:border-gray-700 dark:bg-gray-900 dark:text-slate-100 dark:focus:ring-amber-900"
+              disabled={!canAct}
+              placeholder={canAct ? "Ex.: faltou o comprovante de residência e o telefone do titular está incorreto…" : "Assuma a auditoria para solicitar um ajuste."}
+              className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition-colors placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 dark:border-gray-700 dark:bg-gray-900 dark:text-slate-100 dark:focus:ring-amber-900 dark:disabled:bg-gray-900/60"
             />
             <div className="mt-2 flex items-center justify-between gap-2">
               <span className="text-[11px] text-slate-400 dark:text-slate-500">
@@ -699,7 +836,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
               <button
                 type="button"
                 onClick={handleSaveAjuste}
-                disabled={savingAjuste || !ajusteTexto.trim()}
+                disabled={savingAjuste || !ajusteTexto.trim() || !canAct}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm shadow-amber-500/30 transition-colors hover:bg-amber-700 disabled:opacity-50"
               >
                 {savingAjuste ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
@@ -729,27 +866,44 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={focusAjuste}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12.5px] font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
-              >
-                <PencilLine className="h-3.5 w-3.5" /> Solicitar ajuste
-              </button>
-              <button
-                type="button"
-                onClick={() => handleAuditAction("Rejeitar orçamento")}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[12.5px] font-semibold text-red-700 transition-colors hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300"
-              >
-                <Ban className="h-3.5 w-3.5" /> Rejeitar
-              </button>
-              <button
-                type="button"
-                onClick={() => handleAuditAction("Aprovar orçamento")}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm shadow-emerald-500/30 transition-colors hover:bg-emerald-700"
-              >
-                <ThumbsUp className="h-3.5 w-3.5" /> Aprovar
-              </button>
+              {!canAct ? (
+                <button
+                  type="button"
+                  onClick={handleAssumir}
+                  disabled={claiming || lockedByOther || lockLoading}
+                  title={lockedByOther ? `Em auditoria por ${lock?.auditor_nome || "outro auditor"}` : undefined}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm shadow-violet-500/30 transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {claiming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Lock className="h-3.5 w-3.5" />}
+                  {lockedByOther ? "Em auditoria por outro" : "Assumir auditoria"}
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={focusAjuste}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12.5px] font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                  >
+                    <PencilLine className="h-3.5 w-3.5" /> Solicitar ajuste
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAuditAction("Rejeitar orçamento")}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[12.5px] font-semibold text-red-700 transition-colors hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300"
+                  >
+                    <Ban className="h-3.5 w-3.5" /> Rejeitar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConcluir}
+                    disabled={concluding}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm shadow-emerald-500/30 transition-colors hover:bg-emerald-700 disabled:opacity-60"
+                  >
+                    {concluding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5" />}
+                    Aprovar
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

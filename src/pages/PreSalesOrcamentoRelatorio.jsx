@@ -11,7 +11,7 @@ import {
 import {
   Search, RefreshCw, Calendar, ShieldCheck, Clock, CheckCircle2,
   Loader2, AlertTriangle, XCircle, ThumbsUp, PencilLine, Ban, Eye,
-  Inbox, User as UserIcon, Layers, ArrowRight, MoreVertical,
+  Inbox, User as UserIcon, Layers, ArrowRight, MoreVertical, Lock,
 } from "lucide-react";
 import OrcamentoDetalheModal from "@/components/presales/OrcamentoDetalheModal";
 
@@ -190,6 +190,8 @@ export default function PreSalesOrcamentoRelatorio() {
     } catch { return ''; }
   });
   const [selected, setSelected] = useState(null);
+  // Travas de auditoria (1 auditor por orçamento). Mapa: erp_pedido_id -> { auditor_nome, mine, ... }.
+  const [locks, setLocks] = useState({});
   // Alvo vindo do Painel de Ajustes (id do pedido no ERP). Quando presente,
   // abrimos o orçamento direto no modal — mesmo que ele seja antigo ou já não
   // esteja na situação 'I' que a Fila lista por padrão.
@@ -233,13 +235,42 @@ export default function PreSalesOrcamentoRelatorio() {
       }
       if (!res.ok) throw new Error('Falha ao carregar a fila de auditoria.');
       const data = await res.json();
-      setItems(Array.isArray(data.items) ? data.items : []);
+      const list = Array.isArray(data.items) ? data.items : [];
+      setItems(list);
       setLastUpdated(new Date());
+      loadLocks(list.map((o) => o.erp_id));
     } catch (e) {
       toast({ title: 'Erro', description: e.message, variant: 'destructive' });
     } finally {
       setLoading(false);
     }
+  };
+
+  // Carrega, em lote, quem está auditando cada orçamento da fila (selo nos cards).
+  const loadLocks = async (pedidoIds) => {
+    const ids = [...new Set((pedidoIds || []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+    if (ids.length === 0) { setLocks({}); return; }
+    try {
+      const res = await fetch(`${API_BASE}/presales-ajustes/locks/status`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedidos: ids }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setLocks(data.locks || {});
+    } catch { /* selo de auditor é apenas enriquecimento visual */ }
+  };
+
+  // Atualiza a trava de um orçamento na lista após o auditor assumir/concluir no modal.
+  const handleLockChange = (pedidoId, lock) => {
+    const key = Number(pedidoId);
+    if (!key) return;
+    setLocks((prev) => {
+      const next = { ...prev };
+      if (lock) next[key] = lock; else delete next[key];
+      return next;
+    });
   };
 
   useEffect(() => {
@@ -478,6 +509,7 @@ export default function PreSalesOrcamentoRelatorio() {
             const pm = PRIORITY_META[o._priority] || PRIORITY_META.novo;
             const pending = PENDING_SITUACOES.has(o.situacao);
             const canal = o.canal_id ? (canaisMap[o.canal_id] || String(o.canal_id)) : null;
+            const lock = locks[o.erp_id];
             return (
               <div
                 key={`${o.erp_id}-${i}`}
@@ -508,6 +540,19 @@ export default function PreSalesOrcamentoRelatorio() {
                         <PencilLine className="h-3 w-3" /> Ajuste solicitado
                       </span>
                     ) : null}
+                    {lock && (
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold ${
+                          lock.mine
+                            ? 'bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300'
+                            : 'bg-slate-200 text-slate-600 dark:bg-gray-700 dark:text-slate-200'
+                        }`}
+                        title={lock.mine ? 'Você assumiu esta auditoria' : `Em auditoria por ${lock.auditor_nome || 'outro auditor'}`}
+                      >
+                        <Lock className="h-3 w-3" />
+                        {lock.mine ? 'Você está auditando' : `Em auditoria: ${lock.auditor_nome || 'outro auditor'}`}
+                      </span>
+                    )}
                   </div>
 
                   <div className="mt-1.5 flex items-center flex-wrap gap-x-2.5 gap-y-1 text-[11.5px] text-slate-400 dark:text-slate-500">
@@ -589,6 +634,8 @@ export default function PreSalesOrcamentoRelatorio() {
           orcamento={selected}
           situacaoBadge={<SituacaoChip situacao={selected.situacao} />}
           canalLabel={selected.canal_id ? (canaisMap[selected.canal_id] || String(selected.canal_id)) : '-'}
+          initialLock={locks[selected.erp_id] || null}
+          onLockChange={handleLockChange}
           onClose={() => setSelected(null)}
         />
       )}

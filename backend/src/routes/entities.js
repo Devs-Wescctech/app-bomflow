@@ -221,6 +221,29 @@ pool.query(`
 `).then(() => console.log('[Migration] presales_ajustes_runs OK'))
   .catch(e => console.error('[Migration] presales_ajustes_runs error:', e.message));
 
+// Trava de auditoria da Fila Pré Vendas: garante que cada orçamento (erp_pedido_id) só
+// seja auditado por 1 auditor por vez. O auditor "assume" manualmente (status
+// 'em_auditoria'); os demais veem o orçamento somente para leitura, com a indicação de
+// quem está auditando. A trava só é liberada quando o auditor conclui (clica em "Aprovar"),
+// passando para status 'concluida'. Não há liberação por tempo nem ao fechar a tela.
+pool.query(`
+  CREATE TABLE IF NOT EXISTS presales_auditorias (
+    erp_pedido_id BIGINT PRIMARY KEY,
+    auditor_id UUID NOT NULL,
+    auditor_nome VARCHAR(255),
+    auditor_email VARCHAR(255),
+    status VARCHAR(20) NOT NULL DEFAULT 'em_auditoria',
+    resultado VARCHAR(20),
+    assumido_at TIMESTAMPTZ DEFAULT NOW(),
+    concluida_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_presales_auditorias_status ON presales_auditorias(status);
+  CREATE INDEX IF NOT EXISTS idx_presales_auditorias_auditor ON presales_auditorias(auditor_id);
+`).then(() => console.log('[Migration] presales_auditorias OK'))
+  .catch(e => console.error('[Migration] presales_auditorias error:', e.message));
+
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }

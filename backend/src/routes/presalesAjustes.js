@@ -108,6 +108,30 @@ router.post('/', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Orçamento não encontrado no rastreio do Bom Flow.' });
     }
 
+    // Trava de auditoria: só o auditor que assumiu (status 'em_auditoria') pode solicitar
+    // ajuste. Garante no servidor a regra "1 auditor por vez / demais somente leitura".
+    const lockRes = await query(
+      `SELECT erp_pedido_id, auditor_id, auditor_nome, auditor_email, assumido_at
+         FROM presales_auditorias
+        WHERE erp_pedido_id = $1 AND status = 'em_auditoria'`,
+      [erpPedidoId]
+    );
+    const activeLock = lockRes.rows[0];
+    if (!activeLock) {
+      return res.status(409).json({
+        error: 'Assuma a auditoria deste orçamento antes de solicitar um ajuste.',
+        lock: null,
+      });
+    }
+    if (String(activeLock.auditor_id) !== String(agent.id)) {
+      return res.status(409).json({
+        error: activeLock.auditor_nome
+          ? `Este orçamento está em auditoria por ${activeLock.auditor_nome}. Somente o auditor responsável pode solicitar ajuste.`
+          : 'Este orçamento está em auditoria por outro auditor.',
+        lock: shapeLock(activeLock, req.user.id),
+      });
+    }
+
     const insertRes = await query(
       `INSERT INTO presales_ajustes
          (erp_pedido_id, erp_numero, modulo, vendedor_id, vendedor_nome,
@@ -159,6 +183,174 @@ router.post('/', authMiddleware, async (req, res) => {
   } catch (e) {
     console.error('[presales-ajustes] POST error:', e.message);
     return res.status(500).json({ error: 'Falha ao registrar o pedido de ajuste.' });
+  }
+});
+
+// ----- Trava de auditoria (1 auditor por orçamento por vez) -----
+// O auditor "assume" manualmente um orçamento; os demais o veem somente para leitura.
+// A trava (status 'em_auditoria') só é liberada quando o auditor conclui (clica em
+// "Aprovar" no modal), passando a 'concluida'. Não há liberação por tempo nem ao fechar.
+
+// Monta o objeto de trava devolvido ao frontend, incluindo `mine` (se a trava é do
+// próprio usuário autenticado) para evitar comparações de id/casing no cliente.
+function shapeLock(row, userId) {
+  if (!row) return null;
+  return {
+    erp_pedido_id: Number(row.erp_pedido_id),
+    auditor_id: row.auditor_id,
+    auditor_nome: row.auditor_nome,
+    auditor_email: row.auditor_email,
+    assumido_at: row.assumido_at,
+    mine: String(row.auditor_id) === String(userId),
+  };
+}
+
+// POST /locks/status — travas ATIVAS para uma lista de orçamentos (para a Fila exibir
+// quem está auditando cada card). Body: { pedidos: [<erp_pedido_id>, ...] }.
+router.post('/locks/status', authMiddleware, async (req, res) => {
+  try {
+    const { eligible } = await resolveAuditor(req);
+    if (!eligible) return res.status(403).json({ error: 'Acesso restrito à auditoria da Fila Pré Vendas.' });
+
+    const pedidos = Array.isArray(req.body?.pedidos) ? req.body.pedidos : [];
+    const ids = [...new Set(pedidos.map((p) => Number(p)).filter((n) => Number.isInteger(n) && n > 0))];
+    if (ids.length === 0) return res.json({ locks: {} });
+
+    const r = await query(
+      `SELECT erp_pedido_id, auditor_id, auditor_nome, auditor_email, assumido_at
+         FROM presales_auditorias
+        WHERE status = 'em_auditoria' AND erp_pedido_id = ANY($1::bigint[])`,
+      [ids]
+    );
+    const locks = {};
+    for (const row of r.rows) locks[Number(row.erp_pedido_id)] = shapeLock(row, req.user.id);
+    return res.json({ locks });
+  } catch (e) {
+    console.error('[presales-ajustes] locks/status error:', e.message);
+    return res.status(500).json({ error: 'Falha ao consultar as travas de auditoria.' });
+  }
+});
+
+// GET /locks/:erpPedidoId — estado da trava de um orçamento (null se livre).
+router.get('/locks/:erpPedidoId', authMiddleware, async (req, res) => {
+  try {
+    const { eligible } = await resolveAuditor(req);
+    if (!eligible) return res.status(403).json({ error: 'Acesso restrito à auditoria da Fila Pré Vendas.' });
+
+    const erpPedidoId = Number(req.params.erpPedidoId);
+    if (!Number.isInteger(erpPedidoId) || erpPedidoId <= 0) {
+      return res.status(400).json({ error: 'erp_pedido_id inválido.' });
+    }
+    const r = await query(
+      `SELECT erp_pedido_id, auditor_id, auditor_nome, auditor_email, assumido_at
+         FROM presales_auditorias
+        WHERE erp_pedido_id = $1 AND status = 'em_auditoria'`,
+      [erpPedidoId]
+    );
+    return res.json({ lock: shapeLock(r.rows[0], req.user.id) });
+  } catch (e) {
+    console.error('[presales-ajustes] locks GET error:', e.message);
+    return res.status(500).json({ error: 'Falha ao consultar a trava de auditoria.' });
+  }
+});
+
+// POST /locks/:erpPedidoId/assumir — o auditor assume a auditoria (trava o orçamento).
+// Atômico via ON CONFLICT: só grava se estiver livre/concluído OU já for do próprio auditor.
+// Se outro auditor já está com a trava ativa, devolve 409 com quem está auditando.
+router.post('/locks/:erpPedidoId/assumir', authMiddleware, async (req, res) => {
+  try {
+    const { eligible, agent } = await resolveAuditor(req);
+    if (!eligible) return res.status(403).json({ error: 'Acesso restrito à auditoria da Fila Pré Vendas.' });
+
+    const erpPedidoId = Number(req.params.erpPedidoId);
+    if (!Number.isInteger(erpPedidoId) || erpPedidoId <= 0) {
+      return res.status(400).json({ error: 'erp_pedido_id inválido.' });
+    }
+
+    const r = await query(
+      `INSERT INTO presales_auditorias
+         (erp_pedido_id, auditor_id, auditor_nome, auditor_email, status, assumido_at, concluida_at, resultado, updated_at)
+       VALUES ($1, $2, $3, $4, 'em_auditoria', NOW(), NULL, NULL, NOW())
+       ON CONFLICT (erp_pedido_id) DO UPDATE
+         SET auditor_id = EXCLUDED.auditor_id,
+             auditor_nome = EXCLUDED.auditor_nome,
+             auditor_email = EXCLUDED.auditor_email,
+             status = 'em_auditoria',
+             assumido_at = NOW(),
+             concluida_at = NULL,
+             resultado = NULL,
+             updated_at = NOW()
+         WHERE presales_auditorias.status <> 'em_auditoria'
+            OR presales_auditorias.auditor_id = EXCLUDED.auditor_id
+       RETURNING erp_pedido_id, auditor_id, auditor_nome, auditor_email, assumido_at`,
+      [erpPedidoId, agent.id, agent.name, agent.email]
+    );
+
+    if (r.rows[0]) {
+      return res.json({ lock: shapeLock(r.rows[0], req.user.id) });
+    }
+
+    // Conflito: outro auditor já está com a trava ativa.
+    const cur = await query(
+      `SELECT erp_pedido_id, auditor_id, auditor_nome, auditor_email, assumido_at
+         FROM presales_auditorias
+        WHERE erp_pedido_id = $1 AND status = 'em_auditoria'`,
+      [erpPedidoId]
+    );
+    const lock = shapeLock(cur.rows[0], req.user.id);
+    return res.status(409).json({
+      error: lock?.auditor_nome
+        ? `Este orçamento já está em auditoria por ${lock.auditor_nome}.`
+        : 'Este orçamento já está em auditoria por outro auditor.',
+      lock,
+    });
+  } catch (e) {
+    console.error('[presales-ajustes] locks/assumir error:', e.message);
+    return res.status(500).json({ error: 'Falha ao assumir a auditoria.' });
+  }
+});
+
+// POST /locks/:erpPedidoId/concluir — conclui a auditoria e libera a trava. Só o auditor
+// dono da trava ativa pode concluir. Acionado pelo botão "Aprovar" do modal.
+router.post('/locks/:erpPedidoId/concluir', authMiddleware, async (req, res) => {
+  try {
+    const { eligible, agent } = await resolveAuditor(req);
+    if (!eligible) return res.status(403).json({ error: 'Acesso restrito à auditoria da Fila Pré Vendas.' });
+
+    const erpPedidoId = Number(req.params.erpPedidoId);
+    if (!Number.isInteger(erpPedidoId) || erpPedidoId <= 0) {
+      return res.status(400).json({ error: 'erp_pedido_id inválido.' });
+    }
+    const resultado = String(req.body?.resultado || 'aprovado').slice(0, 20);
+
+    const r = await query(
+      `UPDATE presales_auditorias
+          SET status = 'concluida', resultado = $3, concluida_at = NOW(), updated_at = NOW()
+        WHERE erp_pedido_id = $1 AND auditor_id = $2 AND status = 'em_auditoria'
+        RETURNING erp_pedido_id`,
+      [erpPedidoId, agent.id, resultado]
+    );
+
+    if (r.rows[0]) return res.json({ ok: true, lock: null });
+
+    // Não era o dono (ou já não havia trava ativa): informa o estado atual.
+    const cur = await query(
+      `SELECT erp_pedido_id, auditor_id, auditor_nome, auditor_email, assumido_at
+         FROM presales_auditorias
+        WHERE erp_pedido_id = $1 AND status = 'em_auditoria'`,
+      [erpPedidoId]
+    );
+    if (!cur.rows[0]) return res.json({ ok: true, lock: null });
+    const lock = shapeLock(cur.rows[0], req.user.id);
+    return res.status(409).json({
+      error: lock?.auditor_nome
+        ? `Apenas ${lock.auditor_nome}, que assumiu a auditoria, pode concluí-la.`
+        : 'Apenas o auditor que assumiu pode concluir esta auditoria.',
+      lock,
+    });
+  } catch (e) {
+    console.error('[presales-ajustes] locks/concluir error:', e.message);
+    return res.status(500).json({ error: 'Falha ao concluir a auditoria.' });
   }
 });
 
