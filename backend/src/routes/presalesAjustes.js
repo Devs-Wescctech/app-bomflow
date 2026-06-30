@@ -368,6 +368,26 @@ router.get('/:id/lead', authMiddleware, async (req, res) => {
         return res.status(403).json({ error: 'Você só pode abrir os leads das suas próprias vendas.' });
       }
     }
+    // 1) Vínculo direto e confiável: bomflow_orcamentos.lead_id. Orçamentos criados
+    // dentro do Bom Flow guardam o lead de origem; usar esse id é mais seguro do que
+    // casar por CPF (que pode estar vazio/diferente no cadastro do lead).
+    const orcRes = await query(
+      `SELECT modulo, lead_id FROM bomflow_orcamentos WHERE erp_pedido_id = $1`,
+      [ajuste.erp_pedido_id]
+    );
+    const orc = orcRes.rows[0];
+    if (orc && orc.lead_id) {
+      const mod = orc.modulo || ajuste.modulo;
+      const m = MODULO_LEAD_MAP[mod];
+      if (m) {
+        const r = await query(`SELECT id FROM ${m.table} WHERE id = $1 LIMIT 1`, [orc.lead_id]);
+        if (r.rows[0]) {
+          return res.json({ page: m.page, lead_id: r.rows[0].id, modulo: mod });
+        }
+      }
+    }
+
+    // 2) Fallback por CPF/CNPJ (orçamentos sem lead_id vinculado).
     const map = MODULO_LEAD_MAP[ajuste.modulo];
     if (!map) {
       return res.status(422).json({ error: 'Módulo do orçamento não suporta abertura de lead.' });
