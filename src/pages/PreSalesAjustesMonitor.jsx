@@ -7,7 +7,7 @@ import { useToast } from "@/components/ui/use-toast";
 import {
   ShieldAlert, Loader2, RefreshCw, Clock, CheckCircle2, XCircle,
   AlertTriangle, BellRing, BellOff, PlayCircle, Hash, Layers, User as UserIcon,
-  CalendarClock, FlaskConical, Power, ExternalLink,
+  CalendarClock, FlaskConical, Power, ExternalLink, History,
 } from "lucide-react";
 
 const API_BASE = "/api";
@@ -41,6 +41,79 @@ function formatYmd(ymd) {
   const [y, m, d] = String(ymd).split("-");
   if (!y || !m || !d) return ymd;
   return `${d}/${m}/${y}`;
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  try {
+    return new Date(value).toLocaleString("pt-BR", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+  } catch { return "-"; }
+}
+
+function RunStat({ label, value, tone = "slate" }) {
+  const tones = {
+    slate: "bg-slate-100 text-slate-600 dark:bg-gray-800 dark:text-slate-300",
+    emerald: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300",
+    amber: "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300",
+    rose: "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300",
+  };
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold ${tones[tone]}`}>
+      {label}: <span className="tabular-nums">{value}</span>
+    </span>
+  );
+}
+
+function RunRow({ run }) {
+  const isAviso = run.tipo === "aviso";
+  return (
+    <tr className="align-top hover:bg-slate-50/60 dark:hover:bg-gray-800/30">
+      <td className="px-2 py-2 whitespace-nowrap text-slate-600 dark:text-slate-300 tabular-nums">
+        {formatDateTime(run.executed_at)}
+      </td>
+      <td className="px-2 py-2 whitespace-nowrap">
+        {isAviso ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] font-bold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+            <BellRing className="h-3 w-3" /> Aviso
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10.5px] font-bold text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+            <PlayCircle className="h-3 w-3" /> Cancelamento
+          </span>
+        )}
+        {!isAviso && (
+          <span className={`ml-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${run.dry_run ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300" : "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300"}`}>
+            <FlaskConical className="h-3 w-3" /> {run.dry_run ? "dry-run" : "REAL"}
+          </span>
+        )}
+      </td>
+      <td className="px-2 py-2">
+        {run.aborted ? (
+          <span className="inline-flex items-center gap-1 rounded-md bg-rose-100 px-1.5 py-0.5 text-[10.5px] font-bold text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+            <AlertTriangle className="h-3 w-3" /> Abortado{run.abort_reason ? ` (${run.abort_reason})` : ""}
+          </span>
+        ) : (
+          <div className="flex flex-wrap items-center gap-1">
+            <RunStat label="verificados" value={run.checked ?? 0} />
+            {isAviso ? (
+              <RunStat label="avisados" value={run.warned ?? 0} tone={run.warned ? "emerald" : "slate"} />
+            ) : (
+              <>
+                <RunStat label="vencidos" value={run.overdue ?? 0} tone={run.overdue ? "amber" : "slate"} />
+                <RunStat label="cancelados" value={run.cancelled ?? 0} tone={run.cancelled ? "rose" : "slate"} />
+                <RunStat label="simulados" value={run.simulated ?? 0} tone={run.simulated ? "amber" : "slate"} />
+              </>
+            )}
+            <RunStat label="pulados" value={run.skipped ?? 0} />
+            <RunStat label="erros" value={run.errors ?? 0} tone={run.errors ? "rose" : "slate"} />
+          </div>
+        )}
+      </td>
+    </tr>
+  );
 }
 
 const TABS = [
@@ -129,6 +202,7 @@ export default function PreSalesAjustesMonitor() {
   const [running, setRunning] = useState(null);
   const [lastRun, setLastRun] = useState(null);
   const [openingId, setOpeningId] = useState(null);
+  const [runs, setRuns] = useState([]);
 
   // Abre o lead do cliente do orçamento; se não houver lead, cai na Fila Pré
   // Vendas já filtrada pelo nº do orçamento para o auditor localizá-lo.
@@ -161,6 +235,17 @@ export default function PreSalesAjustesMonitor() {
     }
   }, [openingId, navigate, toast]);
 
+  const loadRuns = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/presales-ajustes/runs?limit=20`, { headers: authHeaders() });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Falha ao carregar o histórico.");
+      setRuns(Array.isArray(json.items) ? json.items : []);
+    } catch {
+      setRuns([]);
+    }
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -168,13 +253,14 @@ export default function PreSalesAjustesMonitor() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || "Falha ao carregar o painel.");
       setData(json);
+      await loadRuns();
     } catch (e) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });
       setData(null);
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, loadRuns]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -304,6 +390,35 @@ export default function PreSalesAjustesMonitor() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Histórico de execuções */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="mb-2.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+            <History className="h-3.5 w-3.5" /> Histórico de execuções
+          </div>
+          {runs.length === 0 ? (
+            <p className="text-[12.5px] text-slate-400 dark:text-slate-500">
+              Nenhuma execução registrada ainda.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[12px]">
+                <thead className="text-[10.5px] uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  <tr>
+                    <th className="px-2 py-1.5 font-semibold">Quando</th>
+                    <th className="px-2 py-1.5 font-semibold">Job</th>
+                    <th className="px-2 py-1.5 font-semibold">Resumo</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50 dark:divide-gray-800/70">
+                  {runs.map((r) => (
+                    <RunRow key={r.id} run={r} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {/* Tabs */}

@@ -196,6 +196,31 @@ pool.query(`
 `).then(() => console.log('[Migration] presales_ajustes OK'))
   .catch(e => console.error('[Migration] presales_ajustes error:', e.message));
 
+// Histórico de execuções dos jobs de ajuste (aviso antecipado de prazo e auto-cancelamento),
+// tanto pelo cron quanto pelo disparo manual. Cada ciclo grava uma linha com os contadores
+// retornados pelo job, para auditoria/visibilidade operacional ao longo do tempo.
+// tipo: 'aviso' (runPresalesAjusteAvisoPrazo) | 'cancel' (runPresalesAjusteAutoCancel).
+pool.query(`
+  CREATE TABLE IF NOT EXISTS presales_ajustes_runs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    executed_at TIMESTAMPTZ DEFAULT NOW(),
+    tipo VARCHAR(16) NOT NULL,
+    dry_run BOOLEAN,
+    checked INTEGER DEFAULT 0,
+    overdue INTEGER DEFAULT 0,
+    warned INTEGER DEFAULT 0,
+    cancelled INTEGER DEFAULT 0,
+    simulated INTEGER DEFAULT 0,
+    skipped INTEGER DEFAULT 0,
+    errors INTEGER DEFAULT 0,
+    aborted BOOLEAN DEFAULT FALSE,
+    abort_reason VARCHAR(64)
+  );
+  CREATE INDEX IF NOT EXISTS idx_presales_ajustes_runs_executed ON presales_ajustes_runs(executed_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_presales_ajustes_runs_tipo ON presales_ajustes_runs(tipo);
+`).then(() => console.log('[Migration] presales_ajustes_runs OK'))
+  .catch(e => console.error('[Migration] presales_ajustes_runs error:', e.message));
+
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }

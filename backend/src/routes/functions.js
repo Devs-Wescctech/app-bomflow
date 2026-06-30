@@ -6658,7 +6658,48 @@ async function getVendedorSupervisorEmails(vendedorId) {
   return [...emails];
 }
 
+// Persiste uma linha no histórico de execuções dos jobs de ajuste (auditoria/visibilidade).
+// Best-effort: nunca deixa uma falha de gravação derrubar o job em si.
+async function recordPresalesAjusteRun(tipo, result) {
+  try {
+    await query(
+      `INSERT INTO presales_ajustes_runs
+         (tipo, dry_run, checked, overdue, warned, cancelled, simulated, skipped, errors, aborted, abort_reason)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [
+        tipo,
+        typeof result?.dryRun === 'boolean' ? result.dryRun : null,
+        Number(result?.checked) || 0,
+        Number(result?.overdue) || 0,
+        Number(result?.warned) || 0,
+        Number(result?.cancelled) || 0,
+        Number(result?.simulated) || 0,
+        Number(result?.skipped) || 0,
+        Number(result?.errors) || 0,
+        !!result?.aborted,
+        result?.abortReason || null,
+      ]
+    );
+  } catch (e) {
+    console.error(`[PreSales ${tipo}] falha ao registrar histórico de execução: ${e.message}`);
+  }
+}
+
+// Wrappers exportados: rodam o job e gravam o histórico, qualquer que tenha sido o caminho
+// de retorno (desabilitado, abortado por feriados, ou ciclo completo).
 async function runPresalesAjusteAutoCancel() {
+  const result = await runPresalesAjusteAutoCancelImpl();
+  await recordPresalesAjusteRun('cancel', result);
+  return result;
+}
+
+async function runPresalesAjusteAvisoPrazo() {
+  const result = await runPresalesAjusteAvisoPrazoImpl();
+  await recordPresalesAjusteRun('aviso', result);
+  return result;
+}
+
+async function runPresalesAjusteAutoCancelImpl() {
   const enabled = process.env.PRESALES_AUTOCANCEL_ENABLED !== 'false';
   const dryRun = process.env.PRESALES_AUTOCANCEL_DRYRUN !== 'false';
   const rawDeadline = Number(process.env.PRESALES_AUTOCANCEL_DEADLINE_DAYS);
@@ -6885,7 +6926,7 @@ async function runPresalesAjusteAutoCancel() {
 // não é destrutivo); respeita apenas o flag geral PRESALES_AUTOCANCEL_ENABLED, pois
 // se o auto-cancelamento estiver desligado não há cancelamento a evitar.
 // ============================================================================
-async function runPresalesAjusteAvisoPrazo() {
+async function runPresalesAjusteAvisoPrazoImpl() {
   const enabled = process.env.PRESALES_AUTOCANCEL_ENABLED !== 'false';
   const warnFeature = process.env.PRESALES_AUTOCANCEL_WARN_ENABLED !== 'false';
 

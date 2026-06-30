@@ -269,6 +269,44 @@ router.get('/monitor', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /runs — histórico das últimas execuções dos jobs de ajuste (aviso/cancelamento),
+// tanto do cron quanto do disparo manual. Mesma elegibilidade do GET /monitor.
+router.get('/runs', authMiddleware, async (req, res) => {
+  try {
+    const { eligible } = await resolveAuditor(req);
+    if (!eligible) {
+      return res.status(403).json({ error: 'Acesso restrito à auditoria da Fila Pré Vendas.' });
+    }
+
+    const rawLimit = Number(req.query.limit);
+    let limit = 20;
+    if (Number.isInteger(rawLimit) && rawLimit > 0) limit = Math.min(rawLimit, 100);
+
+    const tipo = req.query.tipo;
+    const params = [];
+    let where = '';
+    if (tipo === 'aviso' || tipo === 'cancel') {
+      params.push(tipo);
+      where = `WHERE tipo = $${params.length}`;
+    }
+    params.push(limit);
+
+    const result = await query(
+      `SELECT id, executed_at, tipo, dry_run, checked, overdue, warned,
+              cancelled, simulated, skipped, errors, aborted, abort_reason
+         FROM presales_ajustes_runs ${where}
+        ORDER BY executed_at DESC
+        LIMIT $${params.length}`,
+      params
+    );
+
+    return res.json({ items: result.rows });
+  } catch (e) {
+    console.error('[presales-ajustes] GET /runs error:', e.message);
+    return res.status(500).json({ error: 'Falha ao carregar o histórico de execuções.' });
+  }
+});
+
 // GET /mine — vendedor logado lista somente os ajustes das próprias vendas.
 router.get('/mine', authMiddleware, async (req, res) => {
   try {
