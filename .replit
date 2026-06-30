@@ -76,6 +76,10 @@ SMTP_HOST = "email-ssl.com.br"
 SMTP_PORT = "465"
 COMMISSION_REPORT_RECIPIENTS = "tais.dequi@wescctech.com.br"
 API_HASH_WHU = "3b8d56d7e6e1c99ccd1fa37179cfc0d54dc5d13817b194686ebf88bcdf9e8f75"
+PRESALES_AUTOCANCEL_ENABLED = "true"
+PRESALES_AUTOCANCEL_DRYRUN = "true"
+PRESALES_AUTOCANCEL_DEADLINE_DAYS = "3"
+INVERTEXTO_STATE = "SP"
 
 [postMerge]
 path = "scripts/post-merge.sh"

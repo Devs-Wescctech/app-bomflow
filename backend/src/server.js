@@ -18,7 +18,7 @@ import orcamentoDocumentosRoutes from './routes/orcamentoDocumentos.js';
 import presalesAjustesRoutes from './routes/presalesAjustes.js';
 import { runAllAutomations } from './services/automationService.js';
 import cron from 'node-cron';
-import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport, runPerspectivaBatch, sendPerspectivaReport } from './routes/functions.js';
+import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport, runPerspectivaBatch, sendPerspectivaReport, runPresalesAjusteAutoCancel } from './routes/functions.js';
 import { recoverStuckQueues } from './services/whatsappQueueService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -213,6 +213,17 @@ initDatabase()
       }
     });
     console.log('[Perspectiva Email] Cron agendado: quartas-feiras às 08:00 (ERP).');
+
+    cron.schedule('0 7 * * *', async () => {
+      console.log('[PreSales AutoCancel] Iniciando verificação diária de auto-cancelamento de ajustes...');
+      try {
+        const r = await runPresalesAjusteAutoCancel();
+        console.log(`[PreSales AutoCancel] Concluído. dryRun=${r.dryRun} verificados=${r.checked} vencidos=${r.overdue} cancelados=${r.cancelled} simulados=${r.simulated} pulados=${r.skipped} erros=${r.errors}`);
+      } catch (error) {
+        console.error('[PreSales AutoCancel] Erro na verificação automática:', error.message);
+      }
+    });
+    console.log('[PreSales AutoCancel] Cron agendado: todos os dias às 07:00.');
 
     try {
       await recoverStuckQueues();

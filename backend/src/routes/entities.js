@@ -185,6 +185,11 @@ pool.query(`
   CREATE INDEX IF NOT EXISTS idx_presales_ajustes_vendedor ON presales_ajustes(vendedor_id);
   CREATE INDEX IF NOT EXISTS idx_presales_ajustes_pedido ON presales_ajustes(erp_pedido_id);
   CREATE INDEX IF NOT EXISTS idx_presales_ajustes_status ON presales_ajustes(status);
+  -- Auto-cancelamento por prazo (3 dias úteis sem ajuste). status passa a 'cancelado_auto'.
+  -- cancelado_at: quando o cancelamento (ou a simulação, em dry-run) ocorreu.
+  -- cancelamento_info: observação de auditoria (modo, motivo, situação ERP, etc.).
+  ALTER TABLE presales_ajustes ADD COLUMN IF NOT EXISTS cancelado_at TIMESTAMPTZ;
+  ALTER TABLE presales_ajustes ADD COLUMN IF NOT EXISTS cancelamento_info TEXT;
 `).then(() => console.log('[Migration] presales_ajustes OK'))
   .catch(e => console.error('[Migration] presales_ajustes error:', e.message));
 

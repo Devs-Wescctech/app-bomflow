@@ -1133,6 +1133,94 @@ export async function applyFechamentoEPagamento(pedidoInternalId, opts = {}) {
 }
 
 /**
+ * Cancela um orçamento (pedido) no ERP, espelhando fielmente o que a tela web grava num
+ * cancelamento (verificado em pedidos reais cancelados). Operação transacional, com
+ * SELECT ... FOR UPDATE, trava de estado e idempotência:
+ *   - se o pedido já está em situação 'C' (cancelado) -> não faz nada (idempotente);
+ *   - só cancela orçamentos ainda em análise (situação 'I'); qualquer outra situação é pulada.
+ *
+ * Campos gravados em `pedidos` (espelhando o cancelamento real):
+ *   situacao='C', situacao_financeiro='L', data_cancelamento=CURRENT_DATE,
+ *   motivo_cancelamento=<texto>, motivo_cancelamento_ou_perda_id=<motivoId>,
+ *   valor_cancelamentos=valor_total, data_alteracao=NOW(), usuario_alteracao_id=<autor>.
+ * `responsavel_pelo_cancelamento` é deixado como está (nos cancelamentos reais vem nulo).
+ *
+ * @param {number} pedidoInternalId  - id interno do pedido no ERP (pedidos.id)
+ * @param {object} opts
+ * @param {number} opts.usuarioAlteracaoId - erp_agent_id do autor (auditor que solicitou o ajuste)
+ * @param {number} opts.motivoId           - id em pedidos_motivos_cancelamentos
+ * @param {string} opts.motivoTexto        - observação do cancelamento
+ * @returns {Promise<{status:string, situacao?:string, valorCancelado?:number, pedidoId:number}>}
+ *   status: 'cancelled' | 'already_cancelled' | 'invalid_state' | 'not_found'
+ */
+export async function cancelOrcamentoDB(pedidoInternalId, opts = {}) {
+  const erpUserId = Number(opts.usuarioAlteracaoId);
+  const motivo = Number(opts.motivoId);
+  const texto = String(opts.motivoTexto || '').trim();
+  if (!erpUserId || Number.isNaN(erpUserId)) {
+    throw new Error('cancelOrcamentoDB: usuário ERP (autor do cancelamento) obrigatório.');
+  }
+  if (!motivo || Number.isNaN(motivo)) {
+    throw new Error('cancelOrcamentoDB: motivo de cancelamento obrigatório.');
+  }
+  if (!texto) {
+    throw new Error('cancelOrcamentoDB: texto do motivo de cancelamento obrigatório.');
+  }
+
+  const db = getPool();
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+
+    const pedRes = await client.query(
+      `SELECT id, situacao, valor_total FROM pedidos WHERE id = $1 FOR UPDATE`,
+      [pedidoInternalId]
+    );
+    if (pedRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return { status: 'not_found', pedidoId: Number(pedidoInternalId) };
+    }
+    const pedido = pedRes.rows[0];
+
+    // Idempotência: já cancelado -> não reescreve nada.
+    if (pedido.situacao === 'C') {
+      await client.query('ROLLBACK');
+      return { status: 'already_cancelled', situacao: 'C', pedidoId: Number(pedidoInternalId) };
+    }
+    // Trava de estado: só cancela orçamentos ainda em análise ('I').
+    if (pedido.situacao !== 'I') {
+      await client.query('ROLLBACK');
+      return { status: 'invalid_state', situacao: pedido.situacao, pedidoId: Number(pedidoInternalId) };
+    }
+
+    const valorTotal = Number(pedido.valor_total) || 0;
+    await client.query(
+      `UPDATE pedidos SET
+         situacao = 'C',
+         situacao_financeiro = 'L',
+         data_cancelamento = CURRENT_DATE,
+         motivo_cancelamento = $2,
+         motivo_cancelamento_ou_perda_id = $3,
+         valor_cancelamentos = $4::numeric,
+         data_alteracao = NOW(),
+         usuario_alteracao_id = $5
+       WHERE id = $1 AND situacao = 'I'`,
+      [pedidoInternalId, texto, motivo, valorTotal, erpUserId]
+    );
+
+    await client.query('COMMIT');
+    console.log(`[erpDbService] cancelOrcamentoDB OK pedido=${pedidoInternalId} situacao=C valor=${valorTotal} autor=${erpUserId} motivo=${motivo}`);
+    return { status: 'cancelled', situacao: 'C', valorCancelado: valorTotal, pedidoId: Number(pedidoInternalId) };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('[erpDbService] cancelOrcamentoDB ROLLBACK:', err.message);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Busca logins e nomes de usuários ERP a partir de uma lista de IDs (agents.erp_agent_id).
  * Retorna um mapa { [id]: { login, nome } }.
  * Usado para popular o seletor de vendedores no relatório de orçamentos.

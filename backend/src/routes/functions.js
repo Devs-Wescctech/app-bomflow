@@ -10,7 +10,9 @@ import { assignTicket, distributeUnassignedTickets, DISTRIBUTION_ALGORITHMS } fr
 import { checkAllSLAWarnings, checkSLABreach, recordFirstResponse, recordStatusChange } from '../services/slaService.js';
 import { runAllAutomations, runAutomationsForLead } from '../services/leadAutomation.js';
 import { checkAndExecuteLeadUpsellAutomations, checkAndExecuteUpsellChannelAutomations, executeLeadCreatedAutomation, executeUpsellChannelLeadCreatedAutomation } from '../services/automationService.js';
-import { notifyLeadAssigned } from '../services/notificationService.js';
+import { notifyLeadAssigned, createNotification } from '../services/notificationService.js';
+import { cancelOrcamentoDB } from '../services/erpDbService.js';
+import { isPastBusinessDayDeadline } from '../services/businessDaysService.js';
 import { generateProposalPDF, generateManualProposalPDF } from '../services/pdfService.js';
 import { sendWhatsAppMessage, sendDocument, sendTextMessage } from '../services/whatsappService.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -6600,5 +6602,240 @@ router.post('/commission-perspectiva/report/test', authMiddleware, loadAgentMidd
 });
 
 export { runPerspectivaBatch, sendPerspectivaReport };
+
+// Disparo manual (admin) do job de auto-cancelamento. Útil para validar o dry-run sob demanda
+// e para operar fora do horário do cron. Respeita os mesmos flags de ambiente (dry-run etc.).
+router.post('/presales-ajuste-auto-cancel/run', authMiddleware, loadAgentMiddleware, requireRole('admin'), async (req, res) => {
+  try {
+    const result = await runPresalesAjusteAutoCancel();
+    res.json({ success: true, result });
+  } catch (error) {
+    console.error('[PreSales AutoCancel] erro no disparo manual:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================================================
+// AUTO-CANCELAMENTO DE AJUSTE PRÉ-VENDA
+// Quando o auditor solicita um ajuste na Fila Pré Vendas, o vendedor tem
+// PRESALES_AUTOCANCEL_DEADLINE_DAYS (padrão 3) dias ÚTEIS (excl. fins de semana
+// e feriados SP) a partir da data da solicitação. Vencido o prazo sem ajuste,
+// o orçamento é cancelado no ERP (apenas se ainda estiver em situação 'I').
+//
+// Segurança: começa em DRY-RUN (PRESALES_AUTOCANCEL_DRYRUN!='false'), não escreve
+// no ERP, apenas registra/notifica o que SERIA cancelado. Fail-safe: se a API de
+// feriados estiver indisponível, NÃO cancela nada no ciclo.
+// ============================================================================
+const PRESALES_AUTOCANCEL_MOTIVO_ID = 310505360; // "AJUSTE PRÉ-VENDA NÃO REALIZADO"
+const PRESALES_AUTOCANCEL_MOTIVO_TEXTO =
+  'Cancelado automaticamente — ajuste solicitado pela auditoria da Pré Venda não realizado em 3 dias úteis.';
+
+async function getVendedorSupervisorEmails(vendedorId) {
+  if (!vendedorId) return [];
+  const res = await query(
+    `SELECT t.supervisor_email, t.supervisor_emails
+       FROM agents a JOIN teams t ON t.id = a.team_id
+      WHERE a.id = $1`,
+    [vendedorId]
+  );
+  const row = res.rows[0];
+  if (!row) return [];
+  const emails = new Set();
+  if (row.supervisor_email) emails.add(row.supervisor_email);
+  if (Array.isArray(row.supervisor_emails)) row.supervisor_emails.forEach((e) => e && emails.add(e));
+  return [...emails];
+}
+
+async function runPresalesAjusteAutoCancel() {
+  const enabled = process.env.PRESALES_AUTOCANCEL_ENABLED !== 'false';
+  const dryRun = process.env.PRESALES_AUTOCANCEL_DRYRUN !== 'false';
+  const deadlineDays = Number(process.env.PRESALES_AUTOCANCEL_DEADLINE_DAYS) || 3;
+
+  const result = {
+    enabled, dryRun, deadlineDays,
+    checked: 0, overdue: 0, cancelled: 0, simulated: 0, skipped: 0, errors: 0,
+  };
+
+  if (!enabled) {
+    console.log('[PreSales AutoCancel] desabilitado (PRESALES_AUTOCANCEL_ENABLED=false). Nada a fazer.');
+    result.skippedAll = true;
+    return result;
+  }
+
+  const pend = await query(
+    `SELECT id, erp_pedido_id, erp_numero, modulo, vendedor_id, vendedor_nome,
+            cliente_nome, auditor_id, auditor_email, created_at, cancelamento_info
+       FROM presales_ajustes
+      WHERE status = 'pendente'
+      ORDER BY created_at ASC`
+  );
+  result.checked = pend.rows.length;
+  console.log(`[PreSales AutoCancel] iniciando (dryRun=${dryRun}, prazo=${deadlineDays}du). Pendentes: ${pend.rows.length}`);
+  if (pend.rows.length === 0) return result;
+
+  for (const aj of pend.rows) {
+    try {
+      // Cálculo de prazo (dias úteis). Se feriados indisponíveis -> aborta o ciclo (fail-safe).
+      let prazo;
+      try {
+        prazo = await isPastBusinessDayDeadline(aj.created_at, deadlineDays);
+      } catch (e) {
+        console.error(`[PreSales AutoCancel] FAIL-SAFE: feriados indisponíveis, abortando ciclo sem cancelar. Motivo: ${e.message}`);
+        result.aborted = true;
+        result.abortReason = 'holidays_unavailable';
+        return result;
+      }
+
+      if (!prazo.overdue) continue;
+      result.overdue++;
+
+      // Reconfere o status atual (concorrência: vendedor pode ter ajustado agora).
+      const cur = await query(`SELECT status, cancelamento_info FROM presales_ajustes WHERE id = $1`, [aj.id]);
+      if (!cur.rows[0] || cur.rows[0].status !== 'pendente') {
+        result.skipped++;
+        continue;
+      }
+      const jaSimulado = !!cur.rows[0].cancelamento_info;
+
+      // Resolve o erp_agent_id do auditor que solicitou o ajuste (autor do cancelamento no ERP).
+      const audRes = await query(
+        `SELECT id, name, email, erp_agent_id FROM agents WHERE id = $1`,
+        [aj.auditor_id]
+      );
+      const auditor = audRes.rows[0];
+      const erpUserId = auditor?.erp_agent_id ? Number(auditor.erp_agent_id) : null;
+      const numero = aj.erp_numero || aj.erp_pedido_id;
+      const infoBase = `prazo=${deadlineDays}du solicitado=${prazo.startYmd} venc=${prazo.deadlineYmd} hoje=${prazo.todayYmd} auditor_erp=${erpUserId || 'N/A'}`;
+
+      if (!erpUserId) {
+        // Sem vínculo ERP -> não cancela, alerta o auditor (uma vez).
+        result.skipped++;
+        console.warn(`[PreSales AutoCancel] ajuste ${aj.id} (pedido ${aj.erp_pedido_id}): auditor sem erp_agent_id; NÃO cancelado. ${infoBase}`);
+        if (!jaSimulado && (aj.auditor_email || auditor?.email)) {
+          await createNotification({
+            userEmail: aj.auditor_email || auditor.email,
+            type: 'presales_ajuste',
+            title: 'Auto-cancelamento bloqueado',
+            message: `O orçamento Nº ${numero}${aj.cliente_nome ? ` (${aj.cliente_nome})` : ''} venceu o prazo de ${deadlineDays} dias úteis, mas não pôde ser cancelado automaticamente: seu usuário não possui vínculo com o ERP. Cancele manualmente ou solicite o vínculo.`,
+            link: '/PreSalesOrcamentoRelatorio',
+            entityType: 'presales_ajuste',
+            entityId: aj.id,
+            priority: 'high',
+          });
+          await query(
+            `UPDATE presales_ajustes SET cancelamento_info = $2 WHERE id = $1 AND status = 'pendente'`,
+            [aj.id, `[BLOQUEADO ${prazo.todayYmd}] auditor sem erp_agent_id. ${infoBase}`]
+          );
+        }
+        continue;
+      }
+
+      // -------- DRY-RUN: apenas registra/notifica (uma vez), sem tocar no ERP. --------
+      if (dryRun) {
+        result.simulated++;
+        console.log(`[PreSales AutoCancel][DRY-RUN] SIMULARIA cancelar pedido ${aj.erp_pedido_id} (Nº ${numero}). ${infoBase}`);
+        if (!jaSimulado) {
+          if (aj.auditor_email || auditor?.email) {
+            await createNotification({
+              userEmail: aj.auditor_email || auditor.email,
+              type: 'presales_ajuste',
+              title: '[Simulação] Auto-cancelamento de orçamento',
+              message: `(DRY-RUN) O orçamento Nº ${numero}${aj.cliente_nome ? ` (${aj.cliente_nome})` : ''} venceu o prazo de ${deadlineDays} dias úteis e SERIA cancelado automaticamente. Nenhuma alteração foi feita no ERP.`,
+              link: '/PreSalesOrcamentoRelatorio',
+              entityType: 'presales_ajuste',
+              entityId: aj.id,
+              priority: 'normal',
+            });
+          }
+          await query(
+            `UPDATE presales_ajustes SET cancelamento_info = $2 WHERE id = $1 AND status = 'pendente'`,
+            [aj.id, `[SIMULADO ${prazo.todayYmd}] venceria o prazo; seria cancelado. ${infoBase}`]
+          );
+        }
+        continue;
+      }
+
+      // -------- CANCELAMENTO REAL no ERP. --------
+      let cancelRes;
+      try {
+        cancelRes = await cancelOrcamentoDB(aj.erp_pedido_id, {
+          usuarioAlteracaoId: erpUserId,
+          motivoId: PRESALES_AUTOCANCEL_MOTIVO_ID,
+          motivoTexto: PRESALES_AUTOCANCEL_MOTIVO_TEXTO,
+        });
+      } catch (e) {
+        result.errors++;
+        console.error(`[PreSales AutoCancel] erro ao cancelar pedido ${aj.erp_pedido_id}: ${e.message}`);
+        continue;
+      }
+
+      if (cancelRes.status === 'already_cancelled') {
+        // Já estava cancelado no ERP -> encerra o ajuste (idempotência), sem notificar.
+        result.skipped++;
+        await query(
+          `UPDATE presales_ajustes SET status = 'cancelado_auto', cancelado_at = NOW(), cancelamento_info = $2 WHERE id = $1 AND status = 'pendente'`,
+          [aj.id, `Já estava cancelado no ERP (situacao=C). ${infoBase}`]
+        );
+        console.warn(`[PreSales AutoCancel] pedido ${aj.erp_pedido_id} já estava cancelado no ERP; ajuste encerrado.`);
+        continue;
+      }
+      if (cancelRes.status !== 'cancelled') {
+        // not_found ou invalid_state (saiu de 'I'): não cancela e mantém pendente para reavaliação.
+        result.skipped++;
+        console.warn(`[PreSales AutoCancel] pedido ${aj.erp_pedido_id} não cancelado (status=${cancelRes.status}, situacao=${cancelRes.situacao || '-'}). Mantido pendente.`);
+        continue;
+      }
+
+      // Sucesso: marca o ajuste e notifica vendedor, supervisores e auditor.
+      result.cancelled++;
+      await query(
+        `UPDATE presales_ajustes SET status = 'cancelado_auto', cancelado_at = NOW(), cancelamento_info = $2 WHERE id = $1 AND status = 'pendente'`,
+        [aj.id, `Cancelado automaticamente no ERP (situacao=C, valor=${cancelRes.valorCancelado}). ${infoBase}`]
+      );
+      console.log(`[PreSales AutoCancel] pedido ${aj.erp_pedido_id} (Nº ${numero}) CANCELADO no ERP. valor=${cancelRes.valorCancelado}`);
+
+      const cancelMsgVend = `O orçamento Nº ${numero}${aj.cliente_nome ? ` (${aj.cliente_nome})` : ''} foi CANCELADO automaticamente: o ajuste solicitado pela auditoria não foi realizado dentro de ${deadlineDays} dias úteis.`;
+      if (aj.vendedor_id) {
+        const vendRes = await query(`SELECT email FROM agents WHERE id = $1`, [aj.vendedor_id]);
+        const vendEmail = vendRes.rows[0]?.email;
+        if (vendEmail) {
+          await createNotification({
+            userEmail: vendEmail, type: 'presales_ajuste',
+            title: 'Orçamento cancelado por prazo de ajuste',
+            message: cancelMsgVend, link: '/PreSalesAjustes',
+            entityType: 'presales_ajuste', entityId: aj.id, priority: 'high',
+          });
+        }
+      }
+      const supEmails = await getVendedorSupervisorEmails(aj.vendedor_id);
+      for (const supEmail of supEmails) {
+        await createNotification({
+          userEmail: supEmail, type: 'presales_ajuste',
+          title: 'Orçamento cancelado por prazo de ajuste',
+          message: `${cancelMsgVend}${aj.vendedor_nome ? ` (vendedor: ${aj.vendedor_nome})` : ''}`,
+          link: '/PreSalesOrcamentoRelatorio',
+          entityType: 'presales_ajuste', entityId: aj.id, priority: 'normal',
+        });
+      }
+      if (aj.auditor_email || auditor?.email) {
+        await createNotification({
+          userEmail: aj.auditor_email || auditor.email, type: 'presales_ajuste',
+          title: 'Orçamento cancelado automaticamente',
+          message: `O orçamento Nº ${numero}${aj.cliente_nome ? ` (${aj.cliente_nome})` : ''} foi cancelado automaticamente no ERP (ajuste não realizado em ${deadlineDays} dias úteis).`,
+          link: '/PreSalesOrcamentoRelatorio',
+          entityType: 'presales_ajuste', entityId: aj.id, priority: 'normal',
+        });
+      }
+    } catch (e) {
+      result.errors++;
+      console.error(`[PreSales AutoCancel] erro no ajuste ${aj.id} (pedido ${aj.erp_pedido_id}): ${e.message}`);
+    }
+  }
+
+  console.log('[PreSales AutoCancel] resumo:', JSON.stringify(result));
+  return result;
+}
+
+export { runPresalesAjusteAutoCancel };
 
 export default router;
