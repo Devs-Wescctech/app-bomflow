@@ -1208,28 +1208,33 @@ const MODULO_LABELS = {
   referral: 'Indicações',
 };
 
+// Mesma elegibilidade do relatório consolidado (admin, tipo "auditoria" e
+// supervisores do time "Auditoria"). Compartilhado pela lista consolidada e pela
+// busca pontual por pedido.
+async function isConsolidadoEligible(req) {
+  const agentRes = await query(
+    `SELECT a.id, a.agent_type, t.name AS team_name
+       FROM agents a
+       LEFT JOIN teams t ON t.id = a.team_id
+      WHERE a.id = $1`,
+    [req.user.id]
+  );
+  const agent = agentRes.rows[0];
+  if (!agent) return false;
+  const agentType = (agent.agent_type || '').toLowerCase();
+  const isAdmin = agentType === 'admin' || (req.user.role || '').toLowerCase() === 'admin';
+  const isAuditoria = agentType === 'auditoria';
+  const isSupervisor = agentType.includes('supervisor');
+  const teamName = (agent.team_name || '').trim().toLowerCase();
+  const isAuditTeamSupervisor = isSupervisor && teamName === 'auditoria';
+  return isAdmin || isAuditoria || isAuditTeamSupervisor;
+}
+
 router.get('/relatorio-orcamentos/consolidado', authMiddleware, async (req, res) => {
   try {
     const { start_date, end_date, situacao, canal_id, limit = 1000 } = req.query;
 
-    const agentRes = await query(
-      `SELECT a.id, a.agent_type, t.name AS team_name
-         FROM agents a
-         LEFT JOIN teams t ON t.id = a.team_id
-        WHERE a.id = $1`,
-      [req.user.id]
-    );
-    const agent = agentRes.rows[0];
-    if (!agent) return res.status(403).json({ error: 'Agente não encontrado.' });
-
-    const agentType = (agent.agent_type || '').toLowerCase();
-    const isAdmin = agentType === 'admin' || (req.user.role || '').toLowerCase() === 'admin';
-    const isAuditoria = agentType === 'auditoria';
-    const isSupervisor = agentType.includes('supervisor');
-    const teamName = (agent.team_name || '').trim().toLowerCase();
-    const isAuditTeamSupervisor = isSupervisor && teamName === 'auditoria';
-
-    const eligible = isAdmin || isAuditoria || isAuditTeamSupervisor;
+    const eligible = await isConsolidadoEligible(req);
     if (!eligible) {
       return res.status(403).json({ error: 'Acesso restrito ao relatório consolidado de orçamentos.' });
     }
@@ -1292,6 +1297,79 @@ router.get('/relatorio-orcamentos/consolidado', authMiddleware, async (req, res)
     return res.json({ items });
   } catch (err) {
     console.error('[ERP Proxy] GET /relatorio-orcamentos/consolidado error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Busca pontual de UM orçamento por id do pedido no ERP, sem filtro de data nem
+// de situação. Usado pelo Painel de Ajustes para levar o auditor direto ao
+// orçamento na Fila Pré Vendas mesmo quando ele é antigo ou já mudou de situação.
+// Mesma elegibilidade do relatório consolidado.
+// ───────────────────────────────────────────────────────────────────────────
+router.get('/relatorio-orcamentos/by-pedido/:pedidoId', authMiddleware, async (req, res) => {
+  try {
+    const pedidoId = Number(req.params.pedidoId);
+    if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+      return res.status(400).json({ error: 'Id de pedido inválido.' });
+    }
+
+    const eligible = await isConsolidadoEligible(req);
+    if (!eligible) {
+      return res.status(403).json({ error: 'Acesso restrito ao relatório consolidado de orçamentos.' });
+    }
+
+    // Rastreio CRM: o pedido precisa pertencer a um dos módulos de vendas.
+    const crmRes = await query(
+      `SELECT erp_pedido_id, modulo, agent_name
+         FROM bomflow_orcamentos
+        WHERE erp_pedido_id = $1 AND modulo = ANY($2)
+        LIMIT 1`,
+      [pedidoId, VALID_MODULOS]
+    );
+    const meta = crmRes.rows[0];
+    if (!meta) return res.status(404).json({ error: 'Orçamento não encontrado.' });
+
+    const rows = await getRelatorioOrcamentos({
+      pedidoIds: [pedidoId],
+      startDate: null,
+      endDate: null,
+      situacao: null,
+      canalId: null,
+      limit: 1,
+      offset: 0,
+    });
+    const row = rows[0];
+    if (!row) return res.status(404).json({ error: 'Orçamento não encontrado.' });
+
+    let aj = null;
+    try {
+      const ajRes = await query(
+        `SELECT status, texto, created_at, ajustado_at, vendedor_nome
+           FROM presales_ajustes
+          WHERE erp_pedido_id = $1
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [pedidoId]
+      );
+      aj = ajRes.rows[0] || null;
+    } catch (e) {
+      console.error('[by-pedido] falha ao carregar ajuste:', e.message);
+    }
+
+    const item = {
+      ...row,
+      modulo: meta.modulo || null,
+      modulo_nome: MODULO_LABELS[meta.modulo] || meta.modulo || '-',
+      ...(meta.agent_name ? { nome_vendedor: meta.agent_name, login_vendedor: meta.agent_name } : {}),
+      ajuste_status: aj?.status || null,
+      ajuste_texto: aj?.texto || null,
+      ajuste_at: aj?.ajustado_at || aj?.created_at || null,
+    };
+
+    return res.json({ item });
+  } catch (err) {
+    console.error('[ERP Proxy] GET /relatorio-orcamentos/by-pedido error:', err.message);
     return res.status(500).json({ error: err.message });
   }
 });

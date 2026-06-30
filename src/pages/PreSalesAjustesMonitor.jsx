@@ -220,11 +220,16 @@ export default function PreSalesAjustesMonitor() {
       }
       if (res.status === 404) {
         const termo = ajuste.erp_numero || ajuste.cliente_cpf || ajuste.erp_pedido_id || "";
+        const params = {};
+        if (termo) params.q = termo;
+        // O id do pedido no ERP leva a Fila direto ao orçamento certo (abre o
+        // modal de detalhe), mesmo que seja antigo ou já fora da situação 'I'.
+        if (ajuste.erp_pedido_id) params.orc = ajuste.erp_pedido_id;
         toast({
           title: "Lead não encontrado",
           description: "Abrindo o orçamento na Fila Pré Vendas.",
         });
-        navigate(createPageUrl("PreSalesOrcamentoRelatorio", termo ? { q: termo } : undefined));
+        navigate(createPageUrl("PreSalesOrcamentoRelatorio", Object.keys(params).length ? params : undefined));
         return;
       }
       throw new Error(json.error || "Não foi possível abrir o lead do cliente.");

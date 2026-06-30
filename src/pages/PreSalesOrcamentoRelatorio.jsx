@@ -190,6 +190,15 @@ export default function PreSalesOrcamentoRelatorio() {
     } catch { return ''; }
   });
   const [selected, setSelected] = useState(null);
+  // Alvo vindo do Painel de Ajustes (id do pedido no ERP). Quando presente,
+  // abrimos o orçamento direto no modal — mesmo que ele seja antigo ou já não
+  // esteja na situação 'I' que a Fila lista por padrão.
+  const [targetOrc] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('orc') || '';
+    } catch { return ''; }
+  });
+  const [targetLoading, setTargetLoading] = useState(false);
 
   const canaisMap = useMemo(() => {
     const m = {};
@@ -238,6 +247,38 @@ export default function PreSalesOrcamentoRelatorio() {
     loadReport();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Veio do Painel de Ajustes com um pedido alvo: busca o orçamento pontualmente
+  // (sem depender do intervalo de datas/situação da Fila) e abre o modal direto.
+  useEffect(() => {
+    if (!targetOrc) return;
+    let cancelled = false;
+    (async () => {
+      setTargetLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/erp/relatorio-orcamentos/by-pedido/${encodeURIComponent(targetOrc)}`, { headers: getAuthHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok || !data.item) {
+          toast({
+            title: 'Orçamento não localizado',
+            description: 'Use a busca por número ou CPF para encontrá-lo.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        setSelected(data.item);
+      } catch {
+        if (!cancelled) {
+          toast({ title: 'Erro', description: 'Falha ao abrir o orçamento.', variant: 'destructive' });
+        }
+      } finally {
+        if (!cancelled) setTargetLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetOrc]);
 
   const isMine = (o) => !!currentUser?.name && norm(o.nome_vendedor) === norm(currentUser.name);
 
@@ -533,6 +574,15 @@ export default function PreSalesOrcamentoRelatorio() {
           })}
         </div>
       </div>
+
+      {targetLoading && !selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="flex items-center gap-3 rounded-2xl bg-white px-5 py-4 shadow-2xl dark:bg-gray-900">
+            <Loader2 className="w-5 h-5 animate-spin text-violet-600" />
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Abrindo o orçamento…</span>
+          </div>
+        </div>
+      )}
 
       {selected && (
         <OrcamentoDetalheModal
