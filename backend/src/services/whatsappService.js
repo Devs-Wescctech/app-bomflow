@@ -243,9 +243,10 @@ export async function sendTextMessage(params) {
   const body = {
     number: number.replace(/\D/g, ''),
     message: message,
+    forceSend: true,
   };
 
-  const response = await fetch(`${RUDO_API_BASE}/chats/send-message`, {
+  const response = await fetch(`${RUDO_API_BASE}/chats/send-text`, {
     method: 'POST',
     headers: {
       'access-token': token,
@@ -258,7 +259,10 @@ export async function sendTextMessage(params) {
   const responseData = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(`Failed to send message: ${responseData.msg || response.statusText}`);
+    const errorMsg = responseData.msg || response.statusText;
+    const error = new Error(`Failed to send message: ${errorMsg}`);
+    error.apiMessage = errorMsg;
+    throw error;
   }
 
   return responseData;
