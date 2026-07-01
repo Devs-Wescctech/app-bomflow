@@ -108,6 +108,7 @@ import WhatsAppQuickTicket from "./WhatsAppQuickTicket";
 import WhatsAppQuickCollection from "./WhatsAppQuickCollection";
 
 import WhatsAppConversa from "./WhatsAppConversa";
+import WhatsAppInbox from "./WhatsAppInbox";
 
 import PortalHomeAlias from "./portal-home";
 
@@ -341,6 +342,7 @@ const PAGES = {
     WhatsAppQuickCollection: WhatsAppQuickCollection,
     
     WhatsAppConversa: WhatsAppConversa,
+    WhatsAppInbox: WhatsAppInbox,
     
     PortalHomeAlias: PortalHomeAlias,
     
@@ -596,6 +598,7 @@ function PagesContent() {
                 <Route path="/WhatsAppQuickCollection" element={<WhatsAppQuickCollection />} />
                 
                 <Route path="/WhatsAppConversa" element={<WhatsAppConversa />} />
+                <Route path="/WhatsAppInbox" element={<WhatsAppInbox />} />
                 
                 <Route path="/portal-home" element={<PortalHomeAlias />} />
                 

@@ -4,6 +4,7 @@ import { getWhatsAppTemplates, getWhatsAppTemplatesByToken, sendWhatsAppMessage,
 import { query } from '../config/database.js';
 import { runAllAutomations, getAutomationLogs } from '../services/automationService.js';
 import { createLeadWhatsAppContact, getLeadWhatsAppContacts } from '../services/leadWhatsAppContactService.js';
+import { recordOutbound } from '../services/whatsappInboxService.js';
 
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
@@ -215,6 +216,18 @@ router.post('/send-and-tag', authMiddleware, async (req, res) => {
         log('[WhatsApp] No contactId available, skipping seller tagging for', phone);
       }
     }
+
+    // 3.5) Espelha a mensagem enviada na Caixa de Entrada WhatsApp (best-effort)
+    await recordOutbound({
+      phone,
+      text: hasText ? message : '[template]',
+      waMessageId:
+        sendResult.messageSentId || sendResult.message_sent_id || sendResult.id || null,
+      contactId: contactId || null,
+      chatId: sendResult.chatId || sendResult.currentChatId || sendResult.chat_id || null,
+      vendedorId,
+      vendedorNome,
+    }).catch((err) => log('[WhatsApp] Falha ao espelhar envio na caixa de entrada (não bloqueia):', err.message));
 
     // 4) Persist an audit record of the send (best-effort — never blocks the send)
     await query(

@@ -244,6 +244,57 @@ pool.query(`
 `).then(() => console.log('[Migration] presales_auditorias OK'))
   .catch(e => console.error('[Migration] presales_auditorias error:', e.message));
 
+// Caixa de Entrada WhatsApp: conversas e mensagens espelhadas do WHU/Rudo dentro do CRM.
+// phone_key = últimos 8 dígitos do número (reconcilia o número recebido do WHU, que vem sem
+// o 9 extra, ex.: 555197720611, com o número que enviamos, ex.: 5551997720611). É a chave
+// de deduplicação de conversa. A lista da caixa é montada a partir destas tabelas (o WHU não
+// expõe endpoint para listar conversas); as mensagens de entrada chegam via webhook.
+// whatsapp_webhook_events guarda o payload cru para descobrir/depurar o formato do WHU.
+pool.query(`
+  CREATE TABLE IF NOT EXISTS whatsapp_conversations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    phone_key VARCHAR(20) NOT NULL UNIQUE,
+    wa_number VARCHAR(30) NOT NULL,
+    contact_id VARCHAR(64),
+    chat_id VARCHAR(64),
+    name VARCHAR(255),
+    avatar_url TEXT,
+    vendedor_id UUID,
+    vendedor_nome VARCHAR(255),
+    last_message_text TEXT,
+    last_message_at TIMESTAMPTZ,
+    last_direction VARCHAR(4),
+    unread_count INTEGER NOT NULL DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'open',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_wa_conversations_vendedor ON whatsapp_conversations(vendedor_id);
+  CREATE INDEX IF NOT EXISTS idx_wa_conversations_last_at ON whatsapp_conversations(last_message_at DESC);
+  CREATE TABLE IF NOT EXISTS whatsapp_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID NOT NULL REFERENCES whatsapp_conversations(id) ON DELETE CASCADE,
+    wa_message_id VARCHAR(64),
+    direction VARCHAR(4) NOT NULL,
+    text TEXT,
+    message_type VARCHAR(20) DEFAULT 'text',
+    status VARCHAR(20),
+    sender_name VARCHAR(255),
+    sent_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_wa_messages_conv ON whatsapp_messages(conversation_id, sent_at);
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_wa_messages_waid ON whatsapp_messages(wa_message_id) WHERE wa_message_id IS NOT NULL;
+  CREATE TABLE IF NOT EXISTS whatsapp_webhook_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    payload JSONB,
+    parsed BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_wa_webhook_events_created ON whatsapp_webhook_events(created_at DESC);
+`).then(() => console.log('[Migration] whatsapp_inbox OK'))
+  .catch(e => console.error('[Migration] whatsapp_inbox error:', e.message));
+
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }
