@@ -676,3 +676,56 @@ export async function getContactById(contactId) {
   if (!response.ok) return null;
   return response.json().catch(() => null);
 }
+
+// ---------------------------------------------------------------------------
+// API Core v2 — operações de escrita em conversas (transferir / finalizar)
+// chatId == attendanceId. Autenticação sempre por header access-token.
+// ---------------------------------------------------------------------------
+
+// Transfere a conversa para outro setor/atendente. IMPORTANTE: sectorId e userId
+// vão na QUERY STRING (não no corpo) e ambos são obrigatórios.
+export async function transferWhatsAppChat(chatId, sectorId, userId) {
+  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+
+  const url = `${RUDO_API_BASE}/chats/${encodeURIComponent(chatId)}/transfer?sectorId=${encodeURIComponent(
+    sectorId
+  )}&userId=${encodeURIComponent(userId)}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'access-token': token, 'Accept': 'application/json' },
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(`Failed to transfer chat: ${data?.msg || response.statusText}`);
+  }
+  return data ?? { success: true };
+}
+
+// Finaliza (resolve) a conversa — passa para status 3. sendMessageFinalized dispara
+// a mensagem automática de encerramento; sendResearchSatisfaction a pesquisa de satisfação.
+export async function finalizeWhatsAppChat(
+  chatId,
+  { sendMessageFinalized = true, sendResearchSatisfaction = true } = {}
+) {
+  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+
+  const response = await fetch(`${RUDO_API_BASE}/chats/${encodeURIComponent(chatId)}/finalize`, {
+    method: 'POST',
+    headers: {
+      'access-token': token,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify({ sendMessageFinalized, sendResearchSatisfaction }),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(`Failed to finalize chat: ${data?.msg || response.statusText}`);
+  }
+  return data ?? { success: true };
+}

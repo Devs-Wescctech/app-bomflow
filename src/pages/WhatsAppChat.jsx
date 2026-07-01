@@ -4,6 +4,21 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import WhatsAppTemplateSelector from "@/components/whatsapp/WhatsAppTemplateSelector";
 import {
   MessageSquare,
@@ -21,6 +36,7 @@ import {
   Clock,
   Headphones,
   CheckCircle2,
+  ArrowRightLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -106,6 +122,14 @@ export default function WhatsAppChat() {
   const [templateVars, setTemplateVars] = useState({});
   const [templateOpen, setTemplateOpen] = useState(false);
   const [sending, setSending] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferUserId, setTransferUserId] = useState("");
+  const [transferSectorId, setTransferSectorId] = useState("");
+  const [transferring, setTransferring] = useState(false);
+  const [finalizeOpen, setFinalizeOpen] = useState(false);
+  const [finalizeMsg, setFinalizeMsg] = useState(true);
+  const [finalizeResearch, setFinalizeResearch] = useState(true);
+  const [finalizing, setFinalizing] = useState(false);
   const messagesEndRef = useRef(null);
 
   const selectedId = selected?.attendanceId || null;
@@ -214,10 +238,84 @@ export default function WhatsAppChat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTemplate?.id, selectedId]);
 
+  // Usuários (com seus setores) para a transferência. Carregado só quando o diálogo abre.
+  const { data: waUsers = [], isLoading: usersLoading } = useQuery({
+    queryKey: ["waChatUsers"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/whatsapp-chat/users`, { headers: authHeaders() });
+      if (!res.ok) throw new Error("Falha ao carregar atendentes");
+      return res.json();
+    },
+    enabled: transferOpen,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const transferUser = useMemo(
+    () => (Array.isArray(waUsers) ? waUsers.find((u) => u.id === transferUserId) : null),
+    [waUsers, transferUserId]
+  );
+  const transferSectors = transferUser?.sectors || [];
+
   const handleSelect = (conv) => {
     setSelected(conv);
     setMessage("");
     setSelectedTemplate(null);
+  };
+
+  const openTransfer = () => {
+    setTransferUserId("");
+    setTransferSectorId("");
+    setTransferOpen(true);
+  };
+
+  const handleTransfer = async () => {
+    if (!selectedId || !transferUserId || !transferSectorId) {
+      toast.error("Selecione o atendente e o setor.");
+      return;
+    }
+    setTransferring(true);
+    try {
+      const res = await fetch(`${API_BASE}/whatsapp-chat/conversations/${selectedId}/transfer`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ userId: transferUserId, sectorId: transferSectorId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.message || "Falha ao transferir.");
+      toast.success("Conversa transferida.");
+      setTransferOpen(false);
+      setSelected(null);
+      queryClient.invalidateQueries({ queryKey: ["waChatConversations"] });
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setTransferring(false);
+    }
+  };
+
+  const handleFinalize = async () => {
+    if (!selectedId) return;
+    setFinalizing(true);
+    try {
+      const res = await fetch(`${API_BASE}/whatsapp-chat/conversations/${selectedId}/finalize`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          sendMessageFinalized: finalizeMsg,
+          sendResearchSatisfaction: finalizeResearch,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.message || "Falha ao finalizar.");
+      toast.success("Conversa finalizada.");
+      setFinalizeOpen(false);
+      setSelected(null);
+      queryClient.invalidateQueries({ queryKey: ["waChatConversations"] });
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setFinalizing(false);
+    }
   };
 
   const handleSend = async () => {
@@ -450,6 +548,32 @@ export default function WhatsAppChat() {
                     {selected.currentSector?.description ? ` · ${selected.currentSector.description}` : ""}
                   </p>
                 </div>
+                {status !== 3 && (
+                  <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={openTransfer}
+                      className="gap-1.5"
+                    >
+                      <ArrowRightLeft className="w-4 h-4" />
+                      <span className="hidden sm:inline">Transferir</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setFinalizeMsg(true);
+                        setFinalizeResearch(true);
+                        setFinalizeOpen(true);
+                      }}
+                      className="gap-1.5 text-green-700 border-green-200 hover:bg-green-50 dark:text-green-400 dark:border-green-900 dark:hover:bg-green-950"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span className="hidden sm:inline">Finalizar</span>
+                    </Button>
+                  </div>
+                )}
               </div>
 
               {/* Mensagens */}
@@ -582,6 +706,131 @@ export default function WhatsAppChat() {
         }}
         accentColor="green"
       />
+
+      {/* Diálogo de transferência */}
+      <Dialog open={transferOpen} onOpenChange={(o) => !transferring && setTransferOpen(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transferir conversa</DialogTitle>
+            <DialogDescription>
+              Escolha o atendente e o setor de destino. A conversa sairá da sua lista.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Atendente
+              </label>
+              <Select
+                value={transferUserId}
+                onValueChange={(v) => {
+                  setTransferUserId(v);
+                  setTransferSectorId("");
+                }}
+                disabled={usersLoading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={usersLoading ? "Carregando..." : "Selecione um atendente"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {waUsers.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Setor
+              </label>
+              <Select
+                value={transferSectorId}
+                onValueChange={setTransferSectorId}
+                disabled={!transferUserId || transferSectors.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      !transferUserId
+                        ? "Selecione um atendente primeiro"
+                        : transferSectors.length === 0
+                        ? "Atendente sem setores"
+                        : "Selecione um setor"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {transferSectors.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTransferOpen(false)} disabled={transferring}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleTransfer}
+              disabled={transferring || !transferUserId || !transferSectorId}
+              className="gap-1.5"
+            >
+              {transferring ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRightLeft className="w-4 h-4" />}
+              Transferir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de finalização */}
+      <Dialog open={finalizeOpen} onOpenChange={(o) => !finalizing && setFinalizeOpen(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Finalizar conversa</DialogTitle>
+            <DialogDescription>
+              A conversa será encerrada e movida para Resolvidas.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={finalizeMsg}
+                onChange={(e) => setFinalizeMsg(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300"
+              />
+              Enviar mensagem de encerramento
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={finalizeResearch}
+                onChange={(e) => setFinalizeResearch(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300"
+              />
+              Enviar pesquisa de satisfação
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFinalizeOpen(false)} disabled={finalizing}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleFinalize}
+              disabled={finalizing}
+              className="gap-1.5 bg-green-600 hover:bg-green-700 text-white"
+            >
+              {finalizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              Finalizar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

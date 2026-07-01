@@ -10,6 +10,8 @@ import {
   getWhatsAppTemplates,
   setContactAttributes,
   getContactByPhone,
+  transferWhatsAppChat,
+  finalizeWhatsAppChat,
 } from '../services/whatsappService.js';
 
 const router = Router();
@@ -165,7 +167,45 @@ router.post('/conversations/:attendanceId/send', async (req, res) => {
   }
 });
 
-// Usuários e setores — usados nos seletores de transferência (Fase 2) e no filtro por vendedor.
+// Transfere a conversa para outro setor/atendente. sectorId e userId obrigatórios.
+router.post('/conversations/:attendanceId/transfer', async (req, res) => {
+  try {
+    const { sectorId, userId } = req.body || {};
+    if (!sectorId || !userId) {
+      return res.status(400).json({ message: 'sectorId e userId são obrigatórios' });
+    }
+
+    const { error, statusCode } = await loadAuthorizedChat(req, req.params.attendanceId);
+    if (error) return res.status(statusCode).json({ message: error });
+
+    const result = await transferWhatsAppChat(req.params.attendanceId, sectorId, userId);
+    res.json({ success: true, result });
+  } catch (error) {
+    console.error('[WhatsAppChat] Erro ao transferir conversa:', error.message);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Finaliza (resolve) a conversa — passa para status 3.
+router.post('/conversations/:attendanceId/finalize', async (req, res) => {
+  try {
+    const { sendMessageFinalized = true, sendResearchSatisfaction = true } = req.body || {};
+
+    const { error, statusCode } = await loadAuthorizedChat(req, req.params.attendanceId);
+    if (error) return res.status(statusCode).json({ message: error });
+
+    const result = await finalizeWhatsAppChat(req.params.attendanceId, {
+      sendMessageFinalized,
+      sendResearchSatisfaction,
+    });
+    res.json({ success: true, result });
+  } catch (error) {
+    console.error('[WhatsAppChat] Erro ao finalizar conversa:', error.message);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Usuários e setores — usados nos seletores de transferência e no filtro por vendedor.
 router.get('/users', async (req, res) => {
   try {
     res.json(await getWesccUsersCached());
