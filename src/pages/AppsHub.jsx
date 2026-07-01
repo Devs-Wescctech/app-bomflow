@@ -37,12 +37,12 @@ export default function AppsHub() {
       url: createPageUrl("WhatsAppConversa"),
     },
     {
-      id: "whatsapp-inbox",
-      title: "Caixa de Entrada WhatsApp",
-      description: "Acompanhe e responda as conversas de WhatsApp em tempo real, no estilo WhatsApp Web.",
+      id: "whatsapp-chat",
+      title: "Chat WhatsApp",
+      description: "Acompanhe e responda as conversas de WhatsApp em tempo real, no estilo WhatsApp Web, com filtro por status e status de entrega.",
       icon: Inbox,
       gradient: "from-teal-600 to-emerald-600",
-      url: createPageUrl("WhatsAppInbox"),
+      url: createPageUrl("WhatsAppChat"),
     },
   ];
 
