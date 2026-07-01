@@ -22,6 +22,10 @@ args = "Frontend Dev Server"
 task = "workflow.run"
 args = "Backend API Server"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "test"
+
 [[workflows.workflow]]
 name = "Frontend Dev Server"
 author = "agent"
@@ -45,6 +49,17 @@ waitForPort = 3001
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow]]
+name = "test"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd backend && node --test src/"
+
+[workflows.workflow.metadata]
+isValidation = true
 
 [[ports]]
 localPort = 3001
