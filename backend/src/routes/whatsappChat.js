@@ -14,7 +14,6 @@ import {
   finalizeWhatsAppChat,
   sendWhatsAppChatMedia,
 } from '../services/whatsappService.js';
-import { getObjectEntityUploadURL } from '../services/objectStorage.js';
 
 const router = Router();
 
@@ -70,7 +69,7 @@ router.use(authMiddleware, loadAgentMiddleware);
 // Lista conversas por status (0=IA, 1=Fila, 2=Atendimento, 3=Resolvido).
 // Não-supervisores só enxergam as conversas cujo agente responsável (currentUser)
 // é o seu próprio usuário WesccTech.
-router.get('/conversations', async (req, res) => {
+export async function listConversationsHandler(req, res) {
   try {
     const status = Number.parseInt(req.query.status, 10) || 0;
     const page = Number.parseInt(req.query.page, 10) || 0;
@@ -97,11 +96,12 @@ router.get('/conversations', async (req, res) => {
     console.error('[WhatsAppChat] Erro ao listar conversas:', error.message);
     res.status(500).json({ message: error.message });
   }
-});
+}
+router.get('/conversations', listConversationsHandler);
 
 // Detalhe (thread) de uma conversa, com o array de mensagens. O status de entrega
 // de cada mensagem vem embutido em `statusMessage` (1=enviado, 2=entregue, 3=lido).
-router.get('/conversations/:attendanceId/messages', async (req, res) => {
+export async function getMessagesHandler(req, res) {
   try {
     const { chat, error, statusCode } = await loadAuthorizedChat(req, req.params.attendanceId);
     if (error) return res.status(statusCode).json({ message: error });
@@ -110,11 +110,12 @@ router.get('/conversations/:attendanceId/messages', async (req, res) => {
     console.error('[WhatsAppChat] Erro ao buscar mensagens:', error.message);
     res.status(500).json({ message: error.message });
   }
-});
+}
+router.get('/conversations/:attendanceId/messages', getMessagesHandler);
 
 // Envia texto e/ou template para o número da conversa e etiqueta o vendedor
 // responsável (vendedor_id/vendedor_nome) no contato.
-router.post('/conversations/:attendanceId/send', async (req, res) => {
+export async function sendMessageHandler(req, res) {
   try {
     const { message, templateId, templateComponents } = req.body || {};
     const hasText = typeof message === 'string' && message.trim().length > 0;
@@ -167,7 +168,8 @@ router.post('/conversations/:attendanceId/send', async (req, res) => {
     }
     res.status(500).json({ message: userMessage });
   }
-});
+}
+router.post('/conversations/:attendanceId/send', sendMessageHandler);
 
 // Transfere a conversa para outro setor/atendente. sectorId e userId obrigatórios.
 router.post('/conversations/:attendanceId/transfer', async (req, res) => {
@@ -214,6 +216,10 @@ router.post('/conversations/:attendanceId/media/request-url', async (req, res) =
     const { error, statusCode } = await loadAuthorizedChat(req, req.params.attendanceId);
     if (error) return res.status(statusCode).json({ message: error });
 
+    // Import tardio: o SDK do Object Storage (@google-cloud/storage) é pesado e
+    // só é necessário quando há upload de mídia. Carregar sob demanda mantém o
+    // grafo de módulos leve (e testável) fora desse fluxo.
+    const { getObjectEntityUploadURL } = await import('../services/objectStorage.js');
     const { uploadURL, objectPath } = await getObjectEntityUploadURL();
     res.json({ uploadURL, objectPath });
   } catch (error) {
