@@ -798,7 +798,7 @@ export default function ReferralDetail() {
               )}
               {leadPhone && (
                 <Button
-                  onClick={() => navigate(createPageUrl("WhatsAppConversa", { phone: leadPhone, name: referral?.referredName || referral?.referred_name || "", leadType: "indicacao" }))}
+                  onClick={() => navigate(createPageUrl("WhatsAppConversa", { phone: leadPhone, name: referral?.referredName || referral?.referred_name || "", leadType: "indicacao", stage: currentStage?.label || "", agent: referralAgent?.name || "" }))}
                   size="sm"
                   title="Iniciar conversa no WhatsApp"
                   className="bg-green-600 hover:bg-green-700 text-white"

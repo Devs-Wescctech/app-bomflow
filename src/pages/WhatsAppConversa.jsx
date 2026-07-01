@@ -37,6 +37,9 @@ import {
   Phone,
   Users,
   Search,
+  Activity,
+  User,
+  Tag,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -45,6 +48,41 @@ const LEAD_TYPE_LABELS = {
   pj: "Vendas PJ",
   upsell: "Upsell",
   indicacao: "Indicação",
+};
+
+const STAGE_LABELS = {
+  pf: {
+    novo: "Novo",
+    abordado: "Abordado",
+    qualificado: "Qualificado",
+    proposta_enviada: "Proposta Enviada",
+    fechado_ganho: "Fechado - Ganho",
+    fechado_perdido: "Fechado - Perdido",
+  },
+  pj: {
+    novo: "Novo",
+    qualificacao: "Qualificação",
+    apresentacao: "Apresentação",
+    proposta_enviada: "Proposta Enviada",
+    negociacao: "Negociação",
+    fechado_ganho: "Fechado - Ganho",
+    fechado_perdido: "Fechado - Perdido",
+  },
+  upsell: {
+    novo: "Novo",
+    abordado: "Abordado",
+    qualificado: "Qualificado",
+    proposta_enviada: "Proposta Enviada",
+    fechado_ganho: "Fechado - Ganho",
+    fechado_perdido: "Fechado - Perdido",
+  },
+  indicacao: {
+    novo: "Novo",
+    contato_iniciado: "Contato Iniciado",
+    proposta_enviada: "Proposta Enviada",
+    fechado_ganho: "Fechado - Ganho",
+    fechado_perdido: "Perdido",
+  },
 };
 
 const API_BASE = "/api";
@@ -64,7 +102,14 @@ export default function WhatsAppConversa() {
   const [phone, setPhone] = useState(searchParams.get("phone") || "");
   const [selectedLead, setSelectedLead] = useState(() => {
     const name = searchParams.get("name");
-    return name ? { name, type: searchParams.get("leadType") || null } : null;
+    if (!name) return null;
+    return {
+      name,
+      type: searchParams.get("leadType") || null,
+      stageLabel: searchParams.get("stage") || null,
+      agentName: searchParams.get("agent") || null,
+      interest: searchParams.get("interest") || null,
+    };
   });
   const [leadSelectorOpen, setLeadSelectorOpen] = useState(false);
   const [leadSearch, setLeadSearch] = useState("");
@@ -265,25 +310,60 @@ export default function WhatsAppConversa() {
                   : "Selecionar um lead (opcional)"}
               </Button>
               {selectedLead && (
-                <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950 px-3 py-2">
-                  <div className="min-w-0 flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                      {selectedLead.name}
-                    </span>
-                    {selectedLead.type && LEAD_TYPE_LABELS[selectedLead.type] && (
-                      <Badge variant="secondary" className="text-[10px] flex-shrink-0">
-                        {LEAD_TYPE_LABELS[selectedLead.type]}
-                      </Badge>
-                    )}
+                <div className="mt-2 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                        {selectedLead.name}
+                      </span>
+                      {selectedLead.type && LEAD_TYPE_LABELS[selectedLead.type] && (
+                        <Badge variant="secondary" className="text-[10px] flex-shrink-0">
+                          {LEAD_TYPE_LABELS[selectedLead.type]}
+                        </Badge>
+                      )}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 flex-shrink-0"
+                      onClick={() => setSelectedLead(null)}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 flex-shrink-0"
-                    onClick={() => setSelectedLead(null)}
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
+                  {(selectedLead.stageLabel ||
+                    selectedLead.agentName ||
+                    selectedLead.interest) && (
+                    <div className="mt-2 space-y-1 border-t border-green-200/70 dark:border-green-800/70 pt-2">
+                      {selectedLead.stageLabel && (
+                        <div className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+                          <Activity className="w-3.5 h-3.5 text-green-600 dark:text-green-400 flex-shrink-0" />
+                          <span className="text-gray-500 dark:text-gray-400">Etapa:</span>
+                          <span className="font-medium truncate">
+                            {selectedLead.stageLabel}
+                          </span>
+                        </div>
+                      )}
+                      {selectedLead.agentName && (
+                        <div className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+                          <User className="w-3.5 h-3.5 text-green-600 dark:text-green-400 flex-shrink-0" />
+                          <span className="text-gray-500 dark:text-gray-400">Agente:</span>
+                          <span className="font-medium truncate">
+                            {selectedLead.agentName}
+                          </span>
+                        </div>
+                      )}
+                      {selectedLead.interest && (
+                        <div className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+                          <Tag className="w-3.5 h-3.5 text-green-600 dark:text-green-400 flex-shrink-0" />
+                          <span className="text-gray-500 dark:text-gray-400">Interesse:</span>
+                          <span className="font-medium truncate">
+                            {selectedLead.interest}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -454,7 +534,17 @@ export default function WhatsAppConversa() {
                         value={`${lead.name} ${lead.phone}`}
                         onSelect={() => {
                           setPhone(lead.phone);
-                          setSelectedLead({ name: lead.name, type: lead.type });
+                          const agent = agents.find(
+                            (a) => String(a.id) === String(lead.agentId)
+                          );
+                          setSelectedLead({
+                            name: lead.name,
+                            type: lead.type,
+                            stageLabel:
+                              (STAGE_LABELS[lead.type] || {})[lead.stage] || null,
+                            agentName: agent?.name || null,
+                            interest: lead.interest || null,
+                          });
                           setLeadSelectorOpen(false);
                         }}
                         className="flex items-center justify-between gap-2"

@@ -545,7 +545,7 @@ router.get('/search-leads', authMiddleware, async (req, res) => {
     };
 
     const pfPhone = buildPhoneCondition(['phone', 'whatsapp']);
-    const pfSql = `SELECT id, name, phone FROM leads
+    const pfSql = `SELECT id, name, phone, stage, agent_id, interest FROM leads
       WHERE (name ILIKE $1${pfPhone ? ` OR ${pfPhone}` : ''})
       ORDER BY created_at DESC LIMIT ${perTypeLimit}`;
 
@@ -555,12 +555,12 @@ router.get('/search-leads', authMiddleware, async (req, res) => {
       ORDER BY created_at DESC LIMIT ${perTypeLimit}`;
 
     const upsellPhone = buildPhoneCondition(['phone', 'whatsapp']);
-    const upsellSql = `SELECT id, name, phone FROM leads_upsell
+    const upsellSql = `SELECT id, name, phone, stage, agent_id, interest FROM leads_upsell
       WHERE (name ILIKE $1${upsellPhone ? ` OR ${upsellPhone}` : ''})
       ORDER BY created_at DESC LIMIT ${perTypeLimit}`;
 
     const refPhone = buildPhoneCondition(['referred_phone']);
-    const refSql = `SELECT id, referred_name AS name, referred_phone AS phone FROM referrals
+    const refSql = `SELECT id, referred_name AS name, referred_phone AS phone, stage, agent_id, interest FROM referrals
       WHERE (COALESCE(referred_name, '') ILIKE $1${refPhone ? ` OR ${refPhone}` : ''})
       ORDER BY created_at DESC LIMIT ${perTypeLimit}`;
 
@@ -578,6 +578,9 @@ router.get('/search-leads', authMiddleware, async (req, res) => {
           type,
           name: (l.name || '').toString().trim(),
           phone: (l.phone || '').toString().trim(),
+          stage: l.stage ?? null,
+          agentId: l.agent_id ?? null,
+          interest: (l.interest || '').toString().trim() || null,
         }))
         .filter((l) => l.phone && l.phone.replace(/\D/g, '').length >= 10);
 
