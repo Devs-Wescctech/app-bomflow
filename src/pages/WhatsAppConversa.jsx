@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { upsell } from "@/api/upsellClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,6 +67,8 @@ export default function WhatsAppConversa() {
     return name ? { name, type: searchParams.get("leadType") || null } : null;
   });
   const [leadSelectorOpen, setLeadSelectorOpen] = useState(false);
+  const [leadSearch, setLeadSearch] = useState("");
+  const [debouncedLeadSearch, setDebouncedLeadSearch] = useState("");
   const [message, setMessage] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [templateSelectorOpen, setTemplateSelectorOpen] = useState(false);
@@ -85,32 +86,29 @@ export default function WhatsAppConversa() {
     initialData: [],
   });
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedLeadSearch(leadSearch.trim()), 300);
+    return () => clearTimeout(t);
+  }, [leadSearch]);
+
+  useEffect(() => {
+    if (!leadSelectorOpen) {
+      setLeadSearch("");
+      setDebouncedLeadSearch("");
+    }
+  }, [leadSelectorOpen]);
+
   const { data: leadOptions = [], isFetching: leadsLoading } = useQuery({
-    queryKey: ["whatsappConversaLeads"],
+    queryKey: ["whatsappConversaLeads", debouncedLeadSearch],
     queryFn: async () => {
-      const [pf, pj, ups, ind] = await Promise.all([
-        base44.entities.Lead.list().catch(() => []),
-        base44.entities.LeadPJ.list().catch(() => []),
-        upsell.entities.LeadUpsell.list().catch(() => []),
-        base44.entities.Referral.list().catch(() => []),
-      ]);
-      const norm = (items, type, getPhone, getName) =>
-        (items || [])
-          .map((l) => ({
-            id: `${type}-${l.id}`,
-            type,
-            name: (getName(l) || "").toString().trim(),
-            phone: (getPhone(l) || "").toString().trim(),
-          }))
-          .filter((l) => l.phone && l.phone.replace(/\D/g, "").length >= 10);
-      return [
-        ...norm(pf, "pf", (l) => l.phone, (l) => l.name),
-        ...norm(pj, "pj", (l) => l.contact_phone || l.phone, (l) => l.company_name || l.name),
-        ...norm(ups, "upsell", (l) => l.phone, (l) => l.name),
-        ...norm(ind, "indicacao", (l) => l.referredPhone || l.referred_phone, (l) => l.referredName || l.referred_name),
-      ];
+      const res = await fetch(
+        `${API_BASE}/whatsapp/search-leads?term=${encodeURIComponent(debouncedLeadSearch)}`,
+        { headers: authHeaders() }
+      );
+      if (!res.ok) throw new Error("Falha ao buscar leads.");
+      return res.json();
     },
-    enabled: leadSelectorOpen,
+    enabled: leadSelectorOpen && debouncedLeadSearch.length >= 2,
     staleTime: 60_000,
   });
 
@@ -424,17 +422,22 @@ export default function WhatsAppConversa() {
               Selecionar lead
             </DialogTitle>
           </DialogHeader>
-          <Command
-            filter={(value, search) =>
-              value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0
-            }
-          >
-            <CommandInput placeholder="Buscar por nome ou telefone..." />
+          <Command shouldFilter={false}>
+            <CommandInput
+              placeholder="Buscar por nome ou telefone..."
+              value={leadSearch}
+              onValueChange={setLeadSearch}
+            />
             <CommandList className="max-h-72">
               {leadsLoading ? (
                 <div className="flex items-center justify-center py-8 text-sm text-gray-500">
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Carregando leads...
+                  Buscando leads...
+                </div>
+              ) : debouncedLeadSearch.length < 2 ? (
+                <div className="flex flex-col items-center py-6 text-sm text-gray-500">
+                  <Search className="w-5 h-5 mb-2 opacity-50" />
+                  Digite ao menos 2 caracteres para buscar.
                 </div>
               ) : (
                 <>

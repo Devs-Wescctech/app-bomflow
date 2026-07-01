@@ -512,4 +512,85 @@ router.get('/lead-contacts/:leadId', authMiddleware, async (req, res) => {
   }
 });
 
+// Server-side search for leads across all modules (used by Conversa WhatsApp lead selector).
+// Filters by name or phone term on the DB instead of downloading every list.
+router.get('/search-leads', authMiddleware, async (req, res) => {
+  try {
+    const term = (req.query.term || '').toString().trim();
+    if (term.length < 2) {
+      return res.json([]);
+    }
+
+    const perTypeLimit = Math.min(parseInt(req.query.limit, 10) || 10, 25);
+    const like = `%${term}%`;
+    const digits = term.replace(/\D/g, '');
+    const phoneLike = digits.length >= 2 ? `%${digits}%` : null;
+
+    // Each query returns id, name, phone. Phone match strips non-digits so a
+    // typed number matches formatted values in the DB.
+    const buildPhoneCondition = (cols) =>
+      phoneLike
+        ? cols
+            .map(
+              (c) =>
+                `REGEXP_REPLACE(COALESCE(${c}, ''), '[^0-9]', '', 'g') ILIKE $2`
+            )
+            .join(' OR ')
+        : null;
+
+    const runSearch = async (sql, hasPhone) => {
+      const params = hasPhone && phoneLike ? [like, phoneLike] : [like];
+      const result = await query(sql, params);
+      return result.rows;
+    };
+
+    const pfPhone = buildPhoneCondition(['phone', 'whatsapp']);
+    const pfSql = `SELECT id, name, phone FROM leads
+      WHERE (name ILIKE $1${pfPhone ? ` OR ${pfPhone}` : ''})
+      ORDER BY created_at DESC LIMIT ${perTypeLimit}`;
+
+    const pjPhone = buildPhoneCondition(['contact_phone']);
+    const pjSql = `SELECT id, COALESCE(nome_fantasia, razao_social, contact_name) AS name, contact_phone AS phone FROM leads_pj
+      WHERE (COALESCE(nome_fantasia, '') ILIKE $1 OR COALESCE(razao_social, '') ILIKE $1 OR COALESCE(contact_name, '') ILIKE $1${pjPhone ? ` OR ${pjPhone}` : ''})
+      ORDER BY created_at DESC LIMIT ${perTypeLimit}`;
+
+    const upsellPhone = buildPhoneCondition(['phone', 'whatsapp']);
+    const upsellSql = `SELECT id, name, phone FROM leads_upsell
+      WHERE (name ILIKE $1${upsellPhone ? ` OR ${upsellPhone}` : ''})
+      ORDER BY created_at DESC LIMIT ${perTypeLimit}`;
+
+    const refPhone = buildPhoneCondition(['referred_phone']);
+    const refSql = `SELECT id, referred_name AS name, referred_phone AS phone FROM referrals
+      WHERE (COALESCE(referred_name, '') ILIKE $1${refPhone ? ` OR ${refPhone}` : ''})
+      ORDER BY created_at DESC LIMIT ${perTypeLimit}`;
+
+    const [pf, pj, ups, ind] = await Promise.all([
+      runSearch(pfSql, true).catch(() => []),
+      runSearch(pjSql, true).catch(() => []),
+      runSearch(upsellSql, true).catch(() => []),
+      runSearch(refSql, true).catch(() => []),
+    ]);
+
+    const norm = (rows, type) =>
+      (rows || [])
+        .map((l) => ({
+          id: `${type}-${l.id}`,
+          type,
+          name: (l.name || '').toString().trim(),
+          phone: (l.phone || '').toString().trim(),
+        }))
+        .filter((l) => l.phone && l.phone.replace(/\D/g, '').length >= 10);
+
+    res.json([
+      ...norm(pf, 'pf'),
+      ...norm(pj, 'pj'),
+      ...norm(ups, 'upsell'),
+      ...norm(ind, 'indicacao'),
+    ]);
+  } catch (error) {
+    console.error('Error searching leads for Conversa WhatsApp:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 export default router;
