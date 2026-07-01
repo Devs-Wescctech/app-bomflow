@@ -42,6 +42,7 @@ import {
   LayoutDashboard,
   Inbox,
   ClipboardList,
+  ClipboardCheck,
   MessageSquare,
   Plus,
   FileType,
@@ -83,6 +84,7 @@ import {
   List,
   RefreshCw,
   LayoutGrid,
+  ShieldAlert,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -109,6 +111,8 @@ const PUBLIC_PAGES = [
   'PortalReferralList', 'PublicSignature', 'PublicProposal',
   'NPSSurvey', 'npssurvey',
   'ApiDocumentation', 'apidocumentation', 'api-documentation',
+  'UpsellLeadRedesignDemo', 'upsellleadredesigndemo',
+  'OrcamentoDocumentosRedesignDemo', 'orcamentodocumentosredesigndemo',
 ];
 
 const isPublicRoute = (pathname) => {
@@ -168,6 +172,8 @@ const menuModules = [
       { title: "Board de Vendas", url: createPageUrl("SalesQueueBoard"), icon: Inbox },
       { title: "Criar Ticket", url: createPageUrl("CreateSalesTicket"), icon: Plus, highlight: true },
       { title: "Tickets de Vendas", url: createPageUrl("SalesTickets"), icon: ShoppingCart },
+      { title: "Fila Pré Vendas", url: createPageUrl("PreSalesOrcamentoRelatorio"), icon: FileBarChart, auditReport: true },
+      { title: "Avisos & Cancelamentos", url: createPageUrl("PreSalesAjustesMonitor"), icon: ShieldAlert, auditReport: true },
     ]
   },
   {
@@ -186,6 +192,7 @@ const menuModules = [
       { title: "Rota Inteligente", url: createPageUrl("SalesRoutes"), icon: Navigation },
       { title: "Relatórios", url: createPageUrl("SalesReports"), icon: FileBarChart, supervisorOnly: true },
       { title: "Rel. de Orçamentos", url: createPageUrl("SalesOrcamentoRelatorio"), icon: FileBarChart, supervisorOnly: true },
+      { title: "Retornos da Auditoria", url: createPageUrl("PreSalesAjustes"), icon: ClipboardCheck, alwaysVisible: true },
       { title: "Rel. de Ganhos", url: createPageUrl("SalesWonReport"), icon: Trophy },
       { title: "Automações", url: createPageUrl("LeadAutomations"), icon: Zap, supervisorOnly: true },
       { title: "Tarefas", url: createPageUrl("SalesTasks"), icon: CheckSquare },
@@ -206,6 +213,7 @@ const menuModules = [
       { title: "Busca de Leads", url: createPageUrl("LeadPJSearch"), icon: Search },
       { title: "Relatórios", url: createPageUrl("SalesPJReports"), icon: FileBarChart, supervisorOnly: true },
       { title: "Rel. de Orçamentos", url: createPageUrl("SalesPJOrcamentoRelatorio"), icon: FileBarChart, supervisorOnly: true },
+      { title: "Retornos da Auditoria", url: createPageUrl("PreSalesAjustes"), icon: ClipboardCheck, alwaysVisible: true },
       { title: "Rel. de Ganhos", url: createPageUrl("SalesPJWonReport"), icon: Trophy },
       { title: "Automações", url: createPageUrl("LeadPJAutomations"), icon: Zap, supervisorOnly: true },
       { title: "Tarefas", url: createPageUrl("SalesTasks"), icon: CheckSquare },
@@ -226,6 +234,7 @@ const menuModules = [
       { title: "Busca de Leads", url: createPageUrl("LeadUpsellSearch"), icon: Search },
       { title: "Relatórios", url: createPageUrl("SalesUpsellReports"), icon: FileBarChart, supervisorOnly: true },
       { title: "Rel. de Orçamentos", url: createPageUrl("SalesUpsellOrcamentoRelatorio"), icon: FileBarChart, supervisorOnly: true },
+      { title: "Retornos da Auditoria", url: createPageUrl("PreSalesAjustes"), icon: ClipboardCheck, alwaysVisible: true },
       { title: "Rel. de Ganhos", url: createPageUrl("SalesUpsellWonReport"), icon: Trophy },
       { title: "Automações", url: createPageUrl("LeadUpsellAutomations"), icon: Zap, supervisorOnly: true },
       { title: "Tarefas", url: createPageUrl("SalesUpsellTasks"), icon: CheckSquare },
@@ -263,6 +272,7 @@ const menuModules = [
       { title: "Tarefas", url: createPageUrl("ReferralTasks"), icon: CheckSquare },
       { title: "Relatórios", url: createPageUrl("ReferralReports"), icon: FileBarChart, supervisorOnly: true },
       { title: "Rel. de Orçamentos", url: createPageUrl("ReferralOrcamentoRelatorio"), icon: FileBarChart, supervisorOnly: true },
+      { title: "Retornos da Auditoria", url: createPageUrl("PreSalesAjustes"), icon: ClipboardCheck, alwaysVisible: true },
       { title: "Rel. de Convertidos", url: createPageUrl("ReferralWonReport"), icon: Trophy },
       { title: "Rel. de Reativações", url: createPageUrl("ReferralReactivationReport"), icon: FileBarChart, requiredSubmenu: "ReferralReactivationReport" },
       { title: "Comissões ERP", url: createPageUrl("CommissionPerspectivaControl"), icon: FileCheck, requiredSubmenu: "CommissionPaymentControl" },

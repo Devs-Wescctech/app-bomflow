@@ -1548,6 +1548,23 @@ VALUES (
   modules = EXCLUDED.modules,
   active = true;
 
+INSERT INTO agent_types (key, label, description, color, modules, allowed_submenus, active)
+VALUES (
+  'auditoria',
+  'Auditoria',
+  'Visualiza todos os orçamentos criados em todos os módulos de vendas (somente leitura)',
+  'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+  ARRAY['sales', 'sales_pj', 'sales_upsell', 'referral'],
+  ARRAY['SalesOrcamentoRelatorio', 'SalesPJOrcamentoRelatorio', 'SalesUpsellOrcamentoRelatorio', 'ReferralOrcamentoRelatorio'],
+  true
+) ON CONFLICT (key) DO UPDATE SET
+  label = EXCLUDED.label,
+  description = EXCLUDED.description,
+  color = EXCLUDED.color,
+  modules = EXCLUDED.modules,
+  allowed_submenus = EXCLUDED.allowed_submenus,
+  active = true;
+
 -- =====================
 -- UPSELL CHANNEL CONFIG (independent from referral)
 -- =====================

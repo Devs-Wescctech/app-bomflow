@@ -62,6 +62,7 @@ import {
   ArrowLeftRight,
 } from "lucide-react";
 import UpsellNovoOrcamento from "./UpsellNovoOrcamento";
+import OrcamentoDocumentos from "@/components/orcamento/OrcamentoDocumentos";
 import { createPageUrl } from "@/utils";
 import ReassignLeadModal from "@/components/sales/ReassignLeadModal";
 import ReassignmentLog from "@/components/sales/ReassignmentLog";
@@ -795,6 +796,17 @@ export default function ReferralDetail() {
                   <span className="hidden sm:inline">WhatsApp</span>
                 </Button>
               )}
+              {leadPhone && (
+                <Button
+                  onClick={() => navigate(createPageUrl("WhatsAppConversa", { phone: leadPhone, name: referral?.referredName || referral?.referred_name || "", leadId: referral?.id || referralId, leadType: "indicacao", stage: currentStage?.label || "", agent: referralAgent?.name || "" }))}
+                  size="sm"
+                  title="Iniciar conversa no WhatsApp"
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Enviar WhatsApp</span>
+                </Button>
+              )}
               {isHardDeleteAllowed && (
                 <Button
                   onClick={() => setShowHardDeleteDialog(true)}
@@ -1009,12 +1021,19 @@ export default function ReferralDetail() {
                 <UpsellNovoOrcamento
                   embedded
                   modulo="referral"
+                  leadId={referralId}
                   initialLead={{
                     nome: referral.referredName,
                     cpf: referral.referredCpf,
                     telefone: referral.referredPhone,
                     email: referral.referredEmail,
                   }}
+                />
+                <OrcamentoDocumentos
+                  modulo="referral"
+                  cpf={referral.referredCpf}
+                  leadId={referralId}
+                  canManage={isAdmin || isSupervisor || String(referralAgentId) === String(currentAgent?.id)}
                 />
               </TabsContent>
 

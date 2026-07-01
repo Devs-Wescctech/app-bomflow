@@ -47,6 +47,7 @@ import {
   ArrowLeftRight,
 } from "lucide-react";
 import UpsellNovoOrcamento from "./UpsellNovoOrcamento";
+import OrcamentoDocumentos from "@/components/orcamento/OrcamentoDocumentos";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { createPageUrl } from "@/utils";
@@ -872,6 +873,16 @@ export default function LeadPJDetail() {
                     {lead.contact_phone}
                   </Button>
                 )}
+                {lead.contact_phone && (
+                  <Button
+                    size="sm"
+                    onClick={() => navigate(createPageUrl("WhatsAppConversa", { phone: lead.contact_phone, name: lead.contact_name || lead.company_name || lead.razao_social || "", leadId: lead.id, leadType: "pj", stage: currentStage?.label || "", agent: leadAgent?.name || "", interest: (Array.isArray(lead.products) && lead.products.length > 0 ? lead.products.map(p => p.name || p.nome).filter(Boolean).join(", ") : (lead.productName || lead.interest)) || "" }))}
+                    className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm"
+                  >
+                    <MessageSquare className="w-4 h-4 mr-2" />
+                    Enviar WhatsApp
+                  </Button>
+                )}
                 {lead.contact_email && (
                   <Button
                     size="sm"
@@ -993,6 +1004,7 @@ export default function LeadPJDetail() {
                 <UpsellNovoOrcamento
                   embedded
                   modulo="sales_pj"
+                  leadId={leadId}
                   initialLead={{
                     nome:
                       lead.nomeFantasia ||
@@ -1004,6 +1016,12 @@ export default function LeadPJDetail() {
                     telefone: lead.phone || lead.contactPhone || lead.contact_phone,
                     email: lead.email,
                   }}
+                />
+                <OrcamentoDocumentos
+                  modulo="sales_pj"
+                  cpf={lead.cnpj || lead.cpf}
+                  leadId={leadId}
+                  canManage={isAdmin || isSupervisor || isOwnLead}
                 />
               </TabsContent>
 

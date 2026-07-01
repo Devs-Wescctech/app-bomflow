@@ -634,7 +634,7 @@ router.get('/lookup-cpf', authMiddleware, async (req, res) => {
 // real que o criou. O ERP atribui todos os orçamentos criados via API à conta do token
 // (acesso.api), então este registro é a ÚNICA fonte confiável de "quem/qual módulo".
 // Best-effort: nunca derruba a criação do orçamento se a gravação falhar.
-async function recordBomflowOrcamento(req, { erpPedidoId, erpNumero, modulo, clienteNome, clienteCpf, valor }) {
+async function recordBomflowOrcamento(req, { erpPedidoId, erpNumero, modulo, clienteNome, clienteCpf, valor, leadId }) {
   try {
     if (!erpPedidoId) return;
     if (!modulo || !VALID_MODULOS.includes(modulo)) {
@@ -648,8 +648,8 @@ async function recordBomflowOrcamento(req, { erpPedidoId, erpNumero, modulo, cli
     }
     await query(
       `INSERT INTO bomflow_orcamentos
-         (erp_pedido_id, erp_numero, modulo, agent_id, agent_name, cliente_nome, cliente_cpf, valor_criacao)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         (erp_pedido_id, erp_numero, modulo, agent_id, agent_name, cliente_nome, cliente_cpf, valor_criacao, lead_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (erp_pedido_id) DO UPDATE SET
          erp_numero   = EXCLUDED.erp_numero,
          modulo       = EXCLUDED.modulo,
@@ -657,7 +657,8 @@ async function recordBomflowOrcamento(req, { erpPedidoId, erpNumero, modulo, cli
          agent_name   = EXCLUDED.agent_name,
          cliente_nome = EXCLUDED.cliente_nome,
          cliente_cpf  = EXCLUDED.cliente_cpf,
-         valor_criacao = EXCLUDED.valor_criacao`,
+         valor_criacao = EXCLUDED.valor_criacao,
+         lead_id      = COALESCE(EXCLUDED.lead_id, bomflow_orcamentos.lead_id)`,
       [
         Number(erpPedidoId),
         erpNumero != null ? Number(erpNumero) : null,
@@ -667,9 +668,10 @@ async function recordBomflowOrcamento(req, { erpPedidoId, erpNumero, modulo, cli
         clienteNome || null,
         clienteCpf || null,
         valor != null ? Number(valor) : null,
+        leadId || null,
       ]
     );
-    console.log(`[bomflow_orcamentos] registrado pedido ${erpPedidoId} (nº ${erpNumero}) módulo=${modulo} agente=${agentName}`);
+    console.log(`[bomflow_orcamentos] registrado pedido ${erpPedidoId} (nº ${erpNumero}) módulo=${modulo} agente=${agentName} lead=${leadId || '-'}`);
   } catch (e) {
     console.error('[bomflow_orcamentos] falha ao registrar (não crítico):', e.message);
   }
@@ -700,6 +702,7 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       usua_produtos,
       usua_papeis,
       modulo: moduloOrcamento,
+      lead_id: _leadId,
       ...headerPayload
     } = payload;
 
@@ -861,6 +864,7 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       clienteNome: headerPayload.nome_contratante || headerPayload.contratante_nome || null,
       clienteCpf: headerPayload.cpf || headerPayload.contratante_cpf || null,
       valor: data?.valor_total ?? null,
+      leadId: req.body?.lead_id || null,
     });
 
     return res.json({ ...data, numeroPedido, erpId: pedidoInternalId, dbInserted: dbResult, fechamento: fechamentoResult });
@@ -912,6 +916,7 @@ router.post('/pre-proposta', authMiddleware, async (req, res) => {
         clienteNome: payload.nome_contratante || payload.contratante_nome || null,
         clienteCpf: payload.cpf || payload.contratante_cpf || null,
         valor: data?.valor_total ?? null,
+        leadId: req.body?.lead_id || null,
       });
     }
 
@@ -1115,12 +1120,13 @@ router.get('/relatorio-orcamentos', authMiddleware, async (req, res) => {
     const agentType = (agent.agent_type || '').toLowerCase();
     const isAdmin = agentType === 'admin' || (req.user.role || '').toLowerCase() === 'admin';
     const isSupervisor = !isAdmin && agentType.includes('supervisor');
+    const isAuditoria = !isAdmin && agentType === 'auditoria';
 
     // ─── Escopo do visualizador (permissão) por agente CRM ─────────────────
-    // scopeAgentIds = null → admin sem restrição (todos os agentes do módulo).
+    // scopeAgentIds = null → admin/auditoria sem restrição (todos os agentes do módulo).
     let scopeAgentIds = null;
 
-    if (!isAdmin) {
+    if (!isAdmin && !isAuditoria) {
       if (isSupervisor) {
         const teamRes = await query(
           `SELECT id FROM agents WHERE supervisor_id = $1`,
@@ -1133,8 +1139,8 @@ router.get('/relatorio-orcamentos', authMiddleware, async (req, res) => {
       }
     }
 
-    // Admin: escopo por time
-    if (isAdmin && team_id && team_id !== 'todos') {
+    // Admin/auditoria: escopo por time (filtro opcional do frontend)
+    if ((isAdmin || isAuditoria) && team_id && team_id !== 'todos') {
       const teamAgents = await query(
         `SELECT id FROM agents WHERE team_id = $1`,
         [team_id]
@@ -1185,6 +1191,185 @@ router.get('/relatorio-orcamentos', authMiddleware, async (req, res) => {
     return res.json({ items });
   } catch (err) {
     console.error('[ERP Proxy] GET /relatorio-orcamentos error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Relatório CONSOLIDADO de orçamentos (todos os módulos de vendas em uma lista).
+// Restrito a: admin, tipo "auditoria" e supervisores do time "Auditoria".
+// Usuários elegíveis enxergam TODOS os orçamentos (escopo de auditoria).
+// Endpoint aditivo — não altera o /relatorio-orcamentos por módulo.
+// ───────────────────────────────────────────────────────────────────────────
+const MODULO_LABELS = {
+  sales: 'Vendas PF',
+  sales_pj: 'Vendas PJ',
+  sales_upsell: 'Upsell',
+  referral: 'Indicações',
+};
+
+// Mesma elegibilidade do relatório consolidado (admin, tipo "auditoria" e
+// supervisores do time "Auditoria"). Compartilhado pela lista consolidada e pela
+// busca pontual por pedido.
+async function isConsolidadoEligible(req) {
+  const agentRes = await query(
+    `SELECT a.id, a.agent_type, t.name AS team_name
+       FROM agents a
+       LEFT JOIN teams t ON t.id = a.team_id
+      WHERE a.id = $1`,
+    [req.user.id]
+  );
+  const agent = agentRes.rows[0];
+  if (!agent) return false;
+  const agentType = (agent.agent_type || '').toLowerCase();
+  const isAdmin = agentType === 'admin' || (req.user.role || '').toLowerCase() === 'admin';
+  const isAuditoria = agentType === 'auditoria';
+  const isSupervisor = agentType.includes('supervisor');
+  const teamName = (agent.team_name || '').trim().toLowerCase();
+  const isAuditTeamSupervisor = isSupervisor && teamName === 'auditoria';
+  return isAdmin || isAuditoria || isAuditTeamSupervisor;
+}
+
+router.get('/relatorio-orcamentos/consolidado', authMiddleware, async (req, res) => {
+  try {
+    const { start_date, end_date, situacao, canal_id, limit = 1000 } = req.query;
+
+    const eligible = await isConsolidadoEligible(req);
+    if (!eligible) {
+      return res.status(403).json({ error: 'Acesso restrito ao relatório consolidado de orçamentos.' });
+    }
+
+    // Rastreio CRM: todos os pedidos dos 4 módulos de vendas.
+    const crmRes = await query(
+      `SELECT erp_pedido_id, modulo, agent_name FROM bomflow_orcamentos WHERE modulo = ANY($1)`,
+      [VALID_MODULOS]
+    );
+    if (crmRes.rows.length === 0) return res.json({ items: [] });
+
+    const pedidoIds = crmRes.rows.map(r => Number(r.erp_pedido_id));
+    const metaById = new Map(
+      crmRes.rows.map(r => [Number(r.erp_pedido_id), { modulo: r.modulo, agent_name: r.agent_name }])
+    );
+
+    const rows = await getRelatorioOrcamentos({
+      pedidoIds,
+      startDate: start_date || null,
+      endDate: end_date || null,
+      situacao: situacao && situacao !== 'todos' ? situacao : null,
+      canalId: canal_id && canal_id !== 'todos' ? canal_id : null,
+      limit: Math.min(Number(limit) || 1000, 1000),
+      offset: 0,
+    });
+
+    // Último pedido de ajuste por orçamento (para sinalizar na fila os que aguardam
+    // o vendedor ou já voltaram ajustados para reauditoria).
+    const ajusteByPedido = new Map();
+    try {
+      const ajRes = await query(
+        `SELECT DISTINCT ON (erp_pedido_id)
+                erp_pedido_id, status, texto, created_at, ajustado_at, vendedor_nome
+           FROM presales_ajustes
+          WHERE erp_pedido_id = ANY($1)
+          ORDER BY erp_pedido_id, created_at DESC`,
+        [pedidoIds]
+      );
+      ajRes.rows.forEach(r => ajusteByPedido.set(Number(r.erp_pedido_id), r));
+    } catch (e) {
+      console.error('[consolidado] falha ao carregar ajustes:', e.message);
+    }
+
+    // Sobrescreve o vendedor com o agente real do Bom Flow e etiqueta o módulo de origem.
+    const items = rows.map(row => {
+      const meta = metaById.get(Number(row.erp_id)) || {};
+      const realName = meta.agent_name;
+      const aj = ajusteByPedido.get(Number(row.erp_id));
+      return {
+        ...row,
+        modulo: meta.modulo || null,
+        modulo_nome: MODULO_LABELS[meta.modulo] || meta.modulo || '-',
+        ...(realName ? { nome_vendedor: realName, login_vendedor: realName } : {}),
+        ajuste_status: aj?.status || null,
+        ajuste_texto: aj?.texto || null,
+        ajuste_at: aj?.ajustado_at || aj?.created_at || null,
+      };
+    });
+
+    return res.json({ items });
+  } catch (err) {
+    console.error('[ERP Proxy] GET /relatorio-orcamentos/consolidado error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Busca pontual de UM orçamento por id do pedido no ERP, sem filtro de data nem
+// de situação. Usado pelo Painel de Ajustes para levar o auditor direto ao
+// orçamento na Fila Pré Vendas mesmo quando ele é antigo ou já mudou de situação.
+// Mesma elegibilidade do relatório consolidado.
+// ───────────────────────────────────────────────────────────────────────────
+router.get('/relatorio-orcamentos/by-pedido/:pedidoId', authMiddleware, async (req, res) => {
+  try {
+    const pedidoId = Number(req.params.pedidoId);
+    if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+      return res.status(400).json({ error: 'Id de pedido inválido.' });
+    }
+
+    const eligible = await isConsolidadoEligible(req);
+    if (!eligible) {
+      return res.status(403).json({ error: 'Acesso restrito ao relatório consolidado de orçamentos.' });
+    }
+
+    // Rastreio CRM: o pedido precisa pertencer a um dos módulos de vendas.
+    const crmRes = await query(
+      `SELECT erp_pedido_id, modulo, agent_name
+         FROM bomflow_orcamentos
+        WHERE erp_pedido_id = $1 AND modulo = ANY($2)
+        LIMIT 1`,
+      [pedidoId, VALID_MODULOS]
+    );
+    const meta = crmRes.rows[0];
+    if (!meta) return res.status(404).json({ error: 'Orçamento não encontrado.' });
+
+    const rows = await getRelatorioOrcamentos({
+      pedidoIds: [pedidoId],
+      startDate: null,
+      endDate: null,
+      situacao: null,
+      canalId: null,
+      limit: 1,
+      offset: 0,
+    });
+    const row = rows[0];
+    if (!row) return res.status(404).json({ error: 'Orçamento não encontrado.' });
+
+    let aj = null;
+    try {
+      const ajRes = await query(
+        `SELECT status, texto, created_at, ajustado_at, vendedor_nome
+           FROM presales_ajustes
+          WHERE erp_pedido_id = $1
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [pedidoId]
+      );
+      aj = ajRes.rows[0] || null;
+    } catch (e) {
+      console.error('[by-pedido] falha ao carregar ajuste:', e.message);
+    }
+
+    const item = {
+      ...row,
+      modulo: meta.modulo || null,
+      modulo_nome: MODULO_LABELS[meta.modulo] || meta.modulo || '-',
+      ...(meta.agent_name ? { nome_vendedor: meta.agent_name, login_vendedor: meta.agent_name } : {}),
+      ajuste_status: aj?.status || null,
+      ajuste_texto: aj?.texto || null,
+      ajuste_at: aj?.ajustado_at || aj?.created_at || null,
+    };
+
+    return res.json({ item });
+  } catch (err) {
+    console.error('[ERP Proxy] GET /relatorio-orcamentos/by-pedido error:', err.message);
     return res.status(500).json({ error: err.message });
   }
 });

@@ -20,6 +20,8 @@ backend/public/uploads/*
 !.env.example
 data/bom-auto-images/*
 !data/bom-auto-images/.gitkeep
+backend/data/orcamento-documentos/*
+!backend/data/orcamento-documentos/.gitkeep
 attached_assets/
 .replit_integration_files/
 .agents/

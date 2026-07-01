@@ -205,11 +205,25 @@ export async function sendTemplate(params) {
 
   const { number, templateId, templateComponents } = params;
 
+  // WHU's /chats/send-template expects the components under the lowercase key
+  // `templatecomponents` with lowercase component `type` (e.g. "body"), unlike
+  // /chats/create-new which uses `quickAnswerComponents` with uppercase "BODY".
+  // Sending the camelCase/uppercase shape here makes WHU return 200 but silently
+  // drop the template parameters, so the message is never delivered. This mirrors
+  // the proven high-volume payload used by whatsappQueueService.
+  const normalizedComponents = Array.isArray(templateComponents)
+    ? templateComponents.map((c) => ({
+        ...c,
+        type: typeof c.type === 'string' ? c.type.toLowerCase() : c.type,
+      }))
+    : [];
+
   const body = {
     number: number.replace(/\D/g, ''),
     templateId: templateId,
-    templateComponents: templateComponents || [],
     forceSend: true,
+    verifyContact: false,
+    templatecomponents: normalizedComponents,
   };
 
   const response = await fetch(`${RUDO_API_BASE}/chats/send-template`, {
@@ -243,9 +257,10 @@ export async function sendTextMessage(params) {
   const body = {
     number: number.replace(/\D/g, ''),
     message: message,
+    forceSend: true,
   };
 
-  const response = await fetch(`${RUDO_API_BASE}/chats/send-message`, {
+  const response = await fetch(`${RUDO_API_BASE}/chats/send-text`, {
     method: 'POST',
     headers: {
       'access-token': token,
@@ -258,7 +273,10 @@ export async function sendTextMessage(params) {
   const responseData = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(`Failed to send message: ${responseData.msg || response.statusText}`);
+    const errorMsg = responseData.msg || response.statusText;
+    const error = new Error(`Failed to send message: ${errorMsg}`);
+    error.apiMessage = errorMsg;
+    throw error;
   }
 
   return responseData;
@@ -330,6 +348,28 @@ export async function sendTextMessageWithToken({ number, message, channelToken }
   return responseData;
 }
 
+// Busca o histórico de UMA conversa no WHU. O objeto do chat inclui um array `messages`
+// (campos: IdMessage, text, isSentByMe, dhMessage, isSystemMessage, ...) além de contact/
+// lastMessage/countUnreadMessages. Usado para complementar a thread na caixa de entrada.
+export async function getChatWithMessages(chatId) {
+  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+  if (!chatId) return null;
+
+  const response = await fetch(`${RUDO_API_BASE}/chats/${chatId}?withMessages=true`, {
+    method: 'GET',
+    headers: {
+      'access-token': token,
+      'Accept': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+  return response.json().catch(() => null);
+}
+
 export async function getContactByPhone(phoneNumber) {
   const token = process.env.RUDO_WHATSAPP_TOKEN;
   
@@ -392,6 +432,57 @@ export async function setContactAttributes(contactId, attributes) {
   }
 
   return response.json();
+}
+
+export async function sendChatMessage({ number, message, templateId, templateComponents }) {
+  const phone = (number || '').replace(/\D/g, '');
+  if (!phone) {
+    throw new Error('Número de telefone é obrigatório');
+  }
+
+  const brazilNumber = phone.startsWith('55') ? phone : `55${phone}`;
+  const hasText = typeof message === 'string' && message.trim().length > 0;
+
+  if (!templateId && !hasText) {
+    throw new Error('Informe uma mensagem de texto ou selecione um template');
+  }
+
+  let result = {};
+  let usedFallback = false;
+
+  if (templateId) {
+    const components = Array.isArray(templateComponents) ? templateComponents : [];
+    try {
+      result = await createChat({
+        number: brazilNumber,
+        templateId,
+        templateComponents: components,
+      });
+    } catch (error) {
+      if (error.apiMessage && error.apiMessage.toLowerCase().includes('already open')) {
+        usedFallback = true;
+        result = await sendTemplate({
+          number: brazilNumber,
+          templateId,
+          templateComponents: components,
+        });
+      } else {
+        throw error;
+      }
+    }
+
+    if (hasText) {
+      try {
+        await sendTextMessage({ number: brazilNumber, message });
+      } catch (err) {
+        console.error(`[WhatsApp] Failed to send follow-up text to ${brazilNumber}:`, err.message);
+      }
+    }
+  } else {
+    result = await sendTextMessage({ number: brazilNumber, message });
+  }
+
+  return { ...result, usedFallback, brazilNumber };
 }
 
 export async function sendWhatsAppMessage(lead, agent, templateId, templateComponents) {
@@ -489,4 +580,195 @@ export async function sendWhatsAppMessage(lead, agent, templateId, templateCompo
   }
 
   return { ...result, usedFallback };
+}
+
+// ---------------------------------------------------------------------------
+// API Core v2 — listagem/detalhe de conversas (chat completo)
+// IMPORTANTE: /chats/list e /chats/list-lite EXIGEM `typeChat: 2` (WhatsApp) no corpo,
+// caso contrário retornam 500 fatal_01. `page` é 0-based. Endpoint escolhido pelo status:
+// status 2 (atendimento) e 3 (resolvidos) usam /chats/list (dados completos);
+// status 0 (IA) e 1 (fila) usam /chats/list-lite (versão leve/rápida).
+// ---------------------------------------------------------------------------
+export async function listWhatsAppChats({ typeChat = 2, status = 0, page = 0 } = {}) {
+  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+
+  const endpoint = status === 2 || status === 3 ? 'chats/list' : 'chats/list-lite';
+
+  const response = await fetch(`${RUDO_API_BASE}/${endpoint}`, {
+    method: 'POST',
+    headers: {
+      'access-token': token,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify({ typeChat, status, page }),
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(`Failed to list chats: ${data?.msg || response.statusText}`);
+  }
+
+  const chats = Array.isArray(data?.chats) ? data.chats : Array.isArray(data) ? data : [];
+
+  // Normaliza a prévia da última mensagem: o endpoint completo traz apenas
+  // `lastMessage.text`, enquanto o lite já entrega `textLastMessage`.
+  for (const chat of chats) {
+    if (!chat.textLastMessage && chat.lastMessage?.text) {
+      chat.textLastMessage = chat.lastMessage.text;
+    }
+  }
+
+  return {
+    chats,
+    curPage: data?.curPage ?? page,
+    totalAmountChats: data?.totalAmountChats ?? chats.length,
+    amountPage: data?.amountPage ?? 0,
+    hasNext: data?.hasNext ?? false,
+    hasPrevious: data?.hasPrevius ?? data?.hasPrevious ?? false,
+  };
+}
+
+export async function getWhatsAppUsers() {
+  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+
+  const response = await fetch(`${RUDO_API_BASE}/users`, {
+    method: 'GET',
+    headers: { 'access-token': token, 'Accept': 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch users: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getWhatsAppSectors() {
+  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+
+  const response = await fetch(`${RUDO_API_BASE}/sectors`, {
+    method: 'GET',
+    headers: { 'access-token': token, 'Accept': 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch sectors: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+// Detalhe de um contato — inclui `genericAttributes` (onde vivem as etiquetas
+// vendedor_id/vendedor_nome). Não vem na listagem de conversas.
+export async function getContactById(contactId) {
+  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+  if (!contactId) return null;
+
+  const response = await fetch(`${RUDO_API_BASE}/contacts/${contactId}`, {
+    method: 'GET',
+    headers: { 'access-token': token, 'Accept': 'application/json' },
+  });
+
+  if (!response.ok) return null;
+  return response.json().catch(() => null);
+}
+
+// ---------------------------------------------------------------------------
+// API Core v2 — operações de escrita em conversas (transferir / finalizar)
+// chatId == attendanceId. Autenticação sempre por header access-token.
+// ---------------------------------------------------------------------------
+
+// Transfere a conversa para outro setor/atendente. IMPORTANTE: sectorId e userId
+// vão na QUERY STRING (não no corpo) e ambos são obrigatórios.
+export async function transferWhatsAppChat(chatId, sectorId, userId) {
+  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+
+  const url = `${RUDO_API_BASE}/chats/${encodeURIComponent(chatId)}/transfer?sectorId=${encodeURIComponent(
+    sectorId
+  )}&userId=${encodeURIComponent(userId)}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'access-token': token, 'Accept': 'application/json' },
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(`Failed to transfer chat: ${data?.msg || response.statusText}`);
+  }
+  return data ?? { success: true };
+}
+
+// Finaliza (resolve) a conversa — passa para status 3. sendMessageFinalized dispara
+// a mensagem automática de encerramento; sendResearchSatisfaction a pesquisa de satisfação.
+export async function finalizeWhatsAppChat(
+  chatId,
+  { sendMessageFinalized = true, sendResearchSatisfaction = true } = {}
+) {
+  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+
+  const response = await fetch(`${RUDO_API_BASE}/chats/${encodeURIComponent(chatId)}/finalize`, {
+    method: 'POST',
+    headers: {
+      'access-token': token,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify({ sendMessageFinalized, sendResearchSatisfaction }),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(`Failed to finalize chat: ${data?.msg || response.statusText}`);
+  }
+  return data ?? { success: true };
+}
+
+// Envia mídia (imagem/documento/etc.) na conversa. O arquivo precisa estar
+// acessível publicamente via `linkUrl` (a WesccTech/WhatsApp busca a URL).
+export async function sendWhatsAppChatMedia(
+  number,
+  { linkUrl, extension, fileName, caption = '', isWhisper = false }
+) {
+  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+  if (!linkUrl) throw new Error('linkUrl é obrigatório');
+
+  const phone = (number || '').replace(/\D/g, '');
+  if (!phone) throw new Error('Número de telefone é obrigatório');
+  const brazilNumber = phone.startsWith('55') ? phone : `55${phone}`;
+
+  const body = {
+    number: brazilNumber,
+    forceSend: true,
+    verifyContact: false,
+    linkUrl,
+    extension,
+    fileName,
+    caption,
+    delayInSeconds: 0,
+    isWhisper,
+  };
+
+  const response = await fetch(`${RUDO_API_BASE}/chats/send-media`, {
+    method: 'POST',
+    headers: {
+      'access-token': token,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(`Failed to send media: ${data?.msg || response.statusText}`);
+  }
+  return data ?? { success: true };
 }

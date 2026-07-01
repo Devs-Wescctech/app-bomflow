@@ -137,6 +137,238 @@ export async function getLoginByUsuarioId(usuarioId) {
 }
 
 /**
+ * Resolve o nome do(s) produto(s) de cada pedido (orçamento) do ERP em uma única
+ * query batched. Usado apenas para exibição no card "Documentos & Adesão Zero".
+ * Quando um pedido tem mais de um produto, os nomes são unidos por " + ".
+ * Prioriza produtos.descricao (cadastro) e cai para itens_pedidos.descricao.
+ *
+ * @param {number[]} pedidoIds - ids internos dos pedidos (erp_pedido_id)
+ * @returns {Promise<Object<number,string>>} mapa { [pedido_id]: "Produto A + Produto B" }
+ */
+export async function getProdutosByPedidoIds(pedidoIds) {
+  const ids = (Array.isArray(pedidoIds) ? pedidoIds : [])
+    .map((n) => Number(n))
+    .filter((n) => Number.isFinite(n));
+  if (ids.length === 0) return {};
+  const db = getPool();
+  const res = await db.query(
+    `SELECT ip.pedido_id,
+            COALESCE(NULLIF(TRIM(p.descricao), ''), NULLIF(TRIM(ip.descricao), '')) AS descricao
+       FROM itens_pedidos ip
+       LEFT JOIN produtos p ON p.id = ip.produto_id
+      WHERE ip.pedido_id = ANY($1::bigint[])
+      ORDER BY ip.pedido_id, ip.sequencia`,
+    [ids]
+  );
+  const byPedido = {};
+  for (const row of res.rows) {
+    const desc = (row.descricao || '').trim();
+    if (!desc) continue;
+    const key = Number(row.pedido_id);
+    (byPedido[key] ||= []);
+    if (!byPedido[key].includes(desc)) byPedido[key].push(desc);
+  }
+  const out = {};
+  for (const [key, arr] of Object.entries(byPedido)) {
+    out[Number(key)] = arr.join(' + ');
+  }
+  return out;
+}
+
+/**
+ * Lê (somente leitura) o detalhe completo de UM orçamento (pedido) do ERP para exibição
+ * no modal do Relatório Consolidado de Orçamentos:
+ *   - produtos: cada item do pedido (descrição, quantidade, preço, valor total)
+ *   - pessoas:  titular + beneficiários (dependentes/pets/veículos/condutores)
+ *
+ * Importante sobre pet/veículo: o ERP NÃO guarda campos estruturados para pet/veículo neste
+ * fluxo — esses dados são gravados como o NOME da pessoa beneficiária no formato montado
+ * (pet: NOME/TIPO/RAÇA/COR/PORTE; veículo: MODELO/COR/PLACA/ANO). Devolvemos o nome cru e o
+ * frontend faz o parsing/classificação por produto vinculado + formato do nome.
+ *
+ * O titular/contratante é a PRIMEIRA pessoa (menor id) com pessoa_id NOT NULL — dependentes
+ * resolvidos para uma Pessoa global do ERP também têm pessoa_id, por isso não basta "tem pessoa_id".
+ *
+ * @param {number} pedidoId - id interno do pedido (erp_pedido_id)
+ * @returns {Promise<{ produtos: Array, pessoas: Array }|null>}
+ */
+export async function getOrcamentoDetalhe(pedidoId) {
+  const id = Number(pedidoId);
+  if (!Number.isFinite(id)) return null;
+  const db = getPool();
+
+  const itensRes = await db.query(
+    `SELECT ip.sequencia,
+            COALESCE(NULLIF(TRIM(p.descricao), ''), NULLIF(TRIM(ip.descricao), '')) AS descricao,
+            ip.quantidade::numeric            AS quantidade,
+            ip.preco::double precision        AS preco,
+            ip.valor_total_item::numeric      AS valor_total
+       FROM itens_pedidos ip
+       LEFT JOIN produtos p ON p.id = ip.produto_id
+      WHERE ip.pedido_id = $1
+      ORDER BY ip.sequencia`,
+    [id]
+  );
+
+  const pessoasRes = await db.query(
+    `SELECT pp.id            AS pessoa_row_id,
+            pp.nome_pessoa,
+            pp.cpf,
+            pp.parentesco,
+            pp.data_nascimento,
+            pp.sexo,
+            pp.telefone,
+            pp.pessoa_id,
+            COALESCE(NULLIF(TRIM(pr.descricao), ''), NULLIF(TRIM(ipx.descricao), '')) AS produto_descricao
+       FROM pedidos_pessoas pp
+       LEFT JOIN pedidos_pessoas_produtos ppp ON ppp.titular_id = pp.id AND ppp.pedido_id = pp.pedido_id
+       LEFT JOIN itens_pedidos ipx ON ipx.id = ppp.item_pedido_id
+       LEFT JOIN produtos pr ON pr.id = ipx.produto_id
+      WHERE pp.pedido_id = $1
+      ORDER BY pp.id`,
+    [id]
+  );
+
+  const produtos = itensRes.rows.map((r) => ({
+    descricao: r.descricao || null,
+    quantidade: r.quantidade != null ? Number(r.quantidade) : null,
+    preco: r.preco != null ? Number(r.preco) : null,
+    valor_total: r.valor_total != null ? Number(r.valor_total) : null,
+  }));
+
+  // 1ª pessoa (menor id) com pessoa_id NOT NULL = titular/contratante.
+  let titularRowId = null;
+  let contratantePessoaId = null;
+  for (const row of pessoasRes.rows) {
+    if (row.pessoa_id != null) {
+      titularRowId = Number(row.pessoa_row_id);
+      contratantePessoaId = Number(row.pessoa_id);
+      break;
+    }
+  }
+
+  // Cabeçalho do pedido: e-mail de contato, endereço do contratante e plano de pagamento.
+  // A API REST do ERP ignora esses campos; eles são gravados via DB no fechamento, então
+  // lemos direto da base para a auditoria refletir 100% dos obrigatórios do formulário.
+  const headerRes = await db.query(
+    `SELECT pe.email_contato,
+            pe.endereco_id,
+            pe.prazo_pagamento_id,
+            pl.plano_pagamento
+       FROM pedidos pe
+       LEFT JOIN planos_pagamentos pl ON pl.id = pe.prazo_pagamento_id
+      WHERE pe.id = $1
+      LIMIT 1`,
+    [id]
+  );
+  const header = headerRes.rows[0] || {};
+
+  // E-mail: pedidos.email_contato; fallback para o contato de e-mail (tipo 566) do contratante.
+  let email = header.email_contato || null;
+  if (!email && contratantePessoaId) {
+    const r = await db.query(
+      `SELECT endereco FROM enderecos
+        WHERE pessoa_id = $1 AND tipo_endereco_id = 566 AND ativo = 'S'
+        ORDER BY id DESC LIMIT 1`,
+      [contratantePessoaId]
+    );
+    email = r.rows[0]?.endereco || null;
+  }
+
+  // Endereço físico: pelo endereco_id do pedido; fallback para o residencial (tipo 577) do contratante.
+  let enderecoRow = null;
+  if (header.endereco_id) {
+    const r = await db.query(
+      `SELECT en.codigo_postal, en.endereco, en.numero, en.complemento, en.bairro, c.cidade
+         FROM enderecos en
+         LEFT JOIN cidades c ON c.id = en.cidade_id
+        WHERE en.id = $1 LIMIT 1`,
+      [Number(header.endereco_id)]
+    );
+    enderecoRow = r.rows[0] || null;
+  }
+  if (!enderecoRow && contratantePessoaId) {
+    const r = await db.query(
+      `SELECT en.codigo_postal, en.endereco, en.numero, en.complemento, en.bairro, c.cidade
+         FROM enderecos en
+         LEFT JOIN cidades c ON c.id = en.cidade_id
+        WHERE en.pessoa_id = $1 AND en.tipo_endereco_id = 577 AND en.ativo = 'S'
+        ORDER BY en.id DESC LIMIT 1`,
+      [contratantePessoaId]
+    );
+    enderecoRow = r.rows[0] || null;
+  }
+  const endereco = enderecoRow
+    ? {
+        cep: enderecoRow.codigo_postal || null,
+        logradouro: enderecoRow.endereco || null,
+        numero: enderecoRow.numero || null,
+        complemento: enderecoRow.complemento || null,
+        bairro: enderecoRow.bairro || null,
+        cidade: enderecoRow.cidade || null,
+      }
+    : null;
+
+  // Plano de pagamento: prazo_pagamento_id do pedido; fallback para modos_pagamentos.
+  let plano = header.plano_pagamento || null;
+  if (!plano) {
+    const r = await db.query(
+      `SELECT pl.plano_pagamento
+         FROM modos_pagamentos mp
+         JOIN planos_pagamentos pl ON pl.id = mp.plano_pagamento_id
+        WHERE mp.pedido_id = $1 LIMIT 1`,
+      [id]
+    );
+    plano = r.rows[0]?.plano_pagamento || null;
+  }
+
+  // Telefone: pedidos_pessoas.telefone é praticamente sempre NULL neste fluxo; o ERP grava o
+  // número de contato em enderecos (tipo 565) do contratante. Fazemos o mesmo fallback usado
+  // para e-mail (566) e endereço (577) para a auditoria reconhecer o telefone preenchido.
+  let telefoneContratante = null;
+  if (contratantePessoaId) {
+    const r = await db.query(
+      `SELECT endereco FROM enderecos
+        WHERE pessoa_id = $1 AND tipo_endereco_id = 565 AND ativo = 'S'
+        ORDER BY id DESC LIMIT 1`,
+      [contratantePessoaId]
+    );
+    telefoneContratante = r.rows[0]?.endereco || null;
+  }
+
+  // Agrupa por pessoa: uma mesma pessoa pode estar vinculada a vários itens.
+  const pessoaMap = new Map();
+  for (const row of pessoasRes.rows) {
+    const key = Number(row.pessoa_row_id);
+    if (!pessoaMap.has(key)) {
+      pessoaMap.set(key, {
+        nome: row.nome_pessoa || null,
+        cpf: row.cpf || null,
+        parentesco: row.parentesco || null,
+        data_nascimento: row.data_nascimento || null,
+        sexo: row.sexo || null,
+        telefone: row.telefone || null,
+        is_titular: key === titularRowId,
+        produtos: [],
+      });
+    }
+    const desc = (row.produto_descricao || '').trim();
+    const entry = pessoaMap.get(key);
+    if (desc && !entry.produtos.includes(desc)) entry.produtos.push(desc);
+  }
+
+  const pessoas = Array.from(pessoaMap.values());
+  const titularObj = pessoas.find((p) => p.is_titular);
+  if (titularObj) {
+    titularObj.email = email;
+    titularObj.endereco = endereco;
+    if (!titularObj.telefone && telefoneContratante) titularObj.telefone = telefoneContratante;
+  }
+
+  return { produtos, pessoas, email, endereco, plano_pagamento: plano };
+}
+
+/**
  * Registra um agente no canal de vendas do ERP inserindo um registro
  * em pessoas_contratos. Se o par (pessoa_id, contrato_id) já existir,
  * retorna o id existente sem criar duplicata.
@@ -901,6 +1133,94 @@ export async function applyFechamentoEPagamento(pedidoInternalId, opts = {}) {
 }
 
 /**
+ * Cancela um orçamento (pedido) no ERP, espelhando fielmente o que a tela web grava num
+ * cancelamento (verificado em pedidos reais cancelados). Operação transacional, com
+ * SELECT ... FOR UPDATE, trava de estado e idempotência:
+ *   - se o pedido já está em situação 'C' (cancelado) -> não faz nada (idempotente);
+ *   - só cancela orçamentos ainda em análise (situação 'I'); qualquer outra situação é pulada.
+ *
+ * Campos gravados em `pedidos` (espelhando o cancelamento real):
+ *   situacao='C', situacao_financeiro='L', data_cancelamento=CURRENT_DATE,
+ *   motivo_cancelamento=<texto>, motivo_cancelamento_ou_perda_id=<motivoId>,
+ *   valor_cancelamentos=valor_total, data_alteracao=NOW(), usuario_alteracao_id=<autor>.
+ * `responsavel_pelo_cancelamento` é deixado como está (nos cancelamentos reais vem nulo).
+ *
+ * @param {number} pedidoInternalId  - id interno do pedido no ERP (pedidos.id)
+ * @param {object} opts
+ * @param {number} opts.usuarioAlteracaoId - erp_agent_id do autor (auditor que solicitou o ajuste)
+ * @param {number} opts.motivoId           - id em pedidos_motivos_cancelamentos
+ * @param {string} opts.motivoTexto        - observação do cancelamento
+ * @returns {Promise<{status:string, situacao?:string, valorCancelado?:number, pedidoId:number}>}
+ *   status: 'cancelled' | 'already_cancelled' | 'invalid_state' | 'not_found'
+ */
+export async function cancelOrcamentoDB(pedidoInternalId, opts = {}) {
+  const erpUserId = Number(opts.usuarioAlteracaoId);
+  const motivo = Number(opts.motivoId);
+  const texto = String(opts.motivoTexto || '').trim();
+  if (!erpUserId || Number.isNaN(erpUserId)) {
+    throw new Error('cancelOrcamentoDB: usuário ERP (autor do cancelamento) obrigatório.');
+  }
+  if (!motivo || Number.isNaN(motivo)) {
+    throw new Error('cancelOrcamentoDB: motivo de cancelamento obrigatório.');
+  }
+  if (!texto) {
+    throw new Error('cancelOrcamentoDB: texto do motivo de cancelamento obrigatório.');
+  }
+
+  const db = getPool();
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+
+    const pedRes = await client.query(
+      `SELECT id, situacao, valor_total FROM pedidos WHERE id = $1 FOR UPDATE`,
+      [pedidoInternalId]
+    );
+    if (pedRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return { status: 'not_found', pedidoId: Number(pedidoInternalId) };
+    }
+    const pedido = pedRes.rows[0];
+
+    // Idempotência: já cancelado -> não reescreve nada.
+    if (pedido.situacao === 'C') {
+      await client.query('ROLLBACK');
+      return { status: 'already_cancelled', situacao: 'C', pedidoId: Number(pedidoInternalId) };
+    }
+    // Trava de estado: só cancela orçamentos ainda em análise ('I').
+    if (pedido.situacao !== 'I') {
+      await client.query('ROLLBACK');
+      return { status: 'invalid_state', situacao: pedido.situacao, pedidoId: Number(pedidoInternalId) };
+    }
+
+    const valorTotal = Number(pedido.valor_total) || 0;
+    await client.query(
+      `UPDATE pedidos SET
+         situacao = 'C',
+         situacao_financeiro = 'L',
+         data_cancelamento = CURRENT_DATE,
+         motivo_cancelamento = $2,
+         motivo_cancelamento_ou_perda_id = $3,
+         valor_cancelamentos = $4::numeric,
+         data_alteracao = NOW(),
+         usuario_alteracao_id = $5
+       WHERE id = $1 AND situacao = 'I'`,
+      [pedidoInternalId, texto, motivo, valorTotal, erpUserId]
+    );
+
+    await client.query('COMMIT');
+    console.log(`[erpDbService] cancelOrcamentoDB OK pedido=${pedidoInternalId} situacao=C valor=${valorTotal} autor=${erpUserId} motivo=${motivo}`);
+    return { status: 'cancelled', situacao: 'C', valorCancelado: valorTotal, pedidoId: Number(pedidoInternalId) };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('[erpDbService] cancelOrcamentoDB ROLLBACK:', err.message);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Busca logins e nomes de usuários ERP a partir de uma lista de IDs (agents.erp_agent_id).
  * Retorna um mapa { [id]: { login, nome } }.
  * Usado para popular o seletor de vendedores no relatório de orçamentos.
@@ -981,7 +1301,7 @@ export async function getRelatorioOrcamentos({
   }
   if (canalId) {
     params.push(Number(canalId));
-    conditions.push(`p.contrato_id = $${params.length}`);
+    conditions.push(`pcv.contrato_id = $${params.length}`);
   }
 
   const limitParam = Math.min(Number(limit) || 500, 1000);
@@ -999,7 +1319,7 @@ export async function getRelatorioOrcamentos({
       COALESCE(p.valor_total, 0)::numeric           AS valor_total,
       pp.nome_pessoa                                AS nome_titular,
       pp.cpf                                        AS cpf_titular,
-      p.contrato_id                                 AS canal_id,
+      pcv.contrato_id                               AS canal_id,
       u.nome_completo                               AS nome_vendedor
     FROM pedidos p
     LEFT JOIN LATERAL (
@@ -1009,6 +1329,7 @@ export async function getRelatorioOrcamentos({
       ORDER BY id
       LIMIT 1
     ) pp ON true
+    LEFT JOIN pessoas_contratos pcv ON pcv.id = p.agente_venda_id
     LEFT JOIN usuarios u ON u.id = p.usuario_inclusao_id
     WHERE ${conditions.join(' AND ')}
     ORDER BY p.data_inclusao DESC

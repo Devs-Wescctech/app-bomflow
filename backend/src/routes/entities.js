@@ -130,6 +130,171 @@ pool.query(`
 `).then(() => console.log('[Migration] bomflow_orcamentos OK'))
   .catch(e => console.error('[Migration] bomflow_orcamentos error:', e.message));
 
+// Documentos anexados a cada orçamento (Documento CPF/RG, comprovante de residência,
+// taxa de adesão, cópia de contrato) + flag "Adesão Zero" por orçamento. Vínculo duplo:
+// erp_pedido_id (orçamento) e lead_id/modulo (lead). Os ARQUIVOS ficam no disco do servidor
+// (pasta ORCAMENTO_DOCS_DIR, fora da área pública); aqui no banco ficam só os metadados.
+pool.query(`
+  ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS adesao_zero BOOLEAN;
+  ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS adesao_zero_updated_by UUID;
+  ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS adesao_zero_updated_at TIMESTAMPTZ;
+  ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS lead_id UUID;
+  CREATE INDEX IF NOT EXISTS idx_bomflow_orcamentos_lead ON bomflow_orcamentos(lead_id);
+  CREATE TABLE IF NOT EXISTS orcamento_documentos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    erp_pedido_id BIGINT NOT NULL,
+    lead_id VARCHAR(64),
+    modulo VARCHAR(32) NOT NULL,
+    tipo VARCHAR(40) NOT NULL,
+    stored_name VARCHAR(255) NOT NULL,
+    original_name VARCHAR(255),
+    mime_type VARCHAR(128),
+    size_bytes BIGINT,
+    uploaded_by UUID,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_orcamento_documentos_pedido ON orcamento_documentos(erp_pedido_id);
+  CREATE INDEX IF NOT EXISTS idx_orcamento_documentos_lead ON orcamento_documentos(lead_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_orcamento_documentos_pedido_tipo ON orcamento_documentos(erp_pedido_id, tipo);
+`).then(() => console.log('[Migration] orcamento_documentos OK'))
+  .catch(e => console.error('[Migration] orcamento_documentos error:', e.message));
+
+// Pedidos de ajuste da Fila Pré Vendas. O auditor descreve o que falta no orçamento;
+// o vendedor que cadastrou (vendedor_id) é notificado e acompanha pelo painel próprio.
+// status: 'pendente' (aguardando o vendedor) -> 'ajustado' (vendedor corrigiu e devolveu
+// para a fila do mesmo auditor que solicitou).
+pool.query(`
+  CREATE TABLE IF NOT EXISTS presales_ajustes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    erp_pedido_id BIGINT NOT NULL,
+    erp_numero BIGINT,
+    modulo VARCHAR(32),
+    vendedor_id UUID,
+    vendedor_nome VARCHAR(255),
+    cliente_nome VARCHAR(255),
+    cliente_cpf VARCHAR(32),
+    texto TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pendente',
+    auditor_id UUID,
+    auditor_nome VARCHAR(255),
+    auditor_email VARCHAR(255),
+    vendedor_comentario TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    ajustado_at TIMESTAMPTZ
+  );
+  CREATE INDEX IF NOT EXISTS idx_presales_ajustes_vendedor ON presales_ajustes(vendedor_id);
+  CREATE INDEX IF NOT EXISTS idx_presales_ajustes_pedido ON presales_ajustes(erp_pedido_id);
+  CREATE INDEX IF NOT EXISTS idx_presales_ajustes_status ON presales_ajustes(status);
+  -- Auto-cancelamento por prazo (3 dias úteis sem ajuste). status passa a 'cancelado_auto'.
+  -- cancelado_at: quando o cancelamento (ou a simulação, em dry-run) ocorreu.
+  -- cancelamento_info: observação de auditoria (modo, motivo, situação ERP, etc.).
+  ALTER TABLE presales_ajustes ADD COLUMN IF NOT EXISTS cancelado_at TIMESTAMPTZ;
+  ALTER TABLE presales_ajustes ADD COLUMN IF NOT EXISTS cancelamento_info TEXT;
+  -- Aviso antecipado de prazo: marcador de dedup p/ o aviso enviado ao vendedor antes do
+  -- vencimento (ex.: faltando 1 dia útil). Preenchido uma única vez quando o aviso é disparado.
+  ALTER TABLE presales_ajustes ADD COLUMN IF NOT EXISTS aviso_prazo_info TEXT;
+`).then(() => console.log('[Migration] presales_ajustes OK'))
+  .catch(e => console.error('[Migration] presales_ajustes error:', e.message));
+
+// Histórico de execuções dos jobs de ajuste (aviso antecipado de prazo e auto-cancelamento),
+// tanto pelo cron quanto pelo disparo manual. Cada ciclo grava uma linha com os contadores
+// retornados pelo job, para auditoria/visibilidade operacional ao longo do tempo.
+// tipo: 'aviso' (runPresalesAjusteAvisoPrazo) | 'cancel' (runPresalesAjusteAutoCancel).
+pool.query(`
+  CREATE TABLE IF NOT EXISTS presales_ajustes_runs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    executed_at TIMESTAMPTZ DEFAULT NOW(),
+    tipo VARCHAR(16) NOT NULL,
+    dry_run BOOLEAN,
+    checked INTEGER DEFAULT 0,
+    overdue INTEGER DEFAULT 0,
+    warned INTEGER DEFAULT 0,
+    cancelled INTEGER DEFAULT 0,
+    simulated INTEGER DEFAULT 0,
+    skipped INTEGER DEFAULT 0,
+    errors INTEGER DEFAULT 0,
+    aborted BOOLEAN DEFAULT FALSE,
+    abort_reason VARCHAR(64)
+  );
+  CREATE INDEX IF NOT EXISTS idx_presales_ajustes_runs_executed ON presales_ajustes_runs(executed_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_presales_ajustes_runs_tipo ON presales_ajustes_runs(tipo);
+`).then(() => console.log('[Migration] presales_ajustes_runs OK'))
+  .catch(e => console.error('[Migration] presales_ajustes_runs error:', e.message));
+
+// Trava de auditoria da Fila Pré Vendas: garante que cada orçamento (erp_pedido_id) só
+// seja auditado por 1 auditor por vez. O auditor "assume" manualmente (status
+// 'em_auditoria'); os demais veem o orçamento somente para leitura, com a indicação de
+// quem está auditando. A trava só é liberada quando o auditor conclui (clica em "Aprovar"),
+// passando para status 'concluida'. Não há liberação por tempo nem ao fechar a tela.
+pool.query(`
+  CREATE TABLE IF NOT EXISTS presales_auditorias (
+    erp_pedido_id BIGINT PRIMARY KEY,
+    auditor_id UUID NOT NULL,
+    auditor_nome VARCHAR(255),
+    auditor_email VARCHAR(255),
+    status VARCHAR(20) NOT NULL DEFAULT 'em_auditoria',
+    resultado VARCHAR(20),
+    assumido_at TIMESTAMPTZ DEFAULT NOW(),
+    concluida_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_presales_auditorias_status ON presales_auditorias(status);
+  CREATE INDEX IF NOT EXISTS idx_presales_auditorias_auditor ON presales_auditorias(auditor_id);
+`).then(() => console.log('[Migration] presales_auditorias OK'))
+  .catch(e => console.error('[Migration] presales_auditorias error:', e.message));
+
+// Caixa de Entrada WhatsApp: conversas e mensagens espelhadas do WHU/Rudo dentro do CRM.
+// phone_key = últimos 8 dígitos do número (reconcilia o número recebido do WHU, que vem sem
+// o 9 extra, ex.: 555197720611, com o número que enviamos, ex.: 5551997720611). É a chave
+// de deduplicação de conversa. A lista da caixa é montada a partir destas tabelas (o WHU não
+// expõe endpoint para listar conversas); as mensagens de entrada chegam via webhook.
+// whatsapp_webhook_events guarda o payload cru para descobrir/depurar o formato do WHU.
+pool.query(`
+  CREATE TABLE IF NOT EXISTS whatsapp_conversations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    phone_key VARCHAR(20) NOT NULL UNIQUE,
+    wa_number VARCHAR(30) NOT NULL,
+    contact_id VARCHAR(64),
+    chat_id VARCHAR(64),
+    name VARCHAR(255),
+    avatar_url TEXT,
+    vendedor_id UUID,
+    vendedor_nome VARCHAR(255),
+    last_message_text TEXT,
+    last_message_at TIMESTAMPTZ,
+    last_direction VARCHAR(4),
+    unread_count INTEGER NOT NULL DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'open',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_wa_conversations_vendedor ON whatsapp_conversations(vendedor_id);
+  CREATE INDEX IF NOT EXISTS idx_wa_conversations_last_at ON whatsapp_conversations(last_message_at DESC);
+  CREATE TABLE IF NOT EXISTS whatsapp_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID NOT NULL REFERENCES whatsapp_conversations(id) ON DELETE CASCADE,
+    wa_message_id VARCHAR(64),
+    direction VARCHAR(4) NOT NULL,
+    text TEXT,
+    message_type VARCHAR(20) DEFAULT 'text',
+    status VARCHAR(20),
+    sender_name VARCHAR(255),
+    sent_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_wa_messages_conv ON whatsapp_messages(conversation_id, sent_at);
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_wa_messages_waid ON whatsapp_messages(wa_message_id) WHERE wa_message_id IS NOT NULL;
+  CREATE TABLE IF NOT EXISTS whatsapp_webhook_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    payload JSONB,
+    parsed BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_wa_webhook_events_created ON whatsapp_webhook_events(created_at DESC);
+`).then(() => console.log('[Migration] whatsapp_inbox OK'))
+  .catch(e => console.error('[Migration] whatsapp_inbox error:', e.message));
+
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }

@@ -57,6 +57,7 @@ import {
   ArrowLeftRight,
 } from "lucide-react";
 import UpsellNovoOrcamento from "./UpsellNovoOrcamento";
+import OrcamentoDocumentos from "@/components/orcamento/OrcamentoDocumentos";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { createPageUrl } from "@/utils";
@@ -1027,6 +1028,16 @@ export default function LeadUpsellDetail() {
                     {lead.phone}
                   </Button>
                 )}
+                {lead.phone && (
+                  <Button
+                    size="sm"
+                    onClick={() => navigate(createPageUrl("WhatsAppConversa", { phone: lead.phone, name: lead.name || "", leadId: lead.id, leadType: "upsell", stage: currentStage?.label || "", agent: leadAgent?.name || "", interest: lead.interest || "" }))}
+                    className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm"
+                  >
+                    <MessageSquare className="w-4 h-4 mr-2" />
+                    Enviar WhatsApp
+                  </Button>
+                )}
                 {lead.email && (
                   <Button
                     size="sm"
@@ -1195,12 +1206,19 @@ export default function LeadUpsellDetail() {
                 <UpsellNovoOrcamento
                   embedded
                   modulo="sales_upsell"
+                  leadId={leadId}
                   initialLead={{
                     nome: lead.name,
                     cpf: lead.cpf,
                     telefone: lead.phone,
                     email: lead.email,
                   }}
+                />
+                <OrcamentoDocumentos
+                  modulo="sales_upsell"
+                  cpf={lead.cpf}
+                  leadId={leadId}
+                  canManage={isAdmin || isSupervisor || (userAgent && String(leadAgentId) === String(userAgent.id))}
                 />
               </TabsContent>
 

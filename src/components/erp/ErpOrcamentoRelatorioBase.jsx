@@ -307,7 +307,8 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
 
   useEffect(() => {
     if (!currentUser) return;
-    if (isAdmin) { fetchTimes(); fetchCanais(); }
+    if (isAdmin) fetchTimes();
+    fetchCanais();
     if (showVendedor) fetchVendedores('todos');
     fetchRelatorio();
   }, [currentUser]);

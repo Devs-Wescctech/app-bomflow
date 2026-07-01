@@ -1,7 +1,7 @@
 modules = ["nodejs-20", "web", "python-3.11", "postgresql-16"]
 [agent]
 expertMode = true
-integrations = ["javascript_openai_ai_integrations:2.0.0"]
+integrations = ["javascript_openai_ai_integrations:2.0.0", "javascript_object_storage:2.0.0"]
 
 [nix]
 channel = "stable-25_05"
@@ -21,6 +21,10 @@ args = "Frontend Dev Server"
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "Backend API Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "test"
 
 [[workflows.workflow]]
 name = "Frontend Dev Server"
@@ -46,6 +50,17 @@ waitForPort = 3001
 [workflows.workflow.metadata]
 outputType = "console"
 
+[[workflows.workflow]]
+name = "test"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd backend && node --test src/"
+
+[workflows.workflow.metadata]
+isValidation = true
+
 [[ports]]
 localPort = 3001
 externalPort = 3001
@@ -57,6 +72,10 @@ externalPort = 80
 [[ports]]
 localPort = 5001
 externalPort = 3000
+
+[[ports]]
+localPort = 23636
+externalPort = 3002
 
 [deployment]
 deploymentTarget = "vm"
@@ -72,6 +91,10 @@ SMTP_HOST = "email-ssl.com.br"
 SMTP_PORT = "465"
 COMMISSION_REPORT_RECIPIENTS = "tais.dequi@wescctech.com.br"
 API_HASH_WHU = "3b8d56d7e6e1c99ccd1fa37179cfc0d54dc5d13817b194686ebf88bcdf9e8f75"
+PRESALES_AUTOCANCEL_ENABLED = "true"
+PRESALES_AUTOCANCEL_DRYRUN = "true"
+PRESALES_AUTOCANCEL_DEADLINE_DAYS = "3"
+INVERTEXTO_STATE = "SP"
 
 [postMerge]
 path = "scripts/post-merge.sh"

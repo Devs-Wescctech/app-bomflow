@@ -226,7 +226,16 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
                           <span className="text-gray-400">—</span>
                         )}
                       </td>
-                      <td className="p-2 align-top"><StatusBadge status={i.status} /></td>
+                      <td className="p-2 align-top">
+                        {i.status === "erro" && i.erro ? (
+                          <div className="flex flex-col gap-0.5">
+                            <StatusBadge status={i.status} />
+                            <span className="text-xs text-red-600 break-words max-w-[16rem]">{i.erro}</span>
+                          </div>
+                        ) : (
+                          <StatusBadge status={i.status} />
+                        )}
+                      </td>
                       {results && (
                         <td className="p-2 align-top">
                           {r ? (

@@ -107,6 +107,10 @@ import WhatsAppQuickTicket from "./WhatsAppQuickTicket";
 
 import WhatsAppQuickCollection from "./WhatsAppQuickCollection";
 
+import WhatsAppConversa from "./WhatsAppConversa";
+import WhatsAppInbox from "./WhatsAppInbox";
+import WhatsAppChat from "./WhatsAppChat";
+
 import PortalHomeAlias from "./portal-home";
 
 import SalesReports from "./SalesReports";
@@ -219,7 +223,12 @@ import SalesOrcamentoRelatorio from "./SalesOrcamentoRelatorio";
 import SalesPJOrcamentoRelatorio from "./SalesPJOrcamentoRelatorio";
 import ReferralOrcamentoRelatorio from "./ReferralOrcamentoRelatorio";
 import SalesUpsellOrcamentoRelatorio from "./SalesUpsellOrcamentoRelatorio";
+import PreSalesOrcamentoRelatorio from "./PreSalesOrcamentoRelatorio";
+import PreSalesAjustes from "./PreSalesAjustes";
+import PreSalesAjustesMonitor from "./PreSalesAjustesMonitor";
 import ReferralWonReport from "./ReferralWonReport";
+import UpsellLeadRedesignDemo from "./UpsellLeadRedesignDemo";
+import OrcamentoDocumentosRedesignDemo from "./OrcamentoDocumentosRedesignDemo";
 
 import Login from "./Login";
 
@@ -333,6 +342,10 @@ const PAGES = {
     
     WhatsAppQuickCollection: WhatsAppQuickCollection,
     
+    WhatsAppConversa: WhatsAppConversa,
+    WhatsAppInbox: WhatsAppInbox,
+    WhatsAppChat: WhatsAppChat,
+    
     PortalHomeAlias: PortalHomeAlias,
     
     SalesReports: SalesReports,
@@ -441,7 +454,12 @@ const PAGES = {
     SalesPJOrcamentoRelatorio: SalesPJOrcamentoRelatorio,
     ReferralOrcamentoRelatorio: ReferralOrcamentoRelatorio,
     SalesUpsellOrcamentoRelatorio: SalesUpsellOrcamentoRelatorio,
+    PreSalesOrcamentoRelatorio: PreSalesOrcamentoRelatorio,
+    PreSalesAjustes: PreSalesAjustes,
+    PreSalesAjustesMonitor: PreSalesAjustesMonitor,
     ReferralWonReport: ReferralWonReport,
+    UpsellLeadRedesignDemo: UpsellLeadRedesignDemo,
+    OrcamentoDocumentosRedesignDemo: OrcamentoDocumentosRedesignDemo,
     
 }
 
@@ -581,6 +599,10 @@ function PagesContent() {
                 
                 <Route path="/WhatsAppQuickCollection" element={<WhatsAppQuickCollection />} />
                 
+                <Route path="/WhatsAppConversa" element={<WhatsAppConversa />} />
+                <Route path="/WhatsAppInbox" element={<WhatsAppInbox />} />
+                <Route path="/WhatsAppChat" element={<WhatsAppChat />} />
+                
                 <Route path="/portal-home" element={<PortalHomeAlias />} />
                 
                 <Route path="/SalesReports" element={<SalesReports />} />
@@ -694,7 +716,12 @@ function PagesContent() {
                 <Route path="/SalesPJOrcamentoRelatorio" element={<SalesPJOrcamentoRelatorio />} />
                 <Route path="/ReferralOrcamentoRelatorio" element={<ReferralOrcamentoRelatorio />} />
                 <Route path="/SalesUpsellOrcamentoRelatorio" element={<SalesUpsellOrcamentoRelatorio />} />
+                <Route path="/PreSalesOrcamentoRelatorio" element={<PreSalesOrcamentoRelatorio />} />
+                <Route path="/PreSalesAjustes" element={<PreSalesAjustes />} />
+                <Route path="/PreSalesAjustesMonitor" element={<PreSalesAjustesMonitor />} />
                 <Route path="/ReferralWonReport" element={<ReferralWonReport />} />
+                <Route path="/UpsellLeadRedesignDemo" element={<UpsellLeadRedesignDemo />} />
+                <Route path="/OrcamentoDocumentosRedesignDemo" element={<OrcamentoDocumentosRedesignDemo />} />
                 
             </Routes>
         </Layout>

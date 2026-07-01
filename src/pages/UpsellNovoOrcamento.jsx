@@ -284,7 +284,7 @@ function useCanAccessOrcamento(user) {
   return user.role === "admin" || NOVO_ORCAMENTO_ALLOWED_EMAILS.includes(user.email);
 }
 
-export default function UpsellNovoOrcamento({ embedded = false, initialLead = null, modulo = "sales_upsell" } = {}) {
+export default function UpsellNovoOrcamento({ embedded = false, initialLead = null, modulo = "sales_upsell", leadId = null } = {}) {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [cpfLookup, setCpfLookup] = useState(null);
@@ -821,8 +821,9 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       dia_vencimento: form.dia_vencimento ? Number(form.dia_vencimento) : undefined,
       prazo_pagamento_id: form.plano_pagamento_id ? Number(form.plano_pagamento_id) : undefined,
       observacoes: form.observacoes || undefined,
-      // Metadado do Bom Flow (rastreio CRM por módulo). O backend remove antes de enviar ao ERP.
+      // Metadados do Bom Flow (rastreio CRM por módulo e lead). O backend remove antes de enviar ao ERP.
       modulo: modulo || "sales_upsell",
+      lead_id: leadId || undefined,
     };
     return Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
   }, [form, itensSel, produtosFiltrados, erpProdutos, planoSelecionado, beneficiarios, erpAgenteVendaId, user, modulo]);
@@ -872,6 +873,13 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       }
       setSubmitResult({ type: "success", data });
       toast.success("Orçamento enviado com sucesso!");
+      // Avisa a área de Documentos (componente irmão) para recarregar a lista e já
+      // exibir o orçamento recém-criado com os campos de upload + Adesão Zero.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("orcamento:created", { detail: { modulo: modulo || "sales_upsell" } })
+        );
+      }
     },
     onError: (err) => {
       setSubmitResult({ type: "error", message: err.message });
@@ -887,6 +895,8 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       if (form.celular.trim() && !isMobilePhone(form.celular)) {
         toast.error("Celular deve ser um número de celular válido (DDD + 9 dígitos)"); return false;
       }
+      if (!form.email_contato.trim()) { toast.error("E-mail obrigatório"); return false; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email_contato.trim())) { toast.error("E-mail inválido"); return false; }
     }
     if (step === 2) {
       if (form.un_codigo_postal.replace(/\D/g, "").length !== 8) { toast.error("CEP inválido (8 dígitos)"); return false; }
@@ -1400,7 +1410,7 @@ function Step1({ form, set, cpfLookup, setCpfLookup, lookupCpfMutation }) {
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1">
-          <Label>E-mail</Label>
+          <Label>E-mail <span className="text-red-500">*</span></Label>
           <Input
             type="email"
             value={form.email_contato}

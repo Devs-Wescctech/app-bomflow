@@ -10,13 +10,18 @@ import entityRoutes from './routes/entities.js';
 import uploadRoutes from './routes/upload.js';
 import functionRoutes from './routes/functions.js';
 import whatsappRoutes from './routes/whatsapp.js';
+import whatsappInboxRoutes from './routes/whatsappInbox.js';
+import whatsappChatRoutes from './routes/whatsappChat.js';
 import bomAutoRoutes from './routes/bomAuto.js';
 import erpProxyRoutes from './routes/erpProxy.js';
 import apiKeyRoutes from './routes/apiKeys.js';
 import externalRoutes from './routes/external.js';
+import orcamentoDocumentosRoutes from './routes/orcamentoDocumentos.js';
+import presalesAjustesRoutes from './routes/presalesAjustes.js';
+import { getObjectEntityFile, downloadObject, ObjectNotFoundError } from './services/objectStorage.js';
 import { runAllAutomations } from './services/automationService.js';
 import cron from 'node-cron';
-import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport, runPerspectivaBatch, sendPerspectivaReport } from './routes/functions.js';
+import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport, runPerspectivaBatch, sendPerspectivaReport, runPresalesAjusteAutoCancel, runPresalesAjusteAvisoPrazo } from './routes/functions.js';
 import { recoverStuckQueues } from './services/whatsappQueueService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -58,6 +63,26 @@ app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 app.use('/data/bom-auto-images', express.static(path.join(__dirname, '../../data/bom-auto-images')));
 app.use('/proposals', express.static(path.join(__dirname, '../public/proposals')));
 
+// Streaming público de mídia do WhatsApp Chat. Precisa ser público (a
+// WesccTech/WhatsApp busca a URL externamente). A proteção é o UUID
+// não-adivinhável gerado no upload.
+app.get('/api/whatsapp-media/:objectId', async (req, res) => {
+  try {
+    const { objectId } = req.params;
+    if (!/^[A-Za-z0-9-]+$/.test(objectId)) {
+      return res.status(400).json({ message: 'Identificador inválido' });
+    }
+    const file = await getObjectEntityFile(`/objects/uploads/${objectId}`);
+    await downloadObject(file, res);
+  } catch (error) {
+    if (error instanceof ObjectNotFoundError) {
+      return res.status(404).json({ message: 'Arquivo não encontrado' });
+    }
+    console.error('[WhatsAppMedia] Erro ao servir arquivo:', error.message);
+    res.status(500).json({ message: 'Erro ao servir o arquivo' });
+  }
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/api-keys', apiKeyRoutes);
 app.use('/api/external', externalRoutes);
@@ -65,8 +90,12 @@ app.use('/api', entityRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/functions', functionRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/whatsapp-inbox', whatsappInboxRoutes);
+app.use('/api/whatsapp-chat', whatsappChatRoutes);
 app.use('/api/bom-auto', bomAutoRoutes);
 app.use('/api/erp', erpProxyRoutes);
+app.use('/api/orcamento-documentos', orcamentoDocumentosRoutes);
+app.use('/api/presales-ajustes', presalesAjustesRoutes);
 
 app.use(express.static(distPath));
 
@@ -209,6 +238,27 @@ initDatabase()
       }
     });
     console.log('[Perspectiva Email] Cron agendado: quartas-feiras às 08:00 (ERP).');
+
+    cron.schedule('0 7 * * *', async () => {
+      // Aviso antecipado primeiro (não-destrutivo): avisa o vendedor cujo prazo vence
+      // no próximo dia útil, dando chance de evitar o cancelamento no ciclo seguinte.
+      console.log('[PreSales AvisoPrazo] Iniciando verificação diária de aviso antecipado de prazo...');
+      try {
+        const w = await runPresalesAjusteAvisoPrazo();
+        console.log(`[PreSales AvisoPrazo] Concluído. verificados=${w.checked} avisados=${w.warned} pulados=${w.skipped} erros=${w.errors}`);
+      } catch (error) {
+        console.error('[PreSales AvisoPrazo] Erro na verificação automática:', error.message);
+      }
+
+      console.log('[PreSales AutoCancel] Iniciando verificação diária de auto-cancelamento de ajustes...');
+      try {
+        const r = await runPresalesAjusteAutoCancel();
+        console.log(`[PreSales AutoCancel] Concluído. dryRun=${r.dryRun} verificados=${r.checked} vencidos=${r.overdue} cancelados=${r.cancelled} simulados=${r.simulated} pulados=${r.skipped} erros=${r.errors}`);
+      } catch (error) {
+        console.error('[PreSales AutoCancel] Erro na verificação automática:', error.message);
+      }
+    });
+    console.log('[PreSales AutoCancel] Cron agendado: todos os dias às 07:00 (aviso antecipado + auto-cancelamento).');
 
     try {
       await recoverStuckQueues();

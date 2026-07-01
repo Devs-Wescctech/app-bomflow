@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { getWhatsAppTemplates, getWhatsAppTemplatesByToken, sendWhatsAppMessage, sendWhatsAppMessageWithToken, sendTextMessageWithToken, setContactAttributes } from '../services/whatsappService.js';
+import { getWhatsAppTemplates, getWhatsAppTemplatesByToken, sendWhatsAppMessage, sendWhatsAppMessageWithToken, sendTextMessageWithToken, setContactAttributes, sendChatMessage, getContactByPhone } from '../services/whatsappService.js';
 import { query } from '../config/database.js';
 import { runAllAutomations, getAutomationLogs } from '../services/automationService.js';
 import { createLeadWhatsAppContact, getLeadWhatsAppContacts } from '../services/leadWhatsAppContactService.js';
+import { recordOutbound } from '../services/whatsappInboxService.js';
 
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
@@ -149,6 +150,133 @@ router.post('/send-message', authMiddleware, async (req, res) => {
     ).catch(console.error);
 
     res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/send-and-tag', authMiddleware, async (req, res) => {
+  const log = (req.log && typeof req.log.error === 'function') ? req.log.error.bind(req.log) : console.error;
+  // Vendedor is derived from the authenticated user, never trusted from the client.
+  // Declared outside the try so the error handler can still record who attempted the send.
+  let vendedorNome = null;
+  let vendedorId = null;
+  try {
+    const { phone, message, templateId, templateComponents } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'Número de telefone é obrigatório' });
+    }
+    const hasText = typeof message === 'string' && message.trim().length > 0;
+    if (!templateId && !hasText) {
+      return res.status(400).json({ success: false, message: 'Informe uma mensagem de texto ou selecione um template' });
+    }
+
+    try {
+      const agentResult = await query(
+        'SELECT id, name FROM agents WHERE (email = $1 OR user_email = $1) AND active = true LIMIT 1',
+        [req.user.email]
+      );
+      if (agentResult.rows.length > 0) {
+        vendedorId = agentResult.rows[0].id;
+        vendedorNome = agentResult.rows[0].name;
+      }
+    } catch (err) {
+      log('[WhatsApp] Failed to resolve vendedor from authenticated user:', err.message);
+    }
+    if (!vendedorId && req.user?.id) vendedorId = req.user.id;
+    if (!vendedorNome) vendedorNome = req.user?.full_name || req.user?.name || null;
+
+    // 1) Send the message to the customer
+    const sendResult = await sendChatMessage({ phone, message, templateId, templateComponents, number: phone });
+
+    // 2) Resolve the contactId (from the send response, fallback to lookup by phone)
+    let contactId = sendResult.contactId || sendResult.contact?.id || sendResult.contact?._id || null;
+    if (!contactId) {
+      try {
+        const contact = await getContactByPhone(sendResult.brazilNumber || phone);
+        contactId = contact?.id || contact?._id || null;
+      } catch (err) {
+        log('[WhatsApp] Failed to look up contact by phone for tagging:', err.message);
+      }
+    }
+
+    // 3) Tag the contact with the seller — only when seller data is present (best-effort)
+    let tagged = false;
+    if (vendedorNome && vendedorId) {
+      if (contactId) {
+        try {
+          await setContactAttributes(contactId, [
+            { key: 'vendedor_nome', value: String(vendedorNome), description: 'Nome do vendedor responsável' },
+            { key: 'vendedor_id', value: String(vendedorId), description: 'ID do vendedor no CRM' },
+          ]);
+          tagged = true;
+        } catch (err) {
+          log('[WhatsApp] Failed to set contact attributes (send not blocked):', err.message);
+        }
+      } else {
+        log('[WhatsApp] No contactId available, skipping seller tagging for', phone);
+      }
+    }
+
+    // 3.5) Espelha a mensagem enviada na Caixa de Entrada WhatsApp (best-effort)
+    await recordOutbound({
+      phone,
+      text: hasText ? message : '[template]',
+      waMessageId:
+        sendResult.messageSentId || sendResult.message_sent_id || sendResult.id || null,
+      contactId: contactId || null,
+      chatId: sendResult.chatId || sendResult.currentChatId || sendResult.chat_id || null,
+      vendedorId,
+      vendedorNome,
+    }).catch((err) => log('[WhatsApp] Falha ao espelhar envio na caixa de entrada (não bloqueia):', err.message));
+
+    // 4) Persist an audit record of the send (best-effort — never blocks the send)
+    await query(
+      `INSERT INTO automation_logs (automation_type, action_type, action_result, success)
+       VALUES ($1, $2, $3, $4)`,
+      ['manual_whatsapp', 'send_and_tag', JSON.stringify({
+        vendedor: vendedorNome ? { id: vendedorId, name: vendedorNome } : null,
+        phone,
+        templateId: templateId || null,
+        text: hasText ? message : null,
+        contactId,
+        tagged,
+        usedFallback: sendResult.usedFallback || false,
+        whuResponse: {
+          msg: sendResult.msg || sendResult.message || null,
+          status: sendResult.status || null,
+          chatId: sendResult.chatId || sendResult.currentChatId || sendResult.chat_id || null,
+          messageSentId:
+            sendResult.messageSentId || sendResult.message_sent_id || sendResult.id || null,
+        },
+      }), true]
+    ).catch((err) => log('[WhatsApp] Failed to log send-and-tag (send not blocked):', err.message));
+
+    res.json({
+      success: true,
+      tagged,
+      contactId,
+      vendedor: vendedorNome ? { id: vendedorId, name: vendedorNome } : null,
+      usedFallback: sendResult.usedFallback || false,
+    });
+  } catch (error) {
+    console.error('Error in send-and-tag:', error);
+
+    await query(
+      `INSERT INTO automation_logs (automation_type, action_type, action_result, success, error_message)
+       VALUES ($1, $2, $3, $4, $5)`,
+      ['manual_whatsapp', 'send_and_tag', JSON.stringify({
+        vendedor: vendedorNome ? { id: vendedorId, name: vendedorNome } : null,
+        phone: req.body?.phone || null,
+        templateId: req.body?.templateId || null,
+        text: (typeof req.body?.message === 'string' && req.body.message.trim().length > 0) ? req.body.message : null,
+      }), false, error.message]
+    ).catch((err) => log('[WhatsApp] Failed to log send-and-tag error:', err.message));
+
+    let userMessage = error.message;
+    if (error.message?.includes('already open')) {
+      userMessage = 'Já existe uma conversa aberta com este número. Tente novamente em instantes.';
+    }
+    res.status(500).json({ success: false, message: userMessage });
   }
 });
 
@@ -400,6 +528,90 @@ router.get('/lead-contacts/:leadId', authMiddleware, async (req, res) => {
     res.json(contacts.map(convertKeysToCamel));
   } catch (error) {
     console.error('Error fetching lead WhatsApp contacts:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Server-side search for leads across all modules (used by Conversa WhatsApp lead selector).
+// Filters by name or phone term on the DB instead of downloading every list.
+router.get('/search-leads', authMiddleware, async (req, res) => {
+  try {
+    const term = (req.query.term || '').toString().trim();
+    if (term.length < 2) {
+      return res.json([]);
+    }
+
+    const perTypeLimit = Math.min(parseInt(req.query.limit, 10) || 10, 25);
+    const like = `%${term}%`;
+    const digits = term.replace(/\D/g, '');
+    const phoneLike = digits.length >= 2 ? `%${digits}%` : null;
+
+    // Each query returns id, name, phone. Phone match strips non-digits so a
+    // typed number matches formatted values in the DB.
+    const buildPhoneCondition = (cols) =>
+      phoneLike
+        ? cols
+            .map(
+              (c) =>
+                `REGEXP_REPLACE(COALESCE(${c}, ''), '[^0-9]', '', 'g') ILIKE $2`
+            )
+            .join(' OR ')
+        : null;
+
+    const runSearch = async (sql, hasPhone) => {
+      const params = hasPhone && phoneLike ? [like, phoneLike] : [like];
+      const result = await query(sql, params);
+      return result.rows;
+    };
+
+    const pfPhone = buildPhoneCondition(['phone', 'whatsapp']);
+    const pfSql = `SELECT id, name, phone, stage, agent_id, interest FROM leads
+      WHERE (name ILIKE $1${pfPhone ? ` OR ${pfPhone}` : ''})
+      ORDER BY created_at DESC LIMIT ${perTypeLimit}`;
+
+    const pjPhone = buildPhoneCondition(['contact_phone']);
+    const pjSql = `SELECT id, COALESCE(nome_fantasia, razao_social, contact_name) AS name, contact_phone AS phone FROM leads_pj
+      WHERE (COALESCE(nome_fantasia, '') ILIKE $1 OR COALESCE(razao_social, '') ILIKE $1 OR COALESCE(contact_name, '') ILIKE $1${pjPhone ? ` OR ${pjPhone}` : ''})
+      ORDER BY created_at DESC LIMIT ${perTypeLimit}`;
+
+    const upsellPhone = buildPhoneCondition(['phone', 'whatsapp']);
+    const upsellSql = `SELECT id, name, phone, stage, agent_id, interest FROM leads_upsell
+      WHERE (name ILIKE $1${upsellPhone ? ` OR ${upsellPhone}` : ''})
+      ORDER BY created_at DESC LIMIT ${perTypeLimit}`;
+
+    const refPhone = buildPhoneCondition(['referred_phone']);
+    const refSql = `SELECT id, referred_name AS name, referred_phone AS phone, stage, agent_id, interest FROM referrals
+      WHERE (COALESCE(referred_name, '') ILIKE $1${refPhone ? ` OR ${refPhone}` : ''})
+      ORDER BY created_at DESC LIMIT ${perTypeLimit}`;
+
+    const [pf, pj, ups, ind] = await Promise.all([
+      runSearch(pfSql, true).catch(() => []),
+      runSearch(pjSql, true).catch(() => []),
+      runSearch(upsellSql, true).catch(() => []),
+      runSearch(refSql, true).catch(() => []),
+    ]);
+
+    const norm = (rows, type) =>
+      (rows || [])
+        .map((l) => ({
+          id: `${type}-${l.id}`,
+          type,
+          name: (l.name || '').toString().trim(),
+          phone: (l.phone || '').toString().trim(),
+          stage: l.stage ?? null,
+          agentId: l.agent_id ?? null,
+          interest: (l.interest || '').toString().trim() || null,
+        }))
+        .filter((l) => l.phone && l.phone.replace(/\D/g, '').length >= 10);
+
+    res.json([
+      ...norm(pf, 'pf'),
+      ...norm(pj, 'pj'),
+      ...norm(ups, 'upsell'),
+      ...norm(ind, 'indicacao'),
+    ]);
+  } catch (error) {
+    console.error('Error searching leads for Conversa WhatsApp:', error);
     res.status(500).json({ message: error.message });
   }
 });
