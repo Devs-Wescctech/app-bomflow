@@ -37,6 +37,7 @@ import {
   Headphones,
   CheckCircle2,
   ArrowRightLeft,
+  Paperclip,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -122,6 +123,8 @@ export default function WhatsAppChat() {
   const [templateVars, setTemplateVars] = useState({});
   const [templateOpen, setTemplateOpen] = useState(false);
   const [sending, setSending] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const fileInputRef = useRef(null);
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferUserId, setTransferUserId] = useState("");
   const [transferSectorId, setTransferSectorId] = useState("");
@@ -372,6 +375,82 @@ export default function WhatsAppChat() {
       toast.error(err.message);
     } finally {
       setSending(false);
+    }
+  };
+
+  const MAX_MEDIA_BYTES = 16 * 1024 * 1024; // 16 MB (limite do WhatsApp)
+
+  const handleFilePick = () => {
+    if (uploadingMedia || sending) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite reenviar o mesmo arquivo depois
+    if (!file || !selected) return;
+
+    if (file.size > MAX_MEDIA_BYTES) {
+      toast.error("Arquivo muito grande. Máximo de 16 MB.");
+      return;
+    }
+
+    setUploadingMedia(true);
+    try {
+      // Passo 1: pedir a URL de upload direto ao Object Storage.
+      const urlRes = await fetch(
+        `${API_BASE}/whatsapp-chat/conversations/${selectedId}/media/request-url`,
+        {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({
+            name: file.name,
+            size: file.size,
+            contentType: file.type,
+          }),
+        }
+      );
+      const urlData = await urlRes.json().catch(() => ({}));
+      if (!urlRes.ok || !urlData.uploadURL) {
+        throw new Error(urlData.message || "Falha ao preparar o upload.");
+      }
+
+      // Passo 2: PUT direto do arquivo na URL assinada (sem cabeçalho de auth).
+      const putRes = await fetch(urlData.uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!putRes.ok) {
+        throw new Error("Falha ao enviar o arquivo para o armazenamento.");
+      }
+
+      // Passo 3: disparar o envio da mídia na conversa.
+      const sendRes = await fetch(
+        `${API_BASE}/whatsapp-chat/conversations/${selectedId}/send-media`,
+        {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({
+            objectPath: urlData.objectPath,
+            fileName: file.name,
+            caption: message.trim() || undefined,
+          }),
+        }
+      );
+      const sendData = await sendRes.json().catch(() => ({}));
+      if (!sendRes.ok || !sendData.success) {
+        throw new Error(sendData.message || "Falha ao enviar a mídia.");
+      }
+
+      setMessage("");
+      toast.success("Mídia enviada.");
+      queryClient.invalidateQueries({ queryKey: ["waChatThread", selectedId] });
+      queryClient.invalidateQueries({ queryKey: ["waChatConversations", status] });
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setUploadingMedia(false);
     }
   };
 
@@ -659,6 +738,27 @@ export default function WhatsAppChat() {
                   </div>
                 )}
                 <div className="flex items-end gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,audio/*,video/*"
+                    onChange={handleFileSelected}
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="flex-shrink-0"
+                    onClick={handleFilePick}
+                    disabled={uploadingMedia || sending}
+                    title="Enviar arquivo"
+                  >
+                    {uploadingMedia ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Paperclip className="w-5 h-5" />
+                    )}
+                  </Button>
                   <Button
                     variant="outline"
                     size="icon"

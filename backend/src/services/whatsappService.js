@@ -729,3 +729,46 @@ export async function finalizeWhatsAppChat(
   }
   return data ?? { success: true };
 }
+
+// Envia mídia (imagem/documento/etc.) na conversa. O arquivo precisa estar
+// acessível publicamente via `linkUrl` (a WesccTech/WhatsApp busca a URL).
+export async function sendWhatsAppChatMedia(
+  number,
+  { linkUrl, extension, fileName, caption = '', isWhisper = false }
+) {
+  const token = process.env.RUDO_WHATSAPP_TOKEN;
+  if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+  if (!linkUrl) throw new Error('linkUrl é obrigatório');
+
+  const phone = (number || '').replace(/\D/g, '');
+  if (!phone) throw new Error('Número de telefone é obrigatório');
+  const brazilNumber = phone.startsWith('55') ? phone : `55${phone}`;
+
+  const body = {
+    number: brazilNumber,
+    forceSend: true,
+    verifyContact: false,
+    linkUrl,
+    extension,
+    fileName,
+    caption,
+    delayInSeconds: 0,
+    isWhisper,
+  };
+
+  const response = await fetch(`${RUDO_API_BASE}/chats/send-media`, {
+    method: 'POST',
+    headers: {
+      'access-token': token,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(`Failed to send media: ${data?.msg || response.statusText}`);
+  }
+  return data ?? { success: true };
+}

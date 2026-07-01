@@ -18,6 +18,7 @@ import apiKeyRoutes from './routes/apiKeys.js';
 import externalRoutes from './routes/external.js';
 import orcamentoDocumentosRoutes from './routes/orcamentoDocumentos.js';
 import presalesAjustesRoutes from './routes/presalesAjustes.js';
+import { getObjectEntityFile, downloadObject, ObjectNotFoundError } from './services/objectStorage.js';
 import { runAllAutomations } from './services/automationService.js';
 import cron from 'node-cron';
 import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport, runPerspectivaBatch, sendPerspectivaReport, runPresalesAjusteAutoCancel, runPresalesAjusteAvisoPrazo } from './routes/functions.js';
@@ -61,6 +62,26 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 app.use('/data/bom-auto-images', express.static(path.join(__dirname, '../../data/bom-auto-images')));
 app.use('/proposals', express.static(path.join(__dirname, '../public/proposals')));
+
+// Streaming público de mídia do WhatsApp Chat. Precisa ser público (a
+// WesccTech/WhatsApp busca a URL externamente). A proteção é o UUID
+// não-adivinhável gerado no upload.
+app.get('/api/whatsapp-media/:objectId', async (req, res) => {
+  try {
+    const { objectId } = req.params;
+    if (!/^[A-Za-z0-9-]+$/.test(objectId)) {
+      return res.status(400).json({ message: 'Identificador inválido' });
+    }
+    const file = await getObjectEntityFile(`/objects/uploads/${objectId}`);
+    await downloadObject(file, res);
+  } catch (error) {
+    if (error instanceof ObjectNotFoundError) {
+      return res.status(404).json({ message: 'Arquivo não encontrado' });
+    }
+    console.error('[WhatsAppMedia] Erro ao servir arquivo:', error.message);
+    res.status(500).json({ message: 'Erro ao servir o arquivo' });
+  }
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/api-keys', apiKeyRoutes);

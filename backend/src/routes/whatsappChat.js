@@ -12,7 +12,9 @@ import {
   getContactByPhone,
   transferWhatsAppChat,
   finalizeWhatsAppChat,
+  sendWhatsAppChatMedia,
 } from '../services/whatsappService.js';
+import { getObjectEntityUploadURL } from '../services/objectStorage.js';
 
 const router = Router();
 
@@ -201,6 +203,73 @@ router.post('/conversations/:attendanceId/finalize', async (req, res) => {
     res.json({ success: true, result });
   } catch (error) {
     console.error('[WhatsAppChat] Erro ao finalizar conversa:', error.message);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Passo 1 do envio de mídia: gera uma URL de upload direto para o Object Storage.
+// O arquivo NÃO passa pelo backend — o frontend faz PUT direto na uploadURL.
+router.post('/conversations/:attendanceId/media/request-url', async (req, res) => {
+  try {
+    const { error, statusCode } = await loadAuthorizedChat(req, req.params.attendanceId);
+    if (error) return res.status(statusCode).json({ message: error });
+
+    const { uploadURL, objectPath } = await getObjectEntityUploadURL();
+    res.json({ uploadURL, objectPath });
+  } catch (error) {
+    console.error('[WhatsAppChat] Erro ao gerar URL de upload:', error.message);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Passo 2 do envio de mídia: com o arquivo já no Object Storage, monta a linkUrl
+// pública (servida por /api/whatsapp-media/*) e dispara o envio na conversa.
+router.post('/conversations/:attendanceId/send-media', async (req, res) => {
+  try {
+    const { objectPath, fileName, caption = '' } = req.body || {};
+    if (!objectPath || !fileName) {
+      return res.status(400).json({ message: 'objectPath e fileName são obrigatórios' });
+    }
+    const match = /^\/objects\/uploads\/([A-Za-z0-9-]+)$/.exec(objectPath);
+    if (!match) {
+      return res.status(400).json({ message: 'objectPath inválido' });
+    }
+    const objectId = match[1];
+
+    const { chat, error, statusCode } = await loadAuthorizedChat(req, req.params.attendanceId);
+    if (error) return res.status(statusCode).json({ message: error });
+
+    const number = chat.contact?.number;
+    if (!number) {
+      return res.status(400).json({ message: 'Conversa sem número de contato válido' });
+    }
+
+    const extension = (fileName.includes('.') ? fileName.split('.').pop() : '')
+      .toLowerCase()
+      .trim();
+    if (!extension) {
+      return res
+        .status(400)
+        .json({ message: 'O arquivo precisa ter uma extensão (ex.: .pdf, .jpg).' });
+    }
+
+    // Base pública a partir de origem confiável (env), não de headers do cliente,
+    // para evitar host spoofing na linkUrl que a WesccTech vai buscar.
+    const baseUrl =
+      process.env.PUBLIC_APP_URL ||
+      (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null) ||
+      `https://${req.get('host')}`;
+    const linkUrl = `${baseUrl}/api/whatsapp-media/${objectId}`;
+
+    const result = await sendWhatsAppChatMedia(number, {
+      linkUrl,
+      extension,
+      fileName,
+      caption,
+    });
+    res.json({ success: true, result });
+  } catch (error) {
+    console.error('[WhatsAppChat] Erro ao enviar mídia:', error.message);
     res.status(500).json({ message: error.message });
   }
 });
