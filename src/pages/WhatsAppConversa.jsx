@@ -125,6 +125,7 @@ export default function WhatsAppConversa() {
   const [debouncedLeadSearch, setDebouncedLeadSearch] = useState("");
   const [message, setMessage] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [templateVars, setTemplateVars] = useState({});
   const [templateSelectorOpen, setTemplateSelectorOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
@@ -184,6 +185,37 @@ export default function WhatsAppConversa() {
     return t.description || t.name || null;
   })();
 
+  const templateVarIndexes = (() => {
+    if (!templateBody) return [];
+    const found = [...templateBody.matchAll(/\{\{\s*(\d+)\s*\}\}/g)].map((m) =>
+      parseInt(m[1], 10)
+    );
+    return [...new Set(found)].sort((a, b) => a - b);
+  })();
+
+  useEffect(() => {
+    if (!selectedTemplate) {
+      setTemplateVars({});
+      return;
+    }
+    setTemplateVars((prev) => {
+      const next = {};
+      templateVarIndexes.forEach((i) => {
+        if (prev[i] !== undefined && prev[i] !== "") {
+          next[i] = prev[i];
+        } else if (i === 1) {
+          next[i] = selectedLead?.name || "";
+        } else if (i === 2) {
+          next[i] = vendedorNome || "";
+        } else {
+          next[i] = "";
+        }
+      });
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTemplate?.id, selectedLead?.name, vendedorNome]);
+
   const canSend =
     phone.replace(/\D/g, "").length >= 10 &&
     (message.trim().length > 0 || !!selectedTemplate) &&
@@ -201,6 +233,26 @@ export default function WhatsAppConversa() {
       toast.error("Escreva uma mensagem ou selecione um template.");
       return;
     }
+    if (
+      selectedTemplate &&
+      templateVarIndexes.some((i) => !String(templateVars[i] || "").trim())
+    ) {
+      toast.error("Preencha todas as variáveis do template.");
+      return;
+    }
+
+    const templateComponents =
+      selectedTemplate && templateVarIndexes.length > 0
+        ? [
+            {
+              type: "BODY",
+              parameters: templateVarIndexes.map((i) => ({
+                type: "text",
+                text: String(templateVars[i] || "").trim(),
+              })),
+            },
+          ]
+        : undefined;
 
     setSending(true);
     try {
@@ -211,6 +263,7 @@ export default function WhatsAppConversa() {
           phone: cleanPhone,
           message: message.trim() || undefined,
           templateId: selectedTemplate?.id || undefined,
+          templateComponents,
         }),
       });
 
@@ -457,6 +510,39 @@ export default function WhatsAppConversa() {
                 <FileText className="w-4 h-4 mr-2" />
                 Escolher template (opcional)
               </Button>
+            )}
+
+            {selectedTemplate && templateVarIndexes.length > 0 && (
+              <div className="space-y-2 p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
+                <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                  Variáveis do template
+                </p>
+                {templateVarIndexes.map((i) => (
+                  <div key={i}>
+                    <Label className="text-xs">
+                      {i === 1
+                        ? "Variável 1 — Cliente"
+                        : i === 2
+                        ? "Variável 2 — Consultor"
+                        : `Variável ${i}`}
+                    </Label>
+                    <Input
+                      value={templateVars[i] || ""}
+                      onChange={(e) =>
+                        setTemplateVars((prev) => ({
+                          ...prev,
+                          [i]: e.target.value,
+                        }))
+                      }
+                      placeholder={`Valor para {{${i}}}`}
+                      className="mt-1"
+                    />
+                  </div>
+                ))}
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {"Esses valores substituem os campos {{n}} do template."}
+                </p>
+              </div>
             )}
 
             <div>
