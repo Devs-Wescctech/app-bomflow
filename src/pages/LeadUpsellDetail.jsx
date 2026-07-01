@@ -1031,7 +1031,7 @@ export default function LeadUpsellDetail() {
                 {lead.phone && (
                   <Button
                     size="sm"
-                    onClick={() => navigate(createPageUrl("WhatsAppConversa", { phone: lead.phone, name: lead.name || "", leadType: "upsell", stage: currentStage?.label || "", agent: leadAgent?.name || "", interest: lead.interest || "" }))}
+                    onClick={() => navigate(createPageUrl("WhatsAppConversa", { phone: lead.phone, name: lead.name || "", leadId: lead.id, leadType: "upsell", stage: currentStage?.label || "", agent: leadAgent?.name || "", interest: lead.interest || "" }))}
                     className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm"
                   >
                     <MessageSquare className="w-4 h-4 mr-2" />

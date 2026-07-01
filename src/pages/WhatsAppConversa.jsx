@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { createPageUrl } from "@/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +49,13 @@ const LEAD_TYPE_LABELS = {
   pj: "Vendas PJ",
   upsell: "Upsell",
   indicacao: "Indicação",
+};
+
+const LEAD_TYPE_PAGES = {
+  pf: "LeadDetail",
+  pj: "LeadPJDetail",
+  upsell: "LeadUpsellDetail",
+  indicacao: "ReferralDetail",
 };
 
 const STAGE_LABELS = {
@@ -105,6 +113,7 @@ export default function WhatsAppConversa() {
     if (!name) return null;
     return {
       name,
+      leadId: searchParams.get("leadId") || null,
       type: searchParams.get("leadType") || null,
       stageLabel: searchParams.get("stage") || null,
       agentName: searchParams.get("agent") || null,
@@ -313,9 +322,26 @@ export default function WhatsAppConversa() {
                 <div className="mt-2 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950 px-3 py-2">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0 flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                        {selectedLead.name}
-                      </span>
+                      {selectedLead.leadId && LEAD_TYPE_PAGES[selectedLead.type] ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate(
+                              createPageUrl(LEAD_TYPE_PAGES[selectedLead.type], {
+                                id: selectedLead.leadId,
+                              })
+                            )
+                          }
+                          className="text-sm font-medium text-green-700 dark:text-green-300 truncate underline decoration-dotted underline-offset-2 hover:text-green-800 dark:hover:text-green-200"
+                          title="Abrir cadastro do lead"
+                        >
+                          {selectedLead.name}
+                        </button>
+                      ) : (
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                          {selectedLead.name}
+                        </span>
+                      )}
                       {selectedLead.type && LEAD_TYPE_LABELS[selectedLead.type] && (
                         <Badge variant="secondary" className="text-[10px] flex-shrink-0">
                           {LEAD_TYPE_LABELS[selectedLead.type]}
@@ -537,8 +563,13 @@ export default function WhatsAppConversa() {
                           const agent = agents.find(
                             (a) => String(a.id) === String(lead.agentId)
                           );
+                          const rawId =
+                            lead.id && lead.id.includes("-")
+                              ? lead.id.slice(lead.id.indexOf("-") + 1)
+                              : null;
                           setSelectedLead({
                             name: lead.name,
+                            leadId: rawId,
                             type: lead.type,
                             stageLabel:
                               (STAGE_LABELS[lead.type] || {})[lead.stage] || null,
