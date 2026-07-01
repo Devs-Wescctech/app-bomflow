@@ -394,6 +394,57 @@ export async function setContactAttributes(contactId, attributes) {
   return response.json();
 }
 
+export async function sendChatMessage({ number, message, templateId, templateComponents }) {
+  const phone = (number || '').replace(/\D/g, '');
+  if (!phone) {
+    throw new Error('Número de telefone é obrigatório');
+  }
+
+  const brazilNumber = phone.startsWith('55') ? phone : `55${phone}`;
+  const hasText = typeof message === 'string' && message.trim().length > 0;
+
+  if (!templateId && !hasText) {
+    throw new Error('Informe uma mensagem de texto ou selecione um template');
+  }
+
+  let result = {};
+  let usedFallback = false;
+
+  if (templateId) {
+    const components = Array.isArray(templateComponents) ? templateComponents : [];
+    try {
+      result = await createChat({
+        number: brazilNumber,
+        templateId,
+        templateComponents: components,
+      });
+    } catch (error) {
+      if (error.apiMessage && error.apiMessage.toLowerCase().includes('already open')) {
+        usedFallback = true;
+        result = await sendTemplate({
+          number: brazilNumber,
+          templateId,
+          templateComponents: components,
+        });
+      } else {
+        throw error;
+      }
+    }
+
+    if (hasText) {
+      try {
+        await sendTextMessage({ number: brazilNumber, message });
+      } catch (err) {
+        console.error(`[WhatsApp] Failed to send follow-up text to ${brazilNumber}:`, err.message);
+      }
+    }
+  } else {
+    result = await sendTextMessage({ number: brazilNumber, message });
+  }
+
+  return { ...result, usedFallback, brazilNumber };
+}
+
 export async function sendWhatsAppMessage(lead, agent, templateId, templateComponents) {
   const phone = lead.phone || lead.referred_phone || lead.contact_phone || lead.whatsapp || lead.cell_phone;
   

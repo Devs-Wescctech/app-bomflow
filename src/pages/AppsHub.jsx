@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
-import { LayoutGrid, Lock, BookOpen, KeyRound } from "lucide-react";
+import { LayoutGrid, Lock, BookOpen, KeyRound, MessageSquare } from "lucide-react";
 
 export default function AppsHub() {
   const { data: user } = useQuery({
@@ -27,6 +27,14 @@ export default function AppsHub() {
       icon: KeyRound,
       gradient: "from-blue-600 to-cyan-600",
       url: createPageUrl("AdminApiKeys"),
+    },
+    {
+      id: "whatsapp-conversa",
+      title: "Conversa WhatsApp",
+      description: "Inicie uma conversa com o cliente via WhatsApp. A conversa é vinculada automaticamente ao vendedor.",
+      icon: MessageSquare,
+      gradient: "from-green-600 to-emerald-600",
+      url: createPageUrl("WhatsAppConversa"),
     },
   ];
 

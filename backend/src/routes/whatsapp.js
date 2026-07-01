@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { getWhatsAppTemplates, getWhatsAppTemplatesByToken, sendWhatsAppMessage, sendWhatsAppMessageWithToken, sendTextMessageWithToken, setContactAttributes } from '../services/whatsappService.js';
+import { getWhatsAppTemplates, getWhatsAppTemplatesByToken, sendWhatsAppMessage, sendWhatsAppMessageWithToken, sendTextMessageWithToken, setContactAttributes, sendChatMessage, getContactByPhone } from '../services/whatsappService.js';
 import { query } from '../config/database.js';
 import { runAllAutomations, getAutomationLogs } from '../services/automationService.js';
 import { createLeadWhatsAppContact, getLeadWhatsAppContacts } from '../services/leadWhatsAppContactService.js';
@@ -149,6 +149,86 @@ router.post('/send-message', authMiddleware, async (req, res) => {
     ).catch(console.error);
 
     res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/send-and-tag', authMiddleware, async (req, res) => {
+  const log = (req.log && typeof req.log.error === 'function') ? req.log.error.bind(req.log) : console.error;
+  try {
+    const { phone, message, templateId, templateComponents } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'Número de telefone é obrigatório' });
+    }
+    const hasText = typeof message === 'string' && message.trim().length > 0;
+    if (!templateId && !hasText) {
+      return res.status(400).json({ success: false, message: 'Informe uma mensagem de texto ou selecione um template' });
+    }
+
+    // Vendedor is derived from the authenticated user, never trusted from the client
+    let vendedorNome = null;
+    let vendedorId = null;
+    try {
+      const agentResult = await query(
+        'SELECT id, name FROM agents WHERE (email = $1 OR user_email = $1) AND active = true LIMIT 1',
+        [req.user.email]
+      );
+      if (agentResult.rows.length > 0) {
+        vendedorId = agentResult.rows[0].id;
+        vendedorNome = agentResult.rows[0].name;
+      }
+    } catch (err) {
+      log('[WhatsApp] Failed to resolve vendedor from authenticated user:', err.message);
+    }
+    if (!vendedorId && req.user?.id) vendedorId = req.user.id;
+    if (!vendedorNome) vendedorNome = req.user?.full_name || req.user?.name || null;
+
+    // 1) Send the message to the customer
+    const sendResult = await sendChatMessage({ phone, message, templateId, templateComponents, number: phone });
+
+    // 2) Resolve the contactId (from the send response, fallback to lookup by phone)
+    let contactId = sendResult.contactId || sendResult.contact?.id || sendResult.contact?._id || null;
+    if (!contactId) {
+      try {
+        const contact = await getContactByPhone(sendResult.brazilNumber || phone);
+        contactId = contact?.id || contact?._id || null;
+      } catch (err) {
+        log('[WhatsApp] Failed to look up contact by phone for tagging:', err.message);
+      }
+    }
+
+    // 3) Tag the contact with the seller — only when seller data is present (best-effort)
+    let tagged = false;
+    if (vendedorNome && vendedorId) {
+      if (contactId) {
+        try {
+          await setContactAttributes(contactId, [
+            { key: 'vendedor_nome', value: String(vendedorNome), description: 'Nome do vendedor responsável' },
+            { key: 'vendedor_id', value: String(vendedorId), description: 'ID do vendedor no CRM' },
+          ]);
+          tagged = true;
+        } catch (err) {
+          log('[WhatsApp] Failed to set contact attributes (send not blocked):', err.message);
+        }
+      } else {
+        log('[WhatsApp] No contactId available, skipping seller tagging for', phone);
+      }
+    }
+
+    res.json({
+      success: true,
+      tagged,
+      contactId,
+      vendedor: vendedorNome ? { id: vendedorId, name: vendedorNome } : null,
+      usedFallback: sendResult.usedFallback || false,
+    });
+  } catch (error) {
+    console.error('Error in send-and-tag:', error);
+    let userMessage = error.message;
+    if (error.message?.includes('already open')) {
+      userMessage = 'Já existe uma conversa aberta com este número. Tente novamente em instantes.';
+    }
+    res.status(500).json({ success: false, message: userMessage });
   }
 });
 
