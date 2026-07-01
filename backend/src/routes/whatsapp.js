@@ -154,6 +154,10 @@ router.post('/send-message', authMiddleware, async (req, res) => {
 
 router.post('/send-and-tag', authMiddleware, async (req, res) => {
   const log = (req.log && typeof req.log.error === 'function') ? req.log.error.bind(req.log) : console.error;
+  // Vendedor is derived from the authenticated user, never trusted from the client.
+  // Declared outside the try so the error handler can still record who attempted the send.
+  let vendedorNome = null;
+  let vendedorId = null;
   try {
     const { phone, message, templateId, templateComponents } = req.body;
 
@@ -165,9 +169,6 @@ router.post('/send-and-tag', authMiddleware, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Informe uma mensagem de texto ou selecione um template' });
     }
 
-    // Vendedor is derived from the authenticated user, never trusted from the client
-    let vendedorNome = null;
-    let vendedorId = null;
     try {
       const agentResult = await query(
         'SELECT id, name FROM agents WHERE (email = $1 OR user_email = $1) AND active = true LIMIT 1',
@@ -215,6 +216,21 @@ router.post('/send-and-tag', authMiddleware, async (req, res) => {
       }
     }
 
+    // 4) Persist an audit record of the send (best-effort — never blocks the send)
+    await query(
+      `INSERT INTO automation_logs (automation_type, action_type, action_result, success)
+       VALUES ($1, $2, $3, $4)`,
+      ['manual_whatsapp', 'send_and_tag', JSON.stringify({
+        vendedor: vendedorNome ? { id: vendedorId, name: vendedorNome } : null,
+        phone,
+        templateId: templateId || null,
+        text: hasText ? message : null,
+        contactId,
+        tagged,
+        usedFallback: sendResult.usedFallback || false,
+      }), true]
+    ).catch((err) => log('[WhatsApp] Failed to log send-and-tag (send not blocked):', err.message));
+
     res.json({
       success: true,
       tagged,
@@ -224,6 +240,18 @@ router.post('/send-and-tag', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('Error in send-and-tag:', error);
+
+    await query(
+      `INSERT INTO automation_logs (automation_type, action_type, action_result, success, error_message)
+       VALUES ($1, $2, $3, $4, $5)`,
+      ['manual_whatsapp', 'send_and_tag', JSON.stringify({
+        vendedor: vendedorNome ? { id: vendedorId, name: vendedorNome } : null,
+        phone: req.body?.phone || null,
+        templateId: req.body?.templateId || null,
+        text: (typeof req.body?.message === 'string' && req.body.message.trim().length > 0) ? req.body.message : null,
+      }), false, error.message]
+    ).catch((err) => log('[WhatsApp] Failed to log send-and-tag error:', err.message));
+
     let userMessage = error.message;
     if (error.message?.includes('already open')) {
       userMessage = 'Já existe uma conversa aberta com este número. Tente novamente em instantes.';
