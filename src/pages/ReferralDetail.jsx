@@ -796,6 +796,17 @@ export default function ReferralDetail() {
                   <span className="hidden sm:inline">WhatsApp</span>
                 </Button>
               )}
+              {leadPhone && (
+                <Button
+                  onClick={() => navigate(createPageUrl("WhatsAppConversa", { phone: leadPhone, name: referral?.referredName || referral?.referred_name || "", leadType: "indicacao" }))}
+                  size="sm"
+                  title="Iniciar conversa no WhatsApp"
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Enviar WhatsApp</span>
+                </Button>
+              )}
               {isHardDeleteAllowed && (
                 <Button
                   onClick={() => setShowHardDeleteDialog(true)}

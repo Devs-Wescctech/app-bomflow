@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { upsell } from "@/api/upsellClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,20 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import WhatsAppTemplateSelector from "@/components/whatsapp/WhatsAppTemplateSelector";
 import {
   MessageSquare,
@@ -21,8 +36,17 @@ import {
   AlertCircle,
   Shield,
   Phone,
+  Users,
+  Search,
 } from "lucide-react";
 import { toast } from "sonner";
+
+const LEAD_TYPE_LABELS = {
+  pf: "Vendas PF",
+  pj: "Vendas PJ",
+  upsell: "Upsell",
+  indicacao: "Indicação",
+};
 
 const API_BASE = "/api";
 
@@ -36,8 +60,14 @@ function authHeaders() {
 
 export default function WhatsAppConversa() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(searchParams.get("phone") || "");
+  const [selectedLead, setSelectedLead] = useState(() => {
+    const name = searchParams.get("name");
+    return name ? { name, type: searchParams.get("leadType") || null } : null;
+  });
+  const [leadSelectorOpen, setLeadSelectorOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [templateSelectorOpen, setTemplateSelectorOpen] = useState(false);
@@ -53,6 +83,35 @@ export default function WhatsAppConversa() {
     queryKey: ["agents"],
     queryFn: () => base44.entities.Agent.list(),
     initialData: [],
+  });
+
+  const { data: leadOptions = [], isFetching: leadsLoading } = useQuery({
+    queryKey: ["whatsappConversaLeads"],
+    queryFn: async () => {
+      const [pf, pj, ups, ind] = await Promise.all([
+        base44.entities.Lead.list().catch(() => []),
+        base44.entities.LeadPJ.list().catch(() => []),
+        upsell.entities.LeadUpsell.list().catch(() => []),
+        base44.entities.Referral.list().catch(() => []),
+      ]);
+      const norm = (items, type, getPhone, getName) =>
+        (items || [])
+          .map((l) => ({
+            id: `${type}-${l.id}`,
+            type,
+            name: (getName(l) || "").toString().trim(),
+            phone: (getPhone(l) || "").toString().trim(),
+          }))
+          .filter((l) => l.phone && l.phone.replace(/\D/g, "").length >= 10);
+      return [
+        ...norm(pf, "pf", (l) => l.phone, (l) => l.name),
+        ...norm(pj, "pj", (l) => l.contact_phone || l.phone, (l) => l.company_name || l.name),
+        ...norm(ups, "upsell", (l) => l.phone, (l) => l.name),
+        ...norm(ind, "indicacao", (l) => l.referredPhone || l.referred_phone, (l) => l.referredName || l.referred_name),
+      ];
+    },
+    enabled: leadSelectorOpen,
+    staleTime: 60_000,
   });
 
   const currentAgent = agents.find((a) => a.user_email === user?.email);
@@ -196,6 +255,41 @@ export default function WhatsAppConversa() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => setLeadSelectorOpen(true)}
+              >
+                <Users className="w-4 h-4 mr-2" />
+                {selectedLead?.name
+                  ? `Lead: ${selectedLead.name}`
+                  : "Selecionar um lead (opcional)"}
+              </Button>
+              {selectedLead && (
+                <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950 px-3 py-2">
+                  <div className="min-w-0 flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                      {selectedLead.name}
+                    </span>
+                    {selectedLead.type && LEAD_TYPE_LABELS[selectedLead.type] && (
+                      <Badge variant="secondary" className="text-[10px] flex-shrink-0">
+                        {LEAD_TYPE_LABELS[selectedLead.type]}
+                      </Badge>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 flex-shrink-0"
+                    onClick={() => setSelectedLead(null)}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
+            <div>
               <Label className="text-sm">Número do WhatsApp *</Label>
               <Input
                 value={phone}
@@ -321,6 +415,67 @@ export default function WhatsAppConversa() {
         onSelect={(t) => setSelectedTemplate(t)}
         accentColor="green"
       />
+
+      <Dialog open={leadSelectorOpen} onOpenChange={setLeadSelectorOpen}>
+        <DialogContent className="max-w-md p-0 overflow-hidden">
+          <DialogHeader className="px-4 pt-4">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Users className="w-4 h-4" />
+              Selecionar lead
+            </DialogTitle>
+          </DialogHeader>
+          <Command
+            filter={(value, search) =>
+              value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0
+            }
+          >
+            <CommandInput placeholder="Buscar por nome ou telefone..." />
+            <CommandList className="max-h-72">
+              {leadsLoading ? (
+                <div className="flex items-center justify-center py-8 text-sm text-gray-500">
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Carregando leads...
+                </div>
+              ) : (
+                <>
+                  <CommandEmpty>
+                    <div className="flex flex-col items-center py-6 text-sm text-gray-500">
+                      <Search className="w-5 h-5 mb-2 opacity-50" />
+                      Nenhum lead encontrado.
+                    </div>
+                  </CommandEmpty>
+                  <CommandGroup>
+                    {leadOptions.map((lead) => (
+                      <CommandItem
+                        key={lead.id}
+                        value={`${lead.name} ${lead.phone}`}
+                        onSelect={() => {
+                          setPhone(lead.phone);
+                          setSelectedLead({ name: lead.name, type: lead.type });
+                          setLeadSelectorOpen(false);
+                        }}
+                        className="flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {lead.name || "Sem nome"}
+                          </p>
+                          <p className="text-xs text-gray-500 truncate">
+                            {lead.phone}
+                          </p>
+                        </div>
+                        <Badge variant="secondary" className="text-[10px] flex-shrink-0">
+                          {LEAD_TYPE_LABELS[lead.type]}
+                        </Badge>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
+            </CommandList>
+          </Command>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

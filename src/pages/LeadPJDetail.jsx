@@ -873,6 +873,16 @@ export default function LeadPJDetail() {
                     {lead.contact_phone}
                   </Button>
                 )}
+                {lead.contact_phone && (
+                  <Button
+                    size="sm"
+                    onClick={() => navigate(createPageUrl("WhatsAppConversa", { phone: lead.contact_phone, name: lead.contact_name || lead.company_name || lead.razao_social || "", leadType: "pj" }))}
+                    className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm"
+                  >
+                    <MessageSquare className="w-4 h-4 mr-2" />
+                    Enviar WhatsApp
+                  </Button>
+                )}
                 {lead.contact_email && (
                   <Button
                     size="sm"

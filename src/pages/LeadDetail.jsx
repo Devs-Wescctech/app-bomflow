@@ -935,6 +935,16 @@ export default function LeadDetail() {
                     {lead.phone}
                   </Button>
                 )}
+                {lead.phone && (
+                  <Button
+                    size="sm"
+                    onClick={() => navigate(createPageUrl("WhatsAppConversa", { phone: lead.phone, name: lead.name || "", leadType: "pf" }))}
+                    className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm"
+                  >
+                    <MessageSquare className="w-4 h-4 mr-2" />
+                    Enviar WhatsApp
+                  </Button>
+                )}
                 {lead.email && (
                   <Button
                     size="sm"
