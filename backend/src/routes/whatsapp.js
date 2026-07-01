@@ -228,6 +228,13 @@ router.post('/send-and-tag', authMiddleware, async (req, res) => {
         contactId,
         tagged,
         usedFallback: sendResult.usedFallback || false,
+        whuResponse: {
+          msg: sendResult.msg || sendResult.message || null,
+          status: sendResult.status || null,
+          chatId: sendResult.chatId || sendResult.currentChatId || sendResult.chat_id || null,
+          messageSentId:
+            sendResult.messageSentId || sendResult.message_sent_id || sendResult.id || null,
+        },
       }), true]
     ).catch((err) => log('[WhatsApp] Failed to log send-and-tag (send not blocked):', err.message));
 

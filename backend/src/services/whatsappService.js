@@ -205,11 +205,25 @@ export async function sendTemplate(params) {
 
   const { number, templateId, templateComponents } = params;
 
+  // WHU's /chats/send-template expects the components under the lowercase key
+  // `templatecomponents` with lowercase component `type` (e.g. "body"), unlike
+  // /chats/create-new which uses `quickAnswerComponents` with uppercase "BODY".
+  // Sending the camelCase/uppercase shape here makes WHU return 200 but silently
+  // drop the template parameters, so the message is never delivered. This mirrors
+  // the proven high-volume payload used by whatsappQueueService.
+  const normalizedComponents = Array.isArray(templateComponents)
+    ? templateComponents.map((c) => ({
+        ...c,
+        type: typeof c.type === 'string' ? c.type.toLowerCase() : c.type,
+      }))
+    : [];
+
   const body = {
     number: number.replace(/\D/g, ''),
     templateId: templateId,
-    templateComponents: templateComponents || [],
     forceSend: true,
+    verifyContact: false,
+    templatecomponents: normalizedComponents,
   };
 
   const response = await fetch(`${RUDO_API_BASE}/chats/send-template`, {
