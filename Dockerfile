@@ -18,7 +18,8 @@ FROM node:20-alpine AS backend-deps
 WORKDIR /app/backend
 
 COPY backend/package.json backend/package-lock.json* ./
-RUN npm ci --omit=dev || npm install --omit=dev
+RUN sed -i 's#http://package-firewall.replit.local/npm/#https://registry.npmjs.org/#g' package-lock.json \
+    && (npm ci --omit=dev || npm install --omit=dev)
 
 FROM node:20-alpine
 
