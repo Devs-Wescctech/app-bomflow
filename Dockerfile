@@ -1,14 +1,11 @@
-FROM node:22-alpine AS frontend-build
+FROM node:20-alpine AS frontend-build
 
 WORKDIR /app
 
-ENV NODE_OPTIONS=--max-old-space-size=4096
-ENV NPM_CONFIG_UPDATE_NOTIFIER=false
-
 COPY package.json package-lock.json ./
-RUN npm install -g npm@11 \
+RUN sed -i 's#http://package-firewall.replit.local/npm/#https://registry.npmjs.org/#g' package-lock.json \
     && echo "legacy-peer-deps=true" > .npmrc \
-    && npm install --legacy-peer-deps --no-audit --no-fund --maxsockets 3
+    && npm ci --legacy-peer-deps
 
 COPY index.html vite.config.js tailwind.config.js postcss.config.js jsconfig.json components.json ./
 COPY src/ ./src/
