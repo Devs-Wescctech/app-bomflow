@@ -3,7 +3,9 @@ FROM node:20-alpine AS frontend-build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN echo "legacy-peer-deps=true" > .npmrc && npm ci --legacy-peer-deps
+RUN npm install -g npm@10.9.2 \
+    && echo "legacy-peer-deps=true" > .npmrc \
+    && npm install --legacy-peer-deps --no-audit --no-fund
 
 COPY index.html vite.config.js tailwind.config.js postcss.config.js jsconfig.json components.json ./
 COPY src/ ./src/
