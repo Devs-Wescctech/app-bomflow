@@ -213,6 +213,15 @@ router.post('/conversations/:attendanceId/finalize', async (req, res) => {
 // O arquivo NÃO passa pelo backend — o frontend faz PUT direto na uploadURL.
 router.post('/conversations/:attendanceId/media/request-url', async (req, res) => {
   try {
+    // Envio de mídia depende do Object Storage do Replit (sidecar local +
+    // PRIVATE_OBJECT_DIR), que não existe fora do Replit. Em produção o recurso
+    // fica desativado com uma mensagem clara, sem derrubar o restante do chat.
+    if (!process.env.PRIVATE_OBJECT_DIR) {
+      return res.status(503).json({
+        message: 'Envio de mídia indisponível neste ambiente.',
+      });
+    }
+
     const { error, statusCode } = await loadAuthorizedChat(req, req.params.attendanceId);
     if (error) return res.status(statusCode).json({ message: error });
 
@@ -232,6 +241,12 @@ router.post('/conversations/:attendanceId/media/request-url', async (req, res) =
 // pública (servida por /api/whatsapp-media/*) e dispara o envio na conversa.
 router.post('/conversations/:attendanceId/send-media', async (req, res) => {
   try {
+    if (!process.env.PRIVATE_OBJECT_DIR) {
+      return res.status(503).json({
+        message: 'Envio de mídia indisponível neste ambiente.',
+      });
+    }
+
     const { objectPath, fileName, caption = '' } = req.body || {};
     if (!objectPath || !fileName) {
       return res.status(400).json({ message: 'objectPath e fileName são obrigatórios' });

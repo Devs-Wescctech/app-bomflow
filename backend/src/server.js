@@ -68,6 +68,11 @@ app.use('/proposals', express.static(path.join(__dirname, '../public/proposals')
 // não-adivinhável gerado no upload.
 app.get('/api/whatsapp-media/:objectId', async (req, res) => {
   try {
+    // Object Storage do Replit indisponível fora do Replit: retorna mensagem
+    // clara em vez de erro genérico (o restante do sistema não é afetado).
+    if (!process.env.PRIVATE_OBJECT_DIR) {
+      return res.status(503).json({ message: 'Mídia indisponível neste ambiente.' });
+    }
     const { objectId } = req.params;
     if (!/^[A-Za-z0-9-]+$/.test(objectId)) {
       return res.status(400).json({ message: 'Identificador inválido' });
