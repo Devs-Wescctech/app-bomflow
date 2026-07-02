@@ -877,7 +877,7 @@ export default function LeadDetail() {
           <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-white/10 blur-3xl" />
           <div className="absolute -left-32 -bottom-32 h-96 w-96 rounded-full bg-blue-400/20 blur-3xl" />
           
-          <div className="relative z-10 flex flex-col lg:flex-row lg:items-start gap-6">
+          <div className="relative z-10 flex flex-col md:flex-row md:items-start gap-6">
             {/* Avatar */}
             <div className="relative shrink-0">
               <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-white/20 text-4xl font-bold text-white shadow-xl backdrop-blur-sm border border-white/20">
@@ -973,7 +973,7 @@ export default function LeadDetail() {
             </div>
 
             {/* Metrics */}
-            <div className="grid grid-cols-2 lg:grid-cols-1 gap-3 shrink-0">
+            <div className="grid grid-cols-2 md:grid-cols-1 gap-3 shrink-0">
               <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/10">
                 <p className="text-white/70 text-xs uppercase tracking-wide">Valor Estimado</p>
                 <p className="text-2xl font-bold text-white">
@@ -1030,9 +1030,9 @@ export default function LeadDetail() {
         )}
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Left Column: Tabs */}
-          <div className="lg:col-span-2">
+          <div className="md:col-span-2">
             <Tabs defaultValue="activities" className="w-full">
               <TabsList className="grid w-full grid-cols-5 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-1.5 shadow-sm">
                 <TabsTrigger 
@@ -1703,7 +1703,7 @@ export default function LeadDetail() {
           </div>
 
           {/* COLUNA DIREITA: Agente + Info + Valores (1/3) */}
-          <div className="lg:col-span-1 space-y-6">
+          <div className="md:col-span-1 space-y-6">
             {/* Agente Responsável */}
             {agents.find(a => a.id === leadAgentId) && (
               <Card className="border-blue-200 dark:border-blue-800 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
