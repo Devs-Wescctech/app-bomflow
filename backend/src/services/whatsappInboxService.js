@@ -1,16 +1,18 @@
 import { query } from '../config/database.js';
+import { normalizeBrazilPhone } from '../utils/phone.js';
 
 // Últimos 8 dígitos: reconcilia o número recebido do WHU (sem o 9 extra) com o número
-// que enviamos (com o 9). Usado como chave única de conversa.
+// que enviamos (com o 9). Como o assinante de 8 dígitos é o mesmo com ou sem o 9,
+// essa chave é estável entre as duas variantes (normalizamos antes por segurança).
 export function phoneKeyOf(phone) {
-  const digits = String(phone || '').replace(/\D/g, '');
+  const digits = normalizeBrazilPhone(phone) || String(phone || '').replace(/\D/g, '');
   return digits.slice(-8);
 }
 
+// Formato canônico único (só dígitos, com 55 e o nono dígito dos celulares),
+// usado como wa_number persistido da conversa.
 export function normalizeNumber(phone) {
-  const digits = String(phone || '').replace(/\D/g, '');
-  if (!digits) return '';
-  return digits.startsWith('55') ? digits : `55${digits}`;
+  return normalizeBrazilPhone(phone);
 }
 
 // Cria/atualiza a conversa por phone_key. Só sobrescreve campos quando um novo valor é
