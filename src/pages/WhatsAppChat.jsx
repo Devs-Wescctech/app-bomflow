@@ -4,22 +4,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import WhatsAppTemplateSelector from "@/components/whatsapp/WhatsAppTemplateSelector";
+import NewConversationDialog from "@/components/whatsapp/NewConversationDialog";
 import { base44 } from "@/api/base44Client";
 import { isAdminUser } from "@/components/utils/permissions";
 import {
@@ -34,25 +20,13 @@ import {
   CheckCheck,
   FileText,
   X,
-  Bot,
-  Clock,
-  Headphones,
-  CheckCircle2,
-  ArrowRightLeft,
   Paperclip,
   ShieldX,
+  Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 
 const API_BASE = "/api";
-
-// Abas por status da conversa na WesccTech.
-const STATUS_TABS = [
-  { value: 0, label: "IA", icon: Bot, color: "violet" },
-  { value: 1, label: "Fila", icon: Clock, color: "amber" },
-  { value: 2, label: "Atendimento", icon: Headphones, color: "teal" },
-  { value: 3, label: "Resolvido", icon: CheckCircle2, color: "gray" },
-];
 
 function authHeaders() {
   const token = localStorage.getItem("accessToken");
@@ -94,24 +68,20 @@ function dayLabel(iso) {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
 }
 
-// Data de referência de uma conversa para ordenação/prévia.
-function convDate(c) {
-  return c.lastMessage?.utcDhMessage || c.lastSentMessageDate || c.lastReceivedMessageDate || c.utcDhStartChat;
-}
-
 function convName(c) {
-  return c.contact?.name || c.contact?.secondaryName || c.description || c.contact?.number || "Contato";
+  return c?.name || c?.wa_number || "Contato";
 }
 
 function convNumber(c) {
-  return c.contact?.number || c.secondaryDescription || "";
+  return c?.wa_number || "";
 }
 
 // Ícone de status de entrega para mensagens enviadas por nós.
 function DeliveryStatus({ status }) {
-  if (status === 3) return <CheckCheck className="w-3.5 h-3.5 text-sky-400" />;
-  if (status === 2) return <CheckCheck className="w-3.5 h-3.5 text-gray-400" />;
-  return <Check className="w-3.5 h-3.5 text-gray-400" />;
+  const s = String(status || "").toLowerCase();
+  if (s === "read" || s === "3") return <CheckCheck className="w-3.5 h-3.5 text-sky-100" />;
+  if (s === "delivered" || s === "2") return <CheckCheck className="w-3.5 h-3.5 text-teal-100" />;
+  return <Check className="w-3.5 h-3.5 text-teal-100" />;
 }
 
 export default function WhatsAppChat() {
@@ -123,73 +93,62 @@ export default function WhatsAppChat() {
     queryFn: () => base44.auth.me(),
   });
 
-  const [status, setStatus] = useState(2);
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState(null); // conversa selecionada (item da lista)
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [selectedId, setSelectedId] = useState(null);
   const [message, setMessage] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [templateVars, setTemplateVars] = useState({});
   const [templateOpen, setTemplateOpen] = useState(false);
   const [sending, setSending] = useState(false);
-  const [uploadingMedia, setUploadingMedia] = useState(false);
-  const fileInputRef = useRef(null);
-  const [transferOpen, setTransferOpen] = useState(false);
-  const [transferUserId, setTransferUserId] = useState("");
-  const [transferSectorId, setTransferSectorId] = useState("");
-  const [transferring, setTransferring] = useState(false);
-  const [finalizeOpen, setFinalizeOpen] = useState(false);
-  const [finalizeMsg, setFinalizeMsg] = useState(true);
-  const [finalizeResearch, setFinalizeResearch] = useState(true);
-  const [finalizing, setFinalizing] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
   const messagesEndRef = useRef(null);
 
-  const selectedId = selected?.attendanceId || null;
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
-  // Lista de conversas do status ativo. Polling: resolvidos 30s, demais 15s.
-  const { data: listData, isLoading: convsLoading } = useQuery({
-    queryKey: ["waChatConversations", status],
+  // Lista de conversas do vendedor (admin/supervisor veem todas). Polling 12s.
+  const { data: conversations = [], isLoading: convsLoading } = useQuery({
+    queryKey: ["waInboxConversations", debouncedSearch],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/whatsapp-chat/conversations?status=${status}&page=0`, {
-        headers: authHeaders(),
-      });
+      const res = await fetch(
+        `${API_BASE}/whatsapp-inbox/conversations?search=${encodeURIComponent(debouncedSearch)}`,
+        { headers: authHeaders() }
+      );
       if (!res.ok) throw new Error("Falha ao carregar conversas");
       return res.json();
     },
-    refetchInterval: status === 3 ? 30000 : 15000,
+    refetchInterval: 12000,
     staleTime: 5000,
   });
 
-  const conversations = useMemo(() => {
-    const chats = Array.isArray(listData?.chats) ? [...listData.chats] : [];
-    const term = search.trim().toLowerCase();
-    const filtered = term
-      ? chats.filter((c) => {
-          const n = convName(c).toLowerCase();
-          const num = convNumber(c).toLowerCase();
-          return n.includes(term) || num.includes(term);
-        })
-      : chats;
-    return filtered.sort((a, b) => new Date(convDate(b) || 0) - new Date(convDate(a) || 0));
-  }, [listData, search]);
-
-  // Thread da conversa aberta. Polling 10s.
+  // Thread da conversa aberta (com backfill do WHU). Polling 6s para fluidez.
   const { data: threadData, isLoading: threadLoading } = useQuery({
-    queryKey: ["waChatThread", selectedId],
+    queryKey: ["waInboxThread", selectedId],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/whatsapp-chat/conversations/${selectedId}/messages`, {
-        headers: authHeaders(),
-      });
+      const res = await fetch(
+        `${API_BASE}/whatsapp-inbox/conversations/${selectedId}/messages?backfill=1`,
+        { headers: authHeaders() }
+      );
       if (!res.ok) throw new Error("Falha ao carregar mensagens");
       return res.json();
     },
     enabled: !!selectedId,
-    refetchInterval: selectedId ? 10000 : false,
+    refetchInterval: selectedId ? 6000 : false,
   });
 
   const messages = useMemo(() => {
     const list = Array.isArray(threadData?.messages) ? threadData.messages : [];
-    return list.filter((m) => !m.isSystemMessage && (m.text || "").length > 0);
+    return list.filter((m) => (m.text || "").length > 0);
   }, [threadData]);
+
+  const selected = useMemo(() => {
+    if (!selectedId) return null;
+    const fromList = conversations.find((c) => c.id === selectedId);
+    return fromList || threadData?.conversation || null;
+  }, [selectedId, conversations, threadData]);
 
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -197,140 +156,64 @@ export default function WhatsAppChat() {
     }
   }, [messages.length, selectedId]);
 
-  // Ao trocar de status, limpa a seleção que não pertence mais à lista.
-  useEffect(() => {
-    setSelected(null);
-  }, [status]);
-
   const groupedMessages = useMemo(() => {
     const groups = [];
     let currentDay = null;
     for (const m of messages) {
-      const iso = m.dhMessage || (m.unixTimeMessage ? new Date(m.unixTimeMessage * 1000).toISOString() : null);
+      const iso = m.sent_at || null;
       const label = dayLabel(iso);
       if (label !== currentDay) {
         currentDay = label;
-        groups.push({ type: "day", label, key: `day-${label}-${m.IdMessage}` });
+        groups.push({ type: "day", label, key: `day-${label}-${m.id}` });
       }
-      groups.push({ type: "msg", msg: m, iso, key: m.IdMessage });
+      groups.push({ type: "msg", msg: m, iso, key: m.id });
     }
     return groups;
   }, [messages]);
 
+  // Marca como lida ao abrir e limpa o compositor.
+  const handleSelect = async (conv) => {
+    setSelectedId(conv.id);
+    setMessage("");
+    setSelectedTemplate(null);
+    setTemplateVars({});
+    if (conv.unread_count > 0) {
+      try {
+        await fetch(`${API_BASE}/whatsapp-inbox/conversations/${conv.id}/read`, {
+          method: "POST",
+          headers: authHeaders(),
+        });
+        queryClient.invalidateQueries({ queryKey: ["waInboxConversations"] });
+      } catch {
+        /* best-effort */
+      }
+    }
+  };
+
   const templateBody = useMemo(() => {
     if (!selectedTemplate) return null;
     const t = selectedTemplate;
-    const body =
-      t.dynamicComponents?.find((c) => c.type === "BODY") ||
-      t.staticComponents?.find((c) => c.type === "BODY");
-    return body?.text || t.description || t.name || null;
+    if (t.dynamicComponents) {
+      const body = t.dynamicComponents.find((c) => c.type === "BODY");
+      if (body?.text) return body.text;
+    }
+    if (t.staticComponents) {
+      const body = t.staticComponents.find((c) => c.type === "BODY");
+      if (body?.text) return body.text;
+    }
+    return t.description || t.name || null;
   }, [selectedTemplate]);
 
   const templateVarIndexes = useMemo(() => {
     if (!templateBody) return [];
-    const found = [...templateBody.matchAll(/\{\{\s*(\d+)\s*\}\}/g)].map((m) => parseInt(m[1], 10));
+    const found = [...templateBody.matchAll(/\{\{\s*(\d+)\s*\}\}/g)].map((m) =>
+      parseInt(m[1], 10)
+    );
     return [...new Set(found)].sort((a, b) => a - b);
   }, [templateBody]);
 
-  useEffect(() => {
-    if (!selectedTemplate) {
-      setTemplateVars({});
-      return;
-    }
-    setTemplateVars((prev) => {
-      const next = {};
-      templateVarIndexes.forEach((i) => {
-        if (prev[i] !== undefined && prev[i] !== "") next[i] = prev[i];
-        else if (i === 1) next[i] = selected ? convName(selected) : "";
-        else next[i] = "";
-      });
-      return next;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTemplate?.id, selectedId]);
-
-  // Usuários (com seus setores) para a transferência. Carregado só quando o diálogo abre.
-  const { data: waUsers = [], isLoading: usersLoading } = useQuery({
-    queryKey: ["waChatUsers"],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}/whatsapp-chat/users`, { headers: authHeaders() });
-      if (!res.ok) throw new Error("Falha ao carregar atendentes");
-      return res.json();
-    },
-    enabled: transferOpen,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const transferUser = useMemo(
-    () => (Array.isArray(waUsers) ? waUsers.find((u) => u.id === transferUserId) : null),
-    [waUsers, transferUserId]
-  );
-  const transferSectors = transferUser?.sectors || [];
-
-  const handleSelect = (conv) => {
-    setSelected(conv);
-    setMessage("");
-    setSelectedTemplate(null);
-  };
-
-  const openTransfer = () => {
-    setTransferUserId("");
-    setTransferSectorId("");
-    setTransferOpen(true);
-  };
-
-  const handleTransfer = async () => {
-    if (!selectedId || !transferUserId || !transferSectorId) {
-      toast.error("Selecione o atendente e o setor.");
-      return;
-    }
-    setTransferring(true);
-    try {
-      const res = await fetch(`${API_BASE}/whatsapp-chat/conversations/${selectedId}/transfer`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ userId: transferUserId, sectorId: transferSectorId }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) throw new Error(data.message || "Falha ao transferir.");
-      toast.success("Conversa transferida.");
-      setTransferOpen(false);
-      setSelected(null);
-      queryClient.invalidateQueries({ queryKey: ["waChatConversations"] });
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setTransferring(false);
-    }
-  };
-
-  const handleFinalize = async () => {
-    if (!selectedId) return;
-    setFinalizing(true);
-    try {
-      const res = await fetch(`${API_BASE}/whatsapp-chat/conversations/${selectedId}/finalize`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({
-          sendMessageFinalized: finalizeMsg,
-          sendResearchSatisfaction: finalizeResearch,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) throw new Error(data.message || "Falha ao finalizar.");
-      toast.success("Conversa finalizada.");
-      setFinalizeOpen(false);
-      setSelected(null);
-      queryClient.invalidateQueries({ queryKey: ["waChatConversations"] });
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setFinalizing(false);
-    }
-  };
-
   const handleSend = async () => {
-    if (!selected) return;
+    if (!selectedId) return;
     const hasText = message.trim().length > 0;
     if (!selectedTemplate && !hasText) return;
     if (
@@ -357,13 +240,11 @@ export default function WhatsAppChat() {
     setSending(true);
     try {
       const res = await fetch(
-        `${API_BASE}/whatsapp-chat/conversations/${selectedId}/send`,
+        `${API_BASE}/whatsapp-inbox/conversations/${selectedId}/reply`,
         {
           method: "POST",
           headers: authHeaders(),
           body: JSON.stringify({
-            number: convNumber(selected),
-            contactId: selected.contact?.id || undefined,
             message: hasText ? message.trim() : undefined,
             templateId: selectedTemplate?.id || undefined,
             templateComponents,
@@ -376,9 +257,9 @@ export default function WhatsAppChat() {
       }
       setMessage("");
       setSelectedTemplate(null);
-      toast.success("Mensagem enviada.");
-      queryClient.invalidateQueries({ queryKey: ["waChatThread", selectedId] });
-      queryClient.invalidateQueries({ queryKey: ["waChatConversations", status] });
+      setTemplateVars({});
+      queryClient.invalidateQueries({ queryKey: ["waInboxThread", selectedId] });
+      queryClient.invalidateQueries({ queryKey: ["waInboxConversations"] });
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -386,79 +267,20 @@ export default function WhatsAppChat() {
     }
   };
 
-  const MAX_MEDIA_BYTES = 16 * 1024 * 1024; // 16 MB (limite do WhatsApp)
-
-  const handleFilePick = () => {
-    if (uploadingMedia || sending) return;
-    fileInputRef.current?.click();
+  // Mídia em standby: definido com o usuário que a persistência será feita no ambiente de
+  // produção. Aqui apenas sinalizamos, sem salvar nada no Replit/Storage.
+  const handleMediaStandby = () => {
+    toast.info("Envio de mídia em configuração — disponível em breve.");
   };
 
-  const handleFileSelected = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // permite reenviar o mesmo arquivo depois
-    if (!file || !selected) return;
-
-    if (file.size > MAX_MEDIA_BYTES) {
-      toast.error("Arquivo muito grande. Máximo de 16 MB.");
-      return;
-    }
-
-    setUploadingMedia(true);
-    try {
-      // Passo 1: pedir a URL de upload direto ao Object Storage.
-      const urlRes = await fetch(
-        `${API_BASE}/whatsapp-chat/conversations/${selectedId}/media/request-url`,
-        {
-          method: "POST",
-          headers: authHeaders(),
-          body: JSON.stringify({
-            name: file.name,
-            size: file.size,
-            contentType: file.type,
-          }),
-        }
-      );
-      const urlData = await urlRes.json().catch(() => ({}));
-      if (!urlRes.ok || !urlData.uploadURL) {
-        throw new Error(urlData.message || "Falha ao preparar o upload.");
-      }
-
-      // Passo 2: PUT direto do arquivo na URL assinada (sem cabeçalho de auth).
-      const putRes = await fetch(urlData.uploadURL, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: file,
-      });
-      if (!putRes.ok) {
-        throw new Error("Falha ao enviar o arquivo para o armazenamento.");
-      }
-
-      // Passo 3: disparar o envio da mídia na conversa.
-      const sendRes = await fetch(
-        `${API_BASE}/whatsapp-chat/conversations/${selectedId}/send-media`,
-        {
-          method: "POST",
-          headers: authHeaders(),
-          body: JSON.stringify({
-            objectPath: urlData.objectPath,
-            fileName: file.name,
-            caption: message.trim() || undefined,
-          }),
-        }
-      );
-      const sendData = await sendRes.json().catch(() => ({}));
-      if (!sendRes.ok || !sendData.success) {
-        throw new Error(sendData.message || "Falha ao enviar a mídia.");
-      }
-
+  // Após iniciar uma nova conversa, atualiza a lista e abre a conversa criada.
+  const handleCreated = async ({ conversationId }) => {
+    await queryClient.invalidateQueries({ queryKey: ["waInboxConversations"] });
+    if (conversationId) {
+      setSelectedId(conversationId);
       setMessage("");
-      toast.success("Mídia enviada.");
-      queryClient.invalidateQueries({ queryKey: ["waChatThread", selectedId] });
-      queryClient.invalidateQueries({ queryKey: ["waChatConversations", status] });
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setUploadingMedia(false);
+      setSelectedTemplate(null);
+      setTemplateVars({});
     }
   };
 
@@ -490,39 +312,25 @@ export default function WhatsAppChat() {
         </div>
         <div>
           <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">Chat WhatsApp</h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Conversas em tempo real</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Suas conversas com clientes</p>
         </div>
+        <Button
+          onClick={() => setNewOpen(true)}
+          className="ml-auto gap-1.5 bg-teal-500 hover:bg-teal-600 text-white"
+          size="sm"
+        >
+          <Plus className="w-4 h-4" />
+          <span className="hidden sm:inline">Nova conversa</span>
+        </Button>
       </div>
 
       <div className="flex-1 min-h-0 flex">
-        {/* Coluna esquerda: abas + lista */}
+        {/* Coluna esquerda: lista */}
         <div
           className={`w-full md:w-80 lg:w-96 flex-shrink-0 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col ${
             selectedId ? "hidden md:flex" : "flex"
           }`}
         >
-          {/* Abas por status */}
-          <div className="grid grid-cols-4 gap-1 p-2 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
-            {STATUS_TABS.map((tab) => {
-              const Icon = tab.icon;
-              const active = tab.value === status;
-              return (
-                <button
-                  key={tab.value}
-                  onClick={() => setStatus(tab.value)}
-                  className={`flex flex-col items-center gap-1 py-2 rounded-lg text-xs font-medium transition-colors ${
-                    active
-                      ? "bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300"
-                      : "text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800/40"
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-
           <div className="p-3 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -548,22 +356,23 @@ export default function WhatsAppChat() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    Nenhuma conversa aqui
+                    Nenhuma conversa ainda
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Não há conversas neste status no momento.
+                    Clique em "Nova conversa" para começar.
                   </p>
                 </div>
               </div>
             ) : (
               conversations.map((conv) => {
-                const active = conv.attendanceId === selectedId;
+                const active = conv.id === selectedId;
                 const name = convName(conv);
-                const preview = conv.textLastMessage || conv.lastMessage?.text || "";
-                const unread = conv.countUnreadMessages || 0;
+                const preview = conv.last_message_text || "";
+                const unread = conv.unread_count || 0;
+                const isOutLast = conv.last_direction === "out";
                 return (
                   <button
-                    key={conv.attendanceId}
+                    key={conv.id}
                     onClick={() => handleSelect(conv)}
                     className={`w-full flex items-center gap-3 px-3 py-3 text-left border-b border-gray-100 dark:border-gray-800/60 transition-colors ${
                       active
@@ -572,8 +381,8 @@ export default function WhatsAppChat() {
                     }`}
                   >
                     <div className="relative flex-shrink-0">
-                      {conv.linkImage && !conv.linkImage.includes("avatar-default") ? (
-                        <img src={conv.linkImage} alt={name} className="w-11 h-11 rounded-full object-cover" />
+                      {conv.avatar_url && !conv.avatar_url.includes("avatar-default") ? (
+                        <img src={conv.avatar_url} alt={name} className="w-11 h-11 rounded-full object-cover" />
                       ) : (
                         <div className="w-11 h-11 rounded-full bg-gradient-to-br from-gray-300 to-gray-400 dark:from-gray-600 dark:to-gray-700 flex items-center justify-center">
                           <User className="w-5 h-5 text-white" />
@@ -586,22 +395,23 @@ export default function WhatsAppChat() {
                           {name}
                         </p>
                         <span className="text-[11px] text-gray-400 flex-shrink-0">
-                          {formatListTime(convDate(conv))}
+                          {formatListTime(conv.last_message_at)}
                         </span>
                       </div>
                       <div className="flex items-center justify-between gap-2 mt-0.5">
                         <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                          {preview || "—"}
+                          {isOutLast && <span className="text-gray-400">Você: </span>}
+                          {preview || convNumber(conv)}
                         </p>
                         {unread > 0 && (
-                          <span className="flex-shrink-0 min-w-[18px] h-[18px] px-1.5 rounded-full bg-teal-500 text-white text-[10px] font-bold flex items-center justify-center">
-                            {unread}
+                          <span className="flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-teal-500 text-white text-[10px] font-bold flex items-center justify-center">
+                            {unread > 99 ? "99+" : unread}
                           </span>
                         )}
                       </div>
-                      {conv.currentUser?.name && (
-                        <p className="text-[10px] text-gray-400 mt-0.5 truncate">
-                          Responsável: {conv.currentUser.name}
+                      {isAdmin && conv.vendedor_nome && (
+                        <p className="text-[10px] text-gray-400 truncate mt-0.5">
+                          Vendedor: {conv.vendedor_nome}
                         </p>
                       )}
                     </div>
@@ -622,6 +432,9 @@ export default function WhatsAppChat() {
               <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">
                 Selecione uma conversa
               </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                ou inicie uma nova pelo botão "Nova conversa".
+              </p>
             </div>
           ) : (
             <>
@@ -631,12 +444,12 @@ export default function WhatsAppChat() {
                   variant="ghost"
                   size="icon"
                   className="md:hidden flex-shrink-0"
-                  onClick={() => setSelected(null)}
+                  onClick={() => setSelectedId(null)}
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </Button>
-                {selected.linkImage && !selected.linkImage.includes("avatar-default") ? (
-                  <img src={selected.linkImage} alt={convName(selected)} className="w-10 h-10 rounded-full object-cover" />
+                {selected.avatar_url && !selected.avatar_url.includes("avatar-default") ? (
+                  <img src={selected.avatar_url} alt={convName(selected)} className="w-10 h-10 rounded-full object-cover" />
                 ) : (
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-300 to-gray-400 dark:from-gray-600 dark:to-gray-700 flex items-center justify-center">
                     <User className="w-5 h-5 text-white" />
@@ -648,35 +461,8 @@ export default function WhatsAppChat() {
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                     {convNumber(selected)}
-                    {selected.currentSector?.description ? ` · ${selected.currentSector.description}` : ""}
                   </p>
                 </div>
-                {status !== 3 && (
-                  <div className="ml-auto flex items-center gap-2 flex-shrink-0">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={openTransfer}
-                      className="gap-1.5"
-                    >
-                      <ArrowRightLeft className="w-4 h-4" />
-                      <span className="hidden sm:inline">Transferir</span>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setFinalizeMsg(true);
-                        setFinalizeResearch(true);
-                        setFinalizeOpen(true);
-                      }}
-                      className="gap-1.5 text-green-700 border-green-200 hover:bg-green-50 dark:text-green-400 dark:border-green-900 dark:hover:bg-green-950"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span className="hidden sm:inline">Finalizar</span>
-                    </Button>
-                  </div>
-                )}
               </div>
 
               {/* Mensagens */}
@@ -701,11 +487,11 @@ export default function WhatsAppChat() {
                     ) : (
                       <div
                         key={item.key}
-                        className={`flex ${item.msg.isSentByMe ? "justify-end" : "justify-start"}`}
+                        className={`flex ${item.msg.direction === "out" ? "justify-end" : "justify-start"}`}
                       >
                         <div
                           className={`max-w-[75%] rounded-2xl px-3 py-2 shadow-sm ${
-                            item.msg.isSentByMe
+                            item.msg.direction === "out"
                               ? "bg-teal-500 text-white rounded-br-sm"
                               : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-sm"
                           }`}
@@ -713,11 +499,11 @@ export default function WhatsAppChat() {
                           <p className="text-sm whitespace-pre-wrap break-words">{item.msg.text}</p>
                           <div
                             className={`flex items-center gap-1 justify-end mt-1 ${
-                              item.msg.isSentByMe ? "text-teal-100" : "text-gray-400"
+                              item.msg.direction === "out" ? "text-teal-100" : "text-gray-400"
                             }`}
                           >
                             <span className="text-[10px]">{formatTime(item.iso)}</span>
-                            {item.msg.isSentByMe && <DeliveryStatus status={item.msg.statusMessage} />}
+                            {item.msg.direction === "out" && <DeliveryStatus status={item.msg.status} />}
                           </div>
                         </div>
                       </div>
@@ -762,26 +548,15 @@ export default function WhatsAppChat() {
                   </div>
                 )}
                 <div className="flex items-end gap-2">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    className="hidden"
-                    accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,audio/*,video/*"
-                    onChange={handleFileSelected}
-                  />
                   <Button
                     variant="outline"
                     size="icon"
                     className="flex-shrink-0"
-                    onClick={handleFilePick}
-                    disabled={uploadingMedia || sending}
-                    title="Enviar arquivo"
+                    onClick={handleMediaStandby}
+                    disabled={sending}
+                    title="Enviar arquivo (em breve)"
                   >
-                    {uploadingMedia ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : (
-                      <Paperclip className="w-5 h-5" />
-                    )}
+                    <Paperclip className="w-5 h-5" />
                   </Button>
                   <Button
                     variant="outline"
@@ -831,130 +606,11 @@ export default function WhatsAppChat() {
         accentColor="green"
       />
 
-      {/* Diálogo de transferência */}
-      <Dialog open={transferOpen} onOpenChange={(o) => !transferring && setTransferOpen(o)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Transferir conversa</DialogTitle>
-            <DialogDescription>
-              Escolha o atendente e o setor de destino. A conversa sairá da sua lista.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Atendente
-              </label>
-              <Select
-                value={transferUserId}
-                onValueChange={(v) => {
-                  setTransferUserId(v);
-                  setTransferSectorId("");
-                }}
-                disabled={usersLoading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={usersLoading ? "Carregando..." : "Selecione um atendente"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {waUsers.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Setor
-              </label>
-              <Select
-                value={transferSectorId}
-                onValueChange={setTransferSectorId}
-                disabled={!transferUserId || transferSectors.length === 0}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      !transferUserId
-                        ? "Selecione um atendente primeiro"
-                        : transferSectors.length === 0
-                        ? "Atendente sem setores"
-                        : "Selecione um setor"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {transferSectors.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setTransferOpen(false)} disabled={transferring}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleTransfer}
-              disabled={transferring || !transferUserId || !transferSectorId}
-              className="gap-1.5"
-            >
-              {transferring ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRightLeft className="w-4 h-4" />}
-              Transferir
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Diálogo de finalização */}
-      <Dialog open={finalizeOpen} onOpenChange={(o) => !finalizing && setFinalizeOpen(o)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Finalizar conversa</DialogTitle>
-            <DialogDescription>
-              A conversa será encerrada e movida para Resolvidas.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={finalizeMsg}
-                onChange={(e) => setFinalizeMsg(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300"
-              />
-              Enviar mensagem de encerramento
-            </label>
-            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={finalizeResearch}
-                onChange={(e) => setFinalizeResearch(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300"
-              />
-              Enviar pesquisa de satisfação
-            </label>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setFinalizeOpen(false)} disabled={finalizing}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleFinalize}
-              disabled={finalizing}
-              className="gap-1.5 bg-green-600 hover:bg-green-700 text-white"
-            >
-              {finalizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              Finalizar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <NewConversationDialog
+        open={newOpen}
+        onOpenChange={setNewOpen}
+        onCreated={handleCreated}
+      />
     </div>
   );
 }

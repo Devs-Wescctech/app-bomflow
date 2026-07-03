@@ -171,8 +171,12 @@ router.post('/conversations/:id/reply', async (req, res) => {
       return res.status(400).json({ message: 'Informe uma mensagem de texto ou selecione um template' });
     }
 
-    let vendedorId = req.agent?.id || null;
-    let vendedorNome = req.agent?.name || req.user?.full_name || req.user?.name || null;
+    // Preserva o dono original da conversa. Só define o vendedor quando a conversa ainda não
+    // tem dono — evita que admin/supervisor "roube" a conversa ao responder (a listagem filtra
+    // por vendedor_id, então trocar o dono removeria a conversa do vendedor original).
+    const vendedorId = conv.vendedor_id || req.agent?.id || null;
+    const vendedorNome =
+      conv.vendedor_nome || req.agent?.name || req.user?.full_name || req.user?.name || null;
 
     const sendResult = await sendChatMessage({
       number: conv.wa_number,

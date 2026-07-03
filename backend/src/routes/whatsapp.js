@@ -217,17 +217,24 @@ router.post('/send-and-tag', authMiddleware, async (req, res) => {
       }
     }
 
-    // 3.5) Espelha a mensagem enviada na Caixa de Entrada WhatsApp (best-effort)
-    await recordOutbound({
-      phone,
-      text: hasText ? message : '[template]',
-      waMessageId:
-        sendResult.messageSentId || sendResult.message_sent_id || sendResult.id || null,
-      contactId: contactId || null,
-      chatId: sendResult.chatId || sendResult.currentChatId || sendResult.chat_id || null,
-      vendedorId,
-      vendedorNome,
-    }).catch((err) => log('[WhatsApp] Falha ao espelhar envio na caixa de entrada (não bloqueia):', err.message));
+    // 3.5) Espelha a mensagem enviada na Caixa de Entrada WhatsApp (best-effort).
+    // Captura o id da conversa para que o Chat consiga abrir a conversa recém-iniciada.
+    let inboxConversationId = null;
+    try {
+      const inboxConv = await recordOutbound({
+        phone,
+        text: hasText ? message : '[template]',
+        waMessageId:
+          sendResult.messageSentId || sendResult.message_sent_id || sendResult.id || null,
+        contactId: contactId || null,
+        chatId: sendResult.chatId || sendResult.currentChatId || sendResult.chat_id || null,
+        vendedorId,
+        vendedorNome,
+      });
+      inboxConversationId = inboxConv?.id || null;
+    } catch (err) {
+      log('[WhatsApp] Falha ao espelhar envio na caixa de entrada (não bloqueia):', err.message);
+    }
 
     // 4) Persist an audit record of the send (best-effort — never blocks the send)
     await query(
@@ -255,6 +262,7 @@ router.post('/send-and-tag', authMiddleware, async (req, res) => {
       success: true,
       tagged,
       contactId,
+      conversationId: inboxConversationId,
       vendedor: vendedorNome ? { id: vendedorId, name: vendedorNome } : null,
       usedFallback: sendResult.usedFallback || false,
     });
