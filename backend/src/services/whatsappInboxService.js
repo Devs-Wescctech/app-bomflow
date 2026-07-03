@@ -97,10 +97,20 @@ export async function recordMessage({
   // Assim o vendedor vê "Não entregue" na thread em vez de achar que a mensagem chegou.
   if (inserted.rows.length === 0) {
     if (status && waMessageId) {
+      // Atualização MONOTÔNICA: só avança sent -> delivered -> read; marca 'failed' apenas
+      // quando ainda não foi entregue/lida; e 'failed' é TERMINAL (nunca é sobrescrito por
+      // um estado posterior). Evita que uma sync tardia faça o status regredir na tela.
       await query(
         `UPDATE whatsapp_messages
             SET status = $2
-          WHERE wa_message_id = $1 AND COALESCE(status, '') <> $2`,
+          WHERE wa_message_id = $1
+            AND status IS DISTINCT FROM $2
+            AND COALESCE(status, '') <> 'failed'
+            AND (
+              (CASE $2 WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2 WHEN 'read' THEN 3 ELSE 0 END)
+                > (CASE COALESCE(status, '') WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2 WHEN 'read' THEN 3 ELSE 0 END)
+              OR ($2 = 'failed' AND COALESCE(status, '') NOT IN ('delivered', 'read'))
+            )`,
         [waMessageId, status]
       );
     }
