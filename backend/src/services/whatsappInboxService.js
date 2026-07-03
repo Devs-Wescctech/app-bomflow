@@ -1,6 +1,21 @@
 import { query } from '../config/database.js';
 import { normalizeBrazilPhone } from '../utils/phone.js';
 
+// Traduz o `statusMessage` numérico do WHU para um rótulo de entrega estável, persistido
+// em whatsapp_messages.status e exibido na thread. O WHU usa: 3=lido, 2=entregue,
+// 1=enviado (aceito pelo servidor, ainda não entregue) e <=0 (ex.: -1)=falha definitiva.
+// A falha (-1) costuma chegar de forma ASSÍNCRONA, depois do envio — por isso o status
+// é reavaliado a cada sincronização. Retorna null quando não há sinal confiável.
+export function mapDeliveryStatus(statusMessage) {
+  const s = Number(statusMessage);
+  if (!Number.isFinite(s)) return null;
+  if (s >= 3) return 'read';
+  if (s === 2) return 'delivered';
+  if (s === 1) return 'sent';
+  if (s <= 0) return 'failed';
+  return null;
+}
+
 // Últimos 8 dígitos: reconcilia o número recebido do WHU (sem o 9 extra) com o número
 // que enviamos (com o 9). Como o assinante de 8 dígitos é o mesmo com ou sem o 9,
 // essa chave é estável entre as duas variantes (normalizamos antes por segurança).
@@ -76,8 +91,19 @@ export async function recordMessage({
     [conversationId, waMessageId, direction, text, messageType, status, senderName, when]
   );
 
-  // Se a mensagem já existia (dedup por wa_message_id), não atualiza o resumo.
+  // Se a mensagem já existia (dedup por wa_message_id), não atualiza o resumo. Mas ainda
+  // atualiza o STATUS de entrega quando o WHU reporta um novo estado — a falha "-1" chega
+  // de forma assíncrona (depois do envio), então é numa re-sincronização que ela aparece.
+  // Assim o vendedor vê "Não entregue" na thread em vez de achar que a mensagem chegou.
   if (inserted.rows.length === 0) {
+    if (status && waMessageId) {
+      await query(
+        `UPDATE whatsapp_messages
+            SET status = $2
+          WHERE wa_message_id = $1 AND COALESCE(status, '') <> $2`,
+        [waMessageId, status]
+      );
+    }
     return null;
   }
 

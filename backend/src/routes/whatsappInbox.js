@@ -8,6 +8,7 @@ import {
   upsertConversation,
   recordMessage,
   recordOutbound,
+  mapDeliveryStatus,
 } from '../services/whatsappInboxService.js';
 
 const router = Router();
@@ -308,11 +309,14 @@ async function backfillFromWhu(conv, { timeoutMs } = {}) {
       const d = new Date(`${m.dhMessage}-03:00`);
       if (!isNaN(d.getTime())) sentAt = d;
     }
+    // Só rastreamos entrega das NOSSAS mensagens (saída); do cliente não há esse sinal.
+    const status = m.isSentByMe ? mapDeliveryStatus(m.statusMessage) : null;
     await recordMessage({
       conversationId: conv.id,
       waMessageId: waMessageId ? String(waMessageId) : null,
       direction: m.isSentByMe ? 'out' : 'in',
       text,
+      status,
       senderName: m.senderName || (m.isSentByMe ? 'Você' : conv.name),
       sentAt,
     }).catch(() => {});
