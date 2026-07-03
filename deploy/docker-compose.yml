@@ -11,8 +11,10 @@ services:
       - NODE_ENV=production
       - PORT=5000
       - DB_SSL=false
+      - ORCAMENTO_DOCS_DIR=/var/dados/bomflow/orcamento-documentos
     volumes:
       - ./uploads:/app/uploads
+      - /var/dados/bomflow/orcamento-documentos:/var/dados/bomflow/orcamento-documentos
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
