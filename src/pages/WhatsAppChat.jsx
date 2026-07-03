@@ -20,6 +20,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import WhatsAppTemplateSelector from "@/components/whatsapp/WhatsAppTemplateSelector";
+import { base44 } from "@/api/base44Client";
+import { isAdminUser } from "@/components/utils/permissions";
 import {
   MessageSquare,
   Send,
@@ -38,6 +40,7 @@ import {
   CheckCircle2,
   ArrowRightLeft,
   Paperclip,
+  ShieldX,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -114,6 +117,11 @@ function DeliveryStatus({ status }) {
 export default function WhatsAppChat() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const { data: user } = useQuery({
+    queryKey: ["currentUser"],
+    queryFn: () => base44.auth.me(),
+  });
 
   const [status, setStatus] = useState(2);
   const [search, setSearch] = useState("");
@@ -453,6 +461,22 @@ export default function WhatsAppChat() {
       setUploadingMedia(false);
     }
   };
+
+  const currentAgent = user?.agent;
+  const isAdmin = isAdminUser(user, currentAgent);
+  const allowedSubmenus = currentAgent?.allowedSubmenus || [];
+  const hasChatAccess =
+    isAdmin || allowedSubmenus.length === 0 || allowedSubmenus.includes("WhatsAppChat");
+
+  if (user && !hasChatAccess) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+        <ShieldX className="w-16 h-16 text-gray-400 mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">Acesso Negado</h2>
+        <p className="text-gray-500 dark:text-gray-400">Você não tem permissão para acessar o Chat WhatsApp.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="h-[calc(100vh-0px)] bg-gray-50 dark:bg-gray-950 flex flex-col">
