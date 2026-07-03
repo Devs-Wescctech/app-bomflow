@@ -61,6 +61,16 @@ router.use(authMiddleware, loadAgentMiddleware);
 router.get('/conversations', async (req, res) => {
   try {
     const { canSeeAll, agentId } = resolveViewer(req);
+
+    // Sincroniza (throttled) as conversas recentes do viewer com o WHU antes de responder,
+    // para que as respostas do cliente apareçam na lista mesmo SEM webhook configurado.
+    // Best-effort: se falhar, ainda devolvemos o estado atual do banco.
+    if (req.query.sync !== '0') {
+      await syncViewerConversations({ canSeeAll, agentId }).catch((e) =>
+        console.error('[WhatsAppInbox] Sync de lista falhou:', e.message)
+      );
+    }
+
     const search = (req.query.search || '').trim();
     const limit = Math.min(parseInt(req.query.limit, 10) || 200, 500);
 
@@ -210,8 +220,65 @@ router.post('/conversations/:id/reply', async (req, res) => {
 
 // Complementa a conversa com o histórico do WHU (mensagens que não passaram pelo webhook).
 // Dedup por wa_message_id garante que não haja duplicação.
-async function backfillFromWhu(conv) {
-  const chat = await getChatWithMessages(conv.chat_id);
+// Throttle em memória (por conversa) para não sincronizar com o WHU em excesso. O poll da
+// lista no frontend é ~12s; com TTL de 10s cada poll dispara no máximo uma nova sync por
+// conversa, dando ~12s de latência para respostas novas — sem webhook.
+const _syncThrottle = new Map(); // conversationId -> timestamp (ms) da última sync
+const SYNC_TTL_MS = 10_000; // não re-sincroniza a mesma conversa antes disso
+const SYNC_MAX_PER_CALL = 12; // limita chamadas ao WHU por requisição de lista
+const SYNC_CONCURRENCY = 5; // chamadas simultâneas ao WHU
+
+// Sincroniza (backfill) as conversas recentes do viewer direto do WHU, para trazer respostas
+// novas do cliente à lista mesmo sem webhook. Bounded + throttled: no máximo SYNC_MAX_PER_CALL
+// conversas por requisição, e cada conversa no máximo 1x a cada SYNC_TTL_MS.
+async function syncViewerConversations({ canSeeAll, agentId }) {
+  const params = [];
+  const where = ['chat_id IS NOT NULL'];
+  if (!canSeeAll) {
+    if (!agentId) return; // sem agente resolvido não há o que sincronizar
+    params.push(agentId);
+    where.push(`vendedor_id = $${params.length}`);
+  }
+  // Escopo: só conversas ativas recentemente, para limitar o volume de chamadas.
+  where.push(`COALESCE(last_message_at, updated_at) > NOW() - INTERVAL '7 days'`);
+
+  const result = await query(
+    `SELECT id, phone_key, wa_number, contact_id, chat_id, name
+       FROM whatsapp_conversations
+       WHERE ${where.join(' AND ')}
+       ORDER BY last_message_at DESC NULLS LAST, updated_at DESC
+       LIMIT 40`,
+    params
+  );
+
+  const now = Date.now();
+  const due = [];
+  for (const conv of result.rows) {
+    const last = _syncThrottle.get(conv.id) || 0;
+    if (now - last >= SYNC_TTL_MS) due.push(conv);
+    if (due.length >= SYNC_MAX_PER_CALL) break;
+  }
+  if (due.length === 0) return;
+
+  // Marca imediatamente (antes de aguardar) para evitar corrida entre requisições concorrentes.
+  for (const conv of due) _syncThrottle.set(conv.id, now);
+
+  let idx = 0;
+  const worker = async () => {
+    while (idx < due.length) {
+      const conv = due[idx++];
+      await backfillFromWhu(conv, { timeoutMs: 4000 }).catch((e) =>
+        console.error('[WhatsAppInbox] Sync falhou p/ conversa', conv.id, e.message)
+      );
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(SYNC_CONCURRENCY, due.length) }, worker)
+  );
+}
+
+async function backfillFromWhu(conv, { timeoutMs } = {}) {
+  const chat = await getChatWithMessages(conv.chat_id, timeoutMs ? { timeoutMs } : undefined);
   const messages = chat?.messages;
   if (!Array.isArray(messages) || messages.length === 0) return;
 
@@ -229,13 +296,17 @@ async function backfillFromWhu(conv) {
     const text = typeof m.text === 'string' ? m.text : null;
     if (!text) continue;
     const waMessageId = m.IdMessage || m.id || null;
+    // Fuso: `unixTimeMessage` (epoch) é UTC confiável e deve ser a fonte primária.
+    // `dhMessage` vem em horário de Brasília (UTC-3) SEM timezone — se lido direto pelo
+    // Date() fica 3h atrasado e bagunça a ordenação; por isso tratamos como -03:00.
     let sentAt = null;
-    if (m.dhMessage) {
-      const d = new Date(m.dhMessage);
+    if (m.unixTimeMessage) {
+      const d = new Date(Number(m.unixTimeMessage) * 1000);
       if (!isNaN(d.getTime())) sentAt = d;
     }
-    if (!sentAt && m.unixTimeMessage) {
-      sentAt = new Date(Number(m.unixTimeMessage) * 1000);
+    if (!sentAt && m.dhMessage) {
+      const d = new Date(`${m.dhMessage}-03:00`);
+      if (!isNaN(d.getTime())) sentAt = d;
     }
     await recordMessage({
       conversationId: conv.id,

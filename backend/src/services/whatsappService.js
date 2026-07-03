@@ -351,23 +351,31 @@ export async function sendTextMessageWithToken({ number, message, channelToken }
 // Busca o histórico de UMA conversa no WHU. O objeto do chat inclui um array `messages`
 // (campos: IdMessage, text, isSentByMe, dhMessage, isSystemMessage, ...) além de contact/
 // lastMessage/countUnreadMessages. Usado para complementar a thread na caixa de entrada.
-export async function getChatWithMessages(chatId) {
+export async function getChatWithMessages(chatId, { timeoutMs = 8000 } = {}) {
   const token = process.env.RUDO_WHATSAPP_TOKEN;
   if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
   if (!chatId) return null;
 
-  const response = await fetch(`${RUDO_API_BASE}/chats/${chatId}?withMessages=true`, {
-    method: 'GET',
-    headers: {
-      'access-token': token,
-      'Accept': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    return null;
+  // Timeout explícito: evita que uma chamada lenta ao WHU trave quem depende disso
+  // (ex.: o sync da lista de conversas, que roda a cada poll).
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${RUDO_API_BASE}/chats/${chatId}?withMessages=true`, {
+      method: 'GET',
+      headers: {
+        'access-token': token,
+        'Accept': 'application/json',
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      return null;
+    }
+    return response.json().catch(() => null);
+  } finally {
+    clearTimeout(timer);
   }
-  return response.json().catch(() => null);
 }
 
 export async function getContactByPhone(phoneNumber) {
