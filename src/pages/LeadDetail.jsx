@@ -1030,9 +1030,9 @@ export default function LeadDetail() {
         )}
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column: Tabs */}
-          <div className="md:col-span-2">
+          <div className="lg:col-span-2">
             <Tabs defaultValue="activities" className="w-full">
               <TabsList className="grid w-full grid-cols-5 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-1.5 shadow-sm">
                 <TabsTrigger 
@@ -1703,7 +1703,7 @@ export default function LeadDetail() {
           </div>
 
           {/* COLUNA DIREITA: Agente + Info + Valores (1/3) */}
-          <div className="md:col-span-1 space-y-6">
+          <div className="lg:col-span-1 space-y-6">
             {/* Agente Responsável */}
             {agents.find(a => a.id === leadAgentId) && (
               <Card className="border-blue-200 dark:border-blue-800 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
