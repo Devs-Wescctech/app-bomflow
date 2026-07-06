@@ -1,3 +1,5 @@
+import { normalizeBrazilPhone, alternateBrazilPhone } from '../utils/phone.js';
+
 const RUDO_API_BASE = 'https://api.wescctech.com.br/core/v2/api';
 
 export async function getWhatsAppTemplates() {
@@ -53,7 +55,7 @@ export async function createChatWithToken(params, channelToken) {
   const { number, templateId, templateComponents } = params;
 
   const body = {
-    number: number.replace(/\D/g, ''),
+    number: normalizeBrazilPhone(number),
     quickAnswerId: templateId,
     quickAnswerComponents: templateComponents || [],
   };
@@ -89,7 +91,7 @@ export async function sendTemplateWithToken(params, channelToken) {
   const { number, templateId, templateComponents } = params;
 
   const body = {
-    number: number.replace(/\D/g, ''),
+    number: normalizeBrazilPhone(number),
     templateId: templateId,
     templateComponents: templateComponents || [],
     forceSend: true,
@@ -121,8 +123,7 @@ export async function sendWhatsAppMessageWithToken(lead, agent, templateId, chan
     throw new Error('Lead does not have a phone number');
   }
 
-  const formattedNumber = phone.replace(/\D/g, '');
-  const brazilNumber = formattedNumber.startsWith('55') ? formattedNumber : `55${formattedNumber}`;
+  const brazilNumber = normalizeBrazilPhone(phone);
   const leadName = lead.name || lead.referred_name || lead.contact_name || 'Cliente';
 
   const components = Array.isArray(templateComponents) ? templateComponents : [
@@ -166,10 +167,10 @@ export async function createChat(params) {
     throw new Error('RUDO_WHATSAPP_TOKEN not configured');
   }
 
-  const { number, templateId, templateComponents } = params;
+  const { number, templateId, templateComponents, skipNormalize } = params;
 
   const body = {
-    number: number.replace(/\D/g, ''),
+    number: skipNormalize ? String(number).replace(/\D/g, '') : normalizeBrazilPhone(number),
     quickAnswerId: templateId,
     quickAnswerComponents: templateComponents || [],
   };
@@ -203,7 +204,7 @@ export async function sendTemplate(params) {
     throw new Error('RUDO_WHATSAPP_TOKEN not configured');
   }
 
-  const { number, templateId, templateComponents } = params;
+  const { number, templateId, templateComponents, skipNormalize } = params;
 
   // WHU's /chats/send-template expects the components under the lowercase key
   // `templatecomponents` with lowercase component `type` (e.g. "body"), unlike
@@ -219,7 +220,7 @@ export async function sendTemplate(params) {
     : [];
 
   const body = {
-    number: number.replace(/\D/g, ''),
+    number: skipNormalize ? String(number).replace(/\D/g, '') : normalizeBrazilPhone(number),
     templateId: templateId,
     forceSend: true,
     verifyContact: false,
@@ -252,10 +253,10 @@ export async function sendTextMessage(params) {
     throw new Error('RUDO_WHATSAPP_TOKEN not configured');
   }
 
-  const { number, message } = params;
+  const { number, message, skipNormalize } = params;
 
   const body = {
-    number: number.replace(/\D/g, ''),
+    number: skipNormalize ? String(number).replace(/\D/g, '') : normalizeBrazilPhone(number),
     message: message,
     forceSend: true,
   };
@@ -292,7 +293,7 @@ export async function sendDocument(params) {
   const { number, documentUrl, caption, filename } = params;
 
   const body = {
-    number: number.replace(/\D/g, ''),
+    number: normalizeBrazilPhone(number),
     url: documentUrl,
     caption: caption || '',
     filename: filename || 'proposta.pdf',
@@ -323,8 +324,7 @@ export async function sendTextMessageWithToken({ number, message, channelToken }
     throw new Error('No WhatsApp channel token provided');
   }
 
-  const cleanNumber = number.replace(/\D/g, '');
-  const brazilNumber = cleanNumber.startsWith('55') ? cleanNumber : `55${cleanNumber}`;
+  const brazilNumber = normalizeBrazilPhone(number);
 
   const response = await fetch(`${RUDO_API_BASE}/chats/send-text`, {
     method: 'POST',
@@ -351,23 +351,31 @@ export async function sendTextMessageWithToken({ number, message, channelToken }
 // Busca o histórico de UMA conversa no WHU. O objeto do chat inclui um array `messages`
 // (campos: IdMessage, text, isSentByMe, dhMessage, isSystemMessage, ...) além de contact/
 // lastMessage/countUnreadMessages. Usado para complementar a thread na caixa de entrada.
-export async function getChatWithMessages(chatId) {
+export async function getChatWithMessages(chatId, { timeoutMs = 8000 } = {}) {
   const token = process.env.RUDO_WHATSAPP_TOKEN;
   if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
   if (!chatId) return null;
 
-  const response = await fetch(`${RUDO_API_BASE}/chats/${chatId}?withMessages=true`, {
-    method: 'GET',
-    headers: {
-      'access-token': token,
-      'Accept': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    return null;
+  // Timeout explícito: evita que uma chamada lenta ao WHU trave quem depende disso
+  // (ex.: o sync da lista de conversas, que roda a cada poll).
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${RUDO_API_BASE}/chats/${chatId}?withMessages=true`, {
+      method: 'GET',
+      headers: {
+        'access-token': token,
+        'Accept': 'application/json',
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      return null;
+    }
+    return response.json().catch(() => null);
+  } finally {
+    clearTimeout(timer);
   }
-  return response.json().catch(() => null);
 }
 
 export async function getContactByPhone(phoneNumber) {
@@ -434,19 +442,44 @@ export async function setContactAttributes(contactId, attributes) {
   return response.json();
 }
 
-export async function sendChatMessage({ number, message, templateId, templateComponents }) {
-  const phone = (number || '').replace(/\D/g, '');
-  if (!phone) {
-    throw new Error('Número de telefone é obrigatório');
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Consulta o status REAL de entrega da última mensagem de saída de uma conversa.
+// A WHU embute isso em `statusMessage` (1=enviado, 2=entregue, 3=lido); status <= 0
+// (ou um marcador de erro) indica falha de entrega. Retorna:
+//   'delivered' | 'failed' | 'unknown'  (best-effort — nunca lança).
+// Tratar HTTP 200 do envio como "entregue" mascara números frios (o WhatsApp aceita
+// o disparo mas nada chega); por isso conferimos o status da conversa.
+export async function checkLastOutboundDelivery(chatId, { attempts = 2, delayMs = 1000 } = {}) {
+  if (!chatId) return 'unknown';
+  for (let i = 0; i < attempts; i++) {
+    let chat = null;
+    try {
+      chat = await getChatWithMessages(chatId);
+    } catch {
+      chat = null;
+    }
+    const messages = Array.isArray(chat?.messages) ? chat.messages : [];
+    const outbound = [...messages]
+      .reverse()
+      .find((m) => m && (m.isSentByMe === true || m.fromMe === true));
+    if (outbound) {
+      const s = Number(outbound.statusMessage);
+      if (Number.isFinite(s) && s >= 2) return 'delivered';
+      if ((Number.isFinite(s) && s <= 0) || outbound.error === true || outbound.failed === true) {
+        return 'failed';
+      }
+    }
+    if (i < attempts - 1) await sleep(delayMs);
   }
+  return 'unknown';
+}
 
-  const brazilNumber = phone.startsWith('55') ? phone : `55${phone}`;
-  const hasText = typeof message === 'string' && message.trim().length > 0;
-
-  if (!templateId && !hasText) {
-    throw new Error('Informe uma mensagem de texto ou selecione um template');
-  }
-
+// Executa o envio (template com fallback e/ou texto) para UM número já canônico.
+// Retorna { result, usedFallback, chatId } — o chatId é usado para conferir a entrega.
+async function deliverChatMessage({ targetNumber, message, templateId, templateComponents, hasText }) {
   let result = {};
   let usedFallback = false;
 
@@ -454,17 +487,19 @@ export async function sendChatMessage({ number, message, templateId, templateCom
     const components = Array.isArray(templateComponents) ? templateComponents : [];
     try {
       result = await createChat({
-        number: brazilNumber,
+        number: targetNumber,
         templateId,
         templateComponents: components,
+        skipNormalize: true,
       });
     } catch (error) {
       if (error.apiMessage && error.apiMessage.toLowerCase().includes('already open')) {
         usedFallback = true;
         result = await sendTemplate({
-          number: brazilNumber,
+          number: targetNumber,
           templateId,
           templateComponents: components,
+          skipNormalize: true,
         });
       } else {
         throw error;
@@ -473,16 +508,77 @@ export async function sendChatMessage({ number, message, templateId, templateCom
 
     if (hasText) {
       try {
-        await sendTextMessage({ number: brazilNumber, message });
+        await sendTextMessage({ number: targetNumber, message, skipNormalize: true });
       } catch (err) {
-        console.error(`[WhatsApp] Failed to send follow-up text to ${brazilNumber}:`, err.message);
+        console.error(`[WhatsApp] Failed to send follow-up text to ${targetNumber}:`, err.message);
       }
     }
   } else {
-    result = await sendTextMessage({ number: brazilNumber, message });
+    result = await sendTextMessage({ number: targetNumber, message, skipNormalize: true });
   }
 
-  return { ...result, usedFallback, brazilNumber };
+  const chatId =
+    result?.chatId || result?.currentChatId || result?.chat_id || result?.chatID || null;
+  return { result, usedFallback, chatId };
+}
+
+export async function sendChatMessage({ number, message, templateId, templateComponents }) {
+  const brazilNumber = normalizeBrazilPhone(number);
+  if (!brazilNumber) {
+    throw new Error('Número de telefone é obrigatório');
+  }
+
+  const hasText = typeof message === 'string' && message.trim().length > 0;
+  if (!templateId && !hasText) {
+    throw new Error('Informe uma mensagem de texto ou selecione um template');
+  }
+
+  // 1) Envia ao número canônico (com o nono dígito quando celular).
+  const primary = await deliverChatMessage({
+    targetNumber: brazilNumber,
+    message,
+    templateId,
+    templateComponents,
+    hasText,
+  });
+
+  // 2) Confere a entrega real. Só agimos diante de uma FALHA definitiva reportada
+  // pela WHU — "pendente/desconhecido" segue como sucesso (não bloqueamos o envio
+  // por causa de destinatário momentaneamente offline).
+  const primaryStatus = await checkLastOutboundDelivery(primary.chatId).catch(() => 'unknown');
+  if (primaryStatus !== 'failed') {
+    return { ...primary.result, usedFallback: primary.usedFallback, brazilNumber };
+  }
+
+  // 3) Rede de segurança: tenta a variante alternativa do número (com/sem o 9) UMA vez.
+  const altNumber = alternateBrazilPhone(brazilNumber);
+  if (!altNumber) {
+    throw new Error(
+      'Não foi possível entregar a mensagem para este número. Verifique se o número está correto e ativo no WhatsApp.'
+    );
+  }
+
+  const alternate = await deliverChatMessage({
+    targetNumber: altNumber,
+    message,
+    templateId,
+    templateComponents,
+    hasText,
+  });
+
+  const altStatus = await checkLastOutboundDelivery(alternate.chatId).catch(() => 'unknown');
+  if (altStatus === 'failed') {
+    throw new Error(
+      'Não foi possível entregar a mensagem para este número (tentamos as duas variantes do celular). Verifique se o número está correto e ativo no WhatsApp.'
+    );
+  }
+
+  return {
+    ...alternate.result,
+    usedFallback: alternate.usedFallback,
+    brazilNumber: altNumber,
+    usedAlternateNumber: true,
+  };
 }
 
 export async function sendWhatsAppMessage(lead, agent, templateId, templateComponents) {
@@ -492,8 +588,7 @@ export async function sendWhatsAppMessage(lead, agent, templateId, templateCompo
     throw new Error('Lead does not have a phone number');
   }
 
-  const formattedNumber = phone.replace(/\D/g, '');
-  const brazilNumber = formattedNumber.startsWith('55') ? formattedNumber : `55${formattedNumber}`;
+  const brazilNumber = normalizeBrazilPhone(phone);
 
   const leadName = lead.name || lead.referred_name || lead.contact_name || 'Cliente';
 
@@ -740,9 +835,8 @@ export async function sendWhatsAppChatMedia(
   if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
   if (!linkUrl) throw new Error('linkUrl é obrigatório');
 
-  const phone = (number || '').replace(/\D/g, '');
-  if (!phone) throw new Error('Número de telefone é obrigatório');
-  const brazilNumber = phone.startsWith('55') ? phone : `55${phone}`;
+  const brazilNumber = normalizeBrazilPhone(number);
+  if (!brazilNumber) throw new Error('Número de telefone é obrigatório');
 
   const body = {
     number: brazilNumber,

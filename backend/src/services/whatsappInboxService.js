@@ -1,16 +1,33 @@
 import { query } from '../config/database.js';
+import { normalizeBrazilPhone } from '../utils/phone.js';
+
+// Traduz o `statusMessage` numérico do WHU para um rótulo de entrega estável, persistido
+// em whatsapp_messages.status e exibido na thread. O WHU usa: 3=lido, 2=entregue,
+// 1=enviado (aceito pelo servidor, ainda não entregue) e <=0 (ex.: -1)=falha definitiva.
+// A falha (-1) costuma chegar de forma ASSÍNCRONA, depois do envio — por isso o status
+// é reavaliado a cada sincronização. Retorna null quando não há sinal confiável.
+export function mapDeliveryStatus(statusMessage) {
+  const s = Number(statusMessage);
+  if (!Number.isFinite(s)) return null;
+  if (s >= 3) return 'read';
+  if (s === 2) return 'delivered';
+  if (s === 1) return 'sent';
+  if (s <= 0) return 'failed';
+  return null;
+}
 
 // Últimos 8 dígitos: reconcilia o número recebido do WHU (sem o 9 extra) com o número
-// que enviamos (com o 9). Usado como chave única de conversa.
+// que enviamos (com o 9). Como o assinante de 8 dígitos é o mesmo com ou sem o 9,
+// essa chave é estável entre as duas variantes (normalizamos antes por segurança).
 export function phoneKeyOf(phone) {
-  const digits = String(phone || '').replace(/\D/g, '');
+  const digits = normalizeBrazilPhone(phone) || String(phone || '').replace(/\D/g, '');
   return digits.slice(-8);
 }
 
+// Formato canônico único (só dígitos, com 55 e o nono dígito dos celulares),
+// usado como wa_number persistido da conversa.
 export function normalizeNumber(phone) {
-  const digits = String(phone || '').replace(/\D/g, '');
-  if (!digits) return '';
-  return digits.startsWith('55') ? digits : `55${digits}`;
+  return normalizeBrazilPhone(phone);
 }
 
 // Cria/atualiza a conversa por phone_key. Só sobrescreve campos quando um novo valor é
@@ -74,8 +91,29 @@ export async function recordMessage({
     [conversationId, waMessageId, direction, text, messageType, status, senderName, when]
   );
 
-  // Se a mensagem já existia (dedup por wa_message_id), não atualiza o resumo.
+  // Se a mensagem já existia (dedup por wa_message_id), não atualiza o resumo. Mas ainda
+  // atualiza o STATUS de entrega quando o WHU reporta um novo estado — a falha "-1" chega
+  // de forma assíncrona (depois do envio), então é numa re-sincronização que ela aparece.
+  // Assim o vendedor vê "Não entregue" na thread em vez de achar que a mensagem chegou.
   if (inserted.rows.length === 0) {
+    if (status && waMessageId) {
+      // Atualização MONOTÔNICA: só avança sent -> delivered -> read; marca 'failed' apenas
+      // quando ainda não foi entregue/lida; e 'failed' é TERMINAL (nunca é sobrescrito por
+      // um estado posterior). Evita que uma sync tardia faça o status regredir na tela.
+      await query(
+        `UPDATE whatsapp_messages
+            SET status = $2
+          WHERE wa_message_id = $1
+            AND status IS DISTINCT FROM $2
+            AND COALESCE(status, '') <> 'failed'
+            AND (
+              (CASE $2 WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2 WHEN 'read' THEN 3 ELSE 0 END)
+                > (CASE COALESCE(status, '') WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2 WHEN 'read' THEN 3 ELSE 0 END)
+              OR ($2 = 'failed' AND COALESCE(status, '') NOT IN ('delivered', 'read'))
+            )`,
+        [waMessageId, status]
+      );
+    }
     return null;
   }
 
@@ -132,6 +170,38 @@ export async function recordOutbound({
     senderName: vendedorNome || 'Você',
   });
   return conv;
+}
+
+// Espelha na Caixa de Entrada um envio de saída feito por automação/API (primeiro
+// contato), definindo o VENDEDOR como dono da conversa. Assim a conversa deixa de
+// aparecer como "automático" e cai na caixa do vendedor responsável pelo lead.
+// Extrai os ids do resultado retornado pela WHU (nomes de campo variam entre
+// createChat/sendTemplate). Best-effort: NUNCA lança — não pode derrubar o envio.
+export async function mirrorOutboundSend({
+  phone,
+  sendResult = {},
+  vendedorId = null,
+  vendedorNome = null,
+  text = '[template]',
+}) {
+  if (!phone) return null;
+  try {
+    return await recordOutbound({
+      phone,
+      text,
+      waMessageId:
+        sendResult.messageSentId || sendResult.message_sent_id || sendResult.id || null,
+      contactId:
+        sendResult.contactId || sendResult.contact?.id || sendResult.contact?._id || null,
+      chatId:
+        sendResult.chatId || sendResult.currentChatId || sendResult.chat_id || null,
+      vendedorId: vendedorId || null,
+      vendedorNome: vendedorNome || null,
+    });
+  } catch (err) {
+    console.error('[WhatsAppInbox] Falha ao espelhar envio de automação (não bloqueia):', err.message);
+    return null;
+  }
 }
 
 // Tenta extrair os campos relevantes de um payload de webhook do WHU/Rudo. O formato exato

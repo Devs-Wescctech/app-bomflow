@@ -1,4 +1,5 @@
 import { query } from '../config/database.js';
+import { normalizeBrazilPhone } from '../utils/phone.js';
 
 const WHATSAPP_API_BASE = 'https://api.wescctech.com.br/core/v2/api';
 const VALID_TTL_DAYS = 30;
@@ -6,14 +7,10 @@ const INVALID_TTL_DAYS = 90;
 const MAX_PARALLEL = 12;
 const REQUEST_TIMEOUT_MS = 8000;
 
+// Usa o utilitário canônico único (inclui o nono dígito dos celulares) para que a
+// validação use exatamente o mesmo número que será enviado — sem regras divergentes.
 function normalizePhone(phone) {
-  if (!phone) return '';
-  let cleaned = String(phone).replace(/\D/g, '');
-  if (!cleaned) return '';
-  if (!cleaned.startsWith('55') && (cleaned.length === 10 || cleaned.length === 11)) {
-    cleaned = '55' + cleaned;
-  }
-  return cleaned;
+  return normalizeBrazilPhone(phone);
 }
 
 async function fetchCachedValidations(phones) {

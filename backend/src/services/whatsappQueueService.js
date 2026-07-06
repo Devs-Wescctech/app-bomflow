@@ -1,19 +1,16 @@
 import { query } from '../config/database.js';
 import { getEnvioRegulamentoConfig } from './automationService.js';
 import { registrarLogDisparo } from './leadGeneratorLogger.js';
+import { normalizeBrazilPhone } from '../utils/phone.js';
 
 const WHATSAPP_API_BASE = 'https://api.wescctech.com.br/core/v2/api';
 const WHATSAPP_API_URL = `${WHATSAPP_API_BASE}/chats/send-template`;
 const WHATSAPP_CREATE_NEW_URL = `${WHATSAPP_API_BASE}/chats/create-new`;
 
+// Reexporta o utilitário canônico único de normalização (inclui o nono dígito
+// dos celulares) para manter a fila alinhada com todos os demais pontos de envio.
 export function normalizePhone(phone) {
-  if (!phone) return '';
-  let cleaned = String(phone).replace(/\D/g, '');
-  if (cleaned.length === 0) return '';
-  if (!cleaned.startsWith('55') && (cleaned.length === 10 || cleaned.length === 11)) {
-    cleaned = '55' + cleaned;
-  }
-  return cleaned;
+  return normalizeBrazilPhone(phone);
 }
 
 async function getRateConfig() {

@@ -178,6 +178,7 @@ const MENU_MODULES = [
     title: "APPs",
     items: [
       { id: "AppsHub", title: "Hub de APPs" },
+      { id: "WhatsAppChat", title: "Chat WhatsApp" },
     ]
   },
   {

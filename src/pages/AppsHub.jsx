@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
+import { isAdminUser } from "@/components/utils/permissions";
 import { LayoutGrid, Lock, BookOpen, KeyRound, MessageSquare, Inbox } from "lucide-react";
 
 export default function AppsHub() {
@@ -10,7 +11,19 @@ export default function AppsHub() {
     queryFn: () => base44.auth.me(),
   });
 
-  const apps = [
+  const currentAgent = user?.agent;
+  const isAdmin = isAdminUser(user, currentAgent);
+  const allowedSubmenus = currentAgent?.allowedSubmenus || [];
+  const hasSubmenuRestrictions = allowedSubmenus.length > 0;
+
+  const canSeeApp = (app) => {
+    if (!app.requiredSubmenu) return true;
+    if (isAdmin) return true;
+    if (!hasSubmenuRestrictions) return true;
+    return allowedSubmenus.includes(app.requiredSubmenu);
+  };
+
+  const allApps = [
     {
       id: "api-docs",
       title: "API Reference",
@@ -43,8 +56,11 @@ export default function AppsHub() {
       icon: Inbox,
       gradient: "from-teal-600 to-emerald-600",
       url: createPageUrl("WhatsAppChat"),
+      requiredSubmenu: "WhatsAppChat",
     },
   ];
+
+  const apps = allApps.filter(canSeeApp);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
