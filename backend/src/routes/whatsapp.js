@@ -4,7 +4,7 @@ import { getWhatsAppTemplates, getWhatsAppTemplatesByToken, sendWhatsAppMessage,
 import { query } from '../config/database.js';
 import { runAllAutomations, getAutomationLogs } from '../services/automationService.js';
 import { createLeadWhatsAppContact, getLeadWhatsAppContacts } from '../services/leadWhatsAppContactService.js';
-import { recordOutbound } from '../services/whatsappInboxService.js';
+import { recordOutbound, mirrorOutboundSend } from '../services/whatsappInboxService.js';
 
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
@@ -132,7 +132,17 @@ router.post('/send-message', authMiddleware, async (req, res) => {
     }
 
     const result = await sendWhatsAppMessage(lead, agent, templateId, templateComponents);
-    
+
+    // Espelha o primeiro contato na Caixa de Entrada com o vendedor como dono, para que
+    // a conversa apareça na caixa dele em vez de ficar como "automático". Best-effort.
+    const leadPhone = lead.phone || lead.referred_phone || lead.contact_phone || lead.whatsapp || lead.cell_phone;
+    await mirrorOutboundSend({
+      phone: leadPhone,
+      sendResult: result,
+      vendedorId: agent?.id || null,
+      vendedorNome: agent?.name || null,
+    });
+
     await query(
       `INSERT INTO automation_logs (automation_type, lead_id, action_type, action_result, success)
        VALUES ($1, $2, $3, $4, $5)`,

@@ -172,6 +172,38 @@ export async function recordOutbound({
   return conv;
 }
 
+// Espelha na Caixa de Entrada um envio de saída feito por automação/API (primeiro
+// contato), definindo o VENDEDOR como dono da conversa. Assim a conversa deixa de
+// aparecer como "automático" e cai na caixa do vendedor responsável pelo lead.
+// Extrai os ids do resultado retornado pela WHU (nomes de campo variam entre
+// createChat/sendTemplate). Best-effort: NUNCA lança — não pode derrubar o envio.
+export async function mirrorOutboundSend({
+  phone,
+  sendResult = {},
+  vendedorId = null,
+  vendedorNome = null,
+  text = '[template]',
+}) {
+  if (!phone) return null;
+  try {
+    return await recordOutbound({
+      phone,
+      text,
+      waMessageId:
+        sendResult.messageSentId || sendResult.message_sent_id || sendResult.id || null,
+      contactId:
+        sendResult.contactId || sendResult.contact?.id || sendResult.contact?._id || null,
+      chatId:
+        sendResult.chatId || sendResult.currentChatId || sendResult.chat_id || null,
+      vendedorId: vendedorId || null,
+      vendedorNome: vendedorNome || null,
+    });
+  } catch (err) {
+    console.error('[WhatsAppInbox] Falha ao espelhar envio de automação (não bloqueia):', err.message);
+    return null;
+  }
+}
+
 // Tenta extrair os campos relevantes de um payload de webhook do WHU/Rudo. O formato exato
 // é desconhecido, então procura em vários caminhos prováveis. Retorna null se não achar um
 // número (evento não relacionado a mensagem) — o payload cru fica salvo para inspeção.
