@@ -5,7 +5,6 @@ import { query } from '../config/database.js';
 import { sendChatMessage, getChatWithMessages } from '../services/whatsappService.js';
 import {
   ingestWebhookEvent,
-  upsertConversation,
   recordMessage,
   recordOutbound,
   mapDeliveryStatus,
@@ -18,10 +17,11 @@ const router = Router();
 function resolveViewer(req) {
   const agentType = req.agent?.agentType || null;
   const isAdmin = agentType === 'admin' || req.user?.role === 'admin';
+  // Apenas os tipos de supervisão que precisam monitorar a operação de atendimento inteira.
+  // Outros tipos que terminam em _supervisor (ex.: upsell_supervisor, collections_supervisor)
+  // operam em módulos distintos e devem ver APENAS as próprias conversas.
   const isSupervisor =
-    agentType === 'supervisor' ||
-    agentType === 'sales_supervisor' ||
-    (typeof agentType === 'string' && agentType.endsWith('_supervisor'));
+    agentType === 'supervisor' || agentType === 'sales_supervisor';
   return {
     agentId: req.agent?.id || null,
     canSeeAll: isAdmin || isSupervisor,
@@ -284,13 +284,20 @@ async function backfillFromWhu(conv, { timeoutMs } = {}) {
   if (!Array.isArray(messages) || messages.length === 0) return;
 
   // Atualiza contato/nome/avatar se o WHU trouxer dados melhores.
-  await upsertConversation({
-    phone: conv.wa_number,
-    waNumber: chat?.contact?.number || conv.wa_number,
-    contactId: chat?.contact?.id || conv.contact_id,
-    chatId: conv.chat_id,
-    name: chat?.contact?.name || conv.name,
-  }).catch(() => {});
+  // UPDATE-only (sem INSERT): a conversa já existe no banco; não criamos linhas novas
+  // sem dono durante o backfill, evitando registros com vendedor_id = NULL.
+  const contactName = chat?.contact?.name || conv.name;
+  const contactNumber = chat?.contact?.number || conv.wa_number;
+  const contactId = chat?.contact?.id || conv.contact_id;
+  await query(
+    `UPDATE whatsapp_conversations
+        SET wa_number  = COALESCE($2, wa_number),
+            contact_id = COALESCE($3, contact_id),
+            name       = COALESCE($4, name),
+            updated_at = NOW()
+      WHERE id = $1`,
+    [conv.id, contactNumber, contactId, contactName]
+  ).catch(() => {});
 
   for (const m of messages) {
     if (m.isSystemMessage === true) continue;
