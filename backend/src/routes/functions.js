@@ -5679,6 +5679,27 @@ function generateCommissionPDF(data) {
   });
 }
 
+// Grava histórico de cada envio/pulo/bloqueio dos relatórios de comissão.
+// relatorio: 'legado' | 'perspectivas' — status: 'enviado' | 'pulado' | 'bloqueado' | 'erro'
+async function logCommissionReportEvent({ relatorio, tipo_envio, usuario_envio, status, motivo = null, totais = {}, destinatarios = null }) {
+  try {
+    await query(
+      `INSERT INTO commission_report_log
+        (relatorio, tipo_envio, usuario_envio, status, motivo, total_indicadores, total_indicacoes, valor_total, destinatarios)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        relatorio, tipo_envio, usuario_envio, status, motivo,
+        totais.totalIndicadores ?? null,
+        totais.totalIndicacoes ?? null,
+        totais.valorTotal ?? null,
+        destinatarios
+      ]
+    );
+  } catch (e) {
+    console.error('[Commission Report Log] Erro ao gravar log:', e.message);
+  }
+}
+
 async function sendCommissionReport(options = {}) {
   const { tipo_envio = 'automatico', usuario_envio = 'system' } = options;
 
@@ -5688,10 +5709,33 @@ async function sendCommissionReport(options = {}) {
   }
 
   const reportData = await getCommissionReportData();
+  const totais = {
+    totalIndicadores: reportData.totalIndicadores,
+    totalIndicacoes: reportData.totalIndicacoes,
+    valorTotal: reportData.valorTotal
+  };
 
-  if (reportData.cycleEmpty && !reportData.hasPending && tipo_envio === 'automatico') {
-    console.log('[Commission Email] No commissions in current cycle and no pending, skipping automatic send');
-    return { success: true, skipped: true, message: 'Sem comissões no ciclo atual e sem pendências anteriores' };
+  // Proteção contra relatório vazio — vale para envio automático E manual
+  if (reportData.cycleEmpty && !reportData.hasPending) {
+    if (tipo_envio === 'automatico') {
+      console.log('[Commission Email] No commissions in current cycle and no pending, skipping automatic send');
+      await logCommissionReportEvent({
+        relatorio: 'legado', tipo_envio, usuario_envio, status: 'pulado',
+        motivo: 'Sem comissões no ciclo atual e sem pendências anteriores', totais
+      });
+      return { success: true, skipped: true, message: 'Sem comissões no ciclo atual e sem pendências anteriores' };
+    }
+    console.log('[Commission Email] Envio manual bloqueado: relatório legado sem dados no ciclo');
+    await logCommissionReportEvent({
+      relatorio: 'legado', tipo_envio, usuario_envio, status: 'bloqueado',
+      motivo: 'Relatório legado sem comissões no ciclo e sem pendências — envio bloqueado para evitar PDF vazio', totais
+    });
+    return {
+      success: false,
+      skipped: true,
+      blocked: true,
+      message: 'Relatório legado sem dados: não há comissões no ciclo atual nem pendências anteriores. Envio bloqueado para evitar relatório vazio.'
+    };
   }
 
   if (tipo_envio === 'automatico') {
@@ -5707,12 +5751,12 @@ async function sendCommissionReport(options = {}) {
 
   const startStr = formatDateBR(reportData.cycle.start);
   const endStr = formatDateBR(reportData.cycle.end);
-  const subject = `Relatório Semanal de Comissões de Indicação - Período: ${startStr} - ${endStr}`;
+  const subject = `[LEGADO] Relatório Semanal de Comissões de Indicação (Controle CRM) - Período: ${startStr} - ${endStr}`;
   const html = buildCommissionEmailHtml(reportData);
 
   console.log('[Commission Email] Generating PDF...');
   const pdfBuffer = await generateCommissionPDF(reportData);
-  const pdfFilename = `relatorio_comissoes_${reportData.cycle.start.toISOString().split('T')[0]}_${reportData.cycle.end.toISOString().split('T')[0]}.pdf`;
+  const pdfFilename = `relatorio_comissoes_LEGADO_${reportData.cycle.start.toISOString().split('T')[0]}_${reportData.cycle.end.toISOString().split('T')[0]}.pdf`;
   console.log(`[Commission Email] PDF generated: ${pdfFilename} (${pdfBuffer.length} bytes)`);
 
   const transporter = nodemailer.createTransport({
@@ -5729,19 +5773,31 @@ async function sendCommissionReport(options = {}) {
   const recipients = (settings.email_to || '').split(',').map(e => e.trim()).filter(Boolean);
   if (recipients.length === 0) throw new Error('Nenhum destinatário configurado');
 
-  await transporter.sendMail({
-    from: settings.email_from || settings.smtp_user,
-    to: recipients.join(', '),
-    subject,
-    html,
-    attachments: [{
-      filename: pdfFilename,
-      content: pdfBuffer,
-      contentType: 'application/pdf'
-    }]
-  });
+  try {
+    await transporter.sendMail({
+      from: settings.email_from || settings.smtp_user,
+      to: recipients.join(', '),
+      subject,
+      html,
+      attachments: [{
+        filename: pdfFilename,
+        content: pdfBuffer,
+        contentType: 'application/pdf'
+      }]
+    });
+  } catch (sendErr) {
+    await logCommissionReportEvent({
+      relatorio: 'legado', tipo_envio, usuario_envio, status: 'erro',
+      motivo: sendErr.message, totais, destinatarios: recipients.join(', ')
+    });
+    throw sendErr;
+  }
 
   console.log(`[Commission Email] Report sent to ${recipients.join(', ')}`);
+  await logCommissionReportEvent({
+    relatorio: 'legado', tipo_envio, usuario_envio, status: 'enviado',
+    totais, destinatarios: recipients.join(', ')
+  });
 
   const batchResult = await query(
     `SELECT id FROM commission_payment_batches WHERE periodo_inicio = $1 AND periodo_fim = $2 ORDER BY id DESC LIMIT 1`,
@@ -6311,10 +6367,59 @@ async function sendPerspectivaReport(options = {}) {
   if (recipients.length === 0) return { success: false, skipped: true, message: 'Nenhum destinatário configurado' };
 
   const reportData = await getPerspectivaReportData();
+  const totais = {
+    totalIndicadores: reportData.totalIndicadores,
+    totalIndicacoes: reportData.totalIndicacoes,
+    valorTotal: reportData.valorTotal
+  };
 
-  if (reportData.cycleEmpty && tipo_envio === 'automatico') {
-    console.log('[Perspectiva Email] Ciclo sem comissões, pulando envio automático.');
-    return { success: true, skipped: true, message: 'Ciclo sem comissões' };
+  // Proteção contra relatório vazio — vale para envio automático E manual
+  if (reportData.cycleEmpty) {
+    if (tipo_envio === 'automatico') {
+      console.log('[Perspectiva Email] Ciclo sem comissões elegíveis — enviando aviso curto em vez de relatório.');
+      let avisoEnviado = false;
+      try {
+        const transporterAviso = nodemailer.createTransport({
+          host: settings.smtp_server, port: settings.smtp_port, secure: true,
+          auth: { user: settings.smtp_user, pass: settings.smtp_password },
+          tls: { rejectUnauthorized: false }
+        });
+        await transporterAviso.sendMail({
+          from: settings.email_from || settings.smtp_user,
+          to: recipients.join(', '),
+          subject: `[AVISO] Relatório de Perspectivas — sem comissões elegíveis no ciclo (${reportData.cycle.label})`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:16px">
+            <h2 style="color:#059669">Relatório de Perspectivas Liquidadas Elegíveis</h2>
+            <p>Na data de referência <strong>${reportData.cycle.label}</strong> não havia nenhuma comissão com status <strong>Liquidado + Elegível</strong> para pagamento.</p>
+            <p>Por isso, o relatório semanal automático <strong>não foi enviado</strong> nesta semana. Este aviso serve para diferenciar "sem comissões no ciclo" de uma falha no envio.</p>
+            <p style="color:#6b7280;font-size:12px">Se você esperava comissões neste ciclo, verifique no painel Comissões ERP (Perspectivas Liquidadas) se as liquidações do período foram sincronizadas e marcadas como elegíveis.</p>
+          </div>`
+        });
+        avisoEnviado = true;
+        console.log(`[Perspectiva Email] Aviso de ciclo vazio enviado para ${recipients.join(', ')}`);
+      } catch (avisoErr) {
+        console.error('[Perspectiva Email] Falha ao enviar aviso de ciclo vazio:', avisoErr.message);
+      }
+      await logCommissionReportEvent({
+        relatorio: 'perspectivas', tipo_envio, usuario_envio, status: 'pulado',
+        motivo: avisoEnviado
+          ? 'Ciclo sem comissões elegíveis — aviso curto enviado aos destinatários'
+          : `Ciclo sem comissões elegíveis — falha ao enviar aviso curto`,
+        totais, destinatarios: recipients.join(', ')
+      });
+      return { success: true, skipped: true, message: 'Ciclo sem comissões (aviso enviado aos destinatários)' };
+    }
+    console.log('[Perspectiva Email] Envio manual bloqueado: sem comissões elegíveis.');
+    await logCommissionReportEvent({
+      relatorio: 'perspectivas', tipo_envio, usuario_envio, status: 'bloqueado',
+      motivo: 'Sem comissões Liquidado+Elegível — envio manual bloqueado para evitar PDF vazio', totais
+    });
+    return {
+      success: false,
+      skipped: true,
+      blocked: true,
+      message: 'Sem comissões elegíveis no momento: envio bloqueado para evitar relatório vazio. Verifique se as liquidações do período foram sincronizadas/marcadas como elegíveis.'
+    };
   }
 
   const perspectivaReportData = {
@@ -6333,15 +6438,27 @@ async function sendPerspectivaReport(options = {}) {
     tls: { rejectUnauthorized: false }
   });
 
-  await transporter.sendMail({
-    from: settings.email_from || settings.smtp_user,
-    to: recipients.join(', '),
-    subject: `Relatório de Perspectivas Liquidadas Elegíveis — ${reportData.cycle.label}`,
-    html,
-    attachments: [{ filename: pdfFilename, content: pdfBuffer, contentType: 'application/pdf' }]
-  });
+  try {
+    await transporter.sendMail({
+      from: settings.email_from || settings.smtp_user,
+      to: recipients.join(', '),
+      subject: `Relatório de Perspectivas Liquidadas Elegíveis — ${reportData.cycle.label}`,
+      html,
+      attachments: [{ filename: pdfFilename, content: pdfBuffer, contentType: 'application/pdf' }]
+    });
+  } catch (sendErr) {
+    await logCommissionReportEvent({
+      relatorio: 'perspectivas', tipo_envio, usuario_envio, status: 'erro',
+      motivo: sendErr.message, totais, destinatarios: recipients.join(', ')
+    });
+    throw sendErr;
+  }
 
   console.log(`[Perspectiva Email] Enviado para ${recipients.join(', ')} | Indicadores: ${reportData.totalIndicadores} | Valor: R$ ${reportData.valorTotal?.toFixed(2)}`);
+  await logCommissionReportEvent({
+    relatorio: 'perspectivas', tipo_envio, usuario_envio, status: 'enviado',
+    totais, destinatarios: recipients.join(', ')
+  });
   return { success: true, totalIndicadores: reportData.totalIndicadores, valorTotal: reportData.valorTotal };
 }
 
@@ -6520,6 +6637,65 @@ router.put('/commission-perspectiva/confirm-batch/:batchId', authMiddleware, loa
     );
     await query(`UPDATE commission_perspectiva_batches SET status = 'pago' WHERE id = $1`, [parseInt(batchId)]);
     res.json({ success: true, updatedCount: updateResult.rowCount });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Diagnóstico do ciclo corrente: elegíveis, pagos, última sincronização ERP.
+// Serve para verificar em produção se as liquidações do período entraram como elegíveis.
+router.get('/commission-perspectiva/diagnostics', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const cycle = getWeeklyCycleDates();
+    const elegiveis = await query(
+      `SELECT COUNT(*) AS total, COUNT(DISTINCT COALESCE(NULLIF(regexp_replace(cpf_indicador,'[^0-9]','','g'),''), nome_indicador)) AS indicadores
+       FROM erp_perspectivas_negocios
+       WHERE sit_titulo = 'Liquidado'
+         AND regexp_replace(cpf_indicador, '[^0-9]', '', 'g') NOT IN ('18470931830','32368440860')
+         AND (status_pagamento IS NULL OR status_pagamento = 'elegivel')`
+    );
+    const pagosCiclo = await query(
+      `SELECT COUNT(*) AS total FROM erp_perspectivas_negocios
+       WHERE sit_titulo = 'Liquidado' AND status_pagamento = 'pago'
+         AND data_confirmacao_pagamento >= $1 AND data_confirmacao_pagamento < ($2::date + INTERVAL '1 day')`,
+      [cycle.start, cycle.end]
+    );
+    const liquidadosCiclo = await query(
+      `SELECT COUNT(*) AS total FROM erp_perspectivas_negocios
+       WHERE sit_titulo = 'Liquidado'
+         AND data_pagamento >= $1 AND data_pagamento < ($2::date + INTERVAL '1 day')`,
+      [cycle.start, cycle.end]
+    );
+    const lastSync = await query(
+      `SELECT MAX(sincronizado_em) AS last_sync FROM erp_perspectivas_negocios WHERE origem = 'erp'`
+    );
+    const lastSyncAny = await query(
+      `SELECT MAX(sincronizado_em) AS last_sync FROM erp_perspectivas_negocios`
+    );
+    res.json({
+      success: true,
+      cycle: { start: cycle.start, end: cycle.end, label: cycle.label },
+      elegiveis: parseInt(elegiveis.rows[0]?.total || 0),
+      indicadoresElegiveis: parseInt(elegiveis.rows[0]?.indicadores || 0),
+      pagosNoCiclo: parseInt(pagosCiclo.rows[0]?.total || 0),
+      liquidadosNoCiclo: parseInt(liquidadosCiclo.rows[0]?.total || 0),
+      ultimaSincronizacaoErp: lastSync.rows[0]?.last_sync || null,
+      ultimaSincronizacaoQualquer: lastSyncAny.rows[0]?.last_sync || null
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Histórico de envios/pulos/bloqueios dos relatórios (legado e Perspectivas)
+router.get('/commission-perspectiva/report-log', authMiddleware, loadAgentMiddleware, requireSubmenuAccess('CommissionPaymentControl'), async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const result = await query(
+      `SELECT * FROM commission_report_log ORDER BY created_at DESC LIMIT $1`,
+      [limit]
+    );
+    res.json({ success: true, logs: result.rows });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

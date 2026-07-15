@@ -107,6 +107,27 @@ pool.query(`
 `).then(() => console.log('[Migration] api_keys OK'))
   .catch(e => console.error('[Migration] api_keys error:', e.message));
 
+// Histórico de envios/pulos dos relatórios de comissão (legado e Perspectivas).
+// Grava cada tentativa de envio (manual ou automática) com o resultado:
+// enviado, pulado (automático sem elegíveis), bloqueado (manual sem dados) ou erro.
+pool.query(`
+  CREATE TABLE IF NOT EXISTS commission_report_log (
+    id SERIAL PRIMARY KEY,
+    relatorio VARCHAR(32) NOT NULL,
+    tipo_envio VARCHAR(16) NOT NULL,
+    usuario_envio VARCHAR(255),
+    status VARCHAR(16) NOT NULL,
+    motivo TEXT,
+    total_indicadores INTEGER,
+    total_indicacoes INTEGER,
+    valor_total NUMERIC,
+    destinatarios TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_commission_report_log_created ON commission_report_log(created_at DESC);
+`).then(() => console.log('[Migration] commission_report_log OK'))
+  .catch(e => console.error('[Migration] commission_report_log error:', e.message));
+
 // Rastreio de orçamentos criados pelo Bom Flow. O ERP atribui todos os orçamentos
 // criados via API à conta compartilhada do token (acesso.api), perdendo o módulo e o
 // agente real. Esta tabela guarda apenas o que NÃO muda (vínculo com o pedido do ERP,
