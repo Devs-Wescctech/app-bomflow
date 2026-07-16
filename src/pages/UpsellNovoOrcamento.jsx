@@ -41,6 +41,11 @@ const isMobilePhone = (v) => {
 const DIA_VENCIMENTO_OPTIONS = ["01", "05", "10", "15", "20", "25"];
 const QUANTIDADE_PARCELAS_OPTIONS = Array.from({ length: 12 }, (_, i) => String(i + 1));
 
+// Card "Principal" (beneficiário índice 0 com select de produtos TITULAR) — desativado
+// temporariamente a pedido do usuário: o vínculo do titular ao item já vem da flag
+// "Incluir titular neste item". Mude para true para reativar o recurso.
+const ENABLE_PRINCIPAL_TITULAR = false;
+
 const TITULO_CONTRATO_OPTIONS = [
   "BOM CORP", "BOM PASTOR", "BOM PASTOR - BOM AUTO",
   "BOM PASTOR - BOM DESCANSO FAMILIA", "BOM PASTOR - BOM MED",
@@ -504,6 +509,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
   // O Principal É o titular do contrato — não conta como beneficiário extra no item
   // (o vínculo dele vem de incluir_titular), evitando quantidade dobrada no ERP.
   const isPrincipalBenefCard = (b, idx) =>
+    ENABLE_PRINCIPAL_TITULAR &&
     idx === 0 && !isBomAuto && !isBomPet && isTitularProdutoId(b?.usua_produtos);
 
   // Quantidade de pessoas vinculadas a um produto = (titular incluído ? 1 : 0) + beneficiários atribuídos a ele.
@@ -575,7 +581,9 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
   // do título de contrato escolhido no passo 1.
   const opcoesPrincipalProduto = useMemo(
     () =>
-      produtosFiltrados
+      !ENABLE_PRINCIPAL_TITULAR
+        ? []
+        : produtosFiltrados
         .filter((p) => (p.tipo_contrato || "").trim().toUpperCase() === "TITULAR")
         .map((p) => ({
           produto_id: String(p.id),
@@ -2164,7 +2172,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
                 <Label className="text-xs">Produto / plano <span className="text-red-500">*</span></Label>
                 {(() => {
                   // Card Principal (fluxo comum): lista os produtos TITULAR do título de contrato escolhido.
-                  const isPrincipalCard = !isBomAuto && !isBomPet && i === 0 && !isDepPagoCard(b);
+                  const isPrincipalCard = ENABLE_PRINCIPAL_TITULAR && !isBomAuto && !isBomPet && i === 0 && !isDepPagoCard(b);
                   const opcoes = isPrincipalCard ? opcoesPrincipalProduto : opcoesBenefProduto;
                   if (isBomAuto || (isBomPet && isPetCard(b)) || isCondutorCard(b) || isDepPagoCard(b)) {
                     return (
