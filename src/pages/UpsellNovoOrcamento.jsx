@@ -46,6 +46,15 @@ const QUANTIDADE_PARCELAS_OPTIONS = Array.from({ length: 12 }, (_, i) => String(
 // "Incluir titular neste item". Mude para true para reativar o recurso.
 const ENABLE_PRINCIPAL_TITULAR = false;
 
+// Tipos de contrato (campo tipo_contrato do ERP) cujos produtos podem receber beneficiários
+// (dependentes) no passo Beneficiários — comparação sem acentos e sem diferenciar maiúsculas.
+const BENEF_TIPO_CONTRATO_PERMITIDOS = [
+  "QUILOMETRAGEM", "MULTI BEM ESTAR", "BOM PET SAUDE", "ADENDO", "TITULAR",
+  "DEPENDENTE", "TANATOPRAXIA", "BOM MED", "CREMACAO", "COROA", "BOM AUTO",
+];
+const normalizaTipoContrato = (v) =>
+  (v || "").trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
 const TITULO_CONTRATO_OPTIONS = [
   "BOM CORP", "BOM PASTOR", "BOM PASTOR - BOM AUTO",
   "BOM PASTOR - BOM DESCANSO FAMILIA", "BOM PASTOR - BOM MED",
@@ -568,14 +577,32 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
   // Opções de produto para cada beneficiário (Step 5): apenas produtos de beneficiário
   // (pet/condutor/veículo/vaga 0,01). Produtos de dependente pago (> 0,01) NÃO entram aqui —
   // eles ganham cards automáticos com produto pré-definido e bloqueado (ver useEffect abaixo).
-  const opcoesBenefProduto = useMemo(
-    () =>
-      produtosBeneficiario.map((p) => ({
-        produto_id: String(p.id),
-        descricao: p.descricao || p.titulo_contrato || `Produto ${p.id}`,
-      })),
-    [produtosBeneficiario]
-  );
+  const opcoesBenefProduto = useMemo(() => {
+    const base = produtosBeneficiario.map((p) => ({
+      produto_id: String(p.id),
+      descricao: p.descricao || p.titulo_contrato || `Produto ${p.id}`,
+    }));
+    const ids = new Set(base.map((o) => o.produto_id));
+    // Itens selecionados no passo "Plano" com tipo_contrato permitido também podem receber
+    // beneficiários (dependentes) — o beneficiário vinculado soma na quantidade do item.
+    for (const ps of produtosSel) {
+      const pid = String(ps.produto_id);
+      if (ids.has(pid)) continue;
+      // Dependente pago já ganha card automático com produto fixo — não entra no select.
+      if (dependentePagoIds.includes(pid)) continue;
+      const prod =
+        produtosFiltrados.find((p) => String(p.id) === pid) ||
+        erpProdutos.find((p) => String(p.id) === pid);
+      if (!prod) continue;
+      if (!BENEF_TIPO_CONTRATO_PERMITIDOS.includes(normalizaTipoContrato(prod.tipo_contrato))) continue;
+      base.push({
+        produto_id: pid,
+        descricao: prod.descricao || prod.titulo_contrato || `Produto ${pid}`,
+      });
+      ids.add(pid);
+    }
+    return base;
+  }, [produtosBeneficiario, produtosSel, dependentePagoIds, produtosFiltrados, erpProdutos]);
 
   // Opções de produto do beneficiário PRINCIPAL: produtos com tipo_contrato = 'TITULAR'
   // do título de contrato escolhido no passo 1.
@@ -1899,7 +1926,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
               </span>
               {ENABLE_PRINCIPAL_TITULAR && !isBomAuto && !isBomPet && i === 0 && !isDepPagoCard(b) && <Badge className="bg-violet-100 text-violet-700 text-xs">Principal</Badge>}
               {isCondutorCard(b) && <Badge className="bg-violet-100 text-violet-700 text-xs">Condutor</Badge>}
-              {isDepPagoCard(b) && <Badge className="bg-amber-100 text-amber-700 text-xs">Dependente</Badge>}
+              {(isDepPagoCard(b) || (!isBomAuto && !isVeiculoCard(b) && !isCondutorCard(b) && !isPetCard(b))) && <Badge className="bg-amber-100 text-amber-700 text-xs">Dependente</Badge>}
             </div>
             <div className="flex items-center gap-2">
               {!isBomAuto && i > 0 && !isCondutorCard(b) && !isDepPagoCard(b) && (
