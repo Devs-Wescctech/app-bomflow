@@ -96,6 +96,10 @@ PRESALES_AUTOCANCEL_DRYRUN = "true"
 PRESALES_AUTOCANCEL_DEADLINE_DAYS = "3"
 INVERTEXTO_STATE = "SP"
 
+[userenv.development]
+
+[userenv.production]
+
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 180000

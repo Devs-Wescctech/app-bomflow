@@ -168,14 +168,30 @@ export default function CommissionPerspectivaControl() {
   const sendReportMutation = useMutation({
     mutationFn: () => fetchWithAuth('/api/functions/commission-perspectiva/report/send', { method: 'POST' }),
     onSuccess: (data) => {
-      if (data.skipped) {
+      if (data.blocked) {
+        toast.warning(data.message || 'Envio bloqueado: relatório sem dados');
+      } else if (data.skipped) {
         toast.info(`Envio ignorado: ${data.message}`);
       } else {
         toast.success(`Relatório enviado ao financeiro`);
       }
+      queryClient.invalidateQueries({ queryKey: ['commission-perspectiva-report-log'] });
     },
     onError: () => toast.error('Erro ao enviar relatório'),
   });
+
+  const { data: diagnosticsData } = useQuery({
+    queryKey: ['commission-perspectiva-diagnostics'],
+    queryFn: () => fetchWithAuth('/api/functions/commission-perspectiva/diagnostics'),
+    staleTime: 60000,
+  });
+
+  const { data: reportLogData, isLoading: loadingReportLog } = useQuery({
+    queryKey: ['commission-perspectiva-report-log'],
+    queryFn: () => fetchWithAuth('/api/functions/commission-perspectiva/report-log'),
+    staleTime: 30000,
+  });
+  const reportLogs = reportLogData?.logs || [];
 
   const records = controlData?.records || [];
   const batches = batchesData?.batches || [];
@@ -324,6 +340,40 @@ export default function CommissionPerspectivaControl() {
         </Card>
       </div>
 
+      <Card className="border-emerald-200 bg-emerald-50/40">
+        <CardContent className="pt-4 pb-4">
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
+            <div className="flex items-center gap-2 font-medium text-emerald-800">
+              <Calendar className="w-4 h-4" />
+              Diagnóstico do ciclo {diagnosticsData?.cycle ? `${safeFormatDate(diagnosticsData.cycle.start)} – ${safeFormatDate(diagnosticsData.cycle.end)}` : ''}
+            </div>
+            <div>
+              <span className="text-gray-500">Liquidado + Elegível agora:</span>{' '}
+              <span className="font-bold text-yellow-700">{diagnosticsData?.elegiveis ?? '-'}</span>
+              <span className="text-gray-400"> ({diagnosticsData?.indicadoresElegiveis ?? '-'} indicadores)</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Liquidados no ciclo:</span>{' '}
+              <span className="font-bold">{diagnosticsData?.liquidadosNoCiclo ?? '-'}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Marcados pagos no ciclo:</span>{' '}
+              <span className="font-bold text-green-700">{diagnosticsData?.pagosNoCiclo ?? '-'}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Última sincronização ERP:</span>{' '}
+              <span className="font-bold">{diagnosticsData?.ultimaSincronizacaoErp ? safeFormat(diagnosticsData.ultimaSincronizacaoErp) : 'nunca'}</span>
+            </div>
+          </div>
+          {diagnosticsData && diagnosticsData.elegiveis === 0 && (
+            <p className="text-xs text-amber-700 mt-2 flex items-center gap-1">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              Sem elegíveis no momento: o relatório automático será pulado (com aviso por e-mail) e o envio manual será bloqueado. Verifique se as liquidações do período foram sincronizadas.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="flex gap-2 border-b pb-2">
         <Button
           variant={activeTab === 'control' ? 'default' : 'ghost'}
@@ -345,6 +395,13 @@ export default function CommissionPerspectivaControl() {
           onClick={() => setActiveTab('grouped')}
         >
           <Users className="w-4 h-4 mr-1" /> Por Indicador
+        </Button>
+        <Button
+          variant={activeTab === 'envios' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setActiveTab('envios')}
+        >
+          <Send className="w-4 h-4 mr-1" /> Envios
         </Button>
         <Button
           variant={activeTab === 'alertas' ? 'default' : 'ghost'}
@@ -613,6 +670,75 @@ export default function CommissionPerspectivaControl() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'envios' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Send className="w-5 h-5 text-emerald-600" />
+              Histórico de Envios de Relatório
+            </CardTitle>
+            <p className="text-sm text-gray-500 mt-1">
+              Registro de cada envio, pulo ou bloqueio dos relatórios de comissão (Perspectivas e legado), manual ou automático.
+            </p>
+          </CardHeader>
+          <CardContent>
+            {loadingReportLog ? (
+              <div className="text-center py-8 text-gray-500">Carregando...</div>
+            ) : reportLogs.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                <p>Nenhum envio registrado ainda</p>
+                <p className="text-sm mt-1">O histórico começa a ser gravado a partir desta versão.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left">
+                      <th className="py-2 px-3">Data</th>
+                      <th className="py-2 px-3">Relatório</th>
+                      <th className="py-2 px-3">Tipo</th>
+                      <th className="py-2 px-3">Status</th>
+                      <th className="py-2 px-3">Indicadores</th>
+                      <th className="py-2 px-3">Valor</th>
+                      <th className="py-2 px-3">Usuário</th>
+                      <th className="py-2 px-3">Motivo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportLogs.map((log) => (
+                      <tr key={log.id} className="border-b hover:bg-gray-50">
+                        <td className="py-2 px-3 text-xs whitespace-nowrap">{safeFormat(log.created_at)}</td>
+                        <td className="py-2 px-3">
+                          <Badge className={log.relatorio === 'perspectivas' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700'}>
+                            {log.relatorio === 'perspectivas' ? 'Perspectivas' : 'Legado'}
+                          </Badge>
+                        </td>
+                        <td className="py-2 px-3 text-xs capitalize">{log.tipo_envio}</td>
+                        <td className="py-2 px-3">
+                          <Badge className={
+                            log.status === 'enviado' ? 'bg-green-100 text-green-800'
+                            : log.status === 'pulado' ? 'bg-yellow-100 text-yellow-800'
+                            : log.status === 'bloqueado' ? 'bg-orange-100 text-orange-800'
+                            : 'bg-red-100 text-red-800'
+                          }>
+                            {log.status === 'enviado' ? 'Enviado' : log.status === 'pulado' ? 'Pulado' : log.status === 'bloqueado' ? 'Bloqueado' : 'Erro'}
+                          </Badge>
+                        </td>
+                        <td className="py-2 px-3">{log.total_indicadores ?? '-'}</td>
+                        <td className="py-2 px-3">{log.valor_total != null ? `R$ ${parseFloat(log.valor_total).toFixed(2)}` : '-'}</td>
+                        <td className="py-2 px-3 text-xs">{log.usuario_envio || '-'}</td>
+                        <td className="py-2 px-3 text-xs text-gray-500 max-w-xs">{log.motivo || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </CardContent>

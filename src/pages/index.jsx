@@ -107,9 +107,8 @@ import WhatsAppQuickTicket from "./WhatsAppQuickTicket";
 
 import WhatsAppQuickCollection from "./WhatsAppQuickCollection";
 
-import WhatsAppConversa from "./WhatsAppConversa";
 import WhatsAppInbox from "./WhatsAppInbox";
-import WhatsAppChat from "./WhatsAppChat";
+import AdminWhatsAppConnections from "./AdminWhatsAppConnections";
 
 import PortalHomeAlias from "./portal-home";
 
@@ -202,6 +201,7 @@ import BomAutoRelatorio from "./BomAutoRelatorio";
 import AppsHub from "./AppsHub";
 import ApiDocumentation from "./ApiDocumentation";
 import AdminApiKeys from "./AdminApiKeys";
+import LeadImportPF from "./LeadImportPF";
 
 import SalesWonReport from "./SalesWonReport";
 import SalesPJWonReport from "./SalesPJWonReport";
@@ -342,9 +342,8 @@ const PAGES = {
     
     WhatsAppQuickCollection: WhatsAppQuickCollection,
     
-    WhatsAppConversa: WhatsAppConversa,
     WhatsAppInbox: WhatsAppInbox,
-    WhatsAppChat: WhatsAppChat,
+    AdminWhatsAppConnections: AdminWhatsAppConnections,
     
     PortalHomeAlias: PortalHomeAlias,
     
@@ -433,6 +432,7 @@ const PAGES = {
     AppsHub: AppsHub,
     ApiDocumentation: ApiDocumentation,
     AdminApiKeys: AdminApiKeys,
+    LeadImportPF: LeadImportPF,
 
     SalesWonReport: SalesWonReport,
     SalesPJWonReport: SalesPJWonReport,
@@ -599,9 +599,8 @@ function PagesContent() {
                 
                 <Route path="/WhatsAppQuickCollection" element={<WhatsAppQuickCollection />} />
                 
-                <Route path="/WhatsAppConversa" element={<WhatsAppConversa />} />
                 <Route path="/WhatsAppInbox" element={<WhatsAppInbox />} />
-                <Route path="/WhatsAppChat" element={<WhatsAppChat />} />
+                <Route path="/AdminWhatsAppConnections" element={<AdminWhatsAppConnections />} />
                 
                 <Route path="/portal-home" element={<PortalHomeAlias />} />
                 
@@ -698,6 +697,7 @@ function PagesContent() {
                 <Route path="/AppsHub" element={<AppsHub />} />
                 <Route path="/ApiDocumentation" element={<ApiDocumentation />} />
                 <Route path="/AdminApiKeys" element={<AdminApiKeys />} />
+                <Route path="/LeadImportPF" element={<LeadImportPF />} />
                 <Route path="/NewLeadUpsell" element={<NewLeadUpsell />} />
                 <Route path="/LeadsUpsellKanban" element={<LeadsUpsellKanban />} />
                 <Route path="/LeadUpsellDetail" element={<LeadUpsellDetail />} />

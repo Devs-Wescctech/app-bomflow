@@ -326,6 +326,7 @@ const menuModules = [
       { title: "Distribuição de Tickets", url: createPageUrl("DistributionRules"), icon: Zap },
       { title: "Agentes de IA", url: createPageUrl("AIAgents"), icon: User },
       { title: "Integrações e APIs", url: createPageUrl("SystemsApiDocs"), icon: Plug },
+      { title: "Conexões WhatsApp", url: createPageUrl("AdminWhatsAppConnections"), icon: MessageSquare },
     ]
   }
 ];

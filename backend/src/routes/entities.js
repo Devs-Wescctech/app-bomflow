@@ -107,6 +107,27 @@ pool.query(`
 `).then(() => console.log('[Migration] api_keys OK'))
   .catch(e => console.error('[Migration] api_keys error:', e.message));
 
+// Histórico de envios/pulos dos relatórios de comissão (legado e Perspectivas).
+// Grava cada tentativa de envio (manual ou automática) com o resultado:
+// enviado, pulado (automático sem elegíveis), bloqueado (manual sem dados) ou erro.
+pool.query(`
+  CREATE TABLE IF NOT EXISTS commission_report_log (
+    id SERIAL PRIMARY KEY,
+    relatorio VARCHAR(32) NOT NULL,
+    tipo_envio VARCHAR(16) NOT NULL,
+    usuario_envio VARCHAR(255),
+    status VARCHAR(16) NOT NULL,
+    motivo TEXT,
+    total_indicadores INTEGER,
+    total_indicacoes INTEGER,
+    valor_total NUMERIC,
+    destinatarios TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_commission_report_log_created ON commission_report_log(created_at DESC);
+`).then(() => console.log('[Migration] commission_report_log OK'))
+  .catch(e => console.error('[Migration] commission_report_log error:', e.message));
+
 // Rastreio de orçamentos criados pelo Bom Flow. O ERP atribui todos os orçamentos
 // criados via API à conta compartilhada do token (acesso.api), perdendo o módulo e o
 // agente real. Esta tabela guarda apenas o que NÃO muda (vínculo com o pedido do ERP,
@@ -244,56 +265,59 @@ pool.query(`
 `).then(() => console.log('[Migration] presales_auditorias OK'))
   .catch(e => console.error('[Migration] presales_auditorias error:', e.message));
 
-// Caixa de Entrada WhatsApp: conversas e mensagens espelhadas do WHU/Rudo dentro do CRM.
-// phone_key = últimos 8 dígitos do número (reconcilia o número recebido do WHU, que vem sem
-// o 9 extra, ex.: 555197720611, com o número que enviamos, ex.: 5551997720611). É a chave
-// de deduplicação de conversa. A lista da caixa é montada a partir destas tabelas (o WHU não
-// expõe endpoint para listar conversas); as mensagens de entrada chegam via webhook.
-// whatsapp_webhook_events guarda o payload cru para descobrir/depurar o formato do WHU.
+// Chat WhatsApp v2 (Atendimento): fundação nova. Conexões de canal com token CRIPTOGRAFADO
+// (AES-256-GCM, utils/encryption.js) e webhook_secret por conexão; conversas e mensagens
+// próprias do atendimento (att_*). phone_key = últimos 8 dígitos (reconcilia números
+// com/sem o nono dígito). Dedup de mensagem por external_message_id.
+// As tabelas antigas (whatsapp_conversations/messages/webhook_events) são removidas.
 pool.query(`
-  CREATE TABLE IF NOT EXISTS whatsapp_conversations (
+  DROP TABLE IF EXISTS whatsapp_messages;
+  DROP TABLE IF EXISTS whatsapp_conversations;
+  DROP TABLE IF EXISTS whatsapp_webhook_events;
+  CREATE TABLE IF NOT EXISTS channel_connections (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    phone_key VARCHAR(20) NOT NULL UNIQUE,
-    wa_number VARCHAR(30) NOT NULL,
-    contact_id VARCHAR(64),
-    chat_id VARCHAR(64),
-    name VARCHAR(255),
-    avatar_url TEXT,
-    vendedor_id UUID,
-    vendedor_nome VARCHAR(255),
-    last_message_text TEXT,
-    last_message_at TIMESTAMPTZ,
-    last_direction VARCHAR(4),
-    unread_count INTEGER NOT NULL DEFAULT 0,
-    status VARCHAR(20) DEFAULT 'open',
+    channel VARCHAR(30) NOT NULL DEFAULT 'whatsapp',
+    name VARCHAR(255) NOT NULL,
+    token TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    webhook_secret VARCHAR(64) NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
   );
-  CREATE INDEX IF NOT EXISTS idx_wa_conversations_vendedor ON whatsapp_conversations(vendedor_id);
-  CREATE INDEX IF NOT EXISTS idx_wa_conversations_last_at ON whatsapp_conversations(last_message_at DESC);
-  CREATE TABLE IF NOT EXISTS whatsapp_messages (
+  CREATE TABLE IF NOT EXISTS att_conversations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    conversation_id UUID NOT NULL REFERENCES whatsapp_conversations(id) ON DELETE CASCADE,
-    wa_message_id VARCHAR(64),
+    connection_id UUID NOT NULL REFERENCES channel_connections(id) ON DELETE CASCADE,
+    phone VARCHAR(30) NOT NULL,
+    phone_key VARCHAR(20) NOT NULL,
+    contact_name VARCHAR(255),
+    assigned_user_id UUID,
+    status VARCHAR(20) NOT NULL DEFAULT 'pendente',
+    last_message_at TIMESTAMPTZ,
+    unread_count INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_att_conversations_conn_phone
+    ON att_conversations(connection_id, phone_key);
+  CREATE INDEX IF NOT EXISTS idx_att_conversations_assigned ON att_conversations(assigned_user_id);
+  CREATE INDEX IF NOT EXISTS idx_att_conversations_last_at ON att_conversations(last_message_at DESC);
+  CREATE TABLE IF NOT EXISTS att_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID NOT NULL REFERENCES att_conversations(id) ON DELETE CASCADE,
     direction VARCHAR(4) NOT NULL,
-    text TEXT,
-    message_type VARCHAR(20) DEFAULT 'text',
+    content TEXT,
+    type VARCHAR(20) NOT NULL DEFAULT 'text',
+    user_id UUID,
+    external_message_id VARCHAR(64),
     status VARCHAR(20),
-    sender_name VARCHAR(255),
     sent_at TIMESTAMPTZ DEFAULT NOW(),
     created_at TIMESTAMPTZ DEFAULT NOW()
   );
-  CREATE INDEX IF NOT EXISTS idx_wa_messages_conv ON whatsapp_messages(conversation_id, sent_at);
-  CREATE UNIQUE INDEX IF NOT EXISTS uq_wa_messages_waid ON whatsapp_messages(wa_message_id) WHERE wa_message_id IS NOT NULL;
-  CREATE TABLE IF NOT EXISTS whatsapp_webhook_events (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    payload JSONB,
-    parsed BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-  );
-  CREATE INDEX IF NOT EXISTS idx_wa_webhook_events_created ON whatsapp_webhook_events(created_at DESC);
-`).then(() => console.log('[Migration] whatsapp_inbox OK'))
-  .catch(e => console.error('[Migration] whatsapp_inbox error:', e.message));
+  CREATE INDEX IF NOT EXISTS idx_att_messages_conv ON att_messages(conversation_id, sent_at);
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_att_messages_external
+    ON att_messages(external_message_id) WHERE external_message_id IS NOT NULL;
+`).then(() => console.log('[Migration] attendance_chat_v2 OK'))
+  .catch(e => console.error('[Migration] attendance_chat_v2 error:', e.message));
 
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
