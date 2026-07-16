@@ -694,6 +694,15 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       usua_nome_completo: form.pessoa_contato || "",
       usua_sexo: form.sexo || "",
       usua_telefone: form.celular || form.telefone || "",
+      // Data de nascimento vem da consulta de CPF no ERP (o passo Contratante não coleta
+      // esse dado). Só usa se a consulta for do MESMO CPF digitado no passo 1 — evita
+      // herdar o nascimento de uma consulta antiga após o vendedor trocar o CPF.
+      usua_data_nascimento:
+        cpfLookup?.status === "found" &&
+        cpfLookup?.data_nascimento &&
+        String(cpfLookup?.cpf || "").replace(/\D/g, "") === String(form.cpf || "").replace(/\D/g, "")
+          ? cpfLookup.data_nascimento
+          : "",
     };
     setBeneficiarios((bs) => {
       if (!bs.length) return bs;
@@ -724,7 +733,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     });
   }, [
     isBomAuto, isBomPet, form.cpf, form.pessoa_contato, form.sexo, form.celular, form.telefone,
-    petProdutoIds, dependentePagoIds, produtoVeiculo, produtoCondutor, beneficiarios,
+    petProdutoIds, dependentePagoIds, produtoVeiculo, produtoCondutor, beneficiarios, cpfLookup,
   ]);
 
   const toggleProduto = (prod) => {
