@@ -726,6 +726,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
   // mas campos não editados acompanham mudanças feitas no passo 1.
   const principalPrefillRef = useRef({});
   useEffect(() => {
+    if (!ENABLE_PRINCIPAL_TITULAR) return;
     if (isBomAuto || isBomPet) return;
     const fonte = {
       usua_cpf: form.cpf || "",
