@@ -680,6 +680,53 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     });
   }, [isBomPet, petBenefProdutoId, petProdutoIds]);
 
+  // BENEFICIÁRIO 1 (Principal): pré-preenche o primeiro card com os dados do Contratante (passo 1)
+  // para o vendedor não redigitar CPF/nome/sexo/telefone. Vale só para o card Principal do fluxo
+  // comum (não BOM AUTO, não BOM PET, e o card 0 não pode ser de condutor/veículo/pet/dependente pago).
+  // O ref guarda o último valor que NÓS colocamos em cada campo: um campo só é atualizado se estiver
+  // vazio ou ainda igual ao último pré-preenchimento — edição manual do vendedor nunca é sobrescrita,
+  // mas campos não editados acompanham mudanças feitas no passo 1.
+  const principalPrefillRef = useRef({});
+  useEffect(() => {
+    if (isBomAuto || isBomPet) return;
+    const fonte = {
+      usua_cpf: form.cpf || "",
+      usua_nome_completo: form.pessoa_contato || "",
+      usua_sexo: form.sexo || "",
+      usua_telefone: form.celular || form.telefone || "",
+    };
+    setBeneficiarios((bs) => {
+      if (!bs.length) return bs;
+      const b = bs[0];
+      // card 0 precisa ser o Principal: sem produto especial (condutor/veículo/pet/dependente pago)
+      const prod = String(b.usua_produtos || "");
+      if (
+        prod &&
+        (petProdutoIds.includes(prod) ||
+          dependentePagoIds.includes(prod) ||
+          (produtoVeiculo && prod === String(produtoVeiculo.id)) ||
+          (produtoCondutor && prod === String(produtoCondutor.id)))
+      ) {
+        return bs;
+      }
+      const next = { ...b };
+      let changed = false;
+      for (const k of Object.keys(fonte)) {
+        const atual = b[k] || "";
+        const podeAtualizar = atual === "" || atual === (principalPrefillRef.current[k] || "");
+        if (podeAtualizar && atual !== fonte[k]) {
+          next[k] = fonte[k];
+          changed = true;
+        }
+        if (podeAtualizar) principalPrefillRef.current[k] = fonte[k];
+      }
+      return changed ? [next, ...bs.slice(1)] : bs;
+    });
+  }, [
+    isBomAuto, isBomPet, form.cpf, form.pessoa_contato, form.sexo, form.celular, form.telefone,
+    petProdutoIds, dependentePagoIds, produtoVeiculo, produtoCondutor, beneficiarios,
+  ]);
+
   const toggleProduto = (prod) => {
     setProdutosSel((list) => {
       const exists = list.some((p) => String(p.produto_id) === String(prod.id));
