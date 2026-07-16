@@ -485,6 +485,21 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     [dependentePagoSelecionados]
   );
 
+  // VEÍCULO EXTRA: quando o titular seleciona um produto "VEÍCULO EXTRA" no Plano (ex.:
+  // "BOM AUTO CLIENTES - VEÍCULO EXTRA"), o vendedor precisa cadastrar mais um par de
+  // condutor + veículo em Beneficiários — os produtos "DADOS DO CONDUTOR" e "DADOS DO
+  // VEÍCULO" entram como opção no select e é permitido adicionar novos cards.
+  const veiculoExtraSelecionado = useMemo(
+    () =>
+      produtosSel.some((ps) => {
+        const prod =
+          produtosFiltrados.find((p) => String(p.id) === String(ps.produto_id)) ||
+          erpProdutos.find((p) => String(p.id) === String(ps.produto_id));
+        return prod && /VE[IÍ]CULO\s+EXTRA/i.test(prod.descricao || prod.titulo_contrato || "");
+      }),
+    [produtosSel, produtosFiltrados, erpProdutos]
+  );
+
   // BOM PET: ids dos produtos de pet — quando um beneficiário aponta para um deles,
   // o card mostra os campos estruturados do pet (nome/tipo/raça/cor/porte).
   const petProdutoIds = useMemo(
@@ -617,8 +632,22 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
         ids.add(pid);
       }
     }
+    // VEÍCULO EXTRA selecionado no Plano: os produtos "DADOS DO CONDUTOR" e "DADOS DO VEÍCULO"
+    // entram como opção para o vendedor cadastrar o condutor e o veículo extras.
+    if (veiculoExtraSelecionado) {
+      for (const prod of [produtoCondutor, produtoVeiculo]) {
+        if (!prod) continue;
+        const pid = String(prod.id);
+        if (ids.has(pid)) continue;
+        base.push({
+          produto_id: pid,
+          descricao: prod.descricao || prod.titulo_contrato || `Produto ${pid}`,
+        });
+        ids.add(pid);
+      }
+    }
     return base;
-  }, [produtosSel, produtosFiltrados, erpProdutos, isBomPet, produtosBeneficiario]);
+  }, [produtosSel, produtosFiltrados, erpProdutos, isBomPet, produtosBeneficiario, veiculoExtraSelecionado, produtoCondutor, produtoVeiculo]);
 
   // Produtos válidos para a VALIDAÇÃO do passo Beneficiários: além das opções do select, os
   // produtos "especiais" atribuídos automaticamente (pet, condutor, veículo, vaga 0,01) — esses
@@ -1045,20 +1074,19 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       }
     }
     if (step === 4) {
-      // Condutor (só BOM AUTO) exige nome.
+      // Cards de condutor (BOM AUTO fixo ou condutor extra do VEÍCULO EXTRA): todos exigem nome.
       const veicId = produtoVeiculo ? String(produtoVeiculo.id) : "";
-      if (isBomAuto) {
-        const condId = produtoCondutor ? String(produtoCondutor.id) : "";
-        const cardCond = beneficiarios.find((b) => String(b.usua_produtos) === condId);
-        if (cardCond && !cardCond.usua_nome_completo?.trim()) {
-          toast.error("Preencha o nome do condutor"); return false;
-        }
+      const condId = produtoCondutor ? String(produtoCondutor.id) : "";
+      if (condId) {
+        const condSemNome = beneficiarios.find(
+          (b) => String(b.usua_produtos) === condId && !b.usua_nome_completo?.trim()
+        );
+        if (condSemNome) { toast.error("Preencha o nome do condutor"); return false; }
       }
-      // Card de veículo (BOM AUTO ou produto de veículo escolhido em contrato COMBO): exige modelo, cor,
-      // placa válida e ano (4 dígitos). Vale sempre que houver um card apontando para o produto de veículo.
+      // Cards de veículo (BOM AUTO, COMBO ou veículo extra): TODOS exigem modelo, cor,
+      // placa válida e ano (4 dígitos).
       if (veicId) {
-        const cardVeic = beneficiarios.find((b) => String(b.usua_produtos) === veicId);
-        if (cardVeic) {
+        for (const cardVeic of beneficiarios.filter((b) => String(b.usua_produtos) === veicId)) {
           const modelo = cardVeic.veic_modelo === "OUTRO" ? cardVeic.veic_modelo_outro : cardVeic.veic_modelo;
           const cor = cardVeic.veic_cor === "OUTRO" ? cardVeic.veic_cor_outro : cardVeic.veic_cor;
           if (!modelo?.trim()) { toast.error("Selecione ou informe o modelo do veículo"); return false; }
@@ -1336,6 +1364,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
                   produtoCondutorId={produtoCondutor ? String(produtoCondutor.id) : ""}
                   petProdutoIds={petProdutoIds}
                   dependentePagoIds={dependentePagoIds}
+                  allowExtraVeiculo={veiculoExtraSelecionado}
                 />
               )}
               {step === 5 && <Step4 form={form} set={set} planosPagamento={planosPagamento} loadingPlanos={loadingPlanos} planoSelecionado={planoSelecionado} />}
@@ -1865,7 +1894,7 @@ function Step4({ form, set, planosPagamento, loadingPlanos, planoSelecionado }) 
   );
 }
 
-function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, opcoesPrincipalProduto = [], allProdutos = [], setBenef, setVeiculoField, setPetField, toggleBenef, addBeneficiario, removeBeneficiario, isBomAuto, isBomPet = false, produtoVeiculoId, produtoCondutorId = "", petProdutoIds = [], dependentePagoIds = [] }) {
+function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, opcoesPrincipalProduto = [], allProdutos = [], setBenef, setVeiculoField, setPetField, toggleBenef, addBeneficiario, removeBeneficiario, isBomAuto, isBomPet = false, produtoVeiculoId, produtoCondutorId = "", petProdutoIds = [], dependentePagoIds = [], allowExtraVeiculo = false }) {
   const descProduto = (produtoId) => {
     const fromOpcoes = opcoesBenefProduto.find((p) => String(p.produto_id) === String(produtoId))?.descricao;
     if (fromOpcoes) return fromOpcoes;
@@ -1899,7 +1928,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
             ? `BOM PET — cards de pet já vêm com o plano de pet; troque o produto/plano do card para cadastrar outros beneficiários`
             : `${beneficiarios.length} beneficiário(s) — cada um deve ser atribuído a um produto/plano`}
         </p>
-        {!isBomAuto && (
+        {(!isBomAuto || allowExtraVeiculo) && (
           <Button type="button" variant="outline" size="sm" onClick={addBeneficiario} className="text-violet-600 border-violet-200 hover:bg-violet-50">
             <Plus className="w-4 h-4 mr-1" /> Adicionar beneficiário
           </Button>
@@ -1927,7 +1956,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
               {(isDepPagoCard(b) || (!isBomAuto && !isVeiculoCard(b) && !isCondutorCard(b) && !isPetCard(b))) && <Badge className="bg-amber-100 text-amber-700 text-xs">Dependente</Badge>}
             </div>
             <div className="flex items-center gap-2">
-              {!isBomAuto && i > 0 && !isCondutorCard(b) && (
+              {(isBomAuto ? allowExtraVeiculo && i >= 2 : i > 0 && !isCondutorCard(b)) && (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); removeBeneficiario(i); }}
@@ -2200,7 +2229,13 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
                   // Card Principal (fluxo comum): lista os produtos TITULAR do título de contrato escolhido.
                   const isPrincipalCard = ENABLE_PRINCIPAL_TITULAR && !isBomAuto && !isBomPet && i === 0 && !isDepPagoCard(b);
                   const opcoes = isPrincipalCard ? opcoesPrincipalProduto : opcoesBenefProduto;
-                  if (isBomAuto || isCondutorCard(b)) {
+                  // Produto fixo (read-only): cards fixos do BOM AUTO puro (condutor + veículo,
+                  // índices 0 e 1) e o condutor pareado do COMBO. Cards extras (VEÍCULO EXTRA)
+                  // mantêm o select para o vendedor escolher condutor/veículo/dependente.
+                  const produtoFixo = isBomAuto
+                    ? i < 2 || !allowExtraVeiculo
+                    : isCondutorCard(b) && !allowExtraVeiculo;
+                  if (produtoFixo) {
                     return (
                       <div className="h-9 flex items-center px-3 rounded-md border border-slate-200 bg-slate-50 text-sm text-slate-600">
                         {descProduto(b.usua_produtos) || "—"}
@@ -2227,7 +2262,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
                       </SelectTrigger>
                       <SelectContent>
                         {opcoes
-                          .filter((p) => !produtoCondutorId || String(p.produto_id) !== String(produtoCondutorId))
+                          .filter((p) => allowExtraVeiculo || !produtoCondutorId || String(p.produto_id) !== String(produtoCondutorId))
                           .map((p) => (
                             <SelectItem key={p.produto_id} value={String(p.produto_id)}>
                               {p.descricao}
