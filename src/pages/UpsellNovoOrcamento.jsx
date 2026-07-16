@@ -573,18 +573,16 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     [produtosResumo]
   );
 
-  // Opções de produto para cada beneficiário (Step 5): SOMENTE os itens selecionados no passo
-  // "Plano" cujo tipo_contrato é permitido (whitelist). O beneficiário vinculado a um item soma na
-  // quantidade dele. Produtos de dependente pago (> 0,01) NÃO entram — ganham cards automáticos com
-  // produto pré-definido e bloqueado.
+  // Opções de produto para cada beneficiário (Step 5): os itens selecionados no passo "Plano"
+  // cujo tipo_contrato é permitido (whitelist) — inclui dependentes pagos (> 0,01) — mais as
+  // "vagas" de dependente 0,01 do título (não selecionáveis no Plano). O beneficiário vinculado
+  // a um item soma na quantidade dele.
   const opcoesBenefProduto = useMemo(() => {
     const base = [];
     const ids = new Set();
     for (const ps of produtosSel) {
       const pid = String(ps.produto_id);
       if (ids.has(pid)) continue;
-      // Dependente pago já ganha card automático com produto fixo — não entra no select.
-      if (dependentePagoIds.includes(pid)) continue;
       const prod =
         produtosFiltrados.find((p) => String(p.id) === pid) ||
         erpProdutos.find((p) => String(p.id) === pid);
@@ -596,8 +594,18 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       });
       ids.add(pid);
     }
+    // Vagas de dependente (0,01): não aparecem no Plano, mas são opção direta do beneficiário.
+    for (const prod of produtosFiltrados) {
+      const pid = String(prod.id);
+      if (ids.has(pid) || !isDependenteProduto(prod)) continue;
+      base.push({
+        produto_id: pid,
+        descricao: prod.descricao || prod.titulo_contrato || `Produto ${pid}`,
+      });
+      ids.add(pid);
+    }
     return base;
-  }, [produtosSel, dependentePagoIds, produtosFiltrados, erpProdutos]);
+  }, [produtosSel, produtosFiltrados, erpProdutos]);
 
   // Produtos válidos para a VALIDAÇÃO do passo Beneficiários: além das opções do select, os
   // produtos "especiais" atribuídos automaticamente (pet, condutor, veículo, vaga 0,01) — esses
@@ -696,35 +704,8 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     form.pessoa_contato, form.cpf, form.sexo, form.celular, form.telefone,
   ]);
 
-  // DEPENDENTE PAGO: cria/remove automaticamente 1 card de beneficiário por produto
-  // "DEPENDENTE" com preço real (> 0,01) selecionado no Plano. O card nasce com o produto
-  // pré-definido e bloqueado (limitado a 1 beneficiário); CPF, nome e data de nascimento
-  // são obrigatórios. Quando o produto é desmarcado no Plano, o card correspondente é removido.
-  useEffect(() => {
-    const depPagoAllIds = new Set(produtosDependentePago.map((p) => String(p.id)));
-    const depPagoSelIds = new Set(dependentePagoSelecionados.map((p) => String(p.id)));
-    const cardsDepPagoIds = new Set(
-      beneficiarios.filter((b) => depPagoAllIds.has(String(b.usua_produtos))).map((b) => String(b.usua_produtos))
-    );
-    const toAdd = [...depPagoSelIds].filter((id) => !cardsDepPagoIds.has(id));
-    const toRemove = new Set([...cardsDepPagoIds].filter((id) => !depPagoSelIds.has(id)));
-    if (toAdd.length === 0 && toRemove.size === 0) return;
-    // índices que permanecem (mantém beneficiarios e openBenef alinhados por índice)
-    const keepIdx = [];
-    beneficiarios.forEach((b, idx) => {
-      if (!toRemove.has(String(b.usua_produtos))) keepIdx.push(idx);
-    });
-    setBeneficiarios((prev) => {
-      const kept = keepIdx.filter((idx) => idx < prev.length).map((idx) => prev[idx]);
-      const novos = toAdd.map((id) => ({ ...EMPTY_BENEFICIARIO, usua_produtos: id }));
-      return [...kept, ...novos];
-    });
-    // novos cards de dependente pago nascem abertos para o vendedor preencher
-    setOpenBenef((o) => {
-      const kept = keepIdx.map((idx) => (o[idx] !== undefined ? o[idx] : true));
-      return [...kept, ...toAdd.map(() => true)];
-    });
-  }, [dependentePagoSelecionados, produtosDependentePago, beneficiarios]);
+  // DEPENDENTE PAGO: não gera mais card automático — o produto aparece no select de
+  // Produto/Plano como qualquer outro item permitido e o vendedor atribui manualmente.
 
   // BOM PET: ao entrar no modo pet (ou trocar o produto de pet do contrato/plano), atribui o produto
   // de pet aos cards de beneficiário que ainda não apontam para um produto de pet. Assim os campos do
@@ -1100,8 +1081,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
           toast.error(`Informe a data de nascimento do beneficiário de "${desc}"`); return false;
         }
       }
-      // Beneficiário com nome precisa estar atribuído a um produto válido (titular ou pet).
-      // Exclui cards de dependente pago — produto já pré-definido, não está em opcoesBenefProduto.
+      // Beneficiário com nome precisa estar atribuído a um produto válido.
       const semProduto = beneficiarios.find(
         (b, idx) =>
           b.usua_nome_completo?.trim() &&
@@ -1879,7 +1859,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
     // dep pago não está em opcoesBenefProduto — busca na lista completa
     return allProdutos.find((p) => String(p.id) === String(produtoId))?.descricao || "";
   };
-  // Card de dependente pago: produto DEPENDENTE com preço > 0,01 (card criado automaticamente).
+  // Card de dependente pago: produto DEPENDENTE com preço > 0,01 (atribuído manualmente no select).
   const isDepPagoCard = (b) => dependentePagoIds.includes(String(b.usua_produtos));
   // Em modo BOM PET todo card é de pet; fora dele, só os cards atribuídos a um produto de pet.
   // EXCEÇÃO: cards de dependente pago (produto DEPENDENTE > 0,01) nunca são de pet, mesmo em modo
@@ -1933,7 +1913,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
               {(isDepPagoCard(b) || (!isBomAuto && !isVeiculoCard(b) && !isCondutorCard(b) && !isPetCard(b))) && <Badge className="bg-amber-100 text-amber-700 text-xs">Dependente</Badge>}
             </div>
             <div className="flex items-center gap-2">
-              {!isBomAuto && i > 0 && !isCondutorCard(b) && !isDepPagoCard(b) && (
+              {!isBomAuto && i > 0 && !isCondutorCard(b) && (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); removeBeneficiario(i); }}
@@ -2206,7 +2186,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
                   // Card Principal (fluxo comum): lista os produtos TITULAR do título de contrato escolhido.
                   const isPrincipalCard = ENABLE_PRINCIPAL_TITULAR && !isBomAuto && !isBomPet && i === 0 && !isDepPagoCard(b);
                   const opcoes = isPrincipalCard ? opcoesPrincipalProduto : opcoesBenefProduto;
-                  if (isBomAuto || (isBomPet && isPetCard(b)) || isCondutorCard(b) || isDepPagoCard(b)) {
+                  if (isBomAuto || (isBomPet && isPetCard(b)) || isCondutorCard(b)) {
                     return (
                       <div className="h-9 flex items-center px-3 rounded-md border border-slate-200 bg-slate-50 text-sm text-slate-600">
                         {descProduto(b.usua_produtos) || "—"}
