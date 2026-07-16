@@ -577,18 +577,10 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
   // Opções de produto para cada beneficiário (Step 5): SOMENTE os itens selecionados no passo
   // "Plano" cujo tipo_contrato é permitido (whitelist). O beneficiário vinculado a um item soma na
   // quantidade dele. Produtos de dependente pago (> 0,01) NÃO entram — ganham cards automáticos com
-  // produto pré-definido e bloqueado. EXCEÇÃO: em contratos COMBO o produto "DADOS DO VEÍCULO"
-  // continua selecionável (é assim que o vendedor adiciona um veículo como beneficiário).
+  // produto pré-definido e bloqueado.
   const opcoesBenefProduto = useMemo(() => {
     const base = [];
     const ids = new Set();
-    if (!isBomAuto && produtoVeiculo) {
-      base.push({
-        produto_id: String(produtoVeiculo.id),
-        descricao: produtoVeiculo.descricao || produtoVeiculo.titulo_contrato || `Produto ${produtoVeiculo.id}`,
-      });
-      ids.add(String(produtoVeiculo.id));
-    }
     for (const ps of produtosSel) {
       const pid = String(ps.produto_id);
       if (ids.has(pid)) continue;
@@ -606,7 +598,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       ids.add(pid);
     }
     return base;
-  }, [isBomAuto, produtoVeiculo, produtosSel, dependentePagoIds, produtosFiltrados, erpProdutos]);
+  }, [produtosSel, dependentePagoIds, produtosFiltrados, erpProdutos]);
 
   // Produtos válidos para a VALIDAÇÃO do passo Beneficiários: além das opções do select, os
   // produtos "especiais" atribuídos automaticamente (pet, condutor, veículo, vaga 0,01) — esses
