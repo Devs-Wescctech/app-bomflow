@@ -604,8 +604,21 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       });
       ids.add(pid);
     }
+    // BOM PET: produtos de pet ("NOME DO PET") entram como opção para o vendedor poder alternar
+    // um card entre pet e outro produto quando o orçamento mistura plano de pet com outros itens.
+    if (isBomPet) {
+      for (const prod of produtosBeneficiario) {
+        const pid = String(prod.id);
+        if (ids.has(pid) || !isPetProduto(prod)) continue;
+        base.push({
+          produto_id: pid,
+          descricao: prod.descricao || prod.titulo_contrato || `Produto ${pid}`,
+        });
+        ids.add(pid);
+      }
+    }
     return base;
-  }, [produtosSel, produtosFiltrados, erpProdutos]);
+  }, [produtosSel, produtosFiltrados, erpProdutos, isBomPet, produtosBeneficiario]);
 
   // Produtos válidos para a VALIDAÇÃO do passo Beneficiários: além das opções do select, os
   // produtos "especiais" atribuídos automaticamente (pet, condutor, veículo, vaga 0,01) — esses
@@ -1116,7 +1129,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
             // produto próprio e exige CPF mesmo quando o orçamento está em modo BOM PET.
             !(
               !dependentePagoIds.includes(String(b.usua_produtos)) &&
-              (isBomPet || petProdutoIds.includes(String(b.usua_produtos)))
+              petProdutoIds.includes(String(b.usua_produtos))
             ) &&
             // Card de veículo não tem CPF (nome é montado dos campos do veículo).
             String(b.usua_produtos) !== veicId &&
@@ -1861,12 +1874,13 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
   };
   // Card de dependente pago: produto DEPENDENTE com preço > 0,01 (atribuído manualmente no select).
   const isDepPagoCard = (b) => dependentePagoIds.includes(String(b.usua_produtos));
-  // Em modo BOM PET todo card é de pet; fora dele, só os cards atribuídos a um produto de pet.
-  // EXCEÇÃO: cards de dependente pago (produto DEPENDENTE > 0,01) nunca são de pet, mesmo em modo
-  // BOM PET — eles têm produto próprio e usam os campos comuns de beneficiário (CPF, nome, parentesco).
+  // Card de pet = card atribuído a um produto de pet (em modo BOM PET os cards novos recebem o
+  // produto de pet automaticamente, mas o vendedor pode trocar para outro produto no select).
+  // EXCEÇÃO: cards de dependente pago (produto DEPENDENTE > 0,01) nunca são de pet — eles têm
+  // produto próprio e usam os campos comuns de beneficiário (CPF, nome, parentesco).
   const isPetCard = (b) =>
     !dependentePagoIds.includes(String(b.usua_produtos)) &&
-    (isBomPet || petProdutoIds.includes(String(b.usua_produtos)));
+    petProdutoIds.includes(String(b.usua_produtos));
   // Card de veículo: mostra os campos do veículo (modelo/cor/placa/ano) sempre que o card aponta para o
   // produto "DADOS DO VEÍCULO" — não só em modo BOM AUTO. Em contratos COMBO (ex.: "COMBO MULTI ESPECIAL")
   // o produto de veículo é escolhido como beneficiário comum, então o card precisa trocar para esses campos.
@@ -1882,7 +1896,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
           {isBomAuto
             ? "BOM AUTO — preencha os dados do condutor e do veículo (produtos definidos automaticamente)"
             : isBomPet
-            ? `BOM PET — preencha os dados de cada pet (plano definido no passo "Plano")`
+            ? `BOM PET — cards de pet já vêm com o plano de pet; troque o produto/plano do card para cadastrar outros beneficiários`
             : `${beneficiarios.length} beneficiário(s) — cada um deve ser atribuído a um produto/plano`}
         </p>
         {!isBomAuto && (
@@ -2186,7 +2200,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
                   // Card Principal (fluxo comum): lista os produtos TITULAR do título de contrato escolhido.
                   const isPrincipalCard = ENABLE_PRINCIPAL_TITULAR && !isBomAuto && !isBomPet && i === 0 && !isDepPagoCard(b);
                   const opcoes = isPrincipalCard ? opcoesPrincipalProduto : opcoesBenefProduto;
-                  if (isBomAuto || (isBomPet && isPetCard(b)) || isCondutorCard(b)) {
+                  if (isBomAuto || isCondutorCard(b)) {
                     return (
                       <div className="h-9 flex items-center px-3 rounded-md border border-slate-200 bg-slate-50 text-sm text-slate-600">
                         {descProduto(b.usua_produtos) || "—"}
