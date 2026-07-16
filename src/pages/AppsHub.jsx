@@ -42,22 +42,26 @@ export default function AppsHub() {
       url: createPageUrl("AdminApiKeys"),
     },
     {
-      id: "whatsapp-conversa",
-      title: "Conversa WhatsApp",
-      description: "Inicie uma conversa com o cliente via WhatsApp. A conversa é vinculada automaticamente ao vendedor.",
-      icon: MessageSquare,
-      gradient: "from-green-600 to-emerald-600",
-      url: createPageUrl("WhatsAppConversa"),
-    },
-    {
       id: "whatsapp-chat",
       title: "Chat WhatsApp",
       description: "Acompanhe e responda as conversas de WhatsApp em tempo real, no estilo WhatsApp Web, com filtro por status e status de entrega.",
       icon: Inbox,
       gradient: "from-teal-600 to-emerald-600",
-      url: createPageUrl("WhatsAppChat"),
+      url: createPageUrl("WhatsAppInbox"),
       requiredSubmenu: "WhatsAppChat",
     },
+    ...(isAdmin
+      ? [
+          {
+            id: "whatsapp-connections",
+            title: "Conexões WhatsApp",
+            description: "Gerencie as conexões (canais WHU) do Chat de Atendimento: tokens, webhooks e segredos.",
+            icon: MessageSquare,
+            gradient: "from-green-600 to-emerald-600",
+            url: createPageUrl("AdminWhatsAppConnections"),
+          },
+        ]
+      : []),
   ];
 
   const apps = allApps.filter(canSeeApp);

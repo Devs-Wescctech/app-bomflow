@@ -4,7 +4,7 @@ import { loadAgentMiddleware } from '../middleware/permissions.js';
 import { resolveAttendancePermissions } from '../config/permissions.js';
 import { query } from '../config/database.js';
 import { decrypt } from '../utils/encryption.js';
-import { sendText } from '../services/attendanceWhuClient.js';
+import { sendText, sendTemplate, getTemplates } from '../services/attendanceWhuClient.js';
 import { subscribe, emitAttendanceEvent } from '../services/attendanceEvents.js';
 
 // Chat do Atendimento (Chat v2): lista/thread de conversas, envio, atribuição e stream SSE.
@@ -157,8 +157,31 @@ router.post('/conversations/:id/read', async (req, res) => {
   }
 });
 
-// Envio de mensagem: verifica permissão do operador, usa o token da conexão CORRETA
-// (descriptografado) e grava a saída com o user_id do operador.
+// Templates disponíveis para a conexão da conversa (token descriptografado só no backend).
+router.get('/conversations/:id/templates', async (req, res) => {
+  try {
+    const conv = await loadConversation(req, res);
+    if (!conv) return;
+    const connResult = await query(
+      `SELECT id, token, status FROM channel_connections WHERE id = $1`,
+      [conv.connection_id]
+    );
+    const connection = connResult.rows[0];
+    if (!connection || connection.status !== 'active') {
+      return res.status(400).json({ message: 'Conexão do canal indisponível' });
+    }
+    const templates = await getTemplates(decrypt(connection.token));
+    res.json(templates);
+  } catch (error) {
+    console.error('[AttendanceChat] Erro ao listar templates:', error.message);
+    res.status(500).json({ message: error.apiMessage || error.message });
+  }
+});
+
+// Envio de mensagem (texto livre OU template com variáveis): verifica permissão do
+// operador, usa o token da conexão CORRETA (descriptografado) e grava a saída com o
+// user_id do operador. Para template, `contentPreview` (corpo com variáveis
+// substituídas) é gravado como conteúdo legível no histórico.
 router.post('/conversations/:id/send', async (req, res) => {
   try {
     const conv = await loadConversation(req, res);
@@ -172,9 +195,10 @@ router.post('/conversations/:id/send', async (req, res) => {
         .json({ message: 'Assuma a conversa antes de responder' });
     }
 
-    const { message } = req.body || {};
-    if (typeof message !== 'string' || !message.trim()) {
-      return res.status(400).json({ message: 'Mensagem de texto é obrigatória' });
+    const { message, templateId, templateComponents, contentPreview } = req.body || {};
+    const hasText = typeof message === 'string' && message.trim().length > 0;
+    if (!hasText && !templateId) {
+      return res.status(400).json({ message: 'Mensagem de texto ou template é obrigatório' });
     }
 
     const connResult = await query(
@@ -187,18 +211,32 @@ router.post('/conversations/:id/send', async (req, res) => {
     }
 
     const token = decrypt(connection.token);
-    const sendResult = await sendText(token, conv.phone, message.trim());
+    const sendResult = templateId
+      ? await sendTemplate(token, conv.phone, templateId, templateComponents)
+      : await sendText(token, conv.phone, message.trim());
 
     const externalMessageId =
       sendResult.messageSentId || sendResult.message_sent_id || sendResult.id || null;
 
+    const storedContent = templateId
+      ? (typeof contentPreview === 'string' && contentPreview.trim()
+          ? contentPreview.trim()
+          : `[Template enviado: ${templateId}]`)
+      : message.trim();
+
     const inserted = await query(
       `INSERT INTO att_messages
          (conversation_id, direction, content, type, user_id, external_message_id, status, sent_at)
-       VALUES ($1, 'out', $2, 'text', $3, $4, 'sent', NOW())
+       VALUES ($1, 'out', $2, $5, $3, $4, 'sent', NOW())
        ON CONFLICT (external_message_id) WHERE external_message_id IS NOT NULL DO NOTHING
        RETURNING *`,
-      [conv.id, message.trim(), req.agent?.id || null, externalMessageId ? String(externalMessageId) : null]
+      [
+        conv.id,
+        storedContent,
+        req.agent?.id || null,
+        externalMessageId ? String(externalMessageId) : null,
+        templateId ? 'template' : 'text',
+      ]
     );
 
     await query(
@@ -312,6 +350,36 @@ router.post('/conversations/:id/claim', async (req, res) => {
     res.json(row);
   } catch (error) {
     console.error('[AttendanceChat] Erro ao assumir:', error.message);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Fechar/reabrir conversa. Operador comum só nas suas; replyAny em qualquer uma.
+router.post('/conversations/:id/status', async (req, res) => {
+  try {
+    const conv = await loadConversation(req, res);
+    if (!conv) return;
+    const status = String(req.body?.status || '').trim();
+    if (!['aberta', 'pendente', 'fechada'].includes(status)) {
+      return res.status(400).json({ message: 'Status inválido' });
+    }
+    const isOwner = req.agent?.id && conv.assigned_user_id === req.agent.id;
+    if (!req.attendancePerms.attendanceReplyAny && !isOwner) {
+      return res.status(403).json({ message: 'Sem permissão para alterar esta conversa' });
+    }
+    const updated = await query(
+      `UPDATE att_conversations SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+      [conv.id, status]
+    );
+    const row = updated.rows[0];
+    emitAttendanceEvent(
+      'conversation',
+      { conversationId: row.id, assignedUserId: row.assigned_user_id, status: row.status },
+      { assignedUserIds: [row.assigned_user_id ?? null] }
+    );
+    res.json(row);
+  } catch (error) {
+    console.error('[AttendanceChat] Erro ao alterar status:', error.message);
     res.status(500).json({ message: error.message });
   }
 });

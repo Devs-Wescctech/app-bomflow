@@ -42,6 +42,39 @@ export async function getStatus(token) {
   return { ok: true, templatesCount: Array.isArray(data) ? data.length : 0 };
 }
 
+// Lista os templates (action cards) do canal deste token.
+export async function getTemplates(token) {
+  const data = await whuRequest(token, '/action-cards/templates', { timeoutMs: 10000 });
+  return Array.isArray(data) ? data : [];
+}
+
+// Envia template. ATENÇÃO ao casing do WHU: /chats/send-template exige a chave
+// minúscula `templatecomponents` e `type` minúsculo ("body"); camelCase/maiúsculo
+// retorna 200 mas descarta os parâmetros silenciosamente (template nunca entregue).
+export async function sendTemplate(token, number, templateId, templateComponents) {
+  const brazilNumber = normalizeBrazilPhone(number);
+  if (!brazilNumber) throw new Error('Número de telefone inválido');
+  if (!templateId) throw new Error('templateId é obrigatório');
+
+  const normalizedComponents = Array.isArray(templateComponents)
+    ? templateComponents.map((c) => ({
+        ...c,
+        type: typeof c.type === 'string' ? c.type.toLowerCase() : c.type,
+      }))
+    : [];
+
+  return whuRequest(token, '/chats/send-template', {
+    method: 'POST',
+    body: {
+      number: brazilNumber,
+      templateId,
+      forceSend: true,
+      verifyContact: false,
+      templatecomponents: normalizedComponents,
+    },
+  });
+}
+
 // Envia texto livre. forceSend garante o envio mesmo sem chat aberto.
 export async function sendText(token, number, text) {
   const brazilNumber = normalizeBrazilPhone(number);
