@@ -1,6 +1,5 @@
 import { query } from '../config/database.js';
 import { sendWhatsAppMessage, sendWhatsAppMessageWithToken } from './whatsappService.js';
-import { mirrorOutboundSend } from './whatsappInboxService.js';
 
 async function loadAutomationTeamIds(automations, junctionTable = 'lead_automation_teams') {
   if (!automations || automations.length === 0) return automations;
@@ -667,15 +666,6 @@ async function executeAutomationAction(automation, lead, automationType) {
         try {
           const agent = lead.agent_id ? { id: lead.agent_id, name: lead.agent_name, phone: lead.agent_phone } : null;
           const result = await sendWhatsAppMessage(lead, agent, automation.whatsapp_template_id);
-
-          // Espelha o primeiro contato na Caixa de Entrada com o vendedor como dono, para
-          // que a conversa apareça na caixa dele em vez de ficar como "automático".
-          await mirrorOutboundSend({
-            phone: leadPhone,
-            sendResult: result,
-            vendedorId: agent?.id || null,
-            vendedorNome: agent?.name || null,
-          });
 
           await logAutomationExecution({
             automationType,

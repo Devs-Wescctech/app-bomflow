@@ -1,6 +1,6 @@
 // Testes do caminho de envio (sendChatMessage) focados na correção do nono dígito
 // e na rede de segurança de entrega. Segue o padrão de mock da WHU via global.fetch
-// já usado em whatsappChat.test.js: sem banco, sem rede real.
+// sem banco, sem rede real.
 
 process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://test/test';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';

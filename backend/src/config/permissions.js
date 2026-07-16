@@ -133,6 +133,21 @@ export function getPermissions(agentType) {
   return ROLE_PERMISSIONS[agentType] || ROLE_PERMISSIONS[AGENT_TYPES.SUPPORT];
 }
 
+// Permissões do Atendimento (Chat WhatsApp v2):
+// - attendanceReply: responder as conversas atribuídas a si (todo atendente comum).
+// - attendanceReplyAny: responder/atribuir QUALQUER conversa (admin e supervisores,
+//   incluindo os tipos dinâmicos *_supervisor cadastrados em agent_types).
+export function resolveAttendancePermissions(agentType, userRole) {
+  const isAdmin = agentType === AGENT_TYPES.ADMIN || userRole === 'admin';
+  const isSupervisor =
+    agentType === AGENT_TYPES.SUPERVISOR ||
+    (typeof agentType === 'string' && agentType.endsWith('_supervisor'));
+  return {
+    attendanceReply: true,
+    attendanceReplyAny: isAdmin || isSupervisor,
+  };
+}
+
 export function canAccessModule(agentType, module) {
   const permissions = getPermissions(agentType);
   return permissions.modules.includes(module);
