@@ -472,10 +472,27 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     [dependentePagoSelecionados]
   );
 
+  // Produto TITULAR (tipo_contrato = 'TITULAR') — usado pelo card do beneficiário Principal.
+  const isTitularProdutoId = (produtoId) => {
+    if (!produtoId) return false;
+    const p = erpProdutos.find((x) => String(x.id) === String(produtoId));
+    return (p?.tipo_contrato || "").trim().toUpperCase() === "TITULAR";
+  };
+  // Card do beneficiário Principal (fluxo comum): índice 0 apontando para um produto TITULAR.
+  // O Principal É o titular do contrato — não conta como beneficiário extra no item
+  // (o vínculo dele vem de incluir_titular), evitando quantidade dobrada no ERP.
+  const isPrincipalBenefCard = (b, idx) =>
+    idx === 0 && !isBomAuto && !isBomPet && isTitularProdutoId(b?.usua_produtos);
+
   // Quantidade de pessoas vinculadas a um produto = (titular incluído ? 1 : 0) + beneficiários atribuídos a ele.
   const qtyForProduto = (produtoId, incluirTitular) =>
     (incluirTitular ? 1 : 0) +
-    beneficiarios.filter((b) => b.usua_nome_completo?.trim() && String(b.usua_produtos) === String(produtoId)).length;
+    beneficiarios.filter(
+      (b, idx) =>
+        !isPrincipalBenefCard(b, idx) &&
+        b.usua_nome_completo?.trim() &&
+        String(b.usua_produtos) === String(produtoId)
+    ).length;
 
   // Itens de beneficiário: produtos pet/condutor/veículo referenciados por algum beneficiário nomeado.
   // Não são escolhidos no Step 3 (titular); entram como item próprio, com preço padrão do ERP e sem titular.
@@ -530,6 +547,19 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
         descricao: p.descricao || p.titulo_contrato || `Produto ${p.id}`,
       })),
     [produtosBeneficiario]
+  );
+
+  // Opções de produto do beneficiário PRINCIPAL: produtos com tipo_contrato = 'TITULAR'
+  // do título de contrato escolhido no passo 1.
+  const opcoesPrincipalProduto = useMemo(
+    () =>
+      produtosFiltrados
+        .filter((p) => (p.tipo_contrato || "").trim().toUpperCase() === "TITULAR")
+        .map((p) => ({
+          produto_id: String(p.id),
+          descricao: p.descricao || p.titulo_contrato || `Produto ${p.id}`,
+        })),
+    [produtosFiltrados]
   );
 
   // BOM PET: ids dos produtos de pet — quando um beneficiário aponta para um deles,
@@ -829,7 +859,12 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       // cadastrados como Pessoa no ERP. Condutor/veículo/pet NÃO entram nessa regra.
       const ehDependente = !!prod && (isDependenteProduto(prod) || isDependentePagoProduto(prod));
       const beneficiariosDoItem = beneficiarios
-        .filter((b) => b.usua_nome_completo?.trim() && String(b.usua_produtos) === String(ps.produto_id))
+        .filter(
+          (b, idx) =>
+            !isPrincipalBenefCard(b, idx) &&
+            b.usua_nome_completo?.trim() &&
+            String(b.usua_produtos) === String(ps.produto_id)
+        )
         .map((b) => ({
           nome: b.usua_nome_completo.trim(),
           cpf: b.usua_cpf || null,
@@ -1028,13 +1063,29 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       // Beneficiário com nome precisa estar atribuído a um produto válido (titular ou pet).
       // Exclui cards de dependente pago — produto já pré-definido, não está em opcoesBenefProduto.
       const semProduto = beneficiarios.find(
-        (b) =>
+        (b, idx) =>
           b.usua_nome_completo?.trim() &&
           !dependentePagoIds.includes(String(b.usua_produtos)) &&
-          !opcoesBenefProduto.some((p) => String(p.produto_id) === String(b.usua_produtos))
+          !opcoesBenefProduto.some((p) => String(p.produto_id) === String(b.usua_produtos)) &&
+          // Card Principal (índice 0 no fluxo comum) aceita produtos TITULAR.
+          !(
+            idx === 0 && !isBomAuto && !isBomPet &&
+            opcoesPrincipalProduto.some((p) => String(p.produto_id) === String(b.usua_produtos))
+          )
       );
       if (semProduto) {
         toast.error(`Selecione o produto/plano de "${semProduto.usua_nome_completo.trim()}"`); return false;
+      }
+      // O produto TITULAR do card Principal precisa estar entre os produtos escolhidos no passo
+      // "Plano" — senão o item não existiria no orçamento e o vínculo se perderia no ERP.
+      const principal = beneficiarios[0];
+      if (
+        principal &&
+        isPrincipalBenefCard(principal, 0) &&
+        !produtosSel.some((ps) => String(ps.produto_id) === String(principal.usua_produtos))
+      ) {
+        toast.error('O produto/plano do beneficiário Principal precisa estar selecionado no passo "Plano". Volte e selecione-o, ou escolha aqui um dos produtos já selecionados.');
+        return false;
       }
       // Beneficiário comum (não condutor/veículo e não pet) com nome preenchido precisa de CPF válido.
       if (!isBomAuto) {
@@ -1238,6 +1289,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
                   openBenef={openBenef}
                   produtosResumo={produtosResumo}
                   opcoesBenefProduto={opcoesBenefProduto}
+                  opcoesPrincipalProduto={opcoesPrincipalProduto}
                   allProdutos={erpProdutos}
                   setBenef={setBenef}
                   setVeiculoField={setVeiculoField}
@@ -1780,7 +1832,7 @@ function Step4({ form, set, planosPagamento, loadingPlanos, planoSelecionado }) 
   );
 }
 
-function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, allProdutos = [], setBenef, setVeiculoField, setPetField, toggleBenef, addBeneficiario, removeBeneficiario, isBomAuto, isBomPet = false, produtoVeiculoId, produtoCondutorId = "", petProdutoIds = [], dependentePagoIds = [] }) {
+function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, opcoesPrincipalProduto = [], allProdutos = [], setBenef, setVeiculoField, setPetField, toggleBenef, addBeneficiario, removeBeneficiario, isBomAuto, isBomPet = false, produtoVeiculoId, produtoCondutorId = "", petProdutoIds = [], dependentePagoIds = [] }) {
   const descProduto = (produtoId) => {
     const fromOpcoes = opcoesBenefProduto.find((p) => String(p.produto_id) === String(produtoId))?.descricao;
     if (fromOpcoes) return fromOpcoes;
@@ -2110,33 +2162,47 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, a
 
               <div className="space-y-1">
                 <Label className="text-xs">Produto / plano <span className="text-red-500">*</span></Label>
-                {isBomAuto || (isBomPet && isPetCard(b)) || isCondutorCard(b) || isDepPagoCard(b) ? (
-                  <div className="h-9 flex items-center px-3 rounded-md border border-slate-200 bg-slate-50 text-sm text-slate-600">
-                    {descProduto(b.usua_produtos) || "—"}
-                  </div>
-                ) : opcoesBenefProduto.length === 0 ? (
-                  <p className="text-xs text-amber-600 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" /> Selecione ao menos um produto no passo "Plano"
-                  </p>
-                ) : (
-                  <Select
-                    value={b.usua_produtos ? String(b.usua_produtos) : ""}
-                    onValueChange={(v) => setBenef(i, "usua_produtos", v)}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Selecione o produto deste beneficiário..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {opcoesBenefProduto
-                        .filter((p) => !produtoCondutorId || String(p.produto_id) !== String(produtoCondutorId))
-                        .map((p) => (
-                          <SelectItem key={p.produto_id} value={String(p.produto_id)}>
-                            {p.descricao}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                {(() => {
+                  // Card Principal (fluxo comum): lista os produtos TITULAR do título de contrato escolhido.
+                  const isPrincipalCard = !isBomAuto && !isBomPet && i === 0 && !isDepPagoCard(b);
+                  const opcoes = isPrincipalCard ? opcoesPrincipalProduto : opcoesBenefProduto;
+                  if (isBomAuto || (isBomPet && isPetCard(b)) || isCondutorCard(b) || isDepPagoCard(b)) {
+                    return (
+                      <div className="h-9 flex items-center px-3 rounded-md border border-slate-200 bg-slate-50 text-sm text-slate-600">
+                        {descProduto(b.usua_produtos) || "—"}
+                      </div>
+                    );
+                  }
+                  if (opcoes.length === 0) {
+                    return (
+                      <p className="text-xs text-amber-600 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />{" "}
+                        {isPrincipalCard
+                          ? 'Nenhum produto TITULAR disponível para o título de contrato escolhido'
+                          : 'Selecione ao menos um produto no passo "Plano"'}
+                      </p>
+                    );
+                  }
+                  return (
+                    <Select
+                      value={b.usua_produtos ? String(b.usua_produtos) : ""}
+                      onValueChange={(v) => setBenef(i, "usua_produtos", v)}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Selecione o produto deste beneficiário..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {opcoes
+                          .filter((p) => !produtoCondutorId || String(p.produto_id) !== String(produtoCondutorId))
+                          .map((p) => (
+                            <SelectItem key={p.produto_id} value={String(p.produto_id)}>
+                              {p.descricao}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  );
+                })()}
               </div>
             </CardContent>
           )}
