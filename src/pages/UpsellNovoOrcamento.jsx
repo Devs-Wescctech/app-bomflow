@@ -49,8 +49,7 @@ const ENABLE_PRINCIPAL_TITULAR = false;
 // Tipos de contrato (campo tipo_contrato do ERP) cujos produtos podem receber beneficiários
 // (dependentes) no passo Beneficiários — comparação sem acentos e sem diferenciar maiúsculas.
 const BENEF_TIPO_CONTRATO_PERMITIDOS = [
-  "QUILOMETRAGEM", "MULTI BEM ESTAR", "BOM PET SAUDE", "ADENDO", "TITULAR",
-  "DEPENDENTE", "TANATOPRAXIA", "BOM MED", "CREMACAO", "COROA", "BOM AUTO",
+  "QUILOMETRAGEM", "BOM PET SAUDE", "DEPENDENTE", "BOM AUTO",
 ];
 const normalizaTipoContrato = (v) =>
   (v || "").trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
