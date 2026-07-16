@@ -1896,7 +1896,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
                   </Badge>
                 )}
               </span>
-              {!isBomAuto && !isBomPet && i === 0 && !isDepPagoCard(b) && <Badge className="bg-violet-100 text-violet-700 text-xs">Principal</Badge>}
+              {ENABLE_PRINCIPAL_TITULAR && !isBomAuto && !isBomPet && i === 0 && !isDepPagoCard(b) && <Badge className="bg-violet-100 text-violet-700 text-xs">Principal</Badge>}
               {isCondutorCard(b) && <Badge className="bg-violet-100 text-violet-700 text-xs">Condutor</Badge>}
               {isDepPagoCard(b) && <Badge className="bg-amber-100 text-amber-700 text-xs">Dependente</Badge>}
             </div>
