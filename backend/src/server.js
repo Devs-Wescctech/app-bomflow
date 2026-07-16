@@ -19,6 +19,7 @@ import apiKeyRoutes from './routes/apiKeys.js';
 import externalRoutes from './routes/external.js';
 import orcamentoDocumentosRoutes from './routes/orcamentoDocumentos.js';
 import presalesAjustesRoutes from './routes/presalesAjustes.js';
+import leadImportsRoutes from './routes/leadImports.js';
 import { getObjectEntityFile, downloadObject, ObjectNotFoundError } from './services/objectStorage.js';
 import { runAllAutomations } from './services/automationService.js';
 import cron from 'node-cron';
@@ -103,6 +104,7 @@ app.use('/api/bom-auto', bomAutoRoutes);
 app.use('/api/erp', erpProxyRoutes);
 app.use('/api/orcamento-documentos', orcamentoDocumentosRoutes);
 app.use('/api/presales-ajustes', presalesAjustesRoutes);
+app.use('/api/lead-imports', leadImportsRoutes);
 
 app.use(express.static(distPath));
 

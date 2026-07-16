@@ -35,7 +35,8 @@ import {
   ChevronRight,
   Trophy,
   FileSpreadsheet,
-  FileText
+  FileText,
+  Upload
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -565,6 +566,7 @@ export default function LeadsKanban() {
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
 
   const isAdmin = user?.role === 'admin' || currentAgentType === 'admin';
+  const canImportLeads = isAdmin || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor' || (currentAgentType || '').endsWith('_supervisor');
 
   // Conjunto de agentes visíveis para o usuário atual.
   // `null` => vê todos os leads. Array => restringe aos ids informados.
@@ -1158,6 +1160,14 @@ export default function LeadsKanban() {
                 </Badge>
               )}
             </Button>
+            {canImportLeads && (
+              <Link to={createPageUrl('LeadImportPF')} className="flex-1 sm:flex-none">
+                <Button variant="outline" size="sm" className="w-full">
+                  <Upload className="w-4 h-4 mr-2" />
+                  Importar Leads
+                </Button>
+              </Link>
+            )}
             <Link to={createPageUrl('NewLead')} className="flex-1 sm:flex-none">
               <Button variant="gradient" size="sm" className="w-full">
                 <Plus className="w-4 h-4 mr-2" />
