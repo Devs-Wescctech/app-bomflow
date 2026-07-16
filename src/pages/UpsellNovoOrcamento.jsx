@@ -574,17 +574,21 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     [produtosResumo]
   );
 
-  // Opções de produto para cada beneficiário (Step 5): apenas produtos de beneficiário
-  // (pet/condutor/veículo/vaga 0,01). Produtos de dependente pago (> 0,01) NÃO entram aqui —
-  // eles ganham cards automáticos com produto pré-definido e bloqueado (ver useEffect abaixo).
+  // Opções de produto para cada beneficiário (Step 5): SOMENTE os itens selecionados no passo
+  // "Plano" cujo tipo_contrato é permitido (whitelist). O beneficiário vinculado a um item soma na
+  // quantidade dele. Produtos de dependente pago (> 0,01) NÃO entram — ganham cards automáticos com
+  // produto pré-definido e bloqueado. EXCEÇÃO: em contratos COMBO o produto "DADOS DO VEÍCULO"
+  // continua selecionável (é assim que o vendedor adiciona um veículo como beneficiário).
   const opcoesBenefProduto = useMemo(() => {
-    const base = produtosBeneficiario.map((p) => ({
-      produto_id: String(p.id),
-      descricao: p.descricao || p.titulo_contrato || `Produto ${p.id}`,
-    }));
-    const ids = new Set(base.map((o) => o.produto_id));
-    // Itens selecionados no passo "Plano" com tipo_contrato permitido também podem receber
-    // beneficiários (dependentes) — o beneficiário vinculado soma na quantidade do item.
+    const base = [];
+    const ids = new Set();
+    if (!isBomAuto && produtoVeiculo) {
+      base.push({
+        produto_id: String(produtoVeiculo.id),
+        descricao: produtoVeiculo.descricao || produtoVeiculo.titulo_contrato || `Produto ${produtoVeiculo.id}`,
+      });
+      ids.add(String(produtoVeiculo.id));
+    }
     for (const ps of produtosSel) {
       const pid = String(ps.produto_id);
       if (ids.has(pid)) continue;
@@ -602,7 +606,16 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       ids.add(pid);
     }
     return base;
-  }, [produtosBeneficiario, produtosSel, dependentePagoIds, produtosFiltrados, erpProdutos]);
+  }, [isBomAuto, produtoVeiculo, produtosSel, dependentePagoIds, produtosFiltrados, erpProdutos]);
+
+  // Produtos válidos para a VALIDAÇÃO do passo Beneficiários: além das opções do select, os
+  // produtos "especiais" atribuídos automaticamente (pet, condutor, veículo, vaga 0,01) — esses
+  // cards têm produto fixo e não aparecem no select, mas continuam válidos.
+  const benefProdutoIdsValidos = useMemo(() => {
+    const s = new Set(opcoesBenefProduto.map((o) => String(o.produto_id)));
+    for (const p of produtosBeneficiario) s.add(String(p.id));
+    return s;
+  }, [opcoesBenefProduto, produtosBeneficiario]);
 
   // Opções de produto do beneficiário PRINCIPAL: produtos com tipo_contrato = 'TITULAR'
   // do título de contrato escolhido no passo 1.
@@ -1102,7 +1115,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
         (b, idx) =>
           b.usua_nome_completo?.trim() &&
           !dependentePagoIds.includes(String(b.usua_produtos)) &&
-          !opcoesBenefProduto.some((p) => String(p.produto_id) === String(b.usua_produtos)) &&
+          !benefProdutoIdsValidos.has(String(b.usua_produtos)) &&
           // Card Principal (índice 0 no fluxo comum) aceita produtos TITULAR.
           !(
             idx === 0 && !isBomAuto && !isBomPet &&
