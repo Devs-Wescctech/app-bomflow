@@ -20,7 +20,6 @@ import externalRoutes from './routes/external.js';
 import orcamentoDocumentosRoutes from './routes/orcamentoDocumentos.js';
 import presalesAjustesRoutes from './routes/presalesAjustes.js';
 import leadImportsRoutes from './routes/leadImports.js';
-import { getObjectEntityFile, downloadObject, ObjectNotFoundError } from './services/objectStorage.js';
 import { runAllAutomations } from './services/automationService.js';
 import cron from 'node-cron';
 import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport, runPerspectivaBatch, sendPerspectivaReport, runPresalesAjusteAutoCancel, runPresalesAjusteAvisoPrazo } from './routes/functions.js';
@@ -65,29 +64,11 @@ app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 app.use('/data/bom-auto-images', express.static(path.join(__dirname, '../../data/bom-auto-images')));
 app.use('/proposals', express.static(path.join(__dirname, '../public/proposals')));
 
-// Streaming público de mídia do WhatsApp Chat. Precisa ser público (a
-// WesccTech/WhatsApp busca a URL externamente). A proteção é o UUID
-// não-adivinhável gerado no upload.
-app.get('/api/whatsapp-media/:objectId', async (req, res) => {
-  try {
-    // Object Storage do Replit indisponível fora do Replit: retorna mensagem
-    // clara em vez de erro genérico (o restante do sistema não é afetado).
-    if (!process.env.PRIVATE_OBJECT_DIR) {
-      return res.status(503).json({ message: 'Mídia indisponível neste ambiente.' });
-    }
-    const { objectId } = req.params;
-    if (!/^[A-Za-z0-9-]+$/.test(objectId)) {
-      return res.status(400).json({ message: 'Identificador inválido' });
-    }
-    const file = await getObjectEntityFile(`/objects/uploads/${objectId}`);
-    await downloadObject(file, res);
-  } catch (error) {
-    if (error instanceof ObjectNotFoundError) {
-      return res.status(404).json({ message: 'Arquivo não encontrado' });
-    }
-    console.error('[WhatsAppMedia] Erro ao servir arquivo:', error.message);
-    res.status(500).json({ message: 'Erro ao servir o arquivo' });
-  }
+// Mídia do WhatsApp Chat via Object Storage foi removida a pedido do usuário
+// (produção usa o storage do próprio servidor). A rota permanece só para
+// responder de forma clara a links antigos.
+app.get('/api/whatsapp-media/:objectId', (req, res) => {
+  res.status(410).json({ message: 'Mídia indisponível: armazenamento externo removido.' });
 });
 
 app.use('/api/auth', authRoutes);
