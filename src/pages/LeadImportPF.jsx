@@ -69,8 +69,6 @@ export default function LeadImportPF() {
 
   const { data: user } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
   const { data: allAgents = [] } = useQuery({ queryKey: ['agents'], queryFn: () => base44.entities.Agent.list(), staleTime: 30000 });
-  const { data: agentTypes = [] } = useQuery({ queryKey: ['agentTypes'], queryFn: () => base44.entities.AgentType.list(), staleTime: 30000 });
-
   const currentAgent = user?.agent || allAgents.find(a => a.userEmail === user?.email || a.email === user?.email);
   const agentType = currentAgent?.agentType || currentAgent?.agent_type;
   const isAllowed = user?.role === 'admin' || agentType === 'admin' ||
@@ -83,23 +81,15 @@ export default function LeadImportPF() {
   });
 
   const activeAgents = useMemo(() => {
-    // Apenas vendedores do módulo Vendas PF: tipos de agente cujos módulos incluem 'sales' (ou 'all').
-    const salesTypeKeys = new Set(
-      agentTypes
-        .filter(t => {
-          const mods = t.modules || [];
-          return mods.includes('all') || mods.includes('sales');
-        })
-        .map(t => t.key)
-    );
+    // Somente vendedores do módulo Vendas PF: tipos 'sales' e 'sales_supervisor'.
     const list = allAgents.filter(a => {
       if (a.active === false) return false;
       const type = a.agentType || a.agent_type;
-      return salesTypeKeys.size === 0 ? true : salesTypeKeys.has(type);
+      return type === 'sales' || type === 'sales_supervisor';
     });
     const q = agentSearch.trim().toLowerCase();
     return q ? list.filter(a => (a.name || '').toLowerCase().includes(q)) : list;
-  }, [allAgents, agentTypes, agentSearch]);
+  }, [allAgents, agentSearch]);
 
   const previewMutation = useMutation({
     mutationFn: (rows) => apiPost('/api/lead-imports/preview', { rows }),
