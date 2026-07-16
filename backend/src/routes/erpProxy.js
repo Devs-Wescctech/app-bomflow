@@ -726,6 +726,19 @@ router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (
   return res.json({ results });
 });
 
+// Normaliza a data de nascimento vinda do ERP para 'YYYY-MM-DD' (formato do input
+// type=date do frontend). Aceita ISO ('1980-05-10' ou '1980-05-10T00:00:00') e o
+// formato brasileiro 'DD/MM/YYYY'. Retorna null se ausente/irreconhecível.
+function normalizeNascimento(raw) {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  return null;
+}
+
 // GET /api/erp/lookup-cpf?cpf=xxx
 // Busca o código ERP de uma pessoa pelo CPF (contratante_pessoa para orçamentos).
 //
@@ -757,8 +770,9 @@ router.get('/lookup-cpf', authMiddleware, async (req, res) => {
         // NÃO usar `id` (ex: 150) — esse é o ID interno do registro, rejeitado pelo ERP.
         const pessoaCodigo = String(p.pessoa || p.codigo || p.id || '');
         const nome = p.nome_completo || p.nome_titular || p.nome || '';
-        console.log('[ERP lookup-cpf] GET /Pessoas → pessoa:', p.pessoa, '| id:', p.id, '| usando:', pessoaCodigo, '| nome:', nome);
-        return res.json({ pessoa: pessoaCodigo, nome, cpf: p.cpf || formatted });
+        const nascimento = normalizeNascimento(p.data_nascimento || p.nascimento);
+        console.log('[ERP lookup-cpf] GET /Pessoas → pessoa:', p.pessoa, '| id:', p.id, '| usando:', pessoaCodigo, '| nome:', nome, '| nascimento:', nascimento);
+        return res.json({ pessoa: pessoaCodigo, nome, cpf: p.cpf || formatted, data_nascimento: nascimento });
       }
     }
 
@@ -781,6 +795,7 @@ router.get('/lookup-cpf', authMiddleware, async (req, res) => {
       pessoa: pessoaCodigo,
       nome: p.nome_titular || p.nome_completo || '',
       cpf: p.cpf || formatted,
+      data_nascimento: normalizeNascimento(p.data_nascimento || p.nascimento),
     });
   } catch (err) {
     console.error('[ERP Proxy] GET /lookup-cpf error:', err.message);
