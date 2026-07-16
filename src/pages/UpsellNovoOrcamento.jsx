@@ -472,6 +472,28 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     [dependentePagoSelecionados]
   );
 
+  // BOM PET: ids dos produtos de pet — quando um beneficiário aponta para um deles,
+  // o card mostra os campos estruturados do pet (nome/tipo/raça/cor/porte).
+  const petProdutoIds = useMemo(
+    () => produtosBeneficiario.filter((p) => isPetProduto(p)).map((p) => String(p.id)),
+    [produtosBeneficiario]
+  );
+
+  // BOM PET: o orçamento é "modo pet" quando o titular escolheu um plano BOM PET no passo "Plano"
+  // (ex.: "BOM PET (1 PET)", "BOM PET SAÚDE") e o contrato possui o produto de pet do beneficiário.
+  // Nesse modo, todo card de beneficiário já mostra os campos do pet e o produto de pet é atribuído
+  // automaticamente (o vendedor não precisa escolher o produto "NOME DO PET" manualmente).
+  const isBomPet = useMemo(() => {
+    if (isBomAuto) return false;
+    if (petProdutoIds.length === 0) return false;
+    return produtosSel.some((ps) => {
+      const prod =
+        produtosFiltrados.find((p) => String(p.id) === String(ps.produto_id)) ||
+        erpProdutos.find((p) => String(p.id) === String(ps.produto_id));
+      return prod && /BOM\s*PET/i.test(prod.descricao || prod.titulo_contrato || "");
+    });
+  }, [isBomAuto, petProdutoIds, produtosSel, produtosFiltrados, erpProdutos]);
+
   // Produto TITULAR (tipo_contrato = 'TITULAR') — usado pelo card do beneficiário Principal.
   const isTitularProdutoId = (produtoId) => {
     if (!produtoId) return false;
@@ -561,28 +583,6 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
         })),
     [produtosFiltrados]
   );
-
-  // BOM PET: ids dos produtos de pet — quando um beneficiário aponta para um deles,
-  // o card mostra os campos estruturados do pet (nome/tipo/raça/cor/porte).
-  const petProdutoIds = useMemo(
-    () => produtosBeneficiario.filter((p) => isPetProduto(p)).map((p) => String(p.id)),
-    [produtosBeneficiario]
-  );
-
-  // BOM PET: o orçamento é "modo pet" quando o titular escolheu um plano BOM PET no passo "Plano"
-  // (ex.: "BOM PET (1 PET)", "BOM PET SAÚDE") e o contrato possui o produto de pet do beneficiário.
-  // Nesse modo, todo card de beneficiário já mostra os campos do pet e o produto de pet é atribuído
-  // automaticamente (o vendedor não precisa escolher o produto "NOME DO PET" manualmente).
-  const isBomPet = useMemo(() => {
-    if (isBomAuto) return false;
-    if (petProdutoIds.length === 0) return false;
-    return produtosSel.some((ps) => {
-      const prod =
-        produtosFiltrados.find((p) => String(p.id) === String(ps.produto_id)) ||
-        erpProdutos.find((p) => String(p.id) === String(ps.produto_id));
-      return prod && /BOM\s*PET/i.test(prod.descricao || prod.titulo_contrato || "");
-    });
-  }, [isBomAuto, petProdutoIds, produtosSel, produtosFiltrados, erpProdutos]);
 
   // BOM PET: produto de pet (beneficiário) usado para vincular os pets, casando com o plano do titular
   // — se o titular escolheu um plano "SAÚDE", usa o produto de pet "SAÚDE"; senão, o produto de pet padrão.
