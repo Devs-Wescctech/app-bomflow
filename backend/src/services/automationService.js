@@ -970,7 +970,7 @@ export async function syncPerspectivaNegociosFromERP() {
       console.error('[PerspectivaNegócios] ERP_AUTH_TOKEN não configurado.');
     } else {
       const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
-      const url = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_PERSPECTIVA_NEGOCIOS';
+      const url = 'http://erp.wescctech.com.br:8080/BP_MULTI/api/API_PERSPECTIVA_NEGOCIOS';
       console.log('[PerspectivaNegócios] Iniciando sincronização com ERP...');
       const response = await fetch(url, {
         headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' }
@@ -1175,7 +1175,7 @@ export async function checkValidacaoPagamento() {
       if (!cpfFormatado) continue;
 
       try {
-        const url = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_VALIDACAO_PAGAMENTO?cpf=${encodeURIComponent(cpfFormatado)}`;
+        const url = `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_VALIDACAO_PAGAMENTO?cpf=${encodeURIComponent(cpfFormatado)}`;
         const response = await fetch(url, { headers: { 'Authorization': authHeader } });
 
         if (!response.ok) {

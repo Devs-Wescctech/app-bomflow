@@ -270,7 +270,7 @@ router.get('/erp-cadastro-pessoas', authMiddleware, async (req, res) => {
     const erpToken = process.env.ERP_AUTH_TOKEN;
     if (!erpToken) return res.status(500).json({ error: 'ERP_AUTH_TOKEN não configurado' });
     const authHeader = erpToken.startsWith('Bearer ') ? erpToken : `Bearer ${erpToken}`;
-    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CADASTRO_PESSOAS?cpf=${encodeURIComponent(cpf)}`;
+    const erpUrl = `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_CADASTRO_PESSOAS?cpf=${encodeURIComponent(cpf)}`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     try {
@@ -343,7 +343,7 @@ async function erpCadastroPessoasCall(authHeader, { cidade, uf, descricao }) {
   if (cidade) params.set('cidade', cidade);
   if (uf) params.set('uf', uf);
   if (descricao) params.set('descricao', descricao);
-  const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CADASTRO_PESSOAS${params.toString() ? '?' + params.toString() : ''}`;
+  const erpUrl = `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_CADASTRO_PESSOAS${params.toString() ? '?' + params.toString() : ''}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
   try {
@@ -686,7 +686,7 @@ async function fetchLeadGeneratorFromERP(queryParams = {}) {
     }
   }
 
-  const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_BASE_LEADS${params.toString() ? '?' + params.toString() : ''}`;
+  const erpUrl = `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_BASE_LEADS${params.toString() ? '?' + params.toString() : ''}`;
   const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
 
   console.log(`[LeadGenerator] Fetching from ERP: ${erpUrl}`);
@@ -881,7 +881,7 @@ router.get('/referrals-relacao', authMiddleware, loadAgentMiddleware, requireSub
           const erpAuthToken = process.env.ERP_AUTH_TOKEN;
           if (erpAuthToken) {
             const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
-            const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_BUSCAR_CLIENTE_INDICADOR?sms=${smsERP}`;
+            const erpUrl = `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_BUSCAR_CLIENTE_INDICADOR?sms=${smsERP}`;
             console.log(`[referrals-relacao] Fallback ERP para telefone ${smsERP}`);
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 8000);
@@ -1917,7 +1917,7 @@ router.get('/lead-generator-roi-metrics', authMiddleware, async (req, res) => {
     }
 
     const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
-    const erpUrl = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_DADOS_VENDAS_INDICACOES';
+    const erpUrl = 'http://erp.wescctech.com.br:8080/BP_MULTI/api/API_DADOS_VENDAS_INDICACOES';
 
     console.log(`[ROI Metrics] Fetching ERP sales data from API_DADOS_VENDAS_INDICACOES...`);
     const erpResponse = await fetch(erpUrl, {
@@ -2039,7 +2039,7 @@ async function executeMetricsAudit({ from, to, userId, teamId } = {}) {
   const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
 
   console.log(`[Audit] Fetching ERP sales data...`);
-  const erpResponse = await fetch('http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_DADOS_VENDAS_INDICACOES', {
+  const erpResponse = await fetch('http://erp.wescctech.com.br:8080/BP_MULTI/api/API_DADOS_VENDAS_INDICACOES', {
     method: 'GET',
     headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
   });
@@ -2565,7 +2565,7 @@ router.post('/lead-generator-check-conversions', authMiddleware, async (req, res
 
     console.log(`[Conversions] Fetching ERP data from API_CPF_INDICADOR for conversion check...`);
     const erpResponse = await fetch(
-      'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CPF_INDICADOR',
+      'http://erp.wescctech.com.br:8080/BP_MULTI/api/API_CPF_INDICADOR',
       {
         method: 'GET',
         headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
@@ -2664,7 +2664,7 @@ router.post('/get-customer-from-erp-reactivation', authMiddleware, async (req, r
     const cpfFormatado = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
     // O endpoint espera o parâmetro chamado "documento" com a máscara
     // padrão de CPF; com "?cpf=" ou sem máscara ele devolve a base inteira.
-    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CPF_REATIVACAO?documento=${encodeURIComponent(cpfFormatado)}`;
+    const erpUrl = `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_CPF_REATIVACAO?documento=${encodeURIComponent(cpfFormatado)}`;
 
     console.log(`[ERP Reativação] Fetching ERP data for CPF: ${cpfLimpo} -> ${erpUrl}`);
 
@@ -2808,7 +2808,7 @@ router.post('/get-customer-from-erp', authMiddleware, async (req, res) => {
     }
     
     const cpfFormatado = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_CPF_INDICADOR?cpf=${cpfFormatado}`;
+    const erpUrl = `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_CPF_INDICADOR?cpf=${cpfFormatado}`;
     
     console.log(`Fetching ERP data for CPF: ${cpfLimpo} -> ${erpUrl}`);
     
@@ -2972,7 +2972,7 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
         return res.status(400).json({ success: false, error: 'CPF inválido' });
       }
       cpfFormatado = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-      erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_BUSCAR_CLIENTE_INDICADOR?cpf=${cpfFormatado}`;
+      erpUrl = `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_BUSCAR_CLIENTE_INDICADOR?cpf=${cpfFormatado}`;
       queryDesc = `CPF ${cpfLimpo}`;
     } else {
       let smsLimpo = String(sms).replace(/\D/g, '');
@@ -2994,7 +2994,7 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
         smsVariants.push(`${ddd}${sem9}`);   // 1989816893
       }
       smsVariants.push(`${ddd}${localNum}`); // sem DDI: 19989816893
-      erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_BUSCAR_CLIENTE_INDICADOR?sms=${smsLimpo}`;
+      erpUrl = `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_BUSCAR_CLIENTE_INDICADOR?sms=${smsLimpo}`;
       queryDesc = `SMS ${smsLimpo}`;
       // Armazena variantes para o retry loop mais abaixo
       req._smsVariants = smsVariants;
@@ -3084,11 +3084,11 @@ router.post('/get-indicador-from-erp', authMiddleware, async (req, res) => {
     // ── Monta todas as URLs: API 1 + API 2 (fallback), lançadas SIMULTANEAMENTE ──
     // API 1: API_BUSCAR_CLIENTE_INDICADOR
     const api1Urls = req._smsVariants
-      ? req._smsVariants.map(v => `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_BUSCAR_CLIENTE_INDICADOR?sms=${v}`)
+      ? req._smsVariants.map(v => `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_BUSCAR_CLIENTE_INDICADOR?sms=${v}`)
       : [erpUrl];
 
     // API 2: API_DADOS_BASE_COMPLETA (fallback)
-    const API2_BASE = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_DADOS_BASE_COMPLETA';
+    const API2_BASE = 'http://erp.wescctech.com.br:8080/BP_MULTI/api/API_DADOS_BASE_COMPLETA';
     let api2Urls = [];
     if (cpfLimpo) {
       api2Urls = [`${API2_BASE}?cpf=${cpfFormatado}`];
@@ -4416,7 +4416,7 @@ router.get('/indicacoes-agent-dashboard', authMiddleware, async (req, res) => {
     }
 
     const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
-    const erpUrl = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_VENDAS_INDICACAO_AGENTES';
+    const erpUrl = 'http://erp.wescctech.com.br:8080/BP_MULTI/api/API_VENDAS_INDICACAO_AGENTES';
 
     console.log(`[Indicações Meu Painel] Fetching ERP data for erp_agent_id=${erpAgentId}...`);
     const erpResponse = await fetch(erpUrl, {
@@ -4511,7 +4511,7 @@ router.get('/referral-paid-sales', authMiddleware, loadAgentMiddleware, async (r
     }
 
     const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
-    const erpUrl = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_DADOS_VENDAS_INDICACOES';
+    const erpUrl = 'http://erp.wescctech.com.br:8080/BP_MULTI/api/API_DADOS_VENDAS_INDICACOES';
 
     console.log('[Comissões] Fetching ERP sales data from API_DADOS_VENDAS_INDICACOES...');
     const erpResponse = await fetch(erpUrl, {
@@ -4700,7 +4700,7 @@ async function runWeeklyCommissionBatch() {
     }
 
     const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
-    const erpUrl = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_DADOS_VENDAS_INDICACOES';
+    const erpUrl = 'http://erp.wescctech.com.br:8080/BP_MULTI/api/API_DADOS_VENDAS_INDICACOES';
 
     const erpResponse = await fetch(erpUrl, {
       method: 'GET',
