@@ -1150,9 +1150,15 @@ export async function checkValidacaoPagamento() {
       console.warn('[ValidacaoPagamento] Erro no backfill pré-validação:', backfillErr.message);
     }
 
-    // Busca CPFs pendentes: não liquidados OU liquidados mas sem data_pagamento
-    const pendentes = await query(`
-      SELECT DISTINCT cpf_indicado
+    // Busca CPFs pendentes: não liquidados OU liquidados mas sem data_pagamento.
+    // Corte de idade: títulos vencidos há mais de VALIDACAO_PAGAMENTO_MAX_MESES meses
+    // (padrão 6) sem liquidação deixam de ser reconsultados — a chance de liquidação
+    // tardia é desprezível e cada CPF custa uma chamada ao ERP. Ajustável via env.
+    const maxMeses = parseInt(process.env.VALIDACAO_PAGAMENTO_MAX_MESES, 10) || 6;
+    const inicio = Date.now();
+
+    const totalPendentes = await query(`
+      SELECT COUNT(DISTINCT cpf_indicado) AS total
       FROM erp_perspectivas_negocios
       WHERE cpf_indicado IS NOT NULL
         AND cpf_indicado != ''
@@ -1161,14 +1167,38 @@ export async function checkValidacaoPagamento() {
           OR (sit_titulo = 'Liquidado' AND data_pagamento IS NULL)
         )
     `);
+    const totalPendentesCount = parseInt(totalPendentes.rows[0]?.total, 10) || 0;
+
+    // O corte de idade só vale para títulos NÃO liquidados; registros já
+    // 'Liquidado' com data_pagamento NULL continuam sendo consultados sempre,
+    // pois precisam completar a data de pagamento independentemente da idade.
+    const pendentes = await query(`
+      SELECT DISTINCT cpf_indicado
+      FROM erp_perspectivas_negocios
+      WHERE cpf_indicado IS NOT NULL
+        AND cpf_indicado != ''
+        AND (
+          (
+            sit_titulo IS DISTINCT FROM 'Liquidado'
+            AND (
+              data_vencimento IS NULL
+              OR data_vencimento >= NOW() - ($1 || ' months')::interval
+            )
+          )
+          OR (sit_titulo = 'Liquidado' AND data_pagamento IS NULL)
+        )
+    `, [maxMeses]);
+
+    const puladosPorIdade = totalPendentesCount - pendentes.rows.length;
 
     if (pendentes.rows.length === 0) {
-      console.log('[ValidacaoPagamento] Nenhum CPF pendente de validação.');
+      console.log(`[ValidacaoPagamento] Nenhum CPF pendente de validação (${puladosPorIdade} pulado(s) por idade > ${maxMeses} meses).`);
       return;
     }
 
-    console.log(`[ValidacaoPagamento] Verificando ${pendentes.rows.length} CPF(s)...`);
+    console.log(`[ValidacaoPagamento] Pendentes: ${totalPendentesCount} CPF(s) | pulados por idade (> ${maxMeses} meses): ${puladosPorIdade} | a consultar: ${pendentes.rows.length}`);
     let liquidados = 0;
+    let consultados = 0;
 
     for (const row of pendentes.rows) {
       const cpfFormatado = formatCpf(row.cpf_indicado);
@@ -1177,6 +1207,7 @@ export async function checkValidacaoPagamento() {
       try {
         const url = `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_VALIDACAO_PAGAMENTO?cpf=${encodeURIComponent(cpfFormatado)}`;
         const response = await fetch(url, { headers: { 'Authorization': authHeader } });
+        consultados++;
 
         if (!response.ok) {
           console.warn(`[ValidacaoPagamento] CPF ${cpfFormatado}: status ${response.status}`);
@@ -1248,7 +1279,8 @@ export async function checkValidacaoPagamento() {
       }
     }
 
-    console.log(`[ValidacaoPagamento] Concluído — ${liquidados} de ${pendentes.rows.length} CPF(s) liquidados.`);
+    const duracaoSeg = ((Date.now() - inicio) / 1000).toFixed(1);
+    console.log(`[ValidacaoPagamento] Concluído — pendentes: ${totalPendentesCount} | pulados por idade: ${puladosPorIdade} | consultados: ${consultados} | liquidados: ${liquidados} | duração: ${duracaoSeg}s`);
   } catch (error) {
     console.error('[ValidacaoPagamento] Erro geral:', error.message);
   }
@@ -1265,7 +1297,8 @@ export async function runAllAutomations() {
     ['checkAndExecuteReferralChannelAutomations', checkAndExecuteReferralChannelAutomations],
     ['checkAndExecuteUpsellChannelAutomations', checkAndExecuteUpsellChannelAutomations],
     ['syncPerspectivaNegociosFromERP', syncPerspectivaNegociosFromERP],
-    ['checkValidacaoPagamento', checkValidacaoPagamento],
+    // checkValidacaoPagamento foi retirado do ciclo horário: agora roda em cron
+    // próprio 2x/dia (01:00 e 22:00 de Brasília) — ver server.js.
   ];
   for (const [name, fn] of steps) {
     try {

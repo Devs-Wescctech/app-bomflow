@@ -22,7 +22,7 @@ import presalesAjustesRoutes from './routes/presalesAjustes.js';
 import leadImportsRoutes from './routes/leadImports.js';
 import erpAuditLogsRoutes from './routes/erpAuditLogs.js';
 import { installErpFetchAudit, erpOriginMiddleware, withErpOrigin, cleanupErpRequestLogs } from './services/erpAuditService.js';
-import { runAllAutomations } from './services/automationService.js';
+import { runAllAutomations, checkValidacaoPagamento } from './services/automationService.js';
 import cron from 'node-cron';
 import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport, runPerspectivaBatch, sendPerspectivaReport, runPresalesAjusteAutoCancel, runPresalesAjusteAvisoPrazo } from './routes/functions.js';
 import { recoverStuckQueues } from './services/whatsappQueueService.js';
@@ -177,6 +177,19 @@ initDatabase()
     }, AUTOMATION_INTERVAL);
     
     console.log(`[Automations] Scheduler initialized. Running every ${AUTOMATION_INTERVAL / 60000} minutes.`);
+
+    // Validação de pagamento (API_VALIDACAO_PAGAMENTO): fora do ciclo horário.
+    // Roda apenas 2x/dia — 01:00 e 22:00 no horário de Brasília — porque a
+    // liquidação muda no máximo 1x/dia e a comissão só é apurada no lote de quarta.
+    cron.schedule('0 1,22 * * *', () => withErpOrigin('cron:checkValidacaoPagamento', async () => {
+      console.log('[ValidacaoPagamento] Iniciando execução agendada (2x/dia)...');
+      try {
+        await checkValidacaoPagamento();
+      } catch (error) {
+        console.error('[ValidacaoPagamento] Erro na execução agendada:', error.message);
+      }
+    }), { timezone: 'America/Sao_Paulo' });
+    console.log('[ValidacaoPagamento] Cron agendado: 01:00 e 22:00 (horário de Brasília).');
 
     cron.schedule('0 3 * * *', () => withErpOrigin('cron:runLeadGeneratorAudit', async () => {
       console.log('[Lead Generator Audit] Iniciando auditoria automática diária...');
