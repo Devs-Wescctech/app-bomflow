@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
 import { isAdminUser } from "@/components/utils/permissions";
-import { LayoutGrid, Lock, BookOpen, KeyRound, MessageSquare, Inbox } from "lucide-react";
+import { LayoutGrid, Lock, BookOpen, KeyRound, MessageSquare, Inbox, Activity } from "lucide-react";
 
 export default function AppsHub() {
   const { data: user } = useQuery({
@@ -59,6 +59,14 @@ export default function AppsHub() {
             icon: MessageSquare,
             gradient: "from-green-600 to-emerald-600",
             url: createPageUrl("AdminWhatsAppConnections"),
+          },
+          {
+            id: "erp-audit",
+            title: "Auditoria ERP",
+            description: "Registro de todas as chamadas de saída ao ERP (REST e banco), com origem, frequência e erros.",
+            icon: Activity,
+            gradient: "from-orange-600 to-amber-600",
+            url: createPageUrl("ErpAuditLogs"),
           },
         ]
       : []),

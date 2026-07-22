@@ -1,7 +1,21 @@
 import pkg from 'pg';
+import { logErpDbQuery } from './erpAuditService.js';
 const { Pool } = pkg;
 
 let pool = null;
+
+// Cronometra e audita uma query direta ao banco ERP (best-effort; nunca quebra a chamada).
+async function auditedQuery(runner, text, params) {
+  const start = Date.now();
+  try {
+    const result = await runner(text, params);
+    logErpDbQuery(text, Date.now() - start, true, null);
+    return result;
+  } catch (err) {
+    logErpDbQuery(text, Date.now() - start, false, err.message);
+    throw err;
+  }
+}
 
 function getPool() {
   if (!pool) {
@@ -19,6 +33,31 @@ function getPool() {
     pool.on('error', (err) => {
       console.error('[erpDbService] Pool error:', err.message);
     });
+
+    // Auditoria: envolve pool.query e os clients de pool.connect para registrar
+    // TODAS as queries ao banco ERP sem alterar nenhum call site.
+    const origQuery = pool.query.bind(pool);
+    pool.query = (text, params) => auditedQuery(origQuery, text, params);
+
+    const wrapClient = (client) => {
+      if (client && !client.__erpAudited) {
+        client.__erpAudited = true;
+        const origClientQuery = client.query.bind(client);
+        client.query = (text, params) => auditedQuery(origClientQuery, text, params);
+      }
+      return client;
+    };
+
+    const origConnect = pool.connect.bind(pool);
+    pool.connect = (...args) => {
+      // Suporta os dois estilos do pg: callback (pool.connect(cb)) e promise.
+      if (typeof args[args.length - 1] === 'function') {
+        const cb = args[args.length - 1];
+        args[args.length - 1] = (err, client, release) => cb(err, wrapClient(client), release);
+        return origConnect(...args);
+      }
+      return origConnect(...args).then(wrapClient);
+    };
   }
   return pool;
 }
