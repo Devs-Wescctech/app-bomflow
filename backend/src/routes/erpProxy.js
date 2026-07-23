@@ -1110,16 +1110,11 @@ router.get('/canais-venda', authMiddleware, async (req, res) => {
 
   try {
     const url = `${ERP_BASE}/API_CANAL_VENDAS`;
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const data = await response.json();
-    if (!response.ok) return res.status(response.status).json(data);
-    const results = data?.results || data?.data || (Array.isArray(data) ? data : []);
+    const results = await fetchErpAllPages(url, `Bearer ${token}`, { label: 'ERP /canais-venda' });
     return res.json(results);
   } catch (err) {
     console.error('[ERP Proxy] GET /canais-venda error:', err.message);
-    return res.status(500).json({ error: err.message });
+    return res.status(err.isErpUpstream ? 502 : 500).json({ error: err.message });
   }
 });
 
