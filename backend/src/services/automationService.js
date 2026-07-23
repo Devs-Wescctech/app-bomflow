@@ -1,6 +1,5 @@
 import { query } from '../config/database.js';
 import { sendWhatsAppMessage, sendWhatsAppMessageWithToken } from './whatsappService.js';
-import { mirrorOutboundSend } from './whatsappInboxService.js';
 
 async function loadAutomationTeamIds(automations, junctionTable = 'lead_automation_teams') {
   if (!automations || automations.length === 0) return automations;
