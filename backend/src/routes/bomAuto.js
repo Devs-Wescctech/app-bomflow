@@ -81,7 +81,19 @@ router.get('/consulta', authMiddleware, async (req, res) => {
       });
     }
 
-    const rawData = await erpResponse.json();
+    // O ERP responde 204 (sem corpo) quando não encontra o documento/placa.
+    if (erpResponse.status === 204) {
+      return res.status(404).json({ message: 'Cliente não encontrado no ERP.' });
+    }
+
+    const rawText = await erpResponse.text();
+    let rawData;
+    try {
+      rawData = rawText ? JSON.parse(rawText) : [];
+    } catch {
+      console.error('[BomAuto] Resposta não-JSON do ERP:', rawText.substring(0, 200));
+      return res.status(502).json({ message: 'Resposta inválida do ERP.' });
+    }
 
     if (!Array.isArray(rawData) || rawData.length === 0) {
       return res.status(404).json({ message: 'Cliente não encontrado no ERP.' });
