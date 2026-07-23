@@ -686,25 +686,47 @@ async function fetchLeadGeneratorFromERP(queryParams = {}) {
     }
   }
 
-  const erpUrl = `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_BASE_LEADS${params.toString() ? '?' + params.toString() : ''}`;
   const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
 
-  console.log(`[LeadGenerator] Fetching from ERP: ${erpUrl}`);
+  const PAGE_SIZE = 10000;
+  const MAX_PAGES = 50;
+  const allData = [];
 
-  const erpResponse = await fetch(erpUrl, {
-    method: 'GET',
-    headers: {
-      'Authorization': authHeader,
-      'Accept': 'application/json'
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const pageParams = new URLSearchParams(params);
+    pageParams.set('limit', String(PAGE_SIZE));
+    pageParams.set('offset', String(page * PAGE_SIZE));
+
+    const erpUrl = `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_BASE_LEADS?${pageParams.toString()}`;
+    console.log(`[LeadGenerator] Fetching from ERP (page ${page + 1}): ${erpUrl}`);
+
+    const erpResponse = await fetch(erpUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': authHeader,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!erpResponse.ok) {
+      throw new Error(`ERP returned status ${erpResponse.status} on page ${page + 1} (offset ${page * PAGE_SIZE})`);
     }
-  });
 
-  if (!erpResponse.ok) {
-    throw new Error(`ERP returned status ${erpResponse.status}`);
+    const pageData = await erpResponse.json();
+    if (!Array.isArray(pageData)) {
+      throw new Error(`ERP returned non-array response on page ${page + 1} (offset ${page * PAGE_SIZE})`);
+    }
+
+    allData.push(...pageData);
+
+    if (pageData.length < PAGE_SIZE) {
+      console.log(`[LeadGenerator] ERP pagination complete: ${allData.length} total records in ${page + 1} page(s)`);
+      return allData;
+    }
   }
 
-  const data = await erpResponse.json();
-  return Array.isArray(data) ? data : [];
+  console.warn(`[LeadGenerator] Reached MAX_PAGES safety limit (${MAX_PAGES}); returning ${allData.length} records`);
+  return allData;
 }
 
 const MIN_RECORDS_FOR_VALID_OPTIONS = 50;
