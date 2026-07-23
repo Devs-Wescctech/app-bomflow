@@ -20,7 +20,9 @@ import externalRoutes from './routes/external.js';
 import orcamentoDocumentosRoutes from './routes/orcamentoDocumentos.js';
 import presalesAjustesRoutes from './routes/presalesAjustes.js';
 import leadImportsRoutes from './routes/leadImports.js';
-import { runAllAutomations } from './services/automationService.js';
+import erpAuditLogsRoutes from './routes/erpAuditLogs.js';
+import { installErpFetchAudit, erpOriginMiddleware, withErpOrigin, cleanupErpRequestLogs } from './services/erpAuditService.js';
+import { runAllAutomations, checkValidacaoPagamento } from './services/automationService.js';
 import cron from 'node-cron';
 import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport, runPerspectivaBatch, sendPerspectivaReport, runPresalesAjusteAutoCancel, runPresalesAjusteAvisoPrazo } from './routes/functions.js';
 import { recoverStuckQueues } from './services/whatsappQueueService.js';
@@ -30,6 +32,11 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 3001;
+
+// Auditoria de chamadas de saída ao ERP: intercepta o fetch global para os hosts
+// do ERP e propaga a origem (rota HTTP + usuário) via AsyncLocalStorage.
+installErpFetchAudit();
+app.use(erpOriginMiddleware);
 
 const distPath = path.join(__dirname, '../../dist');
 let indexHtml = '<!DOCTYPE html><html><head><title>Wescctech CRM</title></head><body><h1>OK</h1></body></html>';
@@ -86,6 +93,7 @@ app.use('/api/erp', erpProxyRoutes);
 app.use('/api/orcamento-documentos', orcamentoDocumentosRoutes);
 app.use('/api/presales-ajustes', presalesAjustesRoutes);
 app.use('/api/lead-imports', leadImportsRoutes);
+app.use('/api/erp-audit', erpAuditLogsRoutes);
 
 app.use(express.static(distPath));
 
@@ -160,17 +168,30 @@ initDatabase()
     
     setTimeout(() => {
       console.log('[Automations] Starting initial automation check...');
-      runAllAutomations().catch(console.error);
+      withErpOrigin('cron:runAllAutomations', () => runAllAutomations().catch(console.error));
     }, 30000);
     
     setInterval(() => {
       console.log('[Automations] Running scheduled automation check...');
-      runAllAutomations().catch(console.error);
+      withErpOrigin('cron:runAllAutomations', () => runAllAutomations().catch(console.error));
     }, AUTOMATION_INTERVAL);
     
     console.log(`[Automations] Scheduler initialized. Running every ${AUTOMATION_INTERVAL / 60000} minutes.`);
 
-    cron.schedule('0 3 * * *', async () => {
+    // Validação de pagamento (API_VALIDACAO_PAGAMENTO): fora do ciclo horário.
+    // Roda apenas 2x/dia — 01:00 e 22:00 no horário de Brasília — porque a
+    // liquidação muda no máximo 1x/dia e a comissão só é apurada no lote de quarta.
+    cron.schedule('0 1,22 * * *', () => withErpOrigin('cron:checkValidacaoPagamento', async () => {
+      console.log('[ValidacaoPagamento] Iniciando execução agendada (2x/dia)...');
+      try {
+        await checkValidacaoPagamento();
+      } catch (error) {
+        console.error('[ValidacaoPagamento] Erro na execução agendada:', error.message);
+      }
+    }), { timezone: 'America/Sao_Paulo' });
+    console.log('[ValidacaoPagamento] Cron agendado: 01:00 e 22:00 (horário de Brasília).');
+
+    cron.schedule('0 3 * * *', () => withErpOrigin('cron:runLeadGeneratorAudit', async () => {
       console.log('[Lead Generator Audit] Iniciando auditoria automática diária...');
       try {
         const { divergencias } = await runLeadGeneratorAudit();
@@ -178,10 +199,10 @@ initDatabase()
       } catch (error) {
         console.error('[Lead Generator Audit] Erro na auditoria automática:', error.message);
       }
-    });
+    }));
     console.log('[Lead Generator Audit] Cron agendado: todos os dias às 03:00.');
 
-    cron.schedule('0 4 * * *', async () => {
+    cron.schedule('0 4 * * *', () => withErpOrigin('cron:runCommissionReconciliation', async () => {
       console.log('[Commission Reconciliation] Iniciando reconciliação automática diária...');
       try {
         const result = await runCommissionReconciliation();
@@ -189,10 +210,10 @@ initDatabase()
       } catch (error) {
         console.error('[Commission Reconciliation] Erro na reconciliação automática:', error.message);
       }
-    });
+    }));
     console.log('[Commission Reconciliation] Cron agendado: todos os dias às 04:00.');
 
-    cron.schedule('0 5 * * 3', async () => {
+    cron.schedule('0 5 * * 3', () => withErpOrigin('cron:runWeeklyCommissionBatch', async () => {
       console.log('[Commission Batch] Iniciando geração de lote semanal (quarta-feira)...');
       try {
         const result = await runWeeklyCommissionBatch();
@@ -200,10 +221,10 @@ initDatabase()
       } catch (error) {
         console.error('[Commission Batch] Erro na geração de lote:', error.message);
       }
-    });
+    }));
     console.log('[Commission Batch] Cron agendado: quartas-feiras às 05:00.');
 
-    cron.schedule('30 5 * * 3', async () => {
+    cron.schedule('30 5 * * 3', () => withErpOrigin('cron:runPerspectivaBatch', async () => {
       console.log('[Perspectiva Batch] Iniciando geração de lote ERP (quarta-feira)...');
       try {
         const result = await runPerspectivaBatch();
@@ -211,10 +232,10 @@ initDatabase()
       } catch (error) {
         console.error('[Perspectiva Batch] Erro na geração de lote:', error.message);
       }
-    });
+    }));
     console.log('[Perspectiva Batch] Cron agendado: quartas-feiras às 05:30.');
 
-    cron.schedule('0 8 * * 3', async () => {
+    cron.schedule('0 8 * * 3', () => withErpOrigin('cron:sendPerspectivaReport', async () => {
       console.log('[Perspectiva Email] Iniciando envio automático de relatório semanal (ERP)...');
       try {
         const result = await sendPerspectivaReport({ tipo_envio: 'automatico', usuario_envio: 'system' });
@@ -226,10 +247,10 @@ initDatabase()
       } catch (error) {
         console.error('[Perspectiva Email] Erro no envio automático:', error.message);
       }
-    });
+    }));
     console.log('[Perspectiva Email] Cron agendado: quartas-feiras às 08:00 (ERP).');
 
-    cron.schedule('0 7 * * *', async () => {
+    cron.schedule('0 7 * * *', () => withErpOrigin('cron:presalesAjustes', async () => {
       // Aviso antecipado primeiro (não-destrutivo): avisa o vendedor cujo prazo vence
       // no próximo dia útil, dando chance de evitar o cancelamento no ciclo seguinte.
       console.log('[PreSales AvisoPrazo] Iniciando verificação diária de aviso antecipado de prazo...');
@@ -247,8 +268,14 @@ initDatabase()
       } catch (error) {
         console.error('[PreSales AutoCancel] Erro na verificação automática:', error.message);
       }
-    });
+    }));
     console.log('[PreSales AutoCancel] Cron agendado: todos os dias às 07:00 (aviso antecipado + auto-cancelamento).');
+
+    // Retenção do log de auditoria ERP: remove registros com mais de 30 dias.
+    cron.schedule('30 2 * * *', () => {
+      cleanupErpRequestLogs(30).catch((e) => console.error('[erpAudit] Cron de limpeza falhou:', e.message));
+    });
+    console.log('[erpAudit] Cron de retenção agendado: todos os dias às 02:30 (30 dias).');
 
     try {
       await recoverStuckQueues();

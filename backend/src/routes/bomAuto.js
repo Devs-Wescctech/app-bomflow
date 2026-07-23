@@ -64,7 +64,7 @@ router.get('/consulta', authMiddleware, async (req, res) => {
     }
     if (placa) params.append('placa_ajustada', placa);
 
-    const erpUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_TESTE_BOM_AUTO?${params.toString()}`;
+    const erpUrl = `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_TESTE_BOM_AUTO?${params.toString()}`;
 
     const erpToken = process.env.ERP_AUTH_TOKEN || '58378BA0-250C-4061-AF33-A2BE38C2BC01';
     const erpResponse = await fetch(erpUrl, {
@@ -114,7 +114,7 @@ router.get('/consulta', authMiddleware, async (req, res) => {
         const cpfFormatado = cpfDigits.length === 11
           ? `${cpfDigits.slice(0,3)}.${cpfDigits.slice(3,6)}.${cpfDigits.slice(6,9)}-${cpfDigits.slice(9)}`
           : cpfDigits;
-        const funcUrl = `http://erp.wescctech.com.br:8080/BOMPASTOR/api/API_FUNCIONARIOS_BP?documento=${encodeURIComponent(cpfFormatado)}`;
+        const funcUrl = `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_FUNCIONARIOS_BP?documento=${encodeURIComponent(cpfFormatado)}`;
         const funcResponse = await fetch(funcUrl, {
           method: 'GET',
           headers: {

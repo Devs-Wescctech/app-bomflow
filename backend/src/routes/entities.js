@@ -107,6 +107,28 @@ pool.query(`
 `).then(() => console.log('[Migration] api_keys OK'))
   .catch(e => console.error('[Migration] api_keys error:', e.message));
 
+// Log de auditoria de TODAS as chamadas de saída ao ERP (REST + banco direto).
+// Gravação assíncrona best-effort pelo erpAuditService; retenção de 30 dias
+// via cron de limpeza. NUNCA armazena token (endpoint já vem sanitizado).
+pool.query(`
+  CREATE TABLE IF NOT EXISTS erp_request_logs (
+    id BIGSERIAL PRIMARY KEY,
+    kind VARCHAR(10) NOT NULL,
+    endpoint TEXT NOT NULL,
+    method VARCHAR(10),
+    origin VARCHAR(200) NOT NULL DEFAULT 'desconhecido',
+    origin_user VARCHAR(200),
+    status_code INTEGER,
+    success BOOLEAN DEFAULT TRUE,
+    duration_ms INTEGER,
+    error TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_erp_request_logs_created ON erp_request_logs(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_erp_request_logs_origin ON erp_request_logs(origin, created_at DESC);
+`).then(() => console.log('[Migration] erp_request_logs OK'))
+  .catch(e => console.error('[Migration] erp_request_logs error:', e.message));
+
 // Histórico de envios/pulos dos relatórios de comissão (legado e Perspectivas).
 // Grava cada tentativa de envio (manual ou automática) com o resultado:
 // enviado, pulado (automático sem elegíveis), bloqueado (manual sem dados) ou erro.

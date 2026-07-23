@@ -5,7 +5,7 @@ import { query } from '../config/database.js';
 
 const router = express.Router();
 
-const ERP_BASE = 'http://erp.wescctech.com.br:8080/BOMPASTOR/api';
+const ERP_BASE = 'http://erp.wescctech.com.br:8080/BP_MULTI/api';
 
 const ERP_ESTABELECIMENTO_PADRAO = process.env.ERP_ESTABELECIMENTO_PADRAO || 104;
 const ERP_SENHA_PADRAO           = process.env.ERP_SENHA_PADRAO;

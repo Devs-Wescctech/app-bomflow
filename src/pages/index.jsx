@@ -201,6 +201,7 @@ import BomAutoRelatorio from "./BomAutoRelatorio";
 import AppsHub from "./AppsHub";
 import ApiDocumentation from "./ApiDocumentation";
 import AdminApiKeys from "./AdminApiKeys";
+import ErpAuditLogs from "./ErpAuditLogs";
 import LeadImportPF from "./LeadImportPF";
 
 import SalesWonReport from "./SalesWonReport";
@@ -432,6 +433,7 @@ const PAGES = {
     AppsHub: AppsHub,
     ApiDocumentation: ApiDocumentation,
     AdminApiKeys: AdminApiKeys,
+    ErpAuditLogs: ErpAuditLogs,
     LeadImportPF: LeadImportPF,
 
     SalesWonReport: SalesWonReport,
@@ -697,6 +699,7 @@ function PagesContent() {
                 <Route path="/AppsHub" element={<AppsHub />} />
                 <Route path="/ApiDocumentation" element={<ApiDocumentation />} />
                 <Route path="/AdminApiKeys" element={<AdminApiKeys />} />
+                <Route path="/ErpAuditLogs" element={<ErpAuditLogs />} />
                 <Route path="/LeadImportPF" element={<LeadImportPF />} />
                 <Route path="/NewLeadUpsell" element={<NewLeadUpsell />} />
                 <Route path="/LeadsUpsellKanban" element={<LeadsUpsellKanban />} />
