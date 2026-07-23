@@ -19,6 +19,7 @@ import {
 import { LEAD_PF_STAGES } from '@/constants/stages';
 
 const EXPECTED_HEADERS = ['CPF', 'NOME', 'CIDADE', 'UF', 'TELEFONE'];
+const REQUIRED_HEADERS = ['NOME', 'CIDADE', 'UF', 'TELEFONE'];
 
 function authHeaders() {
   const token = localStorage.getItem('accessToken');
@@ -127,6 +128,7 @@ export default function LeadImportPF() {
     const ws = XLSX.utils.aoa_to_sheet([
       EXPECTED_HEADERS,
       ['123.456.789-09', 'Maria da Silva', 'Belo Horizonte', 'MG', '(31) 99999-8888'],
+      ['', 'João Souza (CPF é opcional)', 'Contagem', 'MG', '(31) 98888-7777'],
     ]);
     ws['!cols'] = [{ wch: 18 }, { wch: 32 }, { wch: 22 }, { wch: 6 }, { wch: 18 }];
     const wb = XLSX.utils.book_new();
@@ -153,16 +155,17 @@ export default function LeadImportPF() {
         return;
       }
       const headers = raw[0].map(normalizeHeader);
-      const missing = EXPECTED_HEADERS.filter(h => !headers.includes(h));
+      const missing = REQUIRED_HEADERS.filter(h => !headers.includes(h));
       if (missing.length > 0) {
-        setHeaderError(`As colunas da planilha não conferem com o layout padrão (${EXPECTED_HEADERS.join(', ')}). Faltando: ${missing.join(', ')}. Baixe o modelo e use exatamente esse layout.`);
+        setHeaderError(`As colunas da planilha não conferem com o layout padrão (${REQUIRED_HEADERS.join(', ')} — CPF é opcional). Faltando: ${missing.join(', ')}. Baixe o modelo e use esse layout.`);
         return;
       }
       const idx = Object.fromEntries(EXPECTED_HEADERS.map(h => [h, headers.indexOf(h)]));
+      const hasCpf = idx.CPF !== -1;
       const rows = raw.slice(1)
         .filter(r => r.some(cell => String(cell ?? '').trim() !== ''))
         .map(r => ({
-          cpf: r[idx.CPF] ?? '',
+          cpf: hasCpf ? (r[idx.CPF] ?? '') : '',
           nome: r[idx.NOME] ?? '',
           cidade: r[idx.CIDADE] ?? '',
           uf: r[idx.UF] ?? '',
@@ -309,7 +312,7 @@ export default function LeadImportPF() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <p className="text-sm text-gray-500">
-                  Layout padrão obrigatório: <span className="font-mono font-semibold">CPF, NOME, CIDADE, UF, TELEFONE</span>.
+                  Layout padrão: <span className="font-mono font-semibold">NOME, CIDADE, UF, TELEFONE</span> (obrigatórias) e <span className="font-mono font-semibold">CPF</span> (opcional).
                   Baixe o modelo para garantir o formato correto.
                 </p>
                 <div
