@@ -2,6 +2,7 @@ import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import { registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB, findPessoaIdByCpf, getLoginByUsuarioId, getErpLoginsByIds, getRelatorioOrcamentos } from '../services/erpDbService.js';
 import { query } from '../config/database.js';
+import { fetchErpAllPages } from '../utils/erpPagination.js';
 
 const router = express.Router();
 
@@ -1144,21 +1145,12 @@ router.get('/produtos', authMiddleware, async (req, res) => {
 
   try {
     const url = `${ERP_BASE}/API_MV_API_PRODUTOS`;
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const data = await response.json();
-    if (!response.ok) return res.status(response.status).json(data);
-    const results = data?.results || data?.data || (Array.isArray(data) ? data : []);
-    if (results.length > 0) {
-      console.log('[ERP /produtos] total:', results.length);
-      console.log('[ERP /produtos] campos do 1º produto:', Object.keys(results[0]));
-      console.log('[ERP /produtos] 1º produto completo:', JSON.stringify(results[0], null, 2));
-    }
+    const results = await fetchErpAllPages(url, `Bearer ${token}`, { label: 'ERP /produtos' });
+    console.log('[ERP /produtos] total:', results.length);
     return res.json(results);
   } catch (err) {
     console.error('[ERP Proxy] GET /produtos error:', err.message);
-    return res.status(500).json({ error: err.message });
+    return res.status(err.isErpUpstream ? 502 : 500).json({ error: err.message });
   }
 });
 
