@@ -12,6 +12,7 @@ import { runAllAutomations, runAutomationsForLead } from '../services/leadAutoma
 import { checkAndExecuteLeadUpsellAutomations, checkAndExecuteUpsellChannelAutomations, executeLeadCreatedAutomation, executeUpsellChannelLeadCreatedAutomation } from '../services/automationService.js';
 import { notifyLeadAssigned, createNotification } from '../services/notificationService.js';
 import { cancelOrcamentoDB } from '../services/erpDbService.js';
+import { fetchErpAllPages } from '../utils/erpPagination.js';
 import { isPastBusinessDayDeadline, preloadHolidays, brtDateStr, addBusinessDays } from '../services/businessDaysService.js';
 import { generateProposalPDF, generateManualProposalPDF } from '../services/pdfService.js';
 import { sendWhatsAppMessage, sendDocument, sendTextMessage } from '../services/whatsappService.js';
@@ -344,18 +345,7 @@ async function erpCadastroPessoasCall(authHeader, { cidade, uf, descricao }) {
   if (uf) params.set('uf', uf);
   if (descricao) params.set('descricao', descricao);
   const erpUrl = `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_CADASTRO_PESSOAS${params.toString() ? '?' + params.toString() : ''}`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
-  try {
-    const response = await fetch(erpUrl, { headers: { 'Authorization': authHeader }, signal: controller.signal });
-    clearTimeout(timeout);
-    const data = await response.json();
-    return Array.isArray(data) ? data : [];
-  } catch (err) {
-    clearTimeout(timeout);
-    if (err.name === 'AbortError') throw new Error('Timeout ao consultar ERP');
-    throw err;
-  }
+  return fetchErpAllPages(erpUrl, authHeader, { label: 'ERP Cadastro' });
 }
 
 router.get('/erp-cadastro-pessoas-batch', authMiddleware, async (req, res) => {
@@ -1942,17 +1932,7 @@ router.get('/lead-generator-roi-metrics', authMiddleware, async (req, res) => {
     const erpUrl = 'http://erp.wescctech.com.br:8080/BP_MULTI/api/API_DADOS_VENDAS_INDICACOES';
 
     console.log(`[ROI Metrics] Fetching ERP sales data from API_DADOS_VENDAS_INDICACOES...`);
-    const erpResponse = await fetch(erpUrl, {
-      method: 'GET',
-      headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
-    });
-
-    if (!erpResponse.ok) {
-      return res.status(502).json({ success: false, error: `ERP retornou status ${erpResponse.status}` });
-    }
-
-    const erpData = await erpResponse.json();
-    const vendasERP = Array.isArray(erpData) ? erpData : [];
+    const vendasERP = await fetchErpAllPages(erpUrl, authHeader, { label: 'ROI Metrics' });
     console.log(`[ROI Metrics] ERP returned ${vendasERP.length} sales records`);
 
     const matchedContracts = new Set();
@@ -2020,7 +2000,7 @@ router.get('/lead-generator-roi-metrics', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('[ROI Metrics] Error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(error.isErpUpstream ? 502 : 500).json({ success: false, error: error.message });
   }
 });
 
@@ -2061,15 +2041,7 @@ async function executeMetricsAudit({ from, to, userId, teamId } = {}) {
   const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
 
   console.log(`[Audit] Fetching ERP sales data...`);
-  const erpResponse = await fetch('http://erp.wescctech.com.br:8080/BP_MULTI/api/API_DADOS_VENDAS_INDICACOES', {
-    method: 'GET',
-    headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
-  });
-  if (!erpResponse.ok) {
-    throw new Error(`ERP retornou status ${erpResponse.status}`);
-  }
-  const erpBody = await erpResponse.json();
-  const vendasList = Array.isArray(erpBody) ? erpBody : [];
+  const vendasList = await fetchErpAllPages('http://erp.wescctech.com.br:8080/BP_MULTI/api/API_DADOS_VENDAS_INDICACOES', authHeader, { label: 'Audit' });
   console.log(`[Audit] ERP returned ${vendasList.length} sales records`);
 
   const vendasSemDisparo = [];
@@ -4441,17 +4413,7 @@ router.get('/indicacoes-agent-dashboard', authMiddleware, async (req, res) => {
     const erpUrl = 'http://erp.wescctech.com.br:8080/BP_MULTI/api/API_VENDAS_INDICACAO_AGENTES';
 
     console.log(`[Indicações Meu Painel] Fetching ERP data for erp_agent_id=${erpAgentId}...`);
-    const erpResponse = await fetch(erpUrl, {
-      method: 'GET',
-      headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
-    });
-
-    if (!erpResponse.ok) {
-      return res.status(502).json({ success: false, error: `ERP retornou status ${erpResponse.status}` });
-    }
-
-    const erpData = await erpResponse.json();
-    const allRecords = Array.isArray(erpData) ? erpData : [];
+    const allRecords = await fetchErpAllPages(erpUrl, authHeader, { label: 'Indicações Meu Painel' });
     console.log(`[Indicações Meu Painel] ERP returned ${allRecords.length} total records`);
 
     const agentRecords = allRecords.filter(r => {
@@ -4521,7 +4483,7 @@ router.get('/indicacoes-agent-dashboard', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('[Indicações Meu Painel] Error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(error.isErpUpstream ? 502 : 500).json({ success: false, error: error.message });
   }
 });
 
@@ -4536,17 +4498,7 @@ router.get('/referral-paid-sales', authMiddleware, loadAgentMiddleware, async (r
     const erpUrl = 'http://erp.wescctech.com.br:8080/BP_MULTI/api/API_DADOS_VENDAS_INDICACOES';
 
     console.log('[Comissões] Fetching ERP sales data from API_DADOS_VENDAS_INDICACOES...');
-    const erpResponse = await fetch(erpUrl, {
-      method: 'GET',
-      headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
-    });
-
-    if (!erpResponse.ok) {
-      return res.status(502).json({ success: false, error: `ERP retornou status ${erpResponse.status}` });
-    }
-
-    const erpData = await erpResponse.json();
-    const allSales = Array.isArray(erpData) ? erpData : [];
+    const allSales = await fetchErpAllPages(erpUrl, authHeader, { label: 'Comissões' });
     console.log(`[Comissões] ERP returned ${allSales.length} total records`);
 
     const paidSales = allSales.filter(r => {
@@ -4654,7 +4606,7 @@ router.get('/referral-paid-sales', authMiddleware, loadAgentMiddleware, async (r
     });
   } catch (error) {
     console.error('[Comissões] Error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(error.isErpUpstream ? 502 : 500).json({ success: false, error: error.message });
   }
 });
 
@@ -4724,14 +4676,7 @@ async function runWeeklyCommissionBatch() {
     const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
     const erpUrl = 'http://erp.wescctech.com.br:8080/BP_MULTI/api/API_DADOS_VENDAS_INDICACOES';
 
-    const erpResponse = await fetch(erpUrl, {
-      method: 'GET',
-      headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
-    });
-
-    if (!erpResponse.ok) throw new Error(`ERP API error: ${erpResponse.status}`);
-    const erpData = await erpResponse.json();
-    const allSales = Array.isArray(erpData) ? erpData : [];
+    const allSales = await fetchErpAllPages(erpUrl, authHeader, { label: 'Commission Batch' });
 
     const paidSales = allSales.filter(r => {
       const vp = (r.valores_pagos || '').toString().trim().toUpperCase();

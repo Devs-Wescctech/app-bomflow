@@ -1,5 +1,6 @@
 import { query } from '../config/database.js';
 import { sendWhatsAppMessage, sendWhatsAppMessageWithToken } from './whatsappService.js';
+import { fetchErpAllPages } from '../utils/erpPagination.js';
 
 async function loadAutomationTeamIds(automations, junctionTable = 'lead_automation_teams') {
   if (!automations || automations.length === 0) return automations;
@@ -972,14 +973,15 @@ export async function syncPerspectivaNegociosFromERP() {
       const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
       const url = 'http://erp.wescctech.com.br:8080/BP_MULTI/api/API_PERSPECTIVA_NEGOCIOS';
       console.log('[PerspectivaNegócios] Iniciando sincronização com ERP...');
-      const response = await fetch(url, {
-        headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' }
-      });
-      if (!response.ok) {
-        console.error(`[PerspectivaNegócios] ERP retornou status ${response.status}`);
+      let records = null;
+      try {
+        records = await fetchErpAllPages(url, authHeader, { label: 'PerspectivaNegócios' });
+      } catch (erpErr) {
+        console.error(`[PerspectivaNegócios] Erro ao consultar ERP: ${erpErr.message}`);
+      }
+      if (records === null) {
+        // erro já logado acima; segue para o backfill CRM
       } else {
-        const data = await response.json();
-        const records = Array.isArray(data) ? data : [data];
         if (records.length === 0) {
           console.log('[PerspectivaNegócios] Nenhum registro retornado pelo ERP.');
         } else {
