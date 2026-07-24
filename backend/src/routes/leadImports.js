@@ -33,6 +33,9 @@ pool.query(`
 `).then(() => console.log('[Migration] lead_imports OK'))
   .catch(e => console.error('[Migration] lead_imports error:', e.message));
 
+// Módulos suportados pela importação
+const IMPORT_MODULES = new Set(['vendas_pf', 'indicacoes']);
+
 function isAdminOrSupervisor(req) {
   if (req.user?.role === 'admin') return true;
   const t = req.agent?.agentType;
@@ -40,10 +43,24 @@ function isAdminOrSupervisor(req) {
   return t === 'admin' || t === 'supervisor' || t === 'sales_supervisor' || t.endsWith('_supervisor');
 }
 
-function requireAdminOrSupervisor(req, res, next) {
-  if (!isAdminOrSupervisor(req)) {
+// Autorização por módulo: além das regras gerais (paridade com PF), admins do
+// próprio módulo podem importar nele (ex.: indicacoes_admin em 'indicacoes').
+function isAllowedForModule(req, module) {
+  if (isAdminOrSupervisor(req)) return true;
+  const t = req.agent?.agentType;
+  if (module === 'indicacoes' && t === 'indicacoes_admin') return true;
+  return false;
+}
+
+// Middleware que valida a permissão contra o módulo solicitado (body ou query).
+// Módulo inválido/ausente cai em 'vendas_pf', mantendo o comportamento original do PF.
+function requireImportPermission(req, res, next) {
+  const requested = req.body?.module ?? req.query?.module;
+  const module = IMPORT_MODULES.has(requested) ? requested : 'vendas_pf';
+  if (!isAllowedForModule(req, module)) {
     return res.status(403).json({ message: 'Acesso restrito a administradores e supervisores' });
   }
+  req.importModule = module;
   next();
 }
 
@@ -100,7 +117,7 @@ async function classifyRows(rows) {
 }
 
 // POST /preview — recebe { rows: [{cpf, nome, cidade, uf, telefone}] } e classifica cada linha
-router.post('/preview', authMiddleware, loadAgentMiddleware, requireAdminOrSupervisor, async (req, res) => {
+router.post('/preview', authMiddleware, loadAgentMiddleware, requireImportPermission, async (req, res) => {
   try {
     const { rows } = req.body;
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -141,10 +158,11 @@ router.post('/preview', authMiddleware, loadAgentMiddleware, requireAdminOrSuper
 });
 
 // POST /confirm — revalida no servidor, distribui em rodízio e grava tudo em uma transação
-router.post('/confirm', authMiddleware, loadAgentMiddleware, requireAdminOrSupervisor, async (req, res) => {
+router.post('/confirm', authMiddleware, loadAgentMiddleware, requireImportPermission, async (req, res) => {
   const client = await pool.connect();
   try {
     const { rows, agentIds, stage, fileName } = req.body;
+    const module = req.importModule || 'vendas_pf';
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(400).json({ message: 'Nenhuma linha recebida.' });
     }
@@ -156,10 +174,24 @@ router.post('/confirm', authMiddleware, loadAgentMiddleware, requireAdminOrSuper
     }
 
     const agentsResult = await query(
-      'SELECT id, name, team_id FROM agents WHERE id = ANY($1::uuid[]) AND active = true',
+      'SELECT id, name, team_id, agent_type FROM agents WHERE id = ANY($1::uuid[]) AND active = true',
       [agentIds]
     );
-    const agentsById = new Map(agentsResult.rows.map(a => [a.id, a]));
+    let eligibleAgents = agentsResult.rows;
+
+    if (module === 'indicacoes') {
+      // Somente agentes cujo tipo pertence ao módulo Indicações (referral) ou 'all'
+      const typesResult = await query(
+        `SELECT key FROM agent_types WHERE active = true AND ('referral' = ANY(modules) OR 'all' = ANY(modules))`
+      );
+      const referralTypes = new Set(typesResult.rows.map(t => t.key));
+      eligibleAgents = eligibleAgents.filter(a => referralTypes.has(a.agent_type));
+      if (eligibleAgents.length === 0) {
+        return res.status(400).json({ message: 'Nenhum dos vendedores selecionados pertence ao módulo Indicações.' });
+      }
+    }
+
+    const agentsById = new Map(eligibleAgents.map(a => [a.id, a]));
     const orderedAgents = agentIds.filter(id => agentsById.has(id)).map(id => agentsById.get(id));
     if (orderedAgents.length === 0) {
       return res.status(400).json({ message: 'Nenhum dos vendedores selecionados está ativo.' });
@@ -193,11 +225,20 @@ router.post('/confirm', authMiddleware, loadAgentMiddleware, requireAdminOrSuper
     try {
       for (const { row, agent } of assignments) {
         const n = row.normalized;
-        await client.query(
-          `INSERT INTO leads (name, cpf, phone, whatsapp, city, state, stage, agent_id, team_id, source, status)
-           VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, 'importacao_planilha', 'active')`,
-          [n.name, n.cpf, n.phone, n.city, n.state, leadStage, agent.id, agent.team_id || null]
-        );
+        if (module === 'indicacoes') {
+          const address = [n.city, n.state].filter(Boolean).join(' - ') || null;
+          await client.query(
+            `INSERT INTO referrals (referred_name, referred_phone, referred_cpf, referred_address, stage, agent_id, status, notes)
+             VALUES ($1, $2, $3, $4, $5, $6, 'ativo', 'Importado via planilha')`,
+            [n.name, n.phone, n.cpf, address, leadStage, agent.id]
+          );
+        } else {
+          await client.query(
+            `INSERT INTO leads (name, cpf, phone, whatsapp, city, state, stage, agent_id, team_id, source, status)
+             VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, 'importacao_planilha', 'active')`,
+            [n.name, n.cpf, n.phone, n.city, n.state, leadStage, agent.id, agent.team_id || null]
+          );
+        }
       }
 
       const perAgent = orderedAgents.map(a => ({
@@ -208,7 +249,7 @@ router.post('/confirm', authMiddleware, loadAgentMiddleware, requireAdminOrSuper
 
       const logResult = await client.query(
         `INSERT INTO lead_imports (module, file_name, imported_by, imported_by_name, total_rows, imported_count, skipped_count, per_agent, skipped_details)
-         VALUES ('vendas_pf', $1, $2, $3, $4, $5, $6, $7, $8)
+         VALUES ($9, $1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING *`,
         [
           fileName || null,
@@ -218,7 +259,8 @@ router.post('/confirm', authMiddleware, loadAgentMiddleware, requireAdminOrSuper
           assignments.length,
           skipped.length,
           JSON.stringify(perAgent),
-          JSON.stringify(skipped.slice(0, 500))
+          JSON.stringify(skipped.slice(0, 500)),
+          module
         ]
       );
       importRecord = logResult.rows[0];
@@ -249,11 +291,13 @@ router.post('/confirm', authMiddleware, loadAgentMiddleware, requireAdminOrSuper
 });
 
 // GET / — histórico de importações
-router.get('/', authMiddleware, loadAgentMiddleware, requireAdminOrSupervisor, async (req, res) => {
+router.get('/', authMiddleware, loadAgentMiddleware, requireImportPermission, async (req, res) => {
   try {
+    const module = req.importModule || 'vendas_pf';
     const result = await query(
       `SELECT id, module, file_name, imported_by_name, total_rows, imported_count, skipped_count, per_agent, created_at
-       FROM lead_imports WHERE module = 'vendas_pf' ORDER BY created_at DESC LIMIT 50`
+       FROM lead_imports WHERE module = $1 ORDER BY created_at DESC LIMIT 50`,
+      [module]
     );
     res.json(result.rows.map(r => ({
       id: r.id,
