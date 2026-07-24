@@ -197,6 +197,24 @@ router.post('/confirm', authMiddleware, loadAgentMiddleware, requireImportPermis
       return res.status(400).json({ message: 'Nenhum dos vendedores selecionados está ativo.' });
     }
 
+    // Agentes selecionados que foram descartados (inativos, inexistentes ou fora do módulo):
+    // nunca descartar silenciosamente — o relatório avisa quem ficou de fora.
+    const droppedIds = agentIds.filter(id => !agentsById.has(id));
+    let droppedAgents = [];
+    if (droppedIds.length > 0) {
+      const droppedResult = await query(
+        'SELECT id, name, active FROM agents WHERE id = ANY($1::uuid[])',
+        [droppedIds]
+      );
+      const droppedById = new Map(droppedResult.rows.map(a => [a.id, a]));
+      droppedAgents = droppedIds.map(id => {
+        const a = droppedById.get(id);
+        if (!a) return { agentId: id, agentName: 'Agente não encontrado', reason: 'não encontrado' };
+        if (!a.active) return { agentId: id, agentName: a.name, reason: 'inativo' };
+        return { agentId: id, agentName: a.name, reason: 'fora do módulo da importação' };
+      });
+    }
+
     const leadStage = String(stage || 'novo');
 
     // Revalidação completa no servidor (fonte da verdade)
@@ -280,6 +298,7 @@ router.post('/confirm', authMiddleware, loadAgentMiddleware, requireImportPermis
         agentName: a.name,
         count: perAgentCount.get(a.id)
       })),
+      droppedAgents,
       importId: importRecord?.id
     });
   } catch (error) {
