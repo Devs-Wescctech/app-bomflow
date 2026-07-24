@@ -203,6 +203,7 @@ import ApiDocumentation from "./ApiDocumentation";
 import AdminApiKeys from "./AdminApiKeys";
 import ErpAuditLogs from "./ErpAuditLogs";
 import LeadImportPF from "./LeadImportPF";
+import LeadImportReferrals from "./LeadImportReferrals";
 
 import SalesWonReport from "./SalesWonReport";
 import SalesPJWonReport from "./SalesPJWonReport";
@@ -435,6 +436,7 @@ const PAGES = {
     AdminApiKeys: AdminApiKeys,
     ErpAuditLogs: ErpAuditLogs,
     LeadImportPF: LeadImportPF,
+    LeadImportReferrals: LeadImportReferrals,
 
     SalesWonReport: SalesWonReport,
     SalesPJWonReport: SalesPJWonReport,
@@ -701,6 +703,7 @@ function PagesContent() {
                 <Route path="/AdminApiKeys" element={<AdminApiKeys />} />
                 <Route path="/ErpAuditLogs" element={<ErpAuditLogs />} />
                 <Route path="/LeadImportPF" element={<LeadImportPF />} />
+                <Route path="/LeadImportReferrals" element={<LeadImportReferrals />} />
                 <Route path="/NewLeadUpsell" element={<NewLeadUpsell />} />
                 <Route path="/LeadsUpsellKanban" element={<LeadsUpsellKanban />} />
                 <Route path="/LeadUpsellDetail" element={<LeadUpsellDetail />} />

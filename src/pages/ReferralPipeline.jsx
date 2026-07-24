@@ -36,6 +36,7 @@ import {
   ExternalLink,
   Trash2,
   Trophy,
+  Upload,
 } from "lucide-react";
 import {
   Popover,
@@ -555,6 +556,7 @@ export default function ReferralPipeline() {
   const currentAgentType = currentAgent?.agentType || currentAgent?.agent_type;
   const isAdmin = currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor' || currentAgentType?.endsWith('_supervisor') || currentAgentType === 'indicacoes_admin' || user?.role === 'admin' || user?.role === 'supervisor';
   const currentAgentId = currentAgent?.id;
+  const canImportLeads = user?.role === 'admin' || currentAgentType === 'admin' || currentAgentType === 'supervisor' || currentAgentType === 'sales_supervisor' || (currentAgentType || '').endsWith('_supervisor') || currentAgentType === 'indicacoes_admin';
 
   const { data: referrals = [], isLoading, refetch } = useQuery({
     queryKey: ['referrals-pipeline', isAdmin ? 'admin' : (currentAgentId || 'loading')],
@@ -1120,6 +1122,14 @@ export default function ReferralPipeline() {
                 </Badge>
               )}
             </Button>
+            {canImportLeads && (
+              <Link to={createPageUrl('LeadImportReferrals')}>
+                <Button variant="outline">
+                  <Upload className="w-4 h-4 mr-2" />
+                  Importar
+                </Button>
+              </Link>
+            )}
             <Link to={createPageUrl('ReferralCreate')}>
               <Button variant="gradient" className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700">
                 <Plus className="w-4 h-4 mr-2" />
