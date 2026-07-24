@@ -897,6 +897,10 @@ ALTER TABLE bom_auto_atendimentos ADD COLUMN IF NOT EXISTS contratos_servicos TE
 ALTER TABLE bom_auto_atendimentos ADD COLUMN IF NOT EXISTS data_hora_inicio_tratamento TIMESTAMP;
 ALTER TABLE bom_auto_atendimentos ADD COLUMN IF NOT EXISTS usuario_responsavel_tratamento VARCHAR(255);
 ALTER TABLE bom_auto_atendimentos ADD COLUMN IF NOT EXISTS observacoes_tratamento TEXT;
+ALTER TABLE bom_auto_atendimentos ADD COLUMN IF NOT EXISTS termo_local TEXT;
+ALTER TABLE bom_auto_atendimentos ADD COLUMN IF NOT EXISTS termo_rua TEXT;
+ALTER TABLE bom_auto_atendimentos ADD COLUMN IF NOT EXISTS termo_valores_combinados TEXT;
+ALTER TABLE bom_auto_atendimentos ADD COLUMN IF NOT EXISTS termo_descricao_produto TEXT;
 
 CREATE TABLE IF NOT EXISTS bom_auto_historico_alteracoes (
   id SERIAL PRIMARY KEY,
