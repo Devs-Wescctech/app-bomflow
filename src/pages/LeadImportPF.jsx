@@ -14,7 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Upload, Download, FileSpreadsheet, ArrowLeft, Users, CheckCircle2,
-  XCircle, CopyX, Loader2, History, AlertTriangle
+  XCircle, CopyX, Loader2, History, AlertTriangle, AlertCircle
 } from 'lucide-react';
 import { LEAD_PF_STAGES } from '@/constants/stages';
 
@@ -108,6 +108,9 @@ export default function LeadImportPF() {
     onSuccess: (data) => {
       setReport(data);
       toast.success(`${data.imported} leads importados com sucesso`);
+      if (Array.isArray(data.droppedAgents) && data.droppedAgents.length > 0) {
+        toast.warning(`${data.droppedAgents.length} vendedor(es) selecionado(s) ficaram fora da distribuição. Veja o relatório.`);
+      }
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       refetchHistory();
     },
@@ -266,6 +269,21 @@ export default function LeadImportPF() {
                   ))}
                 </div>
               </div>
+
+              {Array.isArray(report.droppedAgents) && report.droppedAgents.length > 0 && (
+                <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
+                  <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
+                    <AlertCircle className="w-4 h-4" />Vendedores fora da distribuição
+                  </h3>
+                  <div className="space-y-1">
+                    {report.droppedAgents.map(da => (
+                      <p key={da.agentId} className="text-xs text-amber-700 dark:text-amber-300">
+                        {da.agentName} — {da.reason}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {report.skipped.length > 0 && (
                 <div>
