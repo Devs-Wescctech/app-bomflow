@@ -287,6 +287,63 @@ pool.query(`
 `).then(() => console.log('[Migration] presales_auditorias OK'))
   .catch(e => console.error('[Migration] presales_auditorias error:', e.message));
 
+// Pós-Vendas: acompanha cada orçamento aprovado no Pré-venda pelos estados do fluxograma
+// (fila → em_verificacao → devolvida → resolvida → congelada → aguardando_cancelamento →
+// concluida/cancelada). Trava de 1 auditor por orçamento (auditor_* + status em_verificacao),
+// prazo de devolução em dias úteis (prazo_ymd) e decisão final de cancelamento no ERP.
+pool.query(`
+  CREATE TABLE IF NOT EXISTS postsales_verificacoes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    erp_pedido_id BIGINT NOT NULL UNIQUE,
+    erp_numero VARCHAR(50),
+    modulo VARCHAR(30),
+    vendedor_id UUID,
+    vendedor_nome VARCHAR(255),
+    cliente_nome VARCHAR(255),
+    cliente_cpf VARCHAR(20),
+    status VARCHAR(30) NOT NULL DEFAULT 'fila',
+    auditor_id UUID,
+    auditor_nome VARCHAR(255),
+    auditor_email VARCHAR(255),
+    assumido_at TIMESTAMPTZ,
+    motivo_devolucao VARCHAR(40),
+    devolucao_obs TEXT,
+    devolvida_at TIMESTAMPTZ,
+    prazo_ymd VARCHAR(10),
+    resolvida_at TIMESTAMPTZ,
+    resolvida_por_id UUID,
+    resolvida_por_nome VARCHAR(255),
+    resolucao_obs TEXT,
+    congelada_at TIMESTAMPTZ,
+    congelamento_motivo TEXT,
+    prevenda_decisao VARCHAR(20),
+    prevenda_decisao_at TIMESTAMPTZ,
+    prevenda_decisao_por VARCHAR(255),
+    concluida_at TIMESTAMPTZ,
+    cancelada_at TIMESTAMPTZ,
+    cancelada_por_id UUID,
+    cancelada_por_nome VARCHAR(255),
+    cancelamento_motivo TEXT,
+    cancelamento_info TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_postsales_verif_status ON postsales_verificacoes(status);
+  CREATE INDEX IF NOT EXISTS idx_postsales_verif_vendedor ON postsales_verificacoes(vendedor_id);
+  CREATE TABLE IF NOT EXISTS postsales_eventos (
+    id BIGSERIAL PRIMARY KEY,
+    verificacao_id UUID NOT NULL,
+    erp_pedido_id BIGINT,
+    tipo VARCHAR(40) NOT NULL,
+    detalhe TEXT,
+    actor_id UUID,
+    actor_nome VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_postsales_eventos_verif ON postsales_eventos(verificacao_id);
+`).then(() => console.log('[Migration] postsales_verificacoes/eventos OK'))
+  .catch(e => console.error('[Migration] postsales error:', e.message));
+
 // Chat WhatsApp v2 (Atendimento): fundação nova. Conexões de canal com token CRIPTOGRAFADO
 // (AES-256-GCM, utils/encryption.js) e webhook_secret por conexão; conversas e mensagens
 // próprias do atendimento (att_*). phone_key = últimos 8 dígitos (reconcilia números

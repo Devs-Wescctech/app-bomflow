@@ -228,6 +228,10 @@ import SalesUpsellOrcamentoRelatorio from "./SalesUpsellOrcamentoRelatorio";
 import PreSalesOrcamentoRelatorio from "./PreSalesOrcamentoRelatorio";
 import PreSalesAjustes from "./PreSalesAjustes";
 import PreSalesAjustesMonitor from "./PreSalesAjustesMonitor";
+import PosVendasFila from "./PosVendasFila";
+import PosVendasDevolucoes from "./PosVendasDevolucoes";
+import PosVendasCongelados from "./PosVendasCongelados";
+import PosVendasMonitor from "./PosVendasMonitor";
 import ReferralWonReport from "./ReferralWonReport";
 import UpsellLeadRedesignDemo from "./UpsellLeadRedesignDemo";
 import OrcamentoDocumentosRedesignDemo from "./OrcamentoDocumentosRedesignDemo";
@@ -461,6 +465,10 @@ const PAGES = {
     PreSalesOrcamentoRelatorio: PreSalesOrcamentoRelatorio,
     PreSalesAjustes: PreSalesAjustes,
     PreSalesAjustesMonitor: PreSalesAjustesMonitor,
+    PosVendasFila: PosVendasFila,
+    PosVendasDevolucoes: PosVendasDevolucoes,
+    PosVendasCongelados: PosVendasCongelados,
+    PosVendasMonitor: PosVendasMonitor,
     ReferralWonReport: ReferralWonReport,
     UpsellLeadRedesignDemo: UpsellLeadRedesignDemo,
     OrcamentoDocumentosRedesignDemo: OrcamentoDocumentosRedesignDemo,
@@ -725,6 +733,10 @@ function PagesContent() {
                 <Route path="/PreSalesOrcamentoRelatorio" element={<PreSalesOrcamentoRelatorio />} />
                 <Route path="/PreSalesAjustes" element={<PreSalesAjustes />} />
                 <Route path="/PreSalesAjustesMonitor" element={<PreSalesAjustesMonitor />} />
+                <Route path="/PosVendasFila" element={<PosVendasFila />} />
+                <Route path="/PosVendasDevolucoes" element={<PosVendasDevolucoes />} />
+                <Route path="/PosVendasCongelados" element={<PosVendasCongelados />} />
+                <Route path="/PosVendasMonitor" element={<PosVendasMonitor />} />
                 <Route path="/ReferralWonReport" element={<ReferralWonReport />} />
                 <Route path="/UpsellLeadRedesignDemo" element={<UpsellLeadRedesignDemo />} />
                 <Route path="/OrcamentoDocumentosRedesignDemo" element={<OrcamentoDocumentosRedesignDemo />} />

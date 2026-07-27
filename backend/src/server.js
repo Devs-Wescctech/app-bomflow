@@ -19,6 +19,7 @@ import apiKeyRoutes from './routes/apiKeys.js';
 import externalRoutes from './routes/external.js';
 import orcamentoDocumentosRoutes from './routes/orcamentoDocumentos.js';
 import presalesAjustesRoutes from './routes/presalesAjustes.js';
+import postsalesRoutes, { runPostsalesCongelarVencidas } from './routes/postsales.js';
 import leadImportsRoutes from './routes/leadImports.js';
 import erpAuditLogsRoutes from './routes/erpAuditLogs.js';
 import { installErpFetchAudit, erpOriginMiddleware, withErpOrigin, cleanupErpRequestLogs } from './services/erpAuditService.js';
@@ -92,6 +93,7 @@ app.use('/api/bom-auto', bomAutoRoutes);
 app.use('/api/erp', erpProxyRoutes);
 app.use('/api/orcamento-documentos', orcamentoDocumentosRoutes);
 app.use('/api/presales-ajustes', presalesAjustesRoutes);
+app.use('/api/postsales', postsalesRoutes);
 app.use('/api/lead-imports', leadImportsRoutes);
 app.use('/api/erp-audit', erpAuditLogsRoutes);
 
@@ -268,8 +270,16 @@ initDatabase()
       } catch (error) {
         console.error('[PreSales AutoCancel] Erro na verificação automática:', error.message);
       }
+      // Pós-Vendas: congela devoluções com prazo (3 dias úteis) vencido sem resolução.
+      console.log('[PosVendas CongelarVencidas] Iniciando verificação diária de devoluções vencidas...');
+      try {
+        const p = await runPostsalesCongelarVencidas();
+        console.log(`[PosVendas CongelarVencidas] Concluído. verificadas=${p.checked} congeladas=${p.frozen} erros=${p.errors}`);
+      } catch (error) {
+        console.error('[PosVendas CongelarVencidas] Erro na verificação automática:', error.message);
+      }
     }));
-    console.log('[PreSales AutoCancel] Cron agendado: todos os dias às 07:00 (aviso antecipado + auto-cancelamento).');
+    console.log('[PreSales AutoCancel] Cron agendado: todos os dias às 07:00 (aviso antecipado + auto-cancelamento + congelamento Pós-Vendas).');
 
     // Retenção do log de auditoria ERP: remove registros com mais de 30 dias.
     cron.schedule('30 2 * * *', () => {
