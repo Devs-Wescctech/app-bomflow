@@ -232,6 +232,7 @@ import PosVendasFila from "./PosVendasFila";
 import PosVendasDevolucoes from "./PosVendasDevolucoes";
 import PosVendasCongelados from "./PosVendasCongelados";
 import PosVendasMonitor from "./PosVendasMonitor";
+import PostSalesFila from "./PostSalesFila";
 import ReferralWonReport from "./ReferralWonReport";
 import UpsellLeadRedesignDemo from "./UpsellLeadRedesignDemo";
 import OrcamentoDocumentosRedesignDemo from "./OrcamentoDocumentosRedesignDemo";
@@ -469,6 +470,7 @@ const PAGES = {
     PosVendasDevolucoes: PosVendasDevolucoes,
     PosVendasCongelados: PosVendasCongelados,
     PosVendasMonitor: PosVendasMonitor,
+    PostSalesFila: PostSalesFila,
     ReferralWonReport: ReferralWonReport,
     UpsellLeadRedesignDemo: UpsellLeadRedesignDemo,
     OrcamentoDocumentosRedesignDemo: OrcamentoDocumentosRedesignDemo,
@@ -737,6 +739,7 @@ function PagesContent() {
                 <Route path="/PosVendasDevolucoes" element={<PosVendasDevolucoes />} />
                 <Route path="/PosVendasCongelados" element={<PosVendasCongelados />} />
                 <Route path="/PosVendasMonitor" element={<PosVendasMonitor />} />
+                <Route path="/PostSalesFila" element={<PostSalesFila />} />
                 <Route path="/ReferralWonReport" element={<ReferralWonReport />} />
                 <Route path="/UpsellLeadRedesignDemo" element={<UpsellLeadRedesignDemo />} />
                 <Route path="/OrcamentoDocumentosRedesignDemo" element={<OrcamentoDocumentosRedesignDemo />} />

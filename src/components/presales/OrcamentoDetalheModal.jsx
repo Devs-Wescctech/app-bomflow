@@ -179,7 +179,7 @@ function ChecklistItem({ ok, label }) {
   );
 }
 
-export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalLabel, initialLock = null, onLockChange, onClose }) {
+export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalLabel, initialLock = null, onLockChange, onApproved, onClose }) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [documentos, setDocumentos] = useState([]);
@@ -284,26 +284,33 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
     }
   };
 
-  // Conclui a auditoria (libera a trava). Acionado pelo botão "Aprovar".
-  const handleConcluir = async () => {
+  // Aprova o orçamento no pré-venda: registro LOCAL (nada é alterado no ERP).
+  // O orçamento sai da Fila Pré-Vendas e entra na fila do Pós-Vendas; a trava é
+  // liberada automaticamente pelo backend.
+  const handleAprovar = async () => {
+    const numeroConf = orcamento?.numero_orcamento || pedidoId;
+    if (!window.confirm(
+      `Aprovar o orçamento Nº ${numeroConf} no pré-venda?\n\n` +
+      "Ele será encaminhado à fila do Pós-Vendas. Nada será alterado no ERP."
+    )) return;
     setConcluding(true);
     try {
-      const res = await fetch(`${API_BASE}/presales-ajustes/locks/${pedidoId}/concluir`, {
+      const res = await fetch(`${API_BASE}/presales-ajustes/aprovacoes/${pedidoId}`, {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ resultado: "aprovado" }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.status === 409) {
         setLock(data.lock || null);
         onLockChange?.(pedidoId, data.lock || null);
-        toast({ title: "Não foi possível concluir", description: data.error, variant: "destructive" });
+        toast({ title: "Não foi possível aprovar", description: data.error, variant: "destructive" });
         return;
       }
-      if (!res.ok) throw new Error(data.error || "Falha ao concluir a auditoria.");
+      if (!res.ok) throw new Error(data.error || "Falha ao aprovar o orçamento.");
       setLock(null);
       onLockChange?.(pedidoId, null);
-      toast({ title: "Auditoria concluída", description: "Orçamento aprovado e trava liberada." });
+      onApproved?.(pedidoId, data.aprovacao || null);
+      toast({ title: "Orçamento aprovado", description: "Encaminhado à fila do Pós-Vendas. Nenhuma alteração foi feita no ERP." });
       onClose();
     } catch (e) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });
@@ -524,7 +531,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
           {!lockLoading && isMine && (
             <div className="mb-4 flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-[12.5px] font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
               <BadgeCheck className="h-4 w-4 shrink-0" />
-              Você assumiu esta auditoria. Conclua clicando em “Aprovar” para liberá-la.
+              Você assumiu esta auditoria. Com o checklist completo, clique em “Aprovar” para encaminhar ao Pós-Vendas (sem alterar o ERP).
             </div>
           )}
 
@@ -895,9 +902,12 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
                   </button>
                   <button
                     type="button"
-                    onClick={handleConcluir}
-                    disabled={concluding}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm shadow-emerald-500/30 transition-colors hover:bg-emerald-700 disabled:opacity-60"
+                    onClick={handleAprovar}
+                    disabled={concluding || loading || result !== "pronto"}
+                    title={result !== "pronto" && !loading
+                      ? "Aprovação bloqueada: conclua o checklist obrigatório (dados do orçamento e os 4 documentos)."
+                      : "Aprovar e encaminhar ao Pós-Vendas (não altera o ERP)"}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm shadow-emerald-500/30 transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {concluding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5" />}
                     Aprovar

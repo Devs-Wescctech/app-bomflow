@@ -377,14 +377,22 @@ export default function PreSalesOrcamentoRelatorio() {
       : 'Tudo em dia — nenhuma auditoria pendente';
 
   const handleQuickAction = (label, o) => {
-    if (label === 'Solicitar ajuste') {
+    if (label === 'Solicitar ajuste' || label === 'Aprovar') {
+      // Aprovação e ajuste acontecem dentro do modal de auditoria (com trava e checklist).
       setSelected(o);
       return;
     }
     toast({
       title: `${label} — em definição`,
-      description: `Ação visual (protótipo) para o orçamento Nº ${o.numero_orcamento || o.erp_id}. O fluxo de aprovação será definido em uma próxima etapa.`,
+      description: `Ação visual (protótipo) para o orçamento Nº ${o.numero_orcamento || o.erp_id}. O fluxo será definido em uma próxima etapa.`,
     });
+  };
+
+  // Orçamento aprovado no pré-venda: sai imediatamente da fila (o backend também o
+  // exclui nas próximas cargas) e vai para a fila do Pós-Vendas.
+  const handleApproved = (pedidoId) => {
+    const key = Number(pedidoId);
+    setItems((prev) => prev.filter((o) => Number(o.erp_id) !== key));
   };
 
   return (
@@ -636,6 +644,7 @@ export default function PreSalesOrcamentoRelatorio() {
           canalLabel={selected.canal_id ? (canaisMap[selected.canal_id] || String(selected.canal_id)) : '-'}
           initialLock={locks[selected.erp_id] || null}
           onLockChange={handleLockChange}
+          onApproved={handleApproved}
           onClose={() => setSelected(null)}
         />
       )}

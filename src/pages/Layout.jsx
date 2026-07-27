@@ -173,6 +173,7 @@ const menuModules = [
       { title: "Criar Ticket", url: createPageUrl("CreateSalesTicket"), icon: Plus, highlight: true },
       { title: "Tickets de Vendas", url: createPageUrl("SalesTickets"), icon: ShoppingCart },
       { title: "Fila Pré Vendas", url: createPageUrl("PreSalesOrcamentoRelatorio"), icon: FileBarChart, auditReport: true },
+      { title: "Fila Pós Vendas", url: createPageUrl("PostSalesFila"), icon: ClipboardCheck, auditReport: true },
       { title: "Avisos & Cancelamentos", url: createPageUrl("PreSalesAjustesMonitor"), icon: ShieldAlert, auditReport: true },
       { title: "Fila Pós Vendas", url: createPageUrl("PosVendasFila"), icon: ClipboardCheck, postSales: true },
       { title: "Monitor Pós-Vendas", url: createPageUrl("PosVendasMonitor"), icon: Activity, postSales: true },

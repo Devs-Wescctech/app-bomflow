@@ -1406,10 +1406,26 @@ router.get('/relatorio-orcamentos/consolidado', authMiddleware, async (req, res)
     );
     if (crmRes.rows.length === 0) return res.json({ items: [] });
 
-    const pedidoIds = crmRes.rows.map(r => Number(r.erp_pedido_id));
+    let pedidoIds = crmRes.rows.map(r => Number(r.erp_pedido_id));
     const metaById = new Map(
       crmRes.rows.map(r => [Number(r.erp_pedido_id), { modulo: r.modulo, agent_name: r.agent_name }])
     );
+
+    // Orçamentos já APROVADOS no pré-venda saem da fila (a aprovação é local — a
+    // situação no ERP não muda, então o filtro por situação sozinho não os exclui).
+    // Eles passam a constar na fila do Pós-Vendas.
+    try {
+      const aprovRes = await query(
+        `SELECT erp_pedido_id FROM presales_auditorias
+          WHERE status = 'concluida' AND resultado = 'aprovado' AND erp_pedido_id = ANY($1)`,
+        [pedidoIds]
+      );
+      const aprovados = new Set(aprovRes.rows.map(r => Number(r.erp_pedido_id)));
+      if (aprovados.size > 0) pedidoIds = pedidoIds.filter(id => !aprovados.has(id));
+    } catch (e) {
+      console.error('[consolidado] falha ao filtrar aprovados:', e.message);
+    }
+    if (pedidoIds.length === 0) return res.json({ items: [] });
 
     const rows = await getRelatorioOrcamentos({
       pedidoIds,
