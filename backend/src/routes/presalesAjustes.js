@@ -321,7 +321,15 @@ router.post('/locks/:erpPedidoId/concluir', authMiddleware, async (req, res) => 
     if (!Number.isInteger(erpPedidoId) || erpPedidoId <= 0) {
       return res.status(400).json({ error: 'erp_pedido_id inválido.' });
     }
-    const resultado = String(req.body?.resultado || 'aprovado').slice(0, 20);
+    // APROVAÇÃO não passa por aqui: use POST /aprovacoes/:erpPedidoId, que valida os
+    // documentos obrigatórios no servidor. Este endpoint apenas libera a trava sem
+    // registrar aprovação (evita burlar o checklist por chamada direta/cliente antigo).
+    const resultado = String(req.body?.resultado || 'liberada').slice(0, 20);
+    if (resultado === 'aprovado') {
+      return res.status(400).json({
+        error: 'A aprovação do pré-venda deve ser feita por POST /presales-ajustes/aprovacoes/:erpPedidoId (com validação dos documentos obrigatórios).',
+      });
+    }
 
     const r = await query(
       `UPDATE presales_auditorias
@@ -351,6 +359,126 @@ router.post('/locks/:erpPedidoId/concluir', authMiddleware, async (req, res) => 
   } catch (e) {
     console.error('[presales-ajustes] locks/concluir error:', e.message);
     return res.status(500).json({ error: 'Falha ao concluir a auditoria.' });
+  }
+});
+
+// ----- Aprovação do pré-venda (SEM tocar o ERP) -----
+// Documentos obrigatórios para aprovar (mesma lista do checklist do modal).
+const REQUIRED_DOC_TIPOS = ['documento_identidade', 'comprovante_residencia', 'taxa_adesao', 'copia_contrato'];
+const REQUIRED_DOC_LABELS = {
+  documento_identidade: 'Documento (CPF/RG)',
+  comprovante_residencia: 'Comprovante de residência',
+  taxa_adesao: 'Taxa de adesão',
+  copia_contrato: 'Cópia do contrato',
+};
+
+// POST /aprovacoes/:erpPedidoId — aprova o orçamento no pré-venda e o encaminha à fila
+// do Pós-Vendas. Registro 100% LOCAL: nada é escrito no ERP (a situação do pedido lá
+// permanece como está). Regras impostas no servidor (não só na UI):
+//   • só o auditor que detém a trava ativa pode aprovar;
+//   • os 4 documentos obrigatórios precisam estar anexados.
+// A aprovação grava a decisão na trilha (presales_auditorias: resultado 'aprovado',
+// concluida_at, auditor) e libera a trava automaticamente (status 'concluida').
+router.post('/aprovacoes/:erpPedidoId', authMiddleware, async (req, res) => {
+  try {
+    const { eligible, agent } = await resolveAuditor(req);
+    if (!eligible) return res.status(403).json({ error: 'Acesso restrito à auditoria da Fila Pré Vendas.' });
+
+    const erpPedidoId = Number(req.params.erpPedidoId);
+    if (!Number.isInteger(erpPedidoId) || erpPedidoId <= 0) {
+      return res.status(400).json({ error: 'erp_pedido_id inválido.' });
+    }
+
+    // Precisa ser o dono da trava ativa.
+    const lockRes = await query(
+      `SELECT erp_pedido_id, auditor_id, auditor_nome, auditor_email, assumido_at
+         FROM presales_auditorias
+        WHERE erp_pedido_id = $1 AND status = 'em_auditoria'`,
+      [erpPedidoId]
+    );
+    const activeLock = lockRes.rows[0];
+    if (!activeLock) {
+      return res.status(409).json({ error: 'Assuma a auditoria deste orçamento antes de aprová-lo.', lock: null });
+    }
+    if (String(activeLock.auditor_id) !== String(agent.id)) {
+      return res.status(409).json({
+        error: activeLock.auditor_nome
+          ? `Este orçamento está em auditoria por ${activeLock.auditor_nome}. Somente o auditor responsável pode aprovar.`
+          : 'Este orçamento está em auditoria por outro auditor.',
+        lock: shapeLock(activeLock, req.user.id),
+      });
+    }
+
+    // Guarda de servidor: os 4 documentos obrigatórios precisam estar anexados.
+    const docsRes = await query(
+      `SELECT DISTINCT tipo FROM orcamento_documentos WHERE erp_pedido_id = $1`,
+      [erpPedidoId]
+    );
+    const anexados = new Set(docsRes.rows.map((r) => r.tipo));
+    const faltando = REQUIRED_DOC_TIPOS.filter((t) => !anexados.has(t));
+    if (faltando.length > 0) {
+      return res.status(422).json({
+        error: `Não é possível aprovar: documentação obrigatória incompleta (${faltando.map((t) => REQUIRED_DOC_LABELS[t]).join(', ')}).`,
+        missing_docs: faltando,
+      });
+    }
+
+    // Registra a decisão e libera a trava — atômico e restrito ao dono da trava.
+    const upd = await query(
+      `UPDATE presales_auditorias
+          SET status = 'concluida', resultado = 'aprovado', concluida_at = NOW(), updated_at = NOW()
+        WHERE erp_pedido_id = $1 AND auditor_id = $2 AND status = 'em_auditoria'
+        RETURNING erp_pedido_id, auditor_nome, concluida_at`,
+      [erpPedidoId, agent.id]
+    );
+    if (!upd.rows[0]) {
+      return res.status(409).json({ error: 'A trava mudou durante a aprovação. Recarregue e tente novamente.' });
+    }
+
+    return res.json({
+      ok: true,
+      lock: null,
+      aprovacao: {
+        erp_pedido_id: erpPedidoId,
+        auditor_nome: upd.rows[0].auditor_nome,
+        aprovado_at: upd.rows[0].concluida_at,
+      },
+    });
+  } catch (e) {
+    console.error('[presales-ajustes] aprovacoes error:', e.message);
+    return res.status(500).json({ error: 'Falha ao aprovar o orçamento.' });
+  }
+});
+
+// GET /pos-vendas — fila de ENTRADA do Pós-Vendas: orçamentos aprovados no pré-venda
+// (quem aprovou e quando), com os dados de rastreio do Bom Flow. Read-only; base da
+// fase 2 do módulo. Mesma elegibilidade da Fila Pré Vendas.
+router.get('/pos-vendas', authMiddleware, async (req, res) => {
+  try {
+    const { eligible } = await resolveAuditor(req);
+    if (!eligible) return res.status(403).json({ error: 'Acesso restrito à auditoria da Fila Pré Vendas.' });
+
+    const result = await query(
+      `SELECT pa.erp_pedido_id, pa.auditor_nome, pa.auditor_email, pa.concluida_at AS aprovado_at,
+              bo.erp_numero, bo.modulo, bo.agent_name AS vendedor_nome,
+              bo.cliente_nome, bo.cliente_cpf, bo.valor_criacao, bo.created_at AS orcamento_criado_at
+         FROM presales_auditorias pa
+         LEFT JOIN bomflow_orcamentos bo ON bo.erp_pedido_id = pa.erp_pedido_id
+        WHERE pa.status = 'concluida' AND pa.resultado = 'aprovado'
+        ORDER BY pa.concluida_at DESC`
+    );
+
+    const items = result.rows.map((r) => ({
+      ...r,
+      modulo_nome: MODULO_LABELS[
+        { sales: 'vendas_pf', sales_pj: 'vendas_pj', sales_upsell: 'upsell', referral: 'indicacoes' }[r.modulo]
+      ] || r.modulo || '-',
+    }));
+
+    return res.json({ items, count: items.length });
+  } catch (e) {
+    console.error('[presales-ajustes] GET /pos-vendas error:', e.message);
+    return res.status(500).json({ error: 'Falha ao carregar a fila do Pós-Vendas.' });
   }
 });
 

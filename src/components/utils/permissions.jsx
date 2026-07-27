@@ -401,6 +401,12 @@ export function filterMenuItems(agent, menuItems, user = null) {
         // Relatório de auditoria: visível somente a usuários elegíveis
         // (admin / tipo auditoria / supervisor do time Auditoria).
         if (subItem.auditReport) return isAuditEligible;
+        // Itens do Pós-Vendas (flag `postSales`): admin, tipo "post_sales" ou
+        // tipos dinâmicos cujos módulos incluam 'post_sales'.
+        if (subItem.postSales) {
+          return isAdmin || agentType === 'post_sales' ||
+            (Array.isArray(agent.modules) && agent.modules.includes('post_sales'));
+        }
         // Módulo exibido só pela exceção de auditoria → esconde os demais itens.
         if (!moduleAccessible) return false;
 
