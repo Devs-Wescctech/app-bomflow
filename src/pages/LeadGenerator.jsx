@@ -313,7 +313,14 @@ export default function LeadGenerator() {
       const res = await fetch(`${API_BASE}/functions/lead-generator-base?${params.toString()}`, {
         headers: { ...getAuthHeaders() },
       });
-      if (!res.ok) throw new Error('Erro ao buscar leads');
+      if (!res.ok) {
+        let errBody = null;
+        try { errBody = await res.json(); } catch { /* ignore */ }
+        if (res.status === 503 && errBody?.erp_unavailable) {
+          throw new Error('ERP temporariamente indisponível, tente em alguns minutos.');
+        }
+        throw new Error(errBody?.error || 'Erro ao buscar leads');
+      }
       const data = await res.json();
       const allData = Array.isArray(data) ? data : [];
 
@@ -373,7 +380,11 @@ export default function LeadGenerator() {
       pollValidationJob(jobId);
     } catch (err) {
       console.error('Erro ao buscar leads:', err);
-      toast.error('Erro ao buscar leads: ' + err.message);
+      if (err.message?.includes('ERP temporariamente indisponível')) {
+        toast.error(err.message);
+      } else {
+        toast.error('Erro ao buscar leads: ' + err.message);
+      }
       setValidationProgress(null);
       setLoading(false);
     }

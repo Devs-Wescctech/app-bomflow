@@ -662,6 +662,21 @@ router.post('/check-notifications', authMiddleware, async (req, res) => {
 let leadGeneratorOptionsCache = { data: null, timestamp: 0 };
 const CACHE_TTL = 10 * 60 * 1000;
 
+const leadGeneratorCache = new Map();
+const LEAD_GEN_CACHE_TTL_MS = 10 * 60 * 1000;
+
+function leadGenSleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+class ErpUnavailableError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ErpUnavailableError';
+    this.isErpUnavailable = true;
+  }
+}
+
 async function fetchLeadGeneratorFromERP(queryParams = {}) {
   const erpAuthToken = process.env.ERP_AUTH_TOKEN;
   if (!erpAuthToken) {
@@ -675,48 +690,102 @@ async function fetchLeadGeneratorFromERP(queryParams = {}) {
       params.set(key, queryParams[key]);
     }
   }
+  params.sort();
+  const cacheKey = params.toString();
+
+  const cached = leadGeneratorCache.get(cacheKey);
+  if (cached && (Date.now() - cached.fetchedAt) < LEAD_GEN_CACHE_TTL_MS) {
+    console.log(`[LeadGenerator] Using cached ERP base (key="${cacheKey || 'no-filters'}", ${cached.data.length} records, age ${Math.round((Date.now() - cached.fetchedAt) / 1000)}s)`);
+    return cached.data;
+  }
 
   const authHeader = erpAuthToken.startsWith('Bearer ') ? erpAuthToken : `Bearer ${erpAuthToken}`;
 
-  const PAGE_SIZE = 10000;
-  const MAX_PAGES = 50;
+  const PAGE_SIZE = 5000;
+  const MAX_PAGES = 100;
+  const PAGE_DELAY_MS = 1500;
+  const MAX_RETRIES = 4;
+  const RETRY_DELAYS_MS = [15000, 45000, 90000, 150000];
   const allData = [];
 
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const pageParams = new URLSearchParams(params);
-    pageParams.set('limit', String(PAGE_SIZE));
-    pageParams.set('offset', String(page * PAGE_SIZE));
+  const fetchComplete = async () => {
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const pageParams = new URLSearchParams(params);
+      pageParams.set('limit', String(PAGE_SIZE));
+      pageParams.set('offset', String(page * PAGE_SIZE));
 
-    const erpUrl = `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_BASE_LEADS?${pageParams.toString()}`;
-    console.log(`[LeadGenerator] Fetching from ERP (page ${page + 1}): ${erpUrl}`);
+      const erpUrl = `http://erp.wescctech.com.br:8080/BP_MULTI/api/API_BASE_LEADS?${pageParams.toString()}`;
 
-    const erpResponse = await fetch(erpUrl, {
-      method: 'GET',
-      headers: {
-        'Authorization': authHeader,
-        'Accept': 'application/json'
+      let pageData = null;
+      let lastError = null;
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          const waitMs = RETRY_DELAYS_MS[attempt - 1];
+          console.warn(`[LeadGenerator] ERP page ${page + 1} failed (${lastError?.message}); retry ${attempt}/${MAX_RETRIES} in ${waitMs / 1000}s`);
+          await leadGenSleep(waitMs);
+        }
+        try {
+          console.log(`[LeadGenerator] Fetching from ERP (page ${page + 1}, attempt ${attempt + 1}): ${erpUrl}`);
+          const erpResponse = await fetch(erpUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': authHeader,
+              'Accept': 'application/json'
+            }
+          });
+
+          if (!erpResponse.ok) {
+            const retriable = erpResponse.status >= 500 || erpResponse.status === 429;
+            const err = new Error(`ERP returned status ${erpResponse.status} on page ${page + 1} (offset ${page * PAGE_SIZE})`);
+            err.nonRetriable = !retriable;
+            if (!retriable) throw err;
+            lastError = err;
+            continue;
+          }
+
+          const json = await erpResponse.json();
+          if (!Array.isArray(json)) {
+            lastError = new Error(`ERP returned non-array response on page ${page + 1} (offset ${page * PAGE_SIZE})`);
+            continue;
+          }
+          pageData = json;
+          break;
+        } catch (err) {
+          if (err.nonRetriable) throw err;
+          lastError = err;
+        }
       }
-    });
 
-    if (!erpResponse.ok) {
-      throw new Error(`ERP returned status ${erpResponse.status} on page ${page + 1} (offset ${page * PAGE_SIZE})`);
+      if (pageData === null) {
+        throw new ErpUnavailableError(`ERP indisponível após ${MAX_RETRIES + 1} tentativas na página ${page + 1}: ${lastError?.message}`);
+      }
+
+      allData.push(...pageData);
+
+      if (pageData.length < PAGE_SIZE) {
+        console.log(`[LeadGenerator] ERP pagination complete: ${allData.length} total records in ${page + 1} page(s)`);
+        return allData;
+      }
+
+      await leadGenSleep(PAGE_DELAY_MS);
     }
 
-    const pageData = await erpResponse.json();
-    if (!Array.isArray(pageData)) {
-      throw new Error(`ERP returned non-array response on page ${page + 1} (offset ${page * PAGE_SIZE})`);
-    }
+    console.warn(`[LeadGenerator] Reached MAX_PAGES safety limit (${MAX_PAGES}); returning ${allData.length} records`);
+    return allData;
+  };
 
-    allData.push(...pageData);
-
-    if (pageData.length < PAGE_SIZE) {
-      console.log(`[LeadGenerator] ERP pagination complete: ${allData.length} total records in ${page + 1} page(s)`);
-      return allData;
+  try {
+    const data = await fetchComplete();
+    leadGeneratorCache.set(cacheKey, { data, fetchedAt: Date.now() });
+    return data;
+  } catch (err) {
+    if (cached) {
+      console.warn(`[LeadGenerator] ERP fetch failed (${err.message}); falling back to stale cache (age ${Math.round((Date.now() - cached.fetchedAt) / 1000)}s)`);
+      return cached.data;
     }
+    throw err;
   }
-
-  console.warn(`[LeadGenerator] Reached MAX_PAGES safety limit (${MAX_PAGES}); returning ${allData.length} records`);
-  return allData;
 }
 
 const MIN_RECORDS_FOR_VALID_OPTIONS = 50;
@@ -1181,6 +1250,13 @@ router.get('/lead-generator-base', authMiddleware, async (req, res) => {
     res.json(data);
   } catch (error) {
     console.error('Error fetching lead generator base:', error);
+    if (error.isErpUnavailable) {
+      return res.status(503).json({
+        success: false,
+        erp_unavailable: true,
+        error: 'ERP temporariamente indisponível, tente em alguns minutos.'
+      });
+    }
     res.status(500).json({ success: false, error: error.message });
   }
 });
