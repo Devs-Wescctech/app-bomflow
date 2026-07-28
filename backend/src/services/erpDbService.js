@@ -5,16 +5,34 @@ const { Pool } = pkg;
 let pool = null;
 
 // Cronometra e audita uma query direta ao banco ERP (best-effort; nunca quebra a chamada).
-async function auditedQuery(runner, text, params) {
+// IMPORTANTE: precisa suportar os DOIS estilos do pg — promise E callback. O pg-pool
+// internamente chama client.query(text, values, cb); se o wrapper engolir o callback,
+// a promise do chamador NUNCA resolve (a query executa mas a resposta se perde).
+function auditedQuery(runner, ...args) {
+  const text = args[0];
   const start = Date.now();
-  try {
-    const result = await runner(text, params);
-    logErpDbQuery(text, Date.now() - start, true, null);
-    return result;
-  } catch (err) {
-    logErpDbQuery(text, Date.now() - start, false, err.message);
-    throw err;
+  const last = args[args.length - 1];
+
+  if (typeof last === 'function') {
+    // Estilo callback (usado internamente pelo pg-pool): repassa TODOS os args.
+    args[args.length - 1] = (err, result) => {
+      logErpDbQuery(text, Date.now() - start, !err, err ? err.message : null);
+      last(err, result);
+    };
+    return runner(...args);
   }
+
+  // Estilo promise.
+  return runner(...args).then(
+    (result) => {
+      logErpDbQuery(text, Date.now() - start, true, null);
+      return result;
+    },
+    (err) => {
+      logErpDbQuery(text, Date.now() - start, false, err.message);
+      throw err;
+    }
+  );
 }
 
 function getPool() {
@@ -27,6 +45,8 @@ function getPool() {
       password: process.env.ERP_DB_PASSWORD,
       ssl: false,
       connectionTimeoutMillis: 10000,
+      // Timeout de query: evita que uma consulta presa deixe a rota pendurada por minutos.
+      query_timeout: 30000,
       idleTimeoutMillis: 30000,
       max: 3,
     });
@@ -37,13 +57,13 @@ function getPool() {
     // Auditoria: envolve pool.query e os clients de pool.connect para registrar
     // TODAS as queries ao banco ERP sem alterar nenhum call site.
     const origQuery = pool.query.bind(pool);
-    pool.query = (text, params) => auditedQuery(origQuery, text, params);
+    pool.query = (...args) => auditedQuery(origQuery, ...args);
 
     const wrapClient = (client) => {
       if (client && !client.__erpAudited) {
         client.__erpAudited = true;
         const origClientQuery = client.query.bind(client);
-        client.query = (text, params) => auditedQuery(origClientQuery, text, params);
+        client.query = (...args) => auditedQuery(origClientQuery, ...args);
       }
       return client;
     };

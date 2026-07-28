@@ -396,16 +396,29 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     enabled: !!canAccess,
   });
 
-  const { data: planosPagamento = [], isLoading: loadingPlanos } = useQuery({
+  const {
+    data: planosPagamento = [],
+    isLoading: loadingPlanos,
+    isError: planosError,
+    refetch: refetchPlanos,
+  } = useQuery({
     queryKey: ["erpPlanosPagamento"],
     queryFn: async () => {
       const res = await fetch("/api/erp/planos-pagamento", {
         headers: { Authorization: `Bearer ${localStorage.getItem("accessToken")}` },
       });
-      if (!res.ok) throw new Error("Erro ao buscar planos de pagamento do ERP");
+      if (!res.ok) {
+        let msg = "Erro ao buscar planos de pagamento do ERP";
+        try {
+          const body = await res.json();
+          if (body?.error) msg = body.error;
+        } catch { /* corpo não-JSON: mantém mensagem padrão */ }
+        throw new Error(msg);
+      }
       return res.json();
     },
     staleTime: 1000 * 60 * 10,
+    retry: 1,
     enabled: !!canAccess,
   });
 
@@ -1367,7 +1380,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
                   allowExtraVeiculo={veiculoExtraSelecionado}
                 />
               )}
-              {step === 5 && <Step4 form={form} set={set} planosPagamento={planosPagamento} loadingPlanos={loadingPlanos} planoSelecionado={planoSelecionado} />}
+              {step === 5 && <Step4 form={form} set={set} planosPagamento={planosPagamento} loadingPlanos={loadingPlanos} planosError={planosError} refetchPlanos={refetchPlanos} planoSelecionado={planoSelecionado} />}
               {step === 6 && (
                 <Step6
                   form={form}
@@ -1823,7 +1836,8 @@ function Step3({ form, set, setTituloContrato, produtosFiltrados, produtosSel, p
   );
 }
 
-function Step4({ form, set, planosPagamento, loadingPlanos, planoSelecionado }) {
+function Step4({ form, set, planosPagamento, loadingPlanos, planosError, refetchPlanos, planoSelecionado }) {
+  const semPlanos = !loadingPlanos && !planosError && planosPagamento.length === 0;
   return (
     <div className="space-y-4">
       <div className="space-y-1">
@@ -1835,7 +1849,7 @@ function Step4({ form, set, planosPagamento, loadingPlanos, planoSelecionado }) 
             const p = planosPagamento.find((pl) => String(pl.id) === String(v));
             set("plano_pagamento", p?.plano_pagamento || "");
           }}
-          disabled={loadingPlanos}
+          disabled={loadingPlanos || planosError || semPlanos}
         >
           <SelectTrigger>
             <SelectValue placeholder={loadingPlanos ? "Carregando planos..." : "Selecione..."} />
@@ -1846,6 +1860,25 @@ function Step4({ form, set, planosPagamento, loadingPlanos, planoSelecionado }) 
             ))}
           </SelectContent>
         </Select>
+        {planosError && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 space-y-1.5">
+              <span>Não foi possível carregar os planos de pagamento do ERP. Verifique a conexão e tente novamente.</span>
+              <div>
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => refetchPlanos()}>
+                  Tentar novamente
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+        {semPlanos && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <span>Nenhum plano de pagamento ativo/válido foi encontrado no ERP. Cadastre ou reative um plano no ERP para continuar.</span>
+          </div>
+        )}
         {planoSelecionado?.numero_parcelas != null && (
           <p className="text-xs text-slate-500">Número de parcelas do plano: <strong>{planoSelecionado.numero_parcelas}</strong></p>
         )}

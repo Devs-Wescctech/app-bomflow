@@ -1126,8 +1126,12 @@ router.get('/planos-pagamento', authMiddleware, async (req, res) => {
     const planos = await getPlanosPagamento();
     return res.json(planos);
   } catch (err) {
-    console.error('[ERP Proxy] GET /planos-pagamento error:', err.message);
-    return res.status(500).json({ error: err.message });
+    // Loga o erro completo (stack + código) para diagnóstico de conexão/credencial/query.
+    console.error('[ERP Proxy] GET /planos-pagamento error:', err);
+    return res.status(502).json({
+      error: 'Não foi possível carregar os planos de pagamento do ERP',
+      detail: err.message,
+    });
   }
 });
 
