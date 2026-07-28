@@ -36,6 +36,7 @@ const RESULT_META = {
   pessoa_nao_encontrada:{ label: "Pessoa não encontrada", cls: "bg-red-100 text-red-700 border-red-200" },
   usuario_nao_encontrado:{ label: "Sem usuário ERP",    cls: "bg-red-100 text-red-700 border-red-200" },
   nao_encontrado:      { label: "Agente não encontrado", cls: "bg-red-100 text-red-700 border-red-200" },
+  usuario_ja_vinculado:{ label: "Usuário já vinculado",  cls: "bg-red-100 text-red-700 border-red-200" },
   erro:                { label: "Erro",                 cls: "bg-red-100 text-red-700 border-red-200" },
 };
 

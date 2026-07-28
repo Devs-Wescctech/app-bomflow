@@ -149,9 +149,11 @@ async function fetchUsuarioByLogin(token, login) {
 // (porta 5432, inacessível em produção). Usa apenas chamadas HTTP (porta 8080).
 //
 // Estratégia:
-//   1. GET /Pessoas?cpf=XXX → id interno da Pessoa + nome_completo + situacao
-//   2. GET /Usuarios?pessoa_id=XXX → tenta filtrar usuário pelo id interno
-//   3. Fallback: GET /Usuarios?nome=XXX com match exato de nome normalizado
+//   1. GET /Pessoas?cpf=XXX → código `pessoa` + id interno + nome_completo + situacao
+//   2. GET /Usuarios?pessoa=<codigo> → usuário da Pessoa (refiltro client-side por
+//      u.pessoa === codigo; HTTP 204/lista vazia = usuário não encontrado)
+// O parâmetro pessoa_id é IGNORADO pelo ERP (devolve todos os usuários) — nunca usar.
+// Não há fallback por nome: o casamento é garantido pelo CPF.
 //
 // Retorna o mesmo shape de resolveAgentErpByCpf para não exigir alterações nos callers.
 async function resolveAgentErpByCpfViaApi(token, cpf) {
@@ -222,20 +224,27 @@ async function resolveAgentErpByCpfViaApi(token, cpf) {
 
   if (!pessoaInternalId && !nomeErp) return EMPTY('pessoa_nao_encontrada');
 
-  // --- Passo 2: GET /Usuarios?pessoa_id= ---
+  // --- Passo 2: GET /Usuarios?pessoa=<codigo> ---
+  // O ERP IGNORA o parâmetro pessoa_id (devolve a lista inteira — causou vínculos em massa
+  // errados). O filtro correto é `pessoa` (código da Pessoa retornado por /Pessoas?cpf=).
+  // Refiltramos client-side por u.pessoa === codigo como rede de segurança.
   let usuario = null;
 
-  if (pessoaInternalId) {
+  if (pessoaCodigo) {
     try {
-      const uR = await fetch(`${ERP_BASE}/Usuarios?pessoa_id=${encodeURIComponent(pessoaInternalId)}`, {
+      const uR = await fetch(`${ERP_BASE}/Usuarios?pessoa=${encodeURIComponent(pessoaCodigo)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (uR.ok) {
+      // HTTP 204 = sem usuários para essa Pessoa (usuario permanece null).
+      if (uR.ok && uR.status !== 204) {
         const uData = await uR.json().catch(() => ({}));
         const arr = uData?.results || uData?.data || (Array.isArray(uData) ? uData : []);
-        if (Array.isArray(arr) && arr.length) {
+        const filtrados = (Array.isArray(arr) ? arr : []).filter(
+          (u) => String(u?.pessoa ?? '') === String(pessoaCodigo)
+        );
+        if (filtrados.length) {
           // Prefere login nativo (não "user.") e usuário ativo — mesmo critério do DB.
-          const sorted = [...arr].sort((a, b) => {
+          const sorted = [...filtrados].sort((a, b) => {
             const aNative = !String(a.login || '').startsWith('user.') ? 1 : 0;
             const bNative = !String(b.login || '').startsWith('user.') ? 1 : 0;
             if (bNative !== aNative) return bNative - aNative;
@@ -247,41 +256,12 @@ async function resolveAgentErpByCpfViaApi(token, cpf) {
         }
       }
     } catch (e) {
-      console.warn('[resolveAgentErpByCpfViaApi] GET /Usuarios?pessoa_id= falhou:', e.message);
+      console.warn('[resolveAgentErpByCpfViaApi] GET /Usuarios?pessoa= falhou:', e.message);
     }
   }
 
-  // --- Passo 3: fallback por nome (match exato normalizado) ---
-  if (!usuario && nomeErp) {
-    try {
-      const nomeEnc = encodeURIComponent(nomeErp);
-      const uR = await fetch(`${ERP_BASE}/Usuarios?nome=${nomeEnc}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (uR.ok) {
-        const uData = await uR.json().catch(() => ({}));
-        const arr = uData?.results || uData?.data || (Array.isArray(uData) ? uData : []);
-        if (Array.isArray(arr) && arr.length) {
-          const nomeNorm = normalizeNameForMatch(nomeErp);
-          const matched = arr.filter(u => normalizeNameForMatch(u.nome_completo || u.nome || '') === nomeNorm);
-          if (matched.length) {
-            const sorted = [...matched].sort((a, b) => {
-              const aNative = !String(a.login || '').startsWith('user.') ? 1 : 0;
-              const bNative = !String(b.login || '').startsWith('user.') ? 1 : 0;
-              if (bNative !== aNative) return bNative - aNative;
-              const aAtivo = String(a.ativo || '').toUpperCase() === 'S' ? 1 : 0;
-              const bAtivo = String(b.ativo || '').toUpperCase() === 'S' ? 1 : 0;
-              return bAtivo - aAtivo;
-            });
-            usuario = sorted[0];
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[resolveAgentErpByCpfViaApi] GET /Usuarios?nome= falhou:', e.message);
-    }
-  }
-
+  // Sem fallback por nome: o vínculo é garantido pelo CPF (CPF → Pessoa → Usuário).
+  // Nome serve apenas como informação para revisão visual no preview.
   if (!pessoaInternalId && !usuario) return EMPTY('pessoa_nao_encontrada');
 
   return {
@@ -666,17 +646,26 @@ router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (
       let login = r.login || null;
       const actions = [];
 
-      // 1. erp_agent_id (só grava com nome batendo, ou force para divergência revisada)
+      // 1. erp_agent_id — o vínculo é garantido pelo CPF (CPF → Pessoa → Usuário).
+      // O nome divergente é apenas informativo (aviso no preview), não bloqueia.
       if (precisaErpAgentId) {
         if (r.status !== 'ok' || !r.usuarioId) {
           results.push({ agentId, status: r.status || 'usuario_nao_encontrado' });
           continue;
         }
-        const nameMatch = r.nomeErp
-          ? normalizeNameForMatch(r.nomeErp) === normalizeNameForMatch(a.name)
-          : false;
-        if (!nameMatch && !force) {
-          results.push({ agentId, status: 'nome_divergente', nomeErp: r.nomeErp });
+        // Guarda contra duplicata: o mesmo usuário do ERP não pode estar vinculado
+        // a dois agentes (o índice único idx_agents_erp_agent_id é a rede de segurança).
+        const dup = (await query(
+          'SELECT id, name FROM agents WHERE erp_agent_id = $1 AND id <> $2 LIMIT 1',
+          [r.usuarioId, agentId]
+        )).rows[0];
+        if (dup) {
+          results.push({
+            agentId,
+            status: 'usuario_ja_vinculado',
+            erro: `Usuário do ERP (login ${r.login || r.usuarioId}) já vinculado ao agente ${dup.name}.`,
+            login: r.login,
+          });
           continue;
         }
         try {
