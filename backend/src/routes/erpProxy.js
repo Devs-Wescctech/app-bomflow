@@ -1119,11 +1119,22 @@ router.get('/canais-venda', authMiddleware, async (req, res) => {
 });
 
 // GET /api/erp/planos-pagamento
-// Retorna os planos de pagamento ativos e válidos do ERP (planos_pagamentos via DB)
-// Retorno: [{ id: number, plano_pagamento: string, numero_parcelas: number, dia_vencimento: number|null }]
+// Retorna os planos de pagamento ativos e válidos do ERP via API REST (PlanosPagamentos).
+// Não depende do acesso direto ao banco do ERP (ERP_DB_*), então funciona em produção.
+// Retorno: [{ id: number, plano_pagamento: string, numero_parcelas: number|null, dia_vencimento: number|null }]
 router.get('/planos-pagamento', authMiddleware, async (req, res) => {
   try {
-    const planos = await getPlanosPagamento();
+    const url = `${ERP_BASE}/PlanosPagamentos`;
+    const rows = await fetchErpAllPages(url, `Bearer ${process.env.ERP_AUTH_TOKEN}`);
+    const planos = rows
+      .filter((p) => p.ativo === 'S' && p.valido === 'S')
+      .map((p) => ({
+        id: Number(p.id),
+        plano_pagamento: p.plano_pagamento,
+        numero_parcelas: p.numero_parcelas != null ? Number(p.numero_parcelas) : null,
+        dia_vencimento: p.dia_vencimento != null ? Number(p.dia_vencimento) : null,
+      }))
+      .sort((a, b) => String(a.plano_pagamento).localeCompare(String(b.plano_pagamento), 'pt-BR'));
     return res.json(planos);
   } catch (err) {
     // Loga o erro completo (stack + código) para diagnóstico de conexão/credencial/query.
