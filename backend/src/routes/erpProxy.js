@@ -1,6 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB, findPessoaIdByCpf, getLoginByUsuarioId, getErpLoginsByIds, getRelatorioOrcamentos } from '../services/erpDbService.js';
+import { registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB, findPessoaIdByCpf, getLoginByUsuarioId, getErpLoginsByIds, getRelatorioOrcamentos, resolveAgentErpByCpf } from '../services/erpDbService.js';
 import { query } from '../config/database.js';
 import { fetchErpAllPages } from '../utils/erpPagination.js';
 
@@ -144,14 +144,50 @@ async function fetchUsuarioByLogin(token, login) {
   }
 }
 
+// Busca o usuário do ERP vinculado a uma Pessoa (por CÓDIGO da pessoa, não pessoa_id).
+// O ERP IGNORA o parâmetro pessoa_id (devolve a lista inteira — causou vínculos em massa
+// errados). O filtro correto é `pessoa` (código da Pessoa retornado por /Pessoas?cpf=).
+// Refiltramos client-side por u.pessoa === codigo como rede de segurança.
+// HTTP 204 / lista vazia = sem usuário (retorna null).
+async function fetchUsuarioByPessoaCodigo(token, pessoaCodigo) {
+  if (!pessoaCodigo) return null;
+  try {
+    const uR = await fetch(`${ERP_BASE}/Usuarios?pessoa=${encodeURIComponent(pessoaCodigo)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!uR.ok || uR.status === 204) return null;
+    const uData = await uR.json().catch(() => ({}));
+    const arr = uData?.results || uData?.data || (Array.isArray(uData) ? uData : []);
+    const filtrados = (Array.isArray(arr) ? arr : []).filter(
+      (u) => String(u?.pessoa ?? '') === String(pessoaCodigo)
+    );
+    if (!filtrados.length) return null;
+    // Prefere login nativo (não "user.") e usuário ativo — mesmo critério do DB.
+    const sorted = [...filtrados].sort((a, b) => {
+      const aNative = !String(a.login || '').startsWith('user.') ? 1 : 0;
+      const bNative = !String(b.login || '').startsWith('user.') ? 1 : 0;
+      if (bNative !== aNative) return bNative - aNative;
+      const aAtivo = String(a.ativo || '').toUpperCase() === 'S' ? 1 : 0;
+      const bAtivo = String(b.ativo || '').toUpperCase() === 'S' ? 1 : 0;
+      return bAtivo - aAtivo;
+    });
+    return sorted[0];
+  } catch (e) {
+    console.warn('[fetchUsuarioByPessoaCodigo] GET /Usuarios?pessoa= falhou:', e.message);
+    return null;
+  }
+}
+
 // Resolve, via API REST do ERP, o vínculo de um agente a partir do CPF.
 // Substitui resolveAgentErpByCpf (erpDbService.js) que usa conexão direta ao banco ERP
 // (porta 5432, inacessível em produção). Usa apenas chamadas HTTP (porta 8080).
 //
 // Estratégia:
-//   1. GET /Pessoas?cpf=XXX → id interno da Pessoa + nome_completo + situacao
-//   2. GET /Usuarios?pessoa_id=XXX → tenta filtrar usuário pelo id interno
-//   3. Fallback: GET /Usuarios?nome=XXX com match exato de nome normalizado
+//   1. GET /Pessoas?cpf=XXX → código `pessoa` + id interno + nome_completo + situacao
+//   2. GET /Usuarios?pessoa=<codigo> → usuário da Pessoa (refiltro client-side por
+//      u.pessoa === codigo; HTTP 204/lista vazia = usuário não encontrado)
+// O parâmetro pessoa_id é IGNORADO pelo ERP (devolve todos os usuários) — nunca usar.
+// Não há fallback por nome: o casamento é garantido pelo CPF.
 //
 // Retorna o mesmo shape de resolveAgentErpByCpf para não exigir alterações nos callers.
 async function resolveAgentErpByCpfViaApi(token, cpf) {
@@ -222,66 +258,11 @@ async function resolveAgentErpByCpfViaApi(token, cpf) {
 
   if (!pessoaInternalId && !nomeErp) return EMPTY('pessoa_nao_encontrada');
 
-  // --- Passo 2: GET /Usuarios?pessoa_id= ---
-  let usuario = null;
+  // --- Passo 2: GET /Usuarios?pessoa=<codigo> ---
+  const usuario = pessoaCodigo ? await fetchUsuarioByPessoaCodigo(token, pessoaCodigo) : null;
 
-  if (pessoaInternalId) {
-    try {
-      const uR = await fetch(`${ERP_BASE}/Usuarios?pessoa_id=${encodeURIComponent(pessoaInternalId)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (uR.ok) {
-        const uData = await uR.json().catch(() => ({}));
-        const arr = uData?.results || uData?.data || (Array.isArray(uData) ? uData : []);
-        if (Array.isArray(arr) && arr.length) {
-          // Prefere login nativo (não "user.") e usuário ativo — mesmo critério do DB.
-          const sorted = [...arr].sort((a, b) => {
-            const aNative = !String(a.login || '').startsWith('user.') ? 1 : 0;
-            const bNative = !String(b.login || '').startsWith('user.') ? 1 : 0;
-            if (bNative !== aNative) return bNative - aNative;
-            const aAtivo = String(a.ativo || '').toUpperCase() === 'S' ? 1 : 0;
-            const bAtivo = String(b.ativo || '').toUpperCase() === 'S' ? 1 : 0;
-            return bAtivo - aAtivo;
-          });
-          usuario = sorted[0];
-        }
-      }
-    } catch (e) {
-      console.warn('[resolveAgentErpByCpfViaApi] GET /Usuarios?pessoa_id= falhou:', e.message);
-    }
-  }
-
-  // --- Passo 3: fallback por nome (match exato normalizado) ---
-  if (!usuario && nomeErp) {
-    try {
-      const nomeEnc = encodeURIComponent(nomeErp);
-      const uR = await fetch(`${ERP_BASE}/Usuarios?nome=${nomeEnc}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (uR.ok) {
-        const uData = await uR.json().catch(() => ({}));
-        const arr = uData?.results || uData?.data || (Array.isArray(uData) ? uData : []);
-        if (Array.isArray(arr) && arr.length) {
-          const nomeNorm = normalizeNameForMatch(nomeErp);
-          const matched = arr.filter(u => normalizeNameForMatch(u.nome_completo || u.nome || '') === nomeNorm);
-          if (matched.length) {
-            const sorted = [...matched].sort((a, b) => {
-              const aNative = !String(a.login || '').startsWith('user.') ? 1 : 0;
-              const bNative = !String(b.login || '').startsWith('user.') ? 1 : 0;
-              if (bNative !== aNative) return bNative - aNative;
-              const aAtivo = String(a.ativo || '').toUpperCase() === 'S' ? 1 : 0;
-              const bAtivo = String(b.ativo || '').toUpperCase() === 'S' ? 1 : 0;
-              return bAtivo - aAtivo;
-            });
-            usuario = sorted[0];
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[resolveAgentErpByCpfViaApi] GET /Usuarios?nome= falhou:', e.message);
-    }
-  }
-
+  // Sem fallback por nome: o vínculo é garantido pelo CPF (CPF → Pessoa → Usuário).
+  // Nome serve apenas como informação para revisão visual no preview.
   if (!pessoaInternalId && !usuario) return EMPTY('pessoa_nao_encontrada');
 
   return {
@@ -313,18 +294,66 @@ router.get('/pessoa', authMiddleware, async (req, res) => {
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` }
     });
-    const data = await response.json();
-    if (!response.ok) return res.status(response.status).json(data);
+    // HTTP 204 (ou corpo vazio) = CPF não cadastrado na view — não é erro.
+    const data = response.status === 204 ? null : await response.json().catch(() => null);
+    if (!response.ok && response.status !== 204) {
+      return res.status(response.status).json(data ?? { error: `ERP retornou HTTP ${response.status}.` });
+    }
 
     console.log('[ERP GET /pessoa] CPF buscado:', cpf);
     console.log('[ERP GET /pessoa] status HTTP:', response.status);
     console.log('ERP GET /Pessoas retorno completo:', JSON.stringify(data, null, 2));
     const results = data?.results || data?.data || (Array.isArray(data) ? data : null);
-    const pessoa = results?.[0] ?? null;
+    let pessoa = results?.[0] ?? null;
     console.log('[ERP GET /pessoa] results.length:', results?.length ?? 'null');
     console.log('[ERP GET /pessoa] campos retornados:', pessoa ? Object.keys(pessoa) : 'null');
     console.log('[ERP GET /pessoa] valores-chave:', pessoa ? { id: pessoa.id, pessoa: pessoa.pessoa, contrato: pessoa.contrato, nome_titular: pessoa.nome_titular } : null);
-    return res.json({ pessoa });
+
+    // Fallback: a view API_CADASTRO_PESSOAS às vezes devolve o registro SEM os campos
+    // `pessoa` (código) e `id` (só dados cadastrais). Nesses casos — e também quando a
+    // view não devolve nada — resolvemos o código pelo caminho robusto por CPF:
+    //   1) API REST (/Pessoas?cpf= + /Usuarios?pessoa=) — funciona em produção;
+    //   2) banco direto do ERP (resolveAgentErpByCpf) — cobre registros que a REST
+    //      não expõe (só disponível onde a porta 5432 é acessível; falha silenciosa).
+    let usuarioErp = null;
+    if (!pessoa?.pessoa) {
+      let resolved = null;
+      try {
+        resolved = await resolveAgentErpByCpfViaApi(token, cpfFormatado);
+      } catch (e) {
+        console.warn('[ERP GET /pessoa] fallback via API falhou:', e.message);
+      }
+      if (!resolved?.pessoaCodigo) {
+        try {
+          const dbResolved = await resolveAgentErpByCpf(cpfFormatado);
+          if (dbResolved?.pessoaCodigo) resolved = dbResolved;
+        } catch (e) {
+          console.warn('[ERP GET /pessoa] fallback via banco ERP falhou:', e.message);
+        }
+      }
+      if (resolved?.pessoaCodigo) {
+        console.log('[ERP GET /pessoa] código resolvido via fallback:', resolved.pessoaCodigo, 'usuário:', resolved.login || 'nenhum');
+        pessoa = {
+          ...(pessoa || {}),
+          pessoa: resolved.pessoaCodigo,
+          id: resolved.pessoaInternalId ?? pessoa?.id ?? null,
+          nome_titular: pessoa?.nome_titular || resolved.nomeErp || null,
+          situacao: pessoa?.situacao || resolved.situacaoPessoa || null,
+        };
+        if (resolved.usuarioId) {
+          usuarioErp = { id: resolved.usuarioId, login: resolved.login, ativo: resolved.usuarioAtivo };
+        }
+      }
+    }
+
+    // Se já temos o código (da view ou do fallback) mas ainda não o usuário,
+    // busca o usuário ERP existente para reaproveitar o login (evita duplicar).
+    if (pessoa?.pessoa && !usuarioErp) {
+      const u = await fetchUsuarioByPessoaCodigo(token, String(pessoa.pessoa));
+      if (u) usuarioErp = { id: u.id ? Number(u.id) : null, login: u.login || null, ativo: u.ativo || null };
+    }
+
+    return res.json({ pessoa, usuarioErp });
   } catch (err) {
     console.error('[ERP Proxy] GET /pessoa error:', err.message);
     return res.status(500).json({ error: err.message });
@@ -666,17 +695,26 @@ router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (
       let login = r.login || null;
       const actions = [];
 
-      // 1. erp_agent_id (só grava com nome batendo, ou force para divergência revisada)
+      // 1. erp_agent_id — o vínculo é garantido pelo CPF (CPF → Pessoa → Usuário).
+      // O nome divergente é apenas informativo (aviso no preview), não bloqueia.
       if (precisaErpAgentId) {
         if (r.status !== 'ok' || !r.usuarioId) {
           results.push({ agentId, status: r.status || 'usuario_nao_encontrado' });
           continue;
         }
-        const nameMatch = r.nomeErp
-          ? normalizeNameForMatch(r.nomeErp) === normalizeNameForMatch(a.name)
-          : false;
-        if (!nameMatch && !force) {
-          results.push({ agentId, status: 'nome_divergente', nomeErp: r.nomeErp });
+        // Guarda contra duplicata: o mesmo usuário do ERP não pode estar vinculado
+        // a dois agentes (o índice único idx_agents_erp_agent_id é a rede de segurança).
+        const dup = (await query(
+          'SELECT id, name FROM agents WHERE erp_agent_id = $1 AND id <> $2 LIMIT 1',
+          [r.usuarioId, agentId]
+        )).rows[0];
+        if (dup) {
+          results.push({
+            agentId,
+            status: 'usuario_ja_vinculado',
+            erro: `Usuário do ERP (login ${r.login || r.usuarioId}) já vinculado ao agente ${dup.name}.`,
+            login: r.login,
+          });
           continue;
         }
         try {
