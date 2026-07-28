@@ -16,7 +16,10 @@ function authHeaders() {
 // ------------------------------------------------------------
 // getPessoaByErp(cpf)
 // Busca uma Pessoa no ERP pelo CPF.
-// Retorna o objeto da pessoa encontrada ou null se não existir.
+// Retorna { pessoa, usuarioErp }:
+//   pessoa     → objeto da pessoa encontrada ou null se não existir
+//   usuarioErp → { id, login, ativo } do usuário ERP já vinculado à
+//                pessoa, ou null se não houver (evita duplicar usuário)
 // ------------------------------------------------------------
 export async function getPessoaByErp(cpf) {
   const res = await fetch(`/api/erp/pessoa?cpf=${encodeURIComponent(cpf)}`, {
@@ -24,7 +27,7 @@ export async function getPessoaByErp(cpf) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || 'Erro ao buscar pessoa no ERP.');
-  return data?.pessoa ?? null;
+  return { pessoa: data?.pessoa ?? null, usuarioErp: data?.usuarioErp ?? null };
 }
 
 // ------------------------------------------------------------

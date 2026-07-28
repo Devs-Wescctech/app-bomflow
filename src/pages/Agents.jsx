@@ -388,16 +388,24 @@ export default function Agents() {
               keepSheetOpen = true;
               return;
             }
-            // Envia SOMENTE os campos necessários ao ERP (login + pessoa).
-            // estabelecimento_padrao (104), senha_prot e copiar_direitos_de são
-            // injetados pelo backend. `ativo` é omitido de propósito: ele dispara
-            // a validação de e-mail da Pessoa no ERP e bloqueia a criação.
-            setCreatingStep('erp_usuario');
-            const result = await createUsuarioErp({
-              login: loginErp,
-              pessoa: codigoPessoa,
-            });
-            const erpUserId = result?.id || result?.usuario || null;
+            // Se a consulta ERP já encontrou um usuário vinculado à Pessoa,
+            // reaproveita esse usuário em vez de criar outro (evita duplicar no ERP).
+            let erpUserId = null;
+            if (erpPessoaResult?.usuarioErp?.id) {
+              erpUserId = erpPessoaResult.usuarioErp.id;
+              console.log('[createAgent] Reaproveitando usuário ERP existente:', erpPessoaResult.usuarioErp.login, 'id:', erpUserId);
+            } else {
+              // Envia SOMENTE os campos necessários ao ERP (login + pessoa).
+              // estabelecimento_padrao (104), senha_prot e copiar_direitos_de são
+              // injetados pelo backend. `ativo` é omitido de propósito: ele dispara
+              // a validação de e-mail da Pessoa no ERP e bloqueia a criação.
+              setCreatingStep('erp_usuario');
+              const result = await createUsuarioErp({
+                login: loginErp,
+                pessoa: codigoPessoa,
+              });
+              erpUserId = result?.id || result?.usuario || null;
+            }
             if (erpUserId) {
               await base44.entities.Agent.update(novoAgente.id, { erpAgentId: erpUserId });
             }
@@ -967,26 +975,34 @@ export default function Agents() {
     setLoadingErpPessoa(true);
     setErpPessoaResult(null);
     try {
-      const pessoa = await getPessoaByErp(formData.cpf);
+      const { pessoa, usuarioErp } = await getPessoaByErp(formData.cpf);
       if (pessoa) {
         // pessoa.pessoa = código ERP curto (ex: "2606501") — campo "pessoa" no POST /Usuarios
         // pessoa.id     = ID do registro/contrato (ex: 301228219) — NÃO usar para Usuário
         const codigoErp = String(pessoa.pessoa || "");
         setErpPessoaCode(codigoErp);
-        setErpPessoaResult(pessoa);
+        setErpPessoaResult({ ...pessoa, usuarioErp: usuarioErp || null });
         // Auto-preenche os campos do formulário com dados do ERP
         setFormData(prev => {
           const nomeErp = pessoa.nome_titular || prev.name;
           return {
             ...prev,
             name: nomeErp,
-            // Login ERP continua derivado do Nome Completo, salvo edição manual.
-            ...(erpLoginTouched ? {} : { erpLogin: generateErpLogin(nomeErp) })
+            // Se a Pessoa já tem usuário ERP, usa esse login (evita duplicar usuário).
+            // Senão, login continua derivado do Nome Completo, salvo edição manual.
+            ...(usuarioErp?.login
+              ? { erpLogin: usuarioErp.login }
+              : (erpLoginTouched ? {} : { erpLogin: generateErpLogin(nomeErp) }))
           };
         });
+        if (usuarioErp?.login) setErpLoginTouched(true);
         if (codigoErp) {
-          toast.success("Pessoa encontrada no ERP: " + pessoa.nome_titular);
+          toast.success(
+            "Pessoa encontrada no ERP: " + (pessoa.nome_titular || codigoErp) +
+            (usuarioErp?.login ? ` (usuário ERP existente: ${usuarioErp.login})` : "")
+          );
         } else {
+          // Caso residual real: nem a view nem o fallback (API/banco) acharam o código.
           toast.warning(
             "Pessoa encontrada no ERP mas o código de Pessoa não foi retornado. " +
             "Verifique os logs do backend e informe o ID manualmente.",
@@ -1901,6 +1917,10 @@ export default function Agents() {
                     {formData.erpAgentId ? (
                       <Badge className="bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300">
                         Usuário ERP vinculado (ID: {formData.erpAgentId})
+                      </Badge>
+                    ) : erpPessoaResult?.usuarioErp?.login ? (
+                      <Badge className="bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300">
+                        Usuário ERP vinculado: {erpPessoaResult.usuarioErp.login}
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800">
