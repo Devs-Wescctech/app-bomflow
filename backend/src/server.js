@@ -162,7 +162,34 @@ app.use((err, req, res, next) => {
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Backend server running on http://0.0.0.0:${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/api/health`);
+  runBootSmokeCheck();
 });
+
+// ── Smoke check de boot ────────────────────────────────────────────────────
+// Detecta processo desatualizado (rotas montadas no disco mas ausentes no
+// processo em execução) — causa do incidente "Bom Pet 404". Uma rota crítica
+// respondendo 404 no próprio processo indica build/deploy defasado.
+const SMOKE_ROUTES = [
+  '/api/health',
+  '/api/bom-pet/consulta',
+  '/api/bom-auto/consulta',
+];
+
+async function runBootSmokeCheck() {
+  for (const route of SMOKE_ROUTES) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${PORT}${route}`);
+      // 401/400/etc = rota montada (middleware respondeu); 404 = rota ausente.
+      if (res.status === 404) {
+        console.error(`[SmokeCheck] FALHA: rota ${route} respondeu 404 — processo pode estar desatualizado (recarregue/republique o backend).`);
+      } else {
+        console.log(`[SmokeCheck] OK: ${route} (HTTP ${res.status})`);
+      }
+    } catch (err) {
+      console.error(`[SmokeCheck] Erro ao verificar ${route}:`, err.message);
+    }
+  }
+}
 
 initDatabase()
   .then(async () => {
