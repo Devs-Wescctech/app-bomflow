@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { KeyRound, Plus, Copy, Check, Trash2, Ban, ShieldAlert, Loader2, FileDown } from "lucide-react";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = "/api";
 
@@ -44,8 +45,7 @@ async function apiKeysRequest(path, options = {}) {
     headers: { ...authHeaders(), ...options.headers },
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message || "Erro na requisição");
+    throw new Error(await extractApiError(res, "Erro na requisição"));
   }
   if (res.status === 204) return null;
   return res.json();
@@ -114,7 +114,7 @@ export default function AdminApiKeys() {
       const res = await fetch(`${API_BASE}/api-keys/docs`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!res.ok) throw new Error("Erro ao baixar documentação.");
+      if (!res.ok) throw new Error(await extractApiError(res, "Erro ao baixar documentação."));
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

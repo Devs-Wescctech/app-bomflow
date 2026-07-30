@@ -11,6 +11,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { base44 } from "@/api/base44Client";
+import { extractApiError } from "@/utils/apiError";
 
 const TIPO_LABELS = {
   venda_sem_comissao: 'Venda sem Comissão',
@@ -70,7 +71,7 @@ export default function CommissionReconciliation() {
       ...options,
       headers: { 'Authorization': `Bearer ${token}`, ...options.headers }
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(await extractApiError(resp));
     return resp.json();
   };
 

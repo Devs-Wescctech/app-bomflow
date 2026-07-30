@@ -71,6 +71,7 @@ import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import ReferralTimeline from "../components/referral/ReferralTimeline";
 import ReferralPipelineHistory from "../components/sales/ReferralPipelineHistory";
+import { extractApiError } from "@/utils/apiError";
 
 const STAGES = [
   { value: "novo", label: "Novo", color: "bg-gray-500", badge: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100" },
@@ -163,8 +164,7 @@ export default function ReferralDetail() {
         body: JSON.stringify({ chavePix }),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Erro ao salvar Chave PIX.');
+        throw new Error(await extractApiError(res, 'Erro ao salvar Chave PIX.'));
       }
       return res.json();
     },
@@ -337,8 +337,7 @@ export default function ReferralDetail() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || 'Erro ao excluir.');
+        throw new Error(await extractApiError(res, 'Erro ao excluir.'));
       }
       return res.json();
     },
@@ -550,8 +549,7 @@ export default function ReferralDetail() {
         body: formData,
       });
       if (!uploadRes.ok) {
-        const err = await uploadRes.json().catch(() => ({}));
-        throw new Error(err.message || 'Falha no upload');
+        throw new Error(await extractApiError(uploadRes, 'Falha no upload'));
       }
       const result = await uploadRes.json();
       const fileUrl = result.file?.url;

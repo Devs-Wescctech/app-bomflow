@@ -1,3 +1,4 @@
+import { apiErrorMessage } from "@/utils/apiError";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,10 +31,10 @@ export default function PublicContractSign() {
     const fetchContract = async () => {
       try {
         const response = await fetch(`${window.location.origin}/api/functions/getPublicContract?token=${token}`);
-        const data = await response.json();
+        const data = await response.json().catch(() => null);
         
-        if (!response.ok || !data.success) {
-          throw new Error(data.error || 'Erro ao carregar contrato');
+        if (!response.ok || !data?.success) {
+          throw new Error(apiErrorMessage(response.status, data, 'Erro ao carregar contrato'));
         }
         
         setContract(data.contract);
@@ -68,10 +69,10 @@ export default function PublicContractSign() {
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
       
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Erro ao salvar assinatura');
+      if (!response.ok || !data?.success) {
+        throw new Error(apiErrorMessage(response.status, data, 'Erro ao salvar assinatura'));
       }
 
       setSigned(true);

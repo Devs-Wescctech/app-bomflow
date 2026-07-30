@@ -49,6 +49,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import { extractApiError } from "@/utils/apiError";
 
 export default function AutomationLogsPanel({ automationType, colorScheme = "amber" }) {
   const queryClient = useQueryClient();
@@ -91,7 +92,7 @@ export default function AutomationLogsPanel({ automationType, colorScheme = "amb
       const response = await fetch(`/api/whatsapp/automation-logs?${params.toString()}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken')}` }
       });
-      if (!response.ok) throw new Error('Erro ao carregar logs');
+      if (!response.ok) throw new Error(await extractApiError(response, 'Erro ao carregar logs'));
       return response.json();
     },
     enabled: isOpen,
@@ -104,7 +105,7 @@ export default function AutomationLogsPanel({ automationType, colorScheme = "amb
         method: 'POST',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken')}` }
       });
-      if (!response.ok) throw new Error('Falha ao executar automações');
+      if (!response.ok) throw new Error(await extractApiError(response, 'Falha ao executar automações'));
       return response.json();
     },
     onSuccess: () => {
@@ -122,7 +123,7 @@ export default function AutomationLogsPanel({ automationType, colorScheme = "amb
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken')}` }
       });
-      if (!response.ok) throw new Error('Falha ao limpar logs');
+      if (!response.ok) throw new Error(await extractApiError(response, 'Falha ao limpar logs'));
       return response.json();
     },
     onSuccess: () => {

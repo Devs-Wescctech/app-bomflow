@@ -48,6 +48,7 @@ import { ptBR } from "date-fns/locale";
 import WhatsAppTemplateSelector from "@/components/whatsapp/WhatsAppTemplateSelector";
 import AutomationTestDialog from "@/components/whatsapp/AutomationTestDialog";
 import AutomationLogsPanel from "@/components/whatsapp/AutomationLogsPanel";
+import { extractApiError } from "@/utils/apiError";
 
 const STAGES = [
   { value: "novo", label: "Novo" },
@@ -159,8 +160,7 @@ export default function ReferralAutomations() {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...options.headers }
     });
     if (!resp.ok) {
-      const errBody = await resp.json().catch(() => ({}));
-      throw new Error(errBody.error || `HTTP ${resp.status}`);
+      throw new Error(await extractApiError(resp));
     }
     return resp.json();
   };

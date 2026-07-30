@@ -8,6 +8,7 @@ import {
   API_BASE, authHeaders, formatYmd, StatusBadge, PrazoBadge, TrilhaModal,
   Hero, ClienteCell, STATUS_META,
 } from "@/components/postsales/shared";
+import { extractApiError } from "@/utils/apiError";
 
 const TABS = [
   { key: "fila", label: "Fila" },
@@ -43,8 +44,8 @@ function AcaoModal({ item, motivos, onClose, onChanged }) {
       const res = await fetch(`${API_BASE}/postsales/${item.id}/${path}`, {
         method: "POST", headers: authHeaders(), body: body ? JSON.stringify(body) : undefined,
       });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha na operação."));
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Falha na operação.");
       toast({ title: okMsg });
       onChanged();
       onClose();
@@ -236,8 +237,8 @@ export default function PosVendasFila() {
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/postsales/fila?status=todos`, { headers: authHeaders() });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao carregar a fila."));
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Falha ao carregar a fila.");
       setData(json);
     } catch (e) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });

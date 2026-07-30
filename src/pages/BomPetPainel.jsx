@@ -14,6 +14,7 @@ import {
   ChevronDown, ChevronUp, ArrowRight, FileText, Shield,
   AlertTriangle, RefreshCw, Zap, PawPrint, MapPin
 } from "lucide-react";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = '/api';
 const AUTO_REFRESH_INTERVAL = 60000;
@@ -175,8 +176,7 @@ export default function BomPetPainel() {
 
       const res = await fetch(`${API_BASE}/bom-pet/atendimentos?${params.toString()}`, { headers: { ...getAuthHeaders() } });
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || 'Erro ao buscar atendimentos.');
+        throw new Error(await extractApiError(res, 'Erro ao buscar atendimentos.'));
       }
       const data = await res.json();
       setAllAtendimentos(Array.isArray(data) ? data : []);
@@ -248,7 +248,7 @@ export default function BomPetPainel() {
         fetch(`${API_BASE}/bom-pet/atendimentos/${atendimento.id}`, { headers: { ...getAuthHeaders() } }),
         fetch(`${API_BASE}/bom-pet/atendimentos/${atendimento.id}/historico`, { headers: { ...getAuthHeaders() } }),
       ]);
-      if (!detailRes.ok) throw new Error('Erro ao buscar detalhes do atendimento.');
+      if (!detailRes.ok) throw new Error(await extractApiError(detailRes, 'Erro ao buscar detalhes do atendimento.'));
       const detail = await detailRes.json();
       revokeDetailBlobs();
       detail.imagens = await loadImageBlobs(detail.imagens);
@@ -340,7 +340,7 @@ export default function BomPetPainel() {
           headers: { ...getAuthHeaders() },
           body: formData,
         });
-        if (!imgRes.ok) throw new Error('Erro ao enviar as imagens.');
+        if (!imgRes.ok) throw new Error(await extractApiError(imgRes, 'Erro ao enviar as imagens.'));
       }
 
       const res = await fetch(`${API_BASE}/bom-pet/atendimentos/${selectedAtendimento.id}`, {
@@ -353,8 +353,7 @@ export default function BomPetPainel() {
         }),
       });
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || 'Erro ao salvar tratamento.');
+        throw new Error(await extractApiError(res, 'Erro ao salvar tratamento.'));
       }
 
       toast({ title: "Sucesso", description: marcarFalecido ? "Tratamento salvo e pet marcado como Falecido (status local)." : "Tratamento salvo com sucesso!" });

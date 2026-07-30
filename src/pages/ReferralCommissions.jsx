@@ -30,6 +30,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import StatsCard from "@/components/dashboard/StatsCard";
+import { extractApiError } from "@/utils/apiError";
 
 export default function ReferralCommissions() {
   const queryClient = useQueryClient();
@@ -69,7 +70,7 @@ export default function ReferralCommissions() {
       const response = await fetch('/api/functions/referral-paid-sales', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (!response.ok) throw new Error('Erro ao buscar vendas pagas do ERP');
+      if (!response.ok) throw new Error(await extractApiError(response, 'Erro ao buscar vendas pagas do ERP'));
       return response.json();
     },
     staleTime: 60000,

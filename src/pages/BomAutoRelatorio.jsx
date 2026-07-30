@@ -10,6 +10,7 @@ import {
   FileBarChart, Search, Filter, Loader2, Download,
   Calendar, ChevronDown, ChevronUp, FileSpreadsheet, FileText, ShieldAlert
 } from "lucide-react";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = '/api';
 
@@ -166,7 +167,7 @@ export default function BomAutoRelatorio() {
       const res = await fetch(`${API_BASE}/bom-auto/atendimentos?${params.toString()}`, {
         headers: { ...getAuthHeaders() },
       });
-      if (!res.ok) throw new Error('Erro ao buscar dados');
+      if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao buscar dados'));
       const data = await res.json();
       data.sort((a, b) => new Date(b.data_hora || b.created_at) - new Date(a.data_hora || a.created_at));
       setAtendimentos(data);

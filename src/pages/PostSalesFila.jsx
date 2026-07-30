@@ -5,6 +5,7 @@ import {
   Search, RefreshCw, Loader2, Inbox, CheckCircle2, User as UserIcon,
   ShieldCheck, Layers, Calendar, ArrowRight, ClipboardCheck,
 } from "lucide-react";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = "/api";
 
@@ -55,7 +56,7 @@ export default function PostSalesFila() {
         toast({ title: "Acesso restrito", description: "Você não tem permissão para esta fila.", variant: "destructive" });
         return;
       }
-      if (!res.ok) throw new Error("Falha ao carregar a fila do Pós-Vendas.");
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao carregar a fila do Pós-Vendas."));
       const data = await res.json();
       setItems(Array.isArray(data.items) ? data.items : []);
       setLastUpdated(new Date());

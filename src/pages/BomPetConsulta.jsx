@@ -7,13 +7,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { extractApiError } from "@/utils/apiError";
 import {
   PawPrint, Search, CheckCircle, XCircle, AlertTriangle,
   Loader2, User, FileText, Phone, Hash,
   ClipboardCheck, Calendar, Copy, RefreshCw, Clock, Download, Save,
   Receipt, MapPin, Stethoscope, Handshake
 } from "lucide-react";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = '/api';
 
@@ -286,7 +286,7 @@ export default function BomPetConsulta() {
           termo_descricao_produto: termoDescricaoProduto,
         }),
       });
-      if (!resp.ok) throw new Error('Falha ao salvar');
+      if (!resp.ok) throw new Error(await extractApiError(resp, 'Falha ao salvar'));
       setTermoSalvo(true);
       toast({ title: "Autorização salva com sucesso!", description: "O botão para exportar o PDF foi habilitado." });
     } catch {

@@ -1,3 +1,4 @@
+import { extractApiError } from "@/utils/apiError";
 // Cliente do Chat de Atendimento v2 (/api/attendance).
 // Auth por JWT (Bearer) do localStorage — mesmo padrão do restante do app.
 
@@ -17,8 +18,7 @@ async function request(path, options = {}) {
     headers: { ...authHeaders(), ...(options.headers || {}) },
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message || "Erro na requisição");
+    throw new Error(await extractApiError(res, "Erro na requisição"));
   }
   if (res.status === 204) return null;
   return res.json();

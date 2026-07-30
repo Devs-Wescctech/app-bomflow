@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { ArrowLeftRight, User } from "lucide-react";
 import { toast } from "sonner";
+import { extractApiError } from "@/utils/apiError";
 
 export default function ReassignLeadModal({
   open,
@@ -45,8 +46,7 @@ export default function ReassignLeadModal({
         body: JSON.stringify({ toAgentId, notes }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || "Erro ao redistribuir lead.");
+        throw new Error(await extractApiError(res, "Erro ao redistribuir lead."));
       }
       return res.json();
     },

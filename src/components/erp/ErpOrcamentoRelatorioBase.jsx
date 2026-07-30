@@ -16,6 +16,7 @@ import {
   X, Wallet, Sparkles, History, BadgeCheck
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RTooltip } from "recharts";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = '/api';
 
@@ -376,8 +377,7 @@ export default function ErpOrcamentoRelatorioBase({ moduloNome, modulo, gradient
 
       const res = await fetch(`${API_BASE}/erp/relatorio-orcamentos?${params}`, { headers: getAuthHeaders() });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Erro ao buscar relatório');
+        throw new Error(await extractApiError(res, 'Erro ao buscar relatório'));
       }
       const d = await res.json();
       setOrcamentos(d.items || []);

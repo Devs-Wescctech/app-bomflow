@@ -57,6 +57,7 @@ import { toast } from "sonner";
 
 import LeadPJTimeline from "@/components/sales/LeadPJTimeline";
 import LeadPJPipelineHistory from "@/components/sales/LeadPJPipelineHistory";
+import { extractApiError } from "@/utils/apiError";
 
 const STAGES_PJ = [
   { value: "novo", label: "Novo", color: "bg-gray-500", badge: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100" },
@@ -144,8 +145,7 @@ export default function LeadPJDetail() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Erro ao buscar produtos do ERP');
+        throw new Error(await extractApiError(res, 'Erro ao buscar produtos do ERP'));
       }
       return res.json();
     },

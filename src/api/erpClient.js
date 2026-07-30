@@ -1,3 +1,4 @@
+import { extractApiError } from "@/utils/apiError";
 // ============================================================
 // ERP Client — Bom Pastor
 // As chamadas ao ERP passam pelo backend (/api/erp/*) para
@@ -25,8 +26,8 @@ export async function getPessoaByErp(cpf) {
   const res = await fetch(`/api/erp/pessoa?cpf=${encodeURIComponent(cpf)}`, {
     headers: authHeaders()
   });
+  if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao buscar pessoa no ERP.'));
   const data = await res.json();
-  if (!res.ok) throw new Error(data?.error || 'Erro ao buscar pessoa no ERP.');
   return { pessoa: data?.pessoa ?? null, usuarioErp: data?.usuarioErp ?? null };
 }
 
@@ -41,8 +42,9 @@ export async function createPessoaErp(payload) {
     headers: authHeaders(),
     body: JSON.stringify(payload)
   });
+  if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao criar pessoa no ERP.'));
   const data = await res.json();
-  if (!res.ok || data?.error) throw new Error(data?.error || 'Erro ao criar pessoa no ERP.');
+  if (data?.error) throw new Error(data.error);
   return data; // { pessoa: "CODIGO", nome_completo: "..." }
 }
 
@@ -59,7 +61,8 @@ export async function createUsuarioErp(payload) {
     headers: authHeaders(),
     body: JSON.stringify(payload)
   });
+  if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao criar usuário no ERP.'));
   const data = await res.json();
-  if (!res.ok || data?.error) throw new Error(data?.error || 'Erro ao criar usuário no ERP.');
+  if (data?.error) throw new Error(data.error);
   return data; // { id: number, login: string }
 }

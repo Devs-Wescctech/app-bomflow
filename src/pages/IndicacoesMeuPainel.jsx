@@ -17,6 +17,7 @@ import DashboardFilters from "@/components/dashboard/DashboardFilters";
 import { format, startOfMonth, endOfMonth, startOfDay, endOfDay, parseISO, isWithinInterval } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = '/api';
 
@@ -62,7 +63,7 @@ export default function IndicacoesMeuPainel() {
       const res = await fetch(`${API_BASE}/functions/indicacoes-agent-dashboard`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (!res.ok) throw new Error('Falha ao carregar dados');
+      if (!res.ok) throw new Error(await extractApiError(res, 'Falha ao carregar dados'));
       return res.json();
     },
     enabled: !!currentAgent,

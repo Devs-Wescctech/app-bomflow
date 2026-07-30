@@ -7,6 +7,7 @@ import {
   ClipboardCheck, ThumbsUp, PencilLine, Ban, MapPin, Mail, Send, Clock,
   Lock, ShieldQuestion,
 } from "lucide-react";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = "/api";
 
@@ -210,7 +211,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/orcamento-documentos/by-pedido/${pedidoId}`, { headers: authHeaders() });
-      if (!res.ok) throw new Error("Falha ao carregar os detalhes do orçamento.");
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao carregar os detalhes do orçamento."));
       const data = await res.json();
       setDocumentos(Array.isArray(data.documentos) ? data.documentos : []);
       setProduto(data.produto || null);
@@ -265,7 +266,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
       });
-      const data = await res.json().catch(() => ({}));
+      const data = res.ok || res.status === 409 ? await res.json().catch(() => ({})) : {};
       if (res.status === 409) {
         // Outro auditor assumiu primeiro — passa para somente leitura.
         setLock(data.lock || null);
@@ -273,7 +274,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
         toast({ title: "Já está em auditoria", description: data.error, variant: "destructive" });
         return;
       }
-      if (!res.ok) throw new Error(data.error || "Falha ao assumir a auditoria.");
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao assumir a auditoria."));
       setLock(data.lock || null);
       onLockChange?.(pedidoId, data.lock || null);
       toast({ title: "Auditoria assumida", description: "Você é o responsável por este orçamento." });
@@ -299,14 +300,14 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
       });
-      const data = await res.json().catch(() => ({}));
+      const data = res.ok || res.status === 409 ? await res.json().catch(() => ({})) : {};
       if (res.status === 409) {
         setLock(data.lock || null);
         onLockChange?.(pedidoId, data.lock || null);
         toast({ title: "Não foi possível aprovar", description: data.error, variant: "destructive" });
         return;
       }
-      if (!res.ok) throw new Error(data.error || "Falha ao aprovar o orçamento.");
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao aprovar o orçamento."));
       setLock(null);
       onLockChange?.(pedidoId, null);
       onApproved?.(pedidoId, data.aprovacao || null);
@@ -333,8 +334,8 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ erp_pedido_id: pedidoId, texto }),
       });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao solicitar o ajuste."));
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Falha ao solicitar o ajuste.");
       toast({ title: "Ajuste solicitado", description: "O vendedor e o supervisor foram notificados." });
       setAjusteTexto("");
       loadAjustes();
@@ -360,7 +361,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
     setViewingId(doc.id);
     try {
       const res = await fetch(`${API_BASE}/orcamento-documentos/${doc.id}/download`, { headers: authHeaders() });
-      if (!res.ok) throw new Error("Falha ao abrir o documento.");
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao abrir o documento."));
       const blob = await res.blob();
       const objUrl = URL.createObjectURL(blob);
       window.open(objUrl, "_blank", "noopener");

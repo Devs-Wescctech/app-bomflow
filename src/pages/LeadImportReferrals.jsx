@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { REFERRAL_STAGES } from '@/constants/stages';
 import { getVisibleAgents } from '@/components/utils/permissions';
+import { extractApiError } from "@/utils/apiError";
 
 const EXPECTED_HEADERS = ['CPF', 'NOME', 'CIDADE', 'UF', 'TELEFONE'];
 const REQUIRED_HEADERS = ['NOME', 'CIDADE', 'UF', 'TELEFONE'];
@@ -32,16 +33,14 @@ function authHeaders() {
 
 async function apiPost(path, body) {
   const res = await fetch(path, { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || 'Erro na requisição');
-  return data;
+  if (!res.ok) throw new Error(await extractApiError(res, 'Erro na requisição'));
+  return res.json().catch(() => ({}));
 }
 
 async function apiGet(path) {
   const res = await fetch(path, { headers: authHeaders() });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || 'Erro na requisição');
-  return data;
+  if (!res.ok) throw new Error(await extractApiError(res, 'Erro na requisição'));
+  return res.json().catch(() => ({}));
 }
 
 function normalizeHeader(h) {

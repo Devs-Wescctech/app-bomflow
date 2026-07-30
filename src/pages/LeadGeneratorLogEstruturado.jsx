@@ -11,6 +11,7 @@ import {
   Timer, Shield, Download, FilterX
 } from "lucide-react";
 import { toast } from "sonner";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = '/api';
 
@@ -58,7 +59,7 @@ export default function LeadGeneratorLogEstruturado() {
       const res = await fetch(`${API_BASE}/functions/lead-generator-log-estruturado?${queryParams}`, {
         headers: getAuthHeaders(),
       });
-      if (!res.ok) throw new Error('Erro ao carregar log');
+      if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao carregar log'));
       return res.json();
     },
     refetchInterval: 30000,
@@ -77,7 +78,7 @@ export default function LeadGeneratorLogEstruturado() {
       const res = await fetch(`${API_BASE}/functions/lead-generator-log-estruturado/stats?${statsParams}`, {
         headers: getAuthHeaders(),
       });
-      if (!res.ok) throw new Error('Erro ao carregar stats');
+      if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao carregar stats'));
       return res.json();
     },
     refetchInterval: 60000,
@@ -120,8 +121,7 @@ export default function LeadGeneratorLogEstruturado() {
       });
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Erro ao exportar');
+        throw new Error(await extractApiError(res, 'Erro ao exportar'));
       }
 
       const blob = await res.blob();

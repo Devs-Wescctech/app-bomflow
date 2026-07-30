@@ -14,6 +14,7 @@ import {
   ChevronDown, ChevronUp, Eye, ArrowRight, FileText, Shield,
   AlertTriangle, RefreshCw, Zap
 } from "lucide-react";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = '/api';
 const AUTO_REFRESH_INTERVAL = 60000;
@@ -185,8 +186,7 @@ export default function BomAutoPainel() {
       });
 
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || errData.message || 'Erro ao buscar atendimentos.');
+        throw new Error(await extractApiError(res, 'Erro ao buscar atendimentos.'));
       }
 
       const data = await res.json();
@@ -280,7 +280,7 @@ export default function BomAutoPainel() {
         }),
       ]);
 
-      if (!detailRes.ok) throw new Error('Erro ao buscar detalhes do atendimento.');
+      if (!detailRes.ok) throw new Error(await extractApiError(detailRes, 'Erro ao buscar detalhes do atendimento.'));
 
       const detail = await detailRes.json();
       setSelectedAtendimento(detail);
@@ -398,7 +398,7 @@ export default function BomAutoPainel() {
           body: formData,
         });
         if (!imgRes.ok) {
-          throw new Error('Erro ao enviar as imagens.');
+          throw new Error(await extractApiError(imgRes, 'Erro ao enviar as imagens.'));
         }
       }
 
@@ -416,8 +416,7 @@ export default function BomAutoPainel() {
       });
 
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || errData.message || 'Erro ao salvar tratamento.');
+        throw new Error(await extractApiError(res, 'Erro ao salvar tratamento.'));
       }
 
       toast({ title: "Sucesso", description: "Tratamento salvo com sucesso!" });

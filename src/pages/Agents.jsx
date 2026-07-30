@@ -1,3 +1,4 @@
+import { extractApiError } from "@/utils/apiError";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
@@ -693,9 +694,10 @@ export default function Agents() {
         body: JSON.stringify({ newPassword })
       });
       
+      if (!response.ok) throw new Error(await extractApiError(response, 'Erro ao redefinir senha'));
       const result = await response.json();
       
-      if (response.ok && result.success) {
+      if (result.success) {
         toast.success(`Senha do agente ${selectedAgentForReset.name} redefinida com sucesso!`);
         setResetPasswordDialogOpen(false);
         setSelectedAgentForReset(null);
@@ -955,6 +957,7 @@ export default function Agents() {
         body: formDataUpload
       });
       
+      if (!response.ok) throw new Error(await extractApiError(response, 'Erro ao enviar foto'));
       const result = await response.json();
       if (result.url) {
         setFormData({...formData, photoUrl: result.url});

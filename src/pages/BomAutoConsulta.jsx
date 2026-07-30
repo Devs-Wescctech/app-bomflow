@@ -8,13 +8,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { extractApiError } from "@/utils/apiError";
 import {
   Car, Search, CheckCircle, XCircle, AlertTriangle,
   Loader2, User, Wrench, FileText, Phone, Hash,
   ClipboardCheck, Calendar, Shield,
   Copy, RefreshCw, Clock, Download, Save
 } from "lucide-react";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = '/api';
 
@@ -352,7 +352,7 @@ export default function BomAutoConsulta() {
           termo_descricao_produto: termoDescricaoProduto,
         }),
       });
-      if (!resp.ok) throw new Error('Falha ao salvar');
+      if (!resp.ok) throw new Error(await extractApiError(resp, 'Falha ao salvar'));
       setTermoSalvo(true);
       toast({ title: "Autorização salva com sucesso!", description: "O botão para exportar o PDF foi habilitado." });
     } catch {

@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { getCommissionFromConversions } from '@/utils/commissionRules';
 import { base44 } from "@/api/base44Client";
+import { extractApiError } from "@/utils/apiError";
 
 const STATUS_LABELS = {
   elegivel: 'Elegível',
@@ -74,7 +75,7 @@ export default function CommissionPerspectivaControl() {
       ...options,
       headers: { 'Authorization': `Bearer ${token}`, ...options.headers }
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(await extractApiError(resp));
     return resp.json();
   };
 

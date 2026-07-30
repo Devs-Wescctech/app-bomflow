@@ -8,7 +8,16 @@ export async function extractApiError(res, fallback = 'Erro ao processar a solic
     errData = await res.json();
   } catch {
     // Corpo não-JSON: serviço indisponível ou rota ausente.
-    return `Serviço indisponível (HTTP ${res.status}). Tente novamente em instantes; se persistir, contate o suporte.`;
+    errData = null;
   }
-  return errData?.error || errData?.message || `${fallback} (HTTP ${res.status})`;
+  return apiErrorMessage(res.status, errData, fallback);
+}
+
+// Variante para quando o corpo já foi lido (ex.: json parseado antes do check).
+// Passe `null`/`undefined` em errData quando o corpo não era JSON.
+export function apiErrorMessage(status, errData, fallback = 'Erro ao processar a solicitação.') {
+  if (errData === null || errData === undefined) {
+    return `Serviço indisponível (HTTP ${status}). Tente novamente em instantes; se persistir, contate o suporte.`;
+  }
+  return errData.error || errData.message || `${fallback} (HTTP ${status})`;
 }

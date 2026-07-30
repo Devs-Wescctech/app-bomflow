@@ -38,6 +38,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { extractApiError } from "@/utils/apiError";
 
 export default function AutomationLogs() {
   const queryClient = useQueryClient();
@@ -57,6 +58,7 @@ export default function AutomationLogs() {
       const response = await fetch(`/api/whatsapp/automation-logs?${params.toString()}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
+      if (!response.ok) throw new Error(await extractApiError(response, 'Falha ao carregar logs'));
       return response.json();
     },
     refetchInterval: 30000
@@ -68,7 +70,7 @@ export default function AutomationLogs() {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
-      if (!response.ok) throw new Error('Falha ao executar automações');
+      if (!response.ok) throw new Error(await extractApiError(response, 'Falha ao executar automações'));
       return response.json();
     },
     onSuccess: () => {
@@ -89,7 +91,7 @@ export default function AutomationLogs() {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
-      if (!response.ok) throw new Error('Falha ao limpar logs');
+      if (!response.ok) throw new Error(await extractApiError(response, 'Falha ao limpar logs'));
       return response.json();
     },
     onSuccess: () => {

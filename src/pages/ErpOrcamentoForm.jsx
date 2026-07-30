@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import { extractApiError } from "@/utils/apiError";
 
 const TITULO_CONTRATO_OPTIONS = [
   "BOM CORP",
@@ -313,9 +314,9 @@ export default function ErpOrcamentoForm() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        console.error("[ERP Produtos] Erro HTTP", res.status, err);
-        throw new Error(err.error || "Erro ao buscar produtos do ERP");
+        const msg = await extractApiError(res, "Erro ao buscar produtos do ERP");
+        console.error("[ERP Produtos] Erro HTTP", res.status, msg);
+        throw new Error(msg);
       }
       const data = await res.json();
       console.log("[ERP Produtos] resposta:", data?.length ?? data);
@@ -405,8 +406,8 @@ export default function ErpOrcamentoForm() {
       const r = await fetch(`/api/erp/lookup-cpf?cpf=${encodeURIComponent(cpf)}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("accessToken")}` },
       });
+      if (!r.ok) throw new Error(await extractApiError(r, "Erro ao buscar CPF no ERP"));
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error || "Erro ao buscar CPF no ERP");
       return data;
     },
     onSuccess: (data) => {

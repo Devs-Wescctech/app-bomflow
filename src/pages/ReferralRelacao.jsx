@@ -17,6 +17,7 @@ import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { REFERRAL_STAGES } from "@/constants/stages";
 import { base44 } from "@/api/base44Client";
+import { extractApiError } from "@/utils/apiError";
 
 const PRIVILEGED_AGENT_TYPES = new Set(['admin', 'indicacoes_supervisor', 'indicacoes_admin']);
 
@@ -72,7 +73,7 @@ export default function ReferralRelacao() {
       const res = await fetch(`${API_BASE}/functions/referrals-relacao?${queryParams}`, {
         headers: { ...getAuthHeaders() },
       });
-      if (!res.ok) throw new Error('Erro ao carregar indicações');
+      if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao carregar indicações'));
       return res.json();
     },
   });
@@ -198,8 +199,7 @@ export default function ReferralRelacao() {
         body: JSON.stringify({ chave_pix: pixChave.trim() }),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Erro ao salvar');
+        throw new Error(await extractApiError(res, 'Erro ao salvar'));
       }
       toast.success('PIX do indicador salvo com sucesso!');
       setPixModalOpen(false);
@@ -225,7 +225,7 @@ export default function ReferralRelacao() {
       const res = await fetch(`${API_BASE}/referrals/${editItem.id}/notes`, {
         headers: { ...getAuthHeaders() },
       });
-      if (!res.ok) throw new Error('Erro ao carregar notas');
+      if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao carregar notas'));
       return res.json();
     },
     enabled: !!editItem?.id,
@@ -242,8 +242,7 @@ export default function ReferralRelacao() {
         body: JSON.stringify({ content: newNote.trim() }),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Erro ao adicionar nota');
+        throw new Error(await extractApiError(res, 'Erro ao adicionar nota'));
       }
       setNewNote('');
       await refetchNotes();
@@ -274,8 +273,7 @@ export default function ReferralRelacao() {
         body: JSON.stringify({ content: editingNoteContent.trim() }),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Erro ao atualizar nota');
+        throw new Error(await extractApiError(res, 'Erro ao atualizar nota'));
       }
       cancelEditNote();
       await refetchNotes();
@@ -293,8 +291,7 @@ export default function ReferralRelacao() {
         headers: { ...getAuthHeaders() },
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Erro ao excluir nota');
+        throw new Error(await extractApiError(res, 'Erro ao excluir nota'));
       }
       await refetchNotes();
       toast.success('Nota excluída');
@@ -323,8 +320,7 @@ export default function ReferralRelacao() {
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Erro ao salvar');
+        throw new Error(await extractApiError(res, 'Erro ao salvar'));
       }
 
       if (editForm.chavePix) {

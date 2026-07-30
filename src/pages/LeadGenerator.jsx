@@ -27,6 +27,7 @@ import {
 import { toast } from "sonner";
 import LeadGeneratorDashboard from "./LeadGeneratorDashboard";
 import LeadGeneratorLogEstruturado from "./LeadGeneratorLogEstruturado";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = '/api';
 const MAX_LEADS = 1200;
@@ -248,7 +249,7 @@ export default function LeadGenerator() {
         ? `${API_BASE}/functions/lead-generator-options?refresh=true`
         : `${API_BASE}/functions/lead-generator-options`;
       const res = await fetch(url, { headers: { ...getAuthHeaders() } });
-      if (!res.ok) throw new Error(`Erro ao carregar opções (${res.status})`);
+      if (!res.ok) throw new Error(await extractApiError(res));
       const data = await res.json();
       if (data.success === false) throw new Error(data.error || 'Erro desconhecido');
 
@@ -315,11 +316,14 @@ export default function LeadGenerator() {
       });
       if (!res.ok) {
         let errBody = null;
-        try { errBody = await res.json(); } catch { /* ignore */ }
+        try { errBody = await res.json(); } catch { /* corpo não-JSON */ }
         if (res.status === 503 && errBody?.erp_unavailable) {
           throw new Error('ERP temporariamente indisponível, tente em alguns minutos.');
         }
-        throw new Error(errBody?.error || 'Erro ao buscar leads');
+        if (!errBody) {
+          throw new Error(`Serviço indisponível (HTTP ${res.status}). Tente novamente em instantes; se persistir, contate o suporte.`);
+        }
+        throw new Error(errBody.error || errBody.message || `Erro ao buscar leads (HTTP ${res.status})`);
       }
       const data = await res.json();
       const allData = Array.isArray(data) ? data : [];
@@ -359,8 +363,7 @@ export default function LeadGenerator() {
         body: JSON.stringify({ phones, target: MAX_LEADS }),
       });
       if (!startRes.ok) {
-        const err = await startRes.json().catch(() => ({}));
-        throw new Error(err.error || `Erro ao iniciar validação (${startRes.status})`);
+        throw new Error(await extractApiError(startRes));
       }
       const startJson = await startRes.json();
       const jobId = startJson.jobId;
@@ -540,15 +543,13 @@ export default function LeadGenerator() {
       });
 
       if (res.status === 403) {
-        const errData = await res.json().catch(() => ({}));
-        toast.error(errData.error || 'Você não tem permissão para realizar disparos.');
+        toast.error(await extractApiError(res, 'Você não tem permissão para realizar disparos.'));
         setSendingWhatsApp(false);
         return;
       }
 
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Erro HTTP ${res.status}`);
+        throw new Error(await extractApiError(res));
       }
 
       const data = await res.json();
@@ -580,7 +581,7 @@ export default function LeadGenerator() {
         return;
       }
 
-      if (!res.ok) throw new Error('Erro ao reenviar');
+      if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao reenviar'));
 
       const data = await res.json();
       toast.info(`Reenvio iniciado: ${data.retried} leads em fila, ${data.blocked} bloqueados.`);
