@@ -1770,3 +1770,70 @@ ALTER TABLE agents ADD COLUMN IF NOT EXISTS canal_venda_id BIGINT;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS canal_venda_grupo_id BIGINT;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS erp_agente_venda_id BIGINT;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS proposal_data JSONB;
+
+-- =====================
+-- BOM PET
+-- =====================
+CREATE TABLE IF NOT EXISTS bom_pet_atendimentos (
+  id SERIAL PRIMARY KEY,
+  protocolo VARCHAR(20) NOT NULL UNIQUE,
+  documento_cliente VARCHAR(20) NOT NULL,
+  nome_cliente VARCHAR(255) NOT NULL,
+  pet_nome VARCHAR(255) NOT NULL,
+  pet_descricao VARCHAR(255),
+  pet_contrato_id BIGINT,
+  contratos_servicos TEXT,
+  situacao_financeira VARCHAR(30),
+  comprovante_pagamento_recebido BOOLEAN NOT NULL DEFAULT FALSE,
+  comprovante_pagamento_obs TEXT,
+  remocao_local TEXT,
+  remocao_endereco TEXT,
+  clinica_nome TEXT,
+  parceiro_nome TEXT,
+  telefone_contato VARCHAR(20),
+  observacoes TEXT,
+  data_hora TIMESTAMP DEFAULT NOW(),
+  usuario VARCHAR(255) NOT NULL,
+  status_atendimento VARCHAR(50) NOT NULL DEFAULT 'Pendente',
+  data_hora_inicio_tratamento TIMESTAMP,
+  usuario_responsavel_tratamento VARCHAR(255),
+  observacoes_tratamento TEXT,
+  pet_falecido_marcado BOOLEAN NOT NULL DEFAULT FALSE,
+  termo_local TEXT,
+  termo_rua TEXT,
+  termo_valores_combinados TEXT,
+  termo_descricao_produto TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS bom_pet_imagens (
+  id SERIAL PRIMARY KEY,
+  atendimento_id INTEGER NOT NULL REFERENCES bom_pet_atendimentos(id) ON DELETE CASCADE,
+  filename VARCHAR(255) NOT NULL,
+  original_name VARCHAR(255) NOT NULL,
+  mimetype VARCHAR(100) NOT NULL,
+  size INTEGER NOT NULL,
+  url VARCHAR(500) NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS bom_pet_historico_alteracoes (
+  id SERIAL PRIMARY KEY,
+  atendimento_id INTEGER NOT NULL REFERENCES bom_pet_atendimentos(id) ON DELETE CASCADE,
+  status_anterior VARCHAR(50),
+  status_novo VARCHAR(50),
+  usuario VARCHAR(255) NOT NULL,
+  data_hora TIMESTAMP DEFAULT NOW(),
+  observacao TEXT
+);
+
+-- Status "Falecido" do pet é LOCAL (nunca escrito no ERP); chaveado pelo contrato ERP do pet.
+CREATE TABLE IF NOT EXISTS bom_pet_pets_falecidos (
+  id SERIAL PRIMARY KEY,
+  pet_contrato_id BIGINT NOT NULL UNIQUE,
+  pet_nome VARCHAR(255),
+  documento_cliente VARCHAR(20),
+  atendimento_id INTEGER REFERENCES bom_pet_atendimentos(id) ON DELETE SET NULL,
+  usuario VARCHAR(255) NOT NULL,
+  data_hora TIMESTAMP DEFAULT NOW()
+);

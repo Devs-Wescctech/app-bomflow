@@ -85,6 +85,7 @@ import {
   RefreshCw,
   LayoutGrid,
   ShieldAlert,
+  PawPrint,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -311,6 +312,17 @@ const menuModules = [
       { title: "Consulta Cliente", url: createPageUrl("BomAutoConsulta"), icon: Search },
       { title: "Painel Operacional", url: createPageUrl("BomAutoPainel"), icon: ClipboardList },
       { title: "Relatório de Utilizações", url: createPageUrl("BomAutoRelatorio"), icon: FileBarChart },
+    ]
+  },
+  {
+    id: "bom_pet",
+    title: "Bom Pet",
+    icon: PawPrint,
+    gradient: "from-teal-600 to-emerald-500",
+    items: [
+      { title: "Consulta Cliente", url: createPageUrl("BomPetConsulta"), icon: Search, alwaysVisible: true },
+      { title: "Painel Operacional", url: createPageUrl("BomPetPainel"), icon: ClipboardList, alwaysVisible: true },
+      { title: "Relatório de Utilizações", url: createPageUrl("BomPetRelatorio"), icon: FileBarChart, alwaysVisible: true },
     ]
   },
   {
