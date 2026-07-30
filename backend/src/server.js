@@ -58,7 +58,15 @@ app.get('/', (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
+  // smoke: 'ok' | 'stale' | 'pending' — 'stale' indica processo rodando código
+  // desatualizado (rota crítica ausente). Consultável para monitoramento.
+  const stale = smokeCheckState.failures.length > 0;
+  res.status(stale ? 500 : 200).json({
+    status: stale ? 'stale' : 'ok',
+    smoke: smokeCheckState.done ? (stale ? 'stale' : 'ok') : 'pending',
+    ...(stale && { smoke_failures: smokeCheckState.failures }),
+    started_at: smokeCheckState.startedAt,
+  });
 });
 
 app.use(cors({
@@ -169,6 +177,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 // Detecta processo desatualizado (rotas montadas no disco mas ausentes no
 // processo em execução) — causa do incidente "Bom Pet 404". Uma rota crítica
 // respondendo 404 no próprio processo indica build/deploy defasado.
+const smokeCheckState = { done: false, failures: [], startedAt: new Date().toISOString() };
+
 const SMOKE_ROUTES = [
   '/api/health',
   '/api/bom-pet/consulta',
@@ -181,6 +191,7 @@ async function runBootSmokeCheck() {
       const res = await fetch(`http://127.0.0.1:${PORT}${route}`);
       // 401/400/etc = rota montada (middleware respondeu); 404 = rota ausente.
       if (res.status === 404) {
+        smokeCheckState.failures.push(route);
         console.error(`[SmokeCheck] FALHA: rota ${route} respondeu 404 — processo pode estar desatualizado (recarregue/republique o backend).`);
       } else {
         console.log(`[SmokeCheck] OK: ${route} (HTTP ${res.status})`);
@@ -188,6 +199,10 @@ async function runBootSmokeCheck() {
     } catch (err) {
       console.error(`[SmokeCheck] Erro ao verificar ${route}:`, err.message);
     }
+  }
+  smokeCheckState.done = true;
+  if (smokeCheckState.failures.length > 0) {
+    console.error(`[SmokeCheck] ATENÇÃO: ${smokeCheckState.failures.length} rota(s) crítica(s) ausente(s) — /api/health passa a responder 500 (status "stale") até o processo ser recarregado com o código atual.`);
   }
 }
 
