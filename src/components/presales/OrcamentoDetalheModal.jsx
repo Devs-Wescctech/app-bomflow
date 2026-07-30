@@ -412,24 +412,22 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
   const emailOk = !!(titular?.email || detalhe?.email);
   const end = titular?.endereco || detalhe?.endereco || null;
   const enderecoOk = !!(end && end.cep && end.logradouro && end.numero && end.bairro && end.cidade);
-  // Título do contrato == canal de vendas selecionado no formulário (já resolvido no relatório).
-  const tituloOk = !!(canalLabel && canalLabel !== "-");
   const planoOk = !!detalhe?.plano_pagamento;
   const docIdOk = attachedTipos.has("documento_identidade");
   const compResOk = attachedTipos.has("comprovante_residencia");
   const taxaAdesaoOk = attachedTipos.has("taxa_adesao");
   const copiaContratoOk = attachedTipos.has("copia_contrato");
 
-  // Valida TODOS os campos de preenchimento obrigatório do formulário (CPF, Nome, Telefone,
-  // E-mail, Endereço, Título do contrato, Plano de pagamento e Produto) e os 4 documentos que o
-  // vendedor precisa anexar. Itens apenas recomendados (data de nascimento, veículo) ficam de fora.
+  // Valida os campos de preenchimento obrigatório do formulário (CPF, Nome, Telefone,
+  // E-mail, Endereço, Plano de pagamento e Produto) e os 4 documentos que o vendedor
+  // precisa anexar. Itens apenas recomendados (data de nascimento, veículo) ficam de fora.
+  // "Título do contrato" (canal de vendas) foi removido do checklist a pedido do usuário.
   const checklist = [
     { label: "CPF informado", ok: cpfOk, level: "critico" },
     { label: "Nome completo", ok: nomeOk, level: "critico" },
     { label: "Telefone informado", ok: telOk, level: "critico" },
     { label: "E-mail informado", ok: emailOk, level: "critico" },
     { label: "Endereço completo", ok: enderecoOk, level: "critico" },
-    { label: "Título do contrato", ok: tituloOk, level: "critico" },
     { label: "Plano de pagamento", ok: planoOk, level: "critico" },
     { label: "Produto selecionado", ok: produtoOk, level: "critico" },
     { label: "Documento (CPF/RG) anexado", ok: docIdOk, level: "doc" },
