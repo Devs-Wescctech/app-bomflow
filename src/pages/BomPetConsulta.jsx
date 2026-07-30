@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
+import { extractApiError } from "@/utils/apiError";
 import {
   PawPrint, Search, CheckCircle, XCircle, AlertTriangle,
   Loader2, User, FileText, Phone, Hash,
@@ -155,8 +156,7 @@ export default function BomPetConsulta() {
         headers: { ...getAuthHeaders() },
       });
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || 'Erro ao consultar cliente.');
+        throw new Error(await extractApiError(res, 'Erro ao consultar cliente.'));
       }
       const data = await res.json();
       setClientData(data);
@@ -260,8 +260,7 @@ export default function BomPetConsulta() {
         }),
       });
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || 'Erro ao registrar atendimento.');
+        throw new Error(await extractApiError(res, 'Erro ao registrar atendimento.'));
       }
       const atendimento = await res.json();
       setAtendimentoFinalizado(atendimento);
