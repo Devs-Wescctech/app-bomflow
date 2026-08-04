@@ -44,6 +44,7 @@ import { toast } from "sonner";
 import { format, parseISO, startOfDay, endOfDay, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { createPageUrl } from "@/utils";
+import { extractApiError } from "@/utils/apiError";
 
 const ITEMS_PER_PAGE = 25;
 
@@ -178,8 +179,7 @@ export default function ReferralReactivationReport() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || 'Erro ao carregar relatório.');
+        throw new Error(await extractApiError(res, 'Erro ao carregar relatório.'));
       }
       return res.json();
     },
@@ -197,8 +197,8 @@ export default function ReferralReactivationReport() {
         },
         body: JSON.stringify(body),
       });
+      if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao salvar.'));
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Erro ao salvar.');
       return data;
     },
     onSuccess: () => {
@@ -219,8 +219,8 @@ export default function ReferralReactivationReport() {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao excluir.'));
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Erro ao excluir.');
       return data;
     },
     onSuccess: () => {

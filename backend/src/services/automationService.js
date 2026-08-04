@@ -1,6 +1,14 @@
 import { query } from '../config/database.js';
 import { sendWhatsAppMessage, sendWhatsAppMessageWithToken } from './whatsappService.js';
 import { fetchErpAllPages } from '../utils/erpPagination.js';
+import {
+  getCycleSentAutomationIds,
+  hasPendingPriorAutomation,
+  startCycleIfNeeded,
+  recordDispatchChat,
+  finishCycleIfComplete,
+  PF_CYCLE_BOUNDARY_SQL,
+} from './pfAutomationCycle.js';
 
 async function loadAutomationTeamIds(automations, junctionTable = 'lead_automation_teams') {
   if (!automations || automations.length === 0) return automations;
@@ -41,13 +49,18 @@ export async function checkAndExecuteLeadAutomations() {
     `);
     let automations = await loadAutomationTeamIds(automationsResult.rows);
 
+    // Contexto do ciclo PF: parada por resposta, sequência por prioridade e
+    // cooldown de 30 dias (ver pfAutomationCycle.js).
+    const pfContext = { automations, sentLeadIds: new Set() };
+
     for (const automation of automations) {
       const triggerConfig = typeof automation.trigger_config === 'string' 
         ? JSON.parse(automation.trigger_config) 
         : automation.trigger_config || {};
 
       if (automation.trigger_type === 'inactivity' || automation.trigger_type === 'stage_duration') {
-        await checkInactivityTrigger(automation, triggerConfig, 'lead', 'leads');
+        const ctx = automation.action_type === 'send_whatsapp' ? pfContext : null;
+        await checkInactivityTrigger(automation, triggerConfig, 'lead', 'leads', ctx);
       }
     }
   } catch (error) {
@@ -580,7 +593,7 @@ async function executeChannelAutomationAction(automation, lead, automationType, 
   }
 }
 
-async function checkInactivityTrigger(automation, triggerConfig, automationType, tableName) {
+async function checkInactivityTrigger(automation, triggerConfig, automationType, tableName, pfContext = null) {
   try {
     const hours = Number(triggerConfig.hours) || 
                   (Number(triggerConfig.days) ? Number(triggerConfig.days) * 24 : 
@@ -592,6 +605,23 @@ async function checkInactivityTrigger(automation, triggerConfig, automationType,
     const closedStages = ['fechado_ganho', 'fechado_perdido', 'convertido', 'perdido', 'cancelado'];
     
     const params = [hoursAgo.toISOString(), ...closedStages, automation.id, hoursAgo.toISOString()];
+
+    // Regras extras do ciclo PF: exclui quem respondeu, quem está em cooldown
+    // e quem já recebeu ESTA automação no ciclo corrente (sem reenvio).
+    let pfFilter = '';
+    if (pfContext) {
+      pfFilter = `
+        AND l.automation_responded_at IS NULL
+        AND (l.automation_cooldown_until IS NULL OR l.automation_cooldown_until <= NOW())
+        AND NOT EXISTS (
+          SELECT 1 FROM automation_logs alc
+          WHERE alc.lead_id = l.id
+            AND alc.automation_id = $7
+            AND alc.success = true
+            AND alc.executed_at >= ${PF_CYCLE_BOUNDARY_SQL('l')}
+        )`;
+    }
+
     let teamFilter = '';
     if (automation.team_ids && automation.team_ids.length > 0) {
       const teamPlaceholders = automation.team_ids.map((tid, i) => {
@@ -612,21 +642,32 @@ async function checkInactivityTrigger(automation, triggerConfig, automationType,
           WHERE al.lead_id = l.id 
             AND al.automation_id = $7
             AND al.executed_at > $8
-        )${teamFilter}
+        )${pfFilter}${teamFilter}
       LIMIT 10
     `, params);
 
     console.log(`[Automation] ${automation.name}: Found ${leadsResult.rows.length} leads matching criteria${automation.team_ids?.length ? ` (teams: ${automation.team_ids.join(', ')})` : ''}`);
 
     for (const lead of leadsResult.rows) {
-      await executeAutomationAction(automation, lead, automationType);
+      if (pfContext) {
+        // Uma automação por lead por rodada (sequência, não rajada).
+        if (pfContext.sentLeadIds.has(lead.id)) continue;
+        // Sequência por prioridade: só dispara se as automações anteriores do
+        // ciclo já foram enviadas para este lead.
+        const sentIds = await getCycleSentAutomationIds(lead);
+        if (hasPendingPriorAutomation(pfContext.automations, automation, lead, sentIds)) {
+          console.log(`[Automation] ${automation.name}: Lead ${lead.id} aguarda automação anterior do ciclo — pulado`);
+          continue;
+        }
+      }
+      await executeAutomationAction(automation, lead, automationType, pfContext);
     }
   } catch (error) {
     console.error(`Error checking inactivity trigger for ${automationType}:`, error);
   }
 }
 
-async function executeAutomationAction(automation, lead, automationType) {
+async function executeAutomationAction(automation, lead, automationType, pfContext = null) {
   const actionConfig = typeof automation.action_config === 'string' 
     ? JSON.parse(automation.action_config) 
     : automation.action_config || {};
@@ -666,6 +707,13 @@ async function executeAutomationAction(automation, lead, automationType) {
       if (automation.whatsapp_template_id) {
         try {
           const agent = lead.agent_id ? { id: lead.agent_id, name: lead.agent_name, phone: lead.agent_phone } : null;
+
+          // PF: abre um novo ciclo ANTES do envio (primeiro disparo ou cooldown
+          // expirado), para o log do envio contar dentro do ciclo.
+          if (pfContext) {
+            await startCycleIfNeeded(lead);
+          }
+
           const result = await sendWhatsAppMessage(lead, agent, automation.whatsapp_template_id);
 
           await logAutomationExecution({
@@ -682,6 +730,22 @@ async function executeAutomationAction(automation, lead, automationType) {
             message: message || `Template: ${automation.whatsapp_template_name}`,
             apiResponse: result
           });
+
+          // PF: persiste o chat WHU (p/ detectar resposta via webhook), marca o
+          // lead como atendido nesta rodada e fecha o ciclo com cooldown de 30
+          // dias quando todas as automações do ciclo tiverem sido enviadas.
+          if (pfContext) {
+            pfContext.sentLeadIds.add(lead.id);
+            try {
+              await recordDispatchChat(lead.id, result);
+              const cycleClosed = await finishCycleIfComplete(lead, pfContext.automations);
+              if (cycleClosed) {
+                console.log(`[Automation] Ciclo PF completo para lead ${lead.id} — cooldown de 30 dias iniciado`);
+              }
+            } catch (cycleError) {
+              console.error(`[Automation] Erro ao atualizar ciclo PF do lead ${lead.id}:`, cycleError.message);
+            }
+          }
 
           console.log(`[Automation] ${automation.name}: Message sent to ${leadName} (${leadPhone})`, result);
         } catch (sendError) {

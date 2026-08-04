@@ -17,6 +17,7 @@ import { MapPin, Loader2, ArrowLeft, Save, Navigation, CheckCircle2, XCircle, Us
 import { createPageUrl } from "@/utils";
 import { toast } from "sonner";
 import { debounce } from "lodash";
+import { extractApiError } from "@/utils/apiError";
 
 const INTERESTS = [
   "Essencial",
@@ -336,7 +337,7 @@ export default function NewLeadUpsell() {
       const response = await fetch(`/api/functions/erp-cadastro-pessoas?cpf=${encodeURIComponent(cpfFormatted)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!response.ok) throw new Error("Erro ao consultar ERP");
+      if (!response.ok) throw new Error(await extractApiError(response, "Erro ao consultar ERP"));
       const records = await response.json();
       const groups = groupByContract(records);
       setErpContractGroups(groups);

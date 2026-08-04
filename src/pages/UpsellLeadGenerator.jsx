@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { isUpsellPrivileged } from "@/components/utils/permissions";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = "/api";
 
@@ -199,7 +200,7 @@ function AutocompleteTagInput({ values = [], onChange, placeholder, searchField,
         const res = await fetch(`/api/functions/erp-cadastro-pessoas-batch?${params}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
-        if (!res.ok) throw new Error();
+        if (!res.ok) throw new Error(await extractApiError(res));
         const data = await res.json();
         const records = data.records || [];
         const field = searchField === "cidade" ? "cidade" : "descricao";
@@ -304,7 +305,7 @@ export default function UpsellLeadGenerator() {
       const res = await fetch(`${API_BASE}/functions/erp-cadastro-pessoas-options`, {
         headers: getAuthHeaders(),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(await extractApiError(res));
       return res.json();
     },
     staleTime: 60 * 60 * 1000,
@@ -321,7 +322,7 @@ export default function UpsellLeadGenerator() {
       const res = await fetch(`${API_BASE}/functions/brazil-cities?${params}`, {
         headers: getAuthHeaders(),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(await extractApiError(res));
       return res.json();
     },
     enabled: filters.ufs.length > 0,
@@ -338,7 +339,7 @@ export default function UpsellLeadGenerator() {
       const res = await fetch(`${API_BASE}/functions/erp-planos`, {
         headers: getAuthHeaders(),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(await extractApiError(res));
       return res.json();
     },
     staleTime: 24 * 60 * 60 * 1000,
@@ -375,8 +376,7 @@ export default function UpsellLeadGenerator() {
         headers: getAuthHeaders(),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${res.status}`);
+        throw new Error(await extractApiError(res));
       }
       const data = await res.json();
       const recs = data.records || [];
@@ -417,8 +417,7 @@ export default function UpsellLeadGenerator() {
         body: JSON.stringify({ leads: selectedRecords }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${res.status}`);
+        throw new Error(await extractApiError(res));
       }
       const result = await res.json();
       setImportResult(result);

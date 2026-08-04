@@ -14,6 +14,7 @@ import {
   Package,
   X,
 } from "lucide-react";
+import { extractApiError } from "@/utils/apiError";
 
 const DOC_TIPOS = [
   { tipo: "documento_identidade", label: "Documento (CPF/RG)" },
@@ -437,7 +438,7 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
         `/api/orcamento-documentos/orcamentos?${params.toString()}`,
         { headers: authHeaders() }
       );
-      if (!res.ok) throw new Error("Falha ao carregar orçamentos");
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao carregar orçamentos"));
       const data = await res.json();
       setOrcamentos(Array.isArray(data.items) ? data.items : []);
     } catch (e) {
@@ -488,8 +489,8 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
         headers: authHeaders(),
         body: fd,
       });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha no envio"));
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Falha no envio");
       toast.success("Documento enviado.");
       await fetchOrcamentos();
     } catch (e) {
@@ -505,7 +506,7 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
       const res = await fetch(`/api/orcamento-documentos/${doc.id}/download`, {
         headers: authHeaders(),
       });
-      if (!res.ok) throw new Error("Falha ao abrir documento");
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao abrir documento"));
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank", "noopener");
@@ -525,8 +526,8 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
         method: "DELETE",
         headers: authHeaders(),
       });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao excluir"));
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Falha ao excluir");
       toast.success("Documento excluído.");
       await fetchOrcamentos();
     } catch (e) {
@@ -545,8 +546,8 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ erp_pedido_id: orc.erp_pedido_id, adesao_zero: value }),
       });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao salvar"));
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Falha ao salvar");
       toast.success("Adesão Zero atualizada.");
       await fetchOrcamentos();
     } catch (e) {

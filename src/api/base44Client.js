@@ -1,3 +1,5 @@
+import { extractApiError } from '@/utils/apiError';
+
 const API_BASE = '/api';
 
 function getAuthHeaders() {
@@ -20,9 +22,9 @@ async function fetchAPI(endpoint, options = {}) {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: response.statusText }));
-    console.error(`[API] Error ${response.status}:`, error.message);
-    throw new Error(error.message || 'API Error');
+    const message = await extractApiError(response, 'API Error');
+    console.error(`[API] Error ${response.status}:`, message);
+    throw new Error(message);
   }
 
   return response.json();
@@ -227,6 +229,7 @@ export const base44 = {
           headers: getAuthHeaders(),
           body: formData,
         });
+        if (!response.ok) throw new Error(await extractApiError(response, 'Erro ao enviar arquivo'));
         return response.json();
       },
       GenerateImage: (params) => fetchAPI('/functions/generate-image', { method: 'POST', body: JSON.stringify(params) }),
@@ -240,6 +243,7 @@ export const base44 = {
           headers: getAuthHeaders(),
           body: formData,
         });
+        if (!response.ok) throw new Error(await extractApiError(response, 'Erro ao enviar arquivo'));
         return response.json();
       },
     },

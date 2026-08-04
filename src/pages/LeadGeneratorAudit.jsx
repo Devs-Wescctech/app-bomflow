@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = '/api';
 
@@ -106,7 +107,7 @@ export default function LeadGeneratorAudit() {
       const res = await fetch(`${API_BASE}/functions/lead-generator-metrics-audit?${queryParams}`, {
         headers: getAuthHeaders()
       });
-      if (!res.ok) throw new Error('Falha ao carregar auditoria');
+      if (!res.ok) throw new Error(await extractApiError(res, 'Falha ao carregar auditoria'));
       return res.json();
     },
     refetchOnWindowFocus: false,

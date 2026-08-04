@@ -22,6 +22,7 @@ import {
   Send
 } from "lucide-react";
 import { toast } from "sonner";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE_URL = '/api';
 
@@ -37,8 +38,7 @@ async function testAutomation(params) {
   });
   
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Erro ao testar automação');
+    throw new Error(await extractApiError(response, 'Erro ao testar automação'));
   }
   
   return response.json();

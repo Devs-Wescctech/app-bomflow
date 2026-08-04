@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { upsell } from "@/api/upsellClient";
 import { useNavigate, useLocation } from "react-router-dom";
+import { extractApiError } from "@/utils/apiError";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -189,7 +190,7 @@ export default function LeadUpsellDetail() {
       const res = await fetch(`/api/functions/erp-cadastro-pessoas?cpf=${encodeURIComponent(cpf)}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken')}` },
       });
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao consultar o ERP.'));
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     },

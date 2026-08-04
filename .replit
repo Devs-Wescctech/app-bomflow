@@ -44,7 +44,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd backend && npm start"
+args = "cd backend && npm run dev"
 waitForPort = 3001
 
 [workflows.workflow.metadata]

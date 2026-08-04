@@ -7,21 +7,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import {
-  FileBarChart, Search, Filter, Loader2, Download,
+  FileBarChart, Search, Filter, Loader2,
   Calendar, ChevronDown, ChevronUp, FileSpreadsheet, FileText, ShieldAlert
 } from "lucide-react";
 import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = '/api';
-
-const TIPOS_SERVICO = [
-  "Chaveiro",
-  "Guincho",
-  "Pane elétrica",
-  "Pane seca",
-  "Serviços de táxi",
-  "Troca de pneu",
-];
 
 const STATUS_OPTIONS = [
   "Pendente",
@@ -43,14 +34,6 @@ function formatDateTime(dateStr) {
   });
 }
 
-function formatDateOnly(dateStr) {
-  if (!dateStr) return '-';
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric'
-  });
-}
-
 function formatDateForFile() {
   const d = new Date();
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
@@ -62,9 +45,7 @@ function StatusBadge({ status }) {
   let className = "";
   if (s === "pendente") {
     className = "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-700";
-  } else if (s === "em tratamento") {
-    className = "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/50 dark:text-blue-300 dark:border-blue-700";
-  } else if (s === "solucionado" || s === "concluído" || s === "finalizado") {
+  } else if (s === "solucionado") {
     className = "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-700";
   } else if (s === "cancelado") {
     className = "bg-red-100 text-red-800 border-red-300 dark:bg-red-900/50 dark:text-red-300 dark:border-red-700";
@@ -74,10 +55,9 @@ function StatusBadge({ status }) {
   return <Badge variant="outline" className={className}>{status}</Badge>;
 }
 
-export default function BomAutoRelatorio() {
+export default function BomPetRelatorio() {
   const { toast } = useToast();
 
-  const [currentUser, setCurrentUser] = useState(null);
   const [authorized, setAuthorized] = useState(null);
   const [atendimentos, setAtendimentos] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -88,25 +68,20 @@ export default function BomAutoRelatorio() {
   const [filterDataInicio, setFilterDataInicio] = useState("");
   const [filterDataFim, setFilterDataFim] = useState("");
   const [filterDocumento, setFilterDocumento] = useState("");
-  const [filterTipoServico, setFilterTipoServico] = useState("todos");
+  const [filterNome, setFilterNome] = useState("");
+  const [filterPet, setFilterPet] = useState("");
   const [filterStatus, setFilterStatus] = useState("todos");
   const [filterAtendente, setFilterAtendente] = useState("todos");
-  const [filterTeam, setFilterTeam] = useState("todos");
-  const [teams, setTeams] = useState([]);
-  const [agents, setAgents] = useState([]);
 
   useEffect(() => {
     async function fetchUser() {
       try {
-        const res = await fetch(`${API_BASE}/auth/me`, {
-          headers: { ...getAuthHeaders() },
-        });
+        const res = await fetch(`${API_BASE}/auth/me`, { headers: { ...getAuthHeaders() } });
         if (res.ok) {
           const data = await res.json();
-          setCurrentUser(data);
           const tipo = (data.agent?.agentType || data.agentType || '').toLowerCase();
           const role = (data.role || '').toLowerCase();
-          setAuthorized(tipo === 'admin' || tipo === 'sales_supervisor' || tipo === 'bom_auto_supervisor' || role === 'admin');
+          setAuthorized(tipo === 'admin' || tipo === 'sales_supervisor' || tipo === 'bom_pet_supervisor' || role === 'admin');
         } else {
           setAuthorized(false);
         }
@@ -118,39 +93,17 @@ export default function BomAutoRelatorio() {
   }, []);
 
   useEffect(() => {
-    if (authorized) {
-      fetchAtendentes();
-      fetchTeamsAndAgents();
-    }
+    if (authorized) fetchAtendentes();
   }, [authorized]);
 
   async function fetchAtendentes() {
     try {
-      const res = await fetch(`${API_BASE}/bom-auto/atendimentos/atendentes`, {
-        headers: { ...getAuthHeaders() },
-      });
+      const res = await fetch(`${API_BASE}/bom-pet/atendimentos/atendentes`, { headers: { ...getAuthHeaders() } });
       if (res.ok) {
         const data = await res.json();
-        setAtendentes(data);
+        setAtendentes(Array.isArray(data) ? data : []);
       }
-    } catch (e) {}
-  }
-
-  async function fetchTeamsAndAgents() {
-    try {
-      const [teamsRes, agentsRes] = await Promise.all([
-        fetch(`${API_BASE}/teams`, { headers: { ...getAuthHeaders() } }),
-        fetch(`${API_BASE}/agents`, { headers: { ...getAuthHeaders() } }),
-      ]);
-      if (teamsRes.ok) {
-        const teamsData = await teamsRes.json();
-        setTeams(Array.isArray(teamsData) ? teamsData : teamsData.data || []);
-      }
-      if (agentsRes.ok) {
-        const agentsData = await agentsRes.json();
-        setAgents(Array.isArray(agentsData) ? agentsData : agentsData.data || []);
-      }
-    } catch (e) {}
+    } catch (e) { /* silencioso */ }
   }
 
   async function fetchRelatorio() {
@@ -159,14 +112,13 @@ export default function BomAutoRelatorio() {
       const params = new URLSearchParams();
       if (filterDataInicio) params.set('data_inicio', filterDataInicio);
       if (filterDataFim) params.set('data_fim', filterDataFim);
-      if (filterDocumento.trim()) params.set('documento', filterDocumento.trim());
-      if (filterTipoServico !== 'todos') params.set('tipo_servico', filterTipoServico);
+      if (filterDocumento.trim()) params.set('documento', filterDocumento.trim().replace(/\D/g, ''));
+      if (filterNome.trim()) params.set('nome', filterNome.trim());
+      if (filterPet.trim()) params.set('pet', filterPet.trim());
       if (filterStatus !== 'todos') params.set('status', filterStatus);
       if (filterAtendente !== 'todos') params.set('atendente', filterAtendente);
 
-      const res = await fetch(`${API_BASE}/bom-auto/atendimentos?${params.toString()}`, {
-        headers: { ...getAuthHeaders() },
-      });
+      const res = await fetch(`${API_BASE}/bom-pet/atendimentos?${params.toString()}`, { headers: { ...getAuthHeaders() } });
       if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao buscar dados'));
       const data = await res.json();
       data.sort((a, b) => new Date(b.data_hora || b.created_at) - new Date(a.data_hora || a.created_at));
@@ -178,78 +130,48 @@ export default function BomAutoRelatorio() {
     }
   }
 
-  function handleFilter(e) {
-    e.preventDefault();
-    fetchRelatorio();
-  }
-
-  const filteredAtendentes = filterTeam !== 'todos'
-    ? atendentes.filter(atendenteName => {
-        const teamAgents = agents.filter(a => String(a.teamId || a.team_id) === String(filterTeam));
-        return teamAgents.some(a => a.email === atendenteName || a.name === atendenteName);
-      })
-    : atendentes;
-
-  function handleTeamChange(val) {
-    setFilterTeam(val);
-    setFilterAtendente("todos");
-  }
-
   function handleClearFilters() {
     setFilterDataInicio("");
     setFilterDataFim("");
     setFilterDocumento("");
-    setFilterTipoServico("todos");
+    setFilterNome("");
+    setFilterPet("");
     setFilterStatus("todos");
     setFilterAtendente("todos");
-    setFilterTeam("todos");
     setAtendimentos([]);
   }
 
-  const displayAtendimentos = filterTeam !== 'todos'
-    ? atendimentos.filter(at => {
-        const teamAgents = agents.filter(a => String(a.teamId || a.team_id) === String(filterTeam));
-        return teamAgents.some(a => a.email === at.usuario || a.name === at.usuario);
-      })
-    : atendimentos;
-
   function getExportData() {
-    return displayAtendimentos.map(at => ({
+    return atendimentos.map(at => ({
       'Data Atendimento': formatDateTime(at.data_hora || at.created_at),
-      'Contrato / Serviços': at.contratos_servicos || '-',
+      'Protocolo': at.protocolo || '-',
+      'Cliente': at.nome_cliente || '-',
       'Documento': at.documento_cliente || '-',
-      'Placa': at.placa || '-',
-      'Tipo de Serviço': at.tipo_servico || '-',
+      'Pet': at.pet_nome || '-',
+      'Local da Remoção': at.remocao_local || '-',
+      'Clínica': at.clinica_nome || '-',
+      'Parceiro': at.parceiro_nome || '-',
       'Status': at.status_atendimento || '-',
       'Atendente': at.usuario || '-',
     }));
   }
 
   async function handleExportExcel() {
-    if (displayAtendimentos.length === 0) {
+    if (atendimentos.length === 0) {
       toast({ title: "Aviso", description: "Nenhum dado para exportar. Aplique os filtros primeiro.", variant: "destructive" });
       return;
     }
     setExporting('excel');
     try {
       const XLSX = await import('xlsx');
-      const data = getExportData();
-      const ws = XLSX.utils.json_to_sheet(data);
-
-      const colWidths = [
-        { wch: 20 },
-        { wch: 35 },
-        { wch: 18 },
-        { wch: 12 },
-        { wch: 20 },
-        { wch: 16 },
-        { wch: 30 },
+      const ws = XLSX.utils.json_to_sheet(getExportData());
+      ws['!cols'] = [
+        { wch: 20 }, { wch: 14 }, { wch: 30 }, { wch: 18 }, { wch: 25 },
+        { wch: 25 }, { wch: 25 }, { wch: 25 }, { wch: 14 }, { wch: 30 },
       ];
-      ws['!cols'] = colWidths;
-
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Relatório');
-      XLSX.writeFile(wb, `Relatorio_Utilizacoes_${formatDateForFile()}.xlsx`);
+      XLSX.writeFile(wb, `Relatorio_BomPet_${formatDateForFile()}.xlsx`);
       toast({ title: "Sucesso", description: "Relatório exportado em Excel." });
     } catch (err) {
       toast({ title: "Erro", description: "Erro ao gerar Excel: " + err.message, variant: "destructive" });
@@ -259,7 +181,7 @@ export default function BomAutoRelatorio() {
   }
 
   async function handleExportPDF() {
-    if (displayAtendimentos.length === 0) {
+    if (atendimentos.length === 0) {
       toast({ title: "Aviso", description: "Nenhum dado para exportar. Aplique os filtros primeiro.", variant: "destructive" });
       return;
     }
@@ -274,20 +196,23 @@ export default function BomAutoRelatorio() {
 
       doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
-      doc.text('Relatório de Utilizações - Bom Auto', 14, 18);
+      doc.text('Relatório de Utilizações - Bom Pet', 14, 18);
 
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
       doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 25);
-      doc.text(`Total de registros: ${displayAtendimentos.length}`, 14, 30);
+      doc.text(`Total de registros: ${atendimentos.length}`, 14, 30);
 
-      const headers = [['Data', 'Contrato/Serviços', 'Documento', 'Placa', 'Tipo Serviço', 'Status', 'Atendente']];
-      const tableData = displayAtendimentos.map(at => [
+      const headers = [['Data', 'Protocolo', 'Cliente', 'Documento', 'Pet', 'Local Remoção', 'Clínica', 'Parceiro', 'Status', 'Atendente']];
+      const tableData = atendimentos.map(at => [
         formatDateTime(at.data_hora || at.created_at),
-        String(at.contratos_servicos || '-'),
+        at.protocolo || '-',
+        at.nome_cliente || '-',
         at.documento_cliente || '-',
-        at.placa || '-',
-        at.tipo_servico || '-',
+        at.pet_nome || '-',
+        at.remocao_local || '-',
+        at.clinica_nome || '-',
+        at.parceiro_nome || '-',
         at.status_atendimento || '-',
         at.usuario || '-',
       ]);
@@ -298,8 +223,8 @@ export default function BomAutoRelatorio() {
         head: headers,
         body: tableData,
         startY: 35,
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [14, 165, 233], textColor: 255, fontStyle: 'bold', fontSize: 8 },
+        styles: { fontSize: 7, cellPadding: 1.5 },
+        headStyles: { fillColor: [13, 88, 75], textColor: 255, fontStyle: 'bold', fontSize: 7 },
         alternateRowStyles: { fillColor: [245, 247, 250] },
         margin: { left: 14, right: 14 },
         didDrawPage: function (hookData) {
@@ -314,7 +239,7 @@ export default function BomAutoRelatorio() {
         },
       });
 
-      doc.save(`Relatorio_Utilizacoes_${formatDateForFile()}.pdf`);
+      doc.save(`Relatorio_BomPet_${formatDateForFile()}.pdf`);
       toast({ title: "Sucesso", description: "Relatório exportado em PDF." });
     } catch (err) {
       toast({ title: "Erro", description: "Erro ao gerar PDF: " + err.message, variant: "destructive" });
@@ -326,7 +251,7 @@ export default function BomAutoRelatorio() {
   if (authorized === null) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-teal-500" />
       </div>
     );
   }
@@ -341,7 +266,7 @@ export default function BomAutoRelatorio() {
             </div>
             <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Acesso Restrito</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Este relatório está disponível apenas para Supervisores de Vendas e Administradores.
+              Este relatório está disponível apenas para Supervisores e Administradores.
             </p>
           </CardContent>
         </Card>
@@ -354,10 +279,10 @@ export default function BomAutoRelatorio() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-gradient-to-br from-sky-500 to-cyan-500 shadow-lg">
+            <div className="p-2 rounded-xl bg-gradient-to-br from-teal-600 to-emerald-500 shadow-lg">
               <FileBarChart className="w-5 h-5 text-white" />
             </div>
-            Relatório de Utilizações
+            Relatório de Utilizações — Bom Pet
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -365,7 +290,7 @@ export default function BomAutoRelatorio() {
             <button
               type="button"
               onClick={() => setFiltersOpen(!filtersOpen)}
-              className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
+              className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
             >
               <Filter className="w-4 h-4" />
               Filtros Avançados
@@ -374,100 +299,55 @@ export default function BomAutoRelatorio() {
           </div>
 
           {filtersOpen && (
-            <form onSubmit={handleFilter} className="space-y-4">
+            <form onSubmit={(e) => { e.preventDefault(); fetchRelatorio(); }} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5" /> Data Início
                   </Label>
-                  <Input
-                    type="date"
-                    value={filterDataInicio}
-                    onChange={e => setFilterDataInicio(e.target.value)}
-                    className="border-gray-200 dark:border-gray-700"
-                  />
+                  <Input type="date" value={filterDataInicio} onChange={e => setFilterDataInicio(e.target.value)} />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5" /> Data Fim
                   </Label>
-                  <Input
-                    type="date"
-                    value={filterDataFim}
-                    onChange={e => setFilterDataFim(e.target.value)}
-                    className="border-gray-200 dark:border-gray-700"
-                  />
+                  <Input type="date" value={filterDataFim} onChange={e => setFilterDataFim(e.target.value)} />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Documento (CPF)</Label>
-                  <Input
-                    placeholder="CPF do cliente"
-                    value={filterDocumento}
-                    onChange={e => setFilterDocumento(e.target.value)}
-                    className="border-gray-200 dark:border-gray-700"
-                  />
+                  <Input placeholder="CPF do cliente" value={filterDocumento} onChange={e => setFilterDocumento(e.target.value)} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Tipo de Serviço</Label>
-                  <Select value={filterTipoServico} onValueChange={setFilterTipoServico}>
-                    <SelectTrigger className="border-gray-200 dark:border-gray-700">
-                      <SelectValue placeholder="Todos" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="todos">Todos</SelectItem>
-                      {TIPOS_SERVICO.map(t => (
-                        <SelectItem key={t} value={t}>{t}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-xs font-medium">Nome do Cliente</Label>
+                  <Input placeholder="Nome do cliente" value={filterNome} onChange={e => setFilterNome(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Pet</Label>
+                  <Input placeholder="Nome do pet" value={filterPet} onChange={e => setFilterPet(e.target.value)} />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Status</Label>
                   <Select value={filterStatus} onValueChange={setFilterStatus}>
-                    <SelectTrigger className="border-gray-200 dark:border-gray-700">
-                      <SelectValue placeholder="Todos" />
-                    </SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="todos">Todos</SelectItem>
-                      {STATUS_OPTIONS.map(s => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
-                      ))}
+                      {STATUS_OPTIONS.map(s => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                     </SelectContent>
                   </Select>
                 </div>
-                {teams.length > 0 && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Time</Label>
-                    <Select value={filterTeam} onValueChange={handleTeamChange}>
-                      <SelectTrigger className="border-gray-200 dark:border-gray-700">
-                        <SelectValue placeholder="Todos os times" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="todos">Todos os times</SelectItem>
-                        {teams.map(t => (
-                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Atendente</Label>
                   <Select value={filterAtendente} onValueChange={setFilterAtendente}>
-                    <SelectTrigger className="border-gray-200 dark:border-gray-700">
-                      <SelectValue placeholder="Todos" />
-                    </SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="todos">Todos</SelectItem>
-                      {filteredAtendentes.map(a => (
-                        <SelectItem key={a} value={a}>{a}</SelectItem>
-                      ))}
+                      {atendentes.map(a => (<SelectItem key={a} value={a}>{a}</SelectItem>))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               <div className="flex gap-3">
-                <Button type="submit" disabled={loading} className="bg-sky-600 hover:bg-sky-700 text-white">
+                <Button type="submit" disabled={loading} className="bg-teal-600 hover:bg-teal-700 text-white">
                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
                   Buscar
                 </Button>
@@ -480,30 +360,24 @@ export default function BomAutoRelatorio() {
         </CardContent>
       </Card>
 
-      {displayAtendimentos.length > 0 && (
+      {atendimentos.length > 0 && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between flex-wrap gap-3">
               <CardTitle className="text-base flex items-center gap-2">
                 Resultados
-                <Badge variant="secondary" className="ml-1">{displayAtendimentos.length} registros</Badge>
+                <Badge variant="secondary" className="ml-1">{atendimentos.length} registros</Badge>
               </CardTitle>
               <div className="flex gap-2">
                 <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleExportExcel}
-                  disabled={!!exporting}
+                  variant="outline" size="sm" onClick={handleExportExcel} disabled={!!exporting}
                   className="text-emerald-700 border-emerald-300 hover:bg-emerald-50 dark:text-emerald-400 dark:border-emerald-700 dark:hover:bg-emerald-900/30"
                 >
                   {exporting === 'excel' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
                   Excel
                 </Button>
                 <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleExportPDF}
-                  disabled={!!exporting}
+                  variant="outline" size="sm" onClick={handleExportPDF} disabled={!!exporting}
                   className="text-red-700 border-red-300 hover:bg-red-50 dark:text-red-400 dark:border-red-700 dark:hover:bg-red-900/30"
                 >
                   {exporting === 'pdf' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
@@ -517,42 +391,24 @@ export default function BomAutoRelatorio() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 dark:bg-gray-800/50">
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Data Atendimento</th>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Contrato / Serviços</th>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Documento</th>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Placa</th>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Tipo de Serviço</th>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Status</th>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">Atendente</th>
+                    {['Data Atendimento', 'Protocolo', 'Cliente', 'Documento', 'Pet', 'Local Remoção', 'Clínica', 'Parceiro', 'Status', 'Atendente'].map(h => (
+                      <th key={h} className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">{h}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {displayAtendimentos.map((at, idx) => (
-                    <tr
-                      key={at.id || idx}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors"
-                    >
-                      <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">
-                        {formatDateTime(at.data_hora || at.created_at)}
-                      </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-[250px] truncate" title={at.contratos_servicos || '-'}>
-                        {at.contratos_servicos || '-'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300 font-mono text-xs">
-                        {at.documento_cliente || '-'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300 font-mono">
-                        {at.placa || '-'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">
-                        {at.tipo_servico || '-'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <StatusBadge status={at.status_atendimento} />
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">
-                        {at.usuario || '-'}
-                      </td>
+                  {atendimentos.map((at, idx) => (
+                    <tr key={at.id || idx} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                      <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{formatDateTime(at.data_hora || at.created_at)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300 font-mono text-xs">{at.protocolo || '-'}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-[200px] truncate" title={at.nome_cliente || '-'}>{at.nome_cliente || '-'}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300 font-mono text-xs">{at.documento_cliente || '-'}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-[180px] truncate" title={at.pet_nome || '-'}>{at.pet_nome || '-'}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-[180px] truncate" title={at.remocao_local || '-'}>{at.remocao_local || '-'}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-[160px] truncate" title={at.clinica_nome || '-'}>{at.clinica_nome || '-'}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-[160px] truncate" title={at.parceiro_nome || '-'}>{at.parceiro_nome || '-'}</td>
+                      <td className="px-4 py-3 whitespace-nowrap"><StatusBadge status={at.status_atendimento} /></td>
+                      <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{at.usuario || '-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -562,7 +418,7 @@ export default function BomAutoRelatorio() {
         </Card>
       )}
 
-      {!loading && displayAtendimentos.length === 0 && atendimentos.length === 0 && (
+      {!loading && atendimentos.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center">
             <FileBarChart className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />

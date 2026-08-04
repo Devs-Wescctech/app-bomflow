@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Activity, ShieldAlert, Loader2, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = "/api/erp-audit";
 
@@ -28,8 +29,7 @@ async function auditRequest(path, params = {}) {
   ).toString();
   const res = await fetch(`${API_BASE}${path}${qs ? `?${qs}` : ""}`, { headers: authHeaders() });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message || "Erro na requisição");
+    throw new Error(await extractApiError(res, "Erro na requisição"));
   }
   return res.json();
 }

@@ -6,6 +6,7 @@ import {
   ClipboardCheck, Loader2, Clock, CheckCircle2, RefreshCw,
   User as UserIcon, Layers, Hash, Send, AlertTriangle, ExternalLink,
 } from "lucide-react";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = "/api";
 
@@ -52,8 +53,8 @@ function AjusteCard({ ajuste, onMarked }) {
       const res = await fetch(`${API_BASE}/presales-ajustes/${ajuste.id}/lead`, {
         headers: authHeaders(),
       });
+      if (!res.ok) throw new Error(await extractApiError(res, "Não foi possível abrir o lead do cliente."));
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Não foi possível abrir o lead do cliente.");
       navigate(createPageUrl(data.page, { id: data.lead_id }));
     } catch (e) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });
@@ -69,8 +70,8 @@ function AjusteCard({ ajuste, onMarked }) {
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ comentario: comentario.trim() || null }),
       });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao marcar como ajustado."));
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Falha ao marcar como ajustado.");
       toast({ title: "Marcado como ajustado", description: "A venda voltou para a fila da auditoria." });
       onMarked();
     } catch (e) {
@@ -199,7 +200,7 @@ export default function PreSalesAjustes() {
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/presales-ajustes/mine`, { headers: authHeaders() });
-      if (!res.ok) throw new Error("Falha ao carregar seus ajustes.");
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao carregar seus ajustes."));
       const data = await res.json();
       setItems(Array.isArray(data.items) ? data.items : []);
     } catch (e) {

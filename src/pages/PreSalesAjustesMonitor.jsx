@@ -7,6 +7,7 @@ import {
   AlertTriangle, BellRing, BellOff, PlayCircle, Hash, Layers, User as UserIcon,
   CalendarClock, FlaskConical, Power, History,
 } from "lucide-react";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = "/api";
 
@@ -203,8 +204,8 @@ export default function PreSalesAjustesMonitor() {
   const loadRuns = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/presales-ajustes/runs?limit=20`, { headers: authHeaders() });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao carregar o histórico."));
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Falha ao carregar o histórico.");
       setRuns(Array.isArray(json.items) ? json.items : []);
     } catch {
       setRuns([]);
@@ -215,8 +216,8 @@ export default function PreSalesAjustesMonitor() {
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/presales-ajustes/monitor?status=todos`, { headers: authHeaders() });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao carregar o painel."));
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Falha ao carregar o painel.");
       setData(json);
       await loadRuns();
     } catch (e) {
@@ -237,8 +238,9 @@ export default function PreSalesAjustesMonitor() {
     setLastRun(null);
     try {
       const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: authHeaders() });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao executar o job."));
       const json = await res.json().catch(() => ({}));
-      if (!res.ok || json.success === false) {
+      if (json.success === false) {
         throw new Error(json.error || "Falha ao executar o job.");
       }
       setLastRun({ kind, result: json.result });

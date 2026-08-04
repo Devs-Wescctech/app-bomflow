@@ -7,6 +7,7 @@ import {
   API_BASE, authHeaders, StatusBadge, PrazoBadge, TrilhaModal, Hero,
   ClienteCell, STATUS_META,
 } from "@/components/postsales/shared";
+import { extractApiError } from "@/utils/apiError";
 
 const FUNIL = [
   "fila", "em_verificacao", "devolvida", "resolvida",
@@ -25,8 +26,8 @@ export default function PosVendasMonitor() {
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/postsales/monitor`, { headers: authHeaders() });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao carregar o monitor."));
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Falha ao carregar o monitor.");
       setData(json);
     } catch (e) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });

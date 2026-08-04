@@ -12,6 +12,7 @@ import { ArrowLeft, Search, RefreshCw, Loader2, CheckCircle, User } from "lucide
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { toast } from "sonner";
+import { extractApiError } from "@/utils/apiError";
 
 const formatCPF = (value) => {
   const clean = value.replace(/\D/g, '').slice(0, 11);
@@ -83,8 +84,8 @@ export default function ReferralReactivation() {
         },
         body: JSON.stringify(payload),
       });
+      if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao salvar.'));
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Erro ao salvar.');
       return data;
     },
     onSuccess: () => {

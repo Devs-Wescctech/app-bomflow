@@ -14,6 +14,7 @@ import attendanceConnectionsRoutes from './routes/attendanceConnections.js';
 import attendanceChatRoutes from './routes/attendanceChat.js';
 import attendanceWebhookRoutes from './routes/attendanceWebhook.js';
 import bomAutoRoutes from './routes/bomAuto.js';
+import bomPetRoutes from './routes/bomPet.js';
 import erpProxyRoutes from './routes/erpProxy.js';
 import apiKeyRoutes from './routes/apiKeys.js';
 import externalRoutes from './routes/external.js';
@@ -57,7 +58,15 @@ app.get('/', (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
+  // smoke: 'ok' | 'stale' | 'pending' — 'stale' indica processo rodando código
+  // desatualizado (rota crítica ausente). Consultável para monitoramento.
+  const stale = smokeCheckState.failures.length > 0;
+  res.status(stale ? 500 : 200).json({
+    status: stale ? 'stale' : 'ok',
+    smoke: smokeCheckState.done ? (stale ? 'stale' : 'ok') : 'pending',
+    ...(stale && { smoke_failures: smokeCheckState.failures }),
+    started_at: smokeCheckState.startedAt,
+  });
 });
 
 app.use(cors({
@@ -90,6 +99,7 @@ app.use('/api/attendance/connections', attendanceConnectionsRoutes);
 app.use('/api/attendance', attendanceChatRoutes);
 app.use('/api/webhooks/attendance', attendanceWebhookRoutes);
 app.use('/api/bom-auto', bomAutoRoutes);
+app.use('/api/bom-pet', bomPetRoutes);
 app.use('/api/erp', erpProxyRoutes);
 app.use('/api/orcamento-documentos', orcamentoDocumentosRoutes);
 app.use('/api/presales-ajustes', presalesAjustesRoutes);
@@ -130,11 +140,23 @@ app.post('/api/api_chatid_indicacoes', async (req, res) => {
       );
     }
 
-    console.log(`[api_chatid_indicacoes] chatId=${chatId} → retorno_whu=${found}`);
+    // Vendas PF: resposta do cliente também interrompe as automações PF
+    // (leads.automation_responded_at). Fallback por telefone quando o chat
+    // não bate (o WHU pode reciclar o chatId entre disparos).
+    let pfFound = false;
+    try {
+      const { markLeadRespondedByChat } = await import('./services/pfAutomationCycle.js');
+      const rawPhone = req.body.phone || req.body.number || req.body.contactNumber || null;
+      pfFound = await markLeadRespondedByChat(chatId, rawPhone, dbQuery);
+    } catch (pfError) {
+      console.error('[api_chatid_indicacoes] Erro ao marcar resposta PF:', pfError.message);
+    }
+
+    console.log(`[api_chatid_indicacoes] chatId=${chatId} → retorno_whu=${found}, lead_pf=${pfFound}`);
 
     return res.json({
-      success: found,
-      message: found ? 'Chat encontrado' : 'Chat não encontrado'
+      success: found || pfFound,
+      message: (found || pfFound) ? 'Chat encontrado' : 'Chat não encontrado'
     });
   } catch (error) {
     console.error('[api_chatid_indicacoes] Error:', error.message);
@@ -160,7 +182,41 @@ app.use((err, req, res, next) => {
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Backend server running on http://0.0.0.0:${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/api/health`);
+  runBootSmokeCheck();
 });
+
+// ── Smoke check de boot ────────────────────────────────────────────────────
+// Detecta processo desatualizado (rotas montadas no disco mas ausentes no
+// processo em execução) — causa do incidente "Bom Pet 404". Uma rota crítica
+// respondendo 404 no próprio processo indica build/deploy defasado.
+const smokeCheckState = { done: false, failures: [], startedAt: new Date().toISOString() };
+
+const SMOKE_ROUTES = [
+  '/api/health',
+  '/api/bom-pet/consulta',
+  '/api/bom-auto/consulta',
+];
+
+async function runBootSmokeCheck() {
+  for (const route of SMOKE_ROUTES) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${PORT}${route}`);
+      // 401/400/etc = rota montada (middleware respondeu); 404 = rota ausente.
+      if (res.status === 404) {
+        smokeCheckState.failures.push(route);
+        console.error(`[SmokeCheck] FALHA: rota ${route} respondeu 404 — processo pode estar desatualizado (recarregue/republique o backend).`);
+      } else {
+        console.log(`[SmokeCheck] OK: ${route} (HTTP ${res.status})`);
+      }
+    } catch (err) {
+      console.error(`[SmokeCheck] Erro ao verificar ${route}:`, err.message);
+    }
+  }
+  smokeCheckState.done = true;
+  if (smokeCheckState.failures.length > 0) {
+    console.error(`[SmokeCheck] ATENÇÃO: ${smokeCheckState.failures.length} rota(s) crítica(s) ausente(s) — /api/health passa a responder 500 (status "stale") até o processo ser recarregado com o código atual.`);
+  }
+}
 
 initDatabase()
   .then(async () => {

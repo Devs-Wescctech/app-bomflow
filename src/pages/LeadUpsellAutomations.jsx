@@ -41,6 +41,7 @@ import {
 import { toast } from "sonner";
 import WhatsAppTemplateSelectorByToken from "@/components/whatsapp/WhatsAppTemplateSelectorByToken";
 import AutomationLogsPanel from "@/components/whatsapp/AutomationLogsPanel";
+import { extractApiError } from "@/utils/apiError";
 
 const STAGES = [
   { value: "novo", label: "Novo" },
@@ -84,8 +85,7 @@ const fetchWithAuth = async (url, options = {}) => {
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...options.headers }
   });
   if (!resp.ok) {
-    const errBody = await resp.json().catch(() => ({}));
-    throw new Error(errBody.error || errBody.message || `HTTP ${resp.status}`);
+    throw new Error(await extractApiError(resp));
   }
   return resp.json();
 };

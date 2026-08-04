@@ -4,6 +4,7 @@ import { createPageUrl } from '@/utils';
 import { AlertTriangle, Clock, Loader2, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { extractApiError } from "@/utils/apiError";
 
 const MODULE_ROUTES = {
   leads: 'LeadDetail',
@@ -71,8 +72,8 @@ export default function LeadPoolClaimBanner({ phone, currentModule }) {
           notes: `Puxado de ${MODULE_LABELS[checkResult.module]} após ${checkResult.daysInactive} dias de inatividade`,
         }),
       });
+      if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao puxar lead'));
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Erro ao puxar lead');
       toast.success('Lead puxado com sucesso! Redirecionando...');
       const routeName = MODULE_ROUTES[currentModule];
       setTimeout(() => navigate(`${createPageUrl(routeName)}?id=${data.newLeadId}`), 1200);

@@ -7,6 +7,7 @@ import {
   ClipboardCheck, ThumbsUp, PencilLine, Ban, MapPin, Mail, Send, Clock,
   Lock, ShieldQuestion,
 } from "lucide-react";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = "/api";
 
@@ -210,7 +211,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/orcamento-documentos/by-pedido/${pedidoId}`, { headers: authHeaders() });
-      if (!res.ok) throw new Error("Falha ao carregar os detalhes do orçamento.");
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao carregar os detalhes do orçamento."));
       const data = await res.json();
       setDocumentos(Array.isArray(data.documentos) ? data.documentos : []);
       setProduto(data.produto || null);
@@ -265,7 +266,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
       });
-      const data = await res.json().catch(() => ({}));
+      const data = res.ok || res.status === 409 ? await res.json().catch(() => ({})) : {};
       if (res.status === 409) {
         // Outro auditor assumiu primeiro — passa para somente leitura.
         setLock(data.lock || null);
@@ -273,7 +274,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
         toast({ title: "Já está em auditoria", description: data.error, variant: "destructive" });
         return;
       }
-      if (!res.ok) throw new Error(data.error || "Falha ao assumir a auditoria.");
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao assumir a auditoria."));
       setLock(data.lock || null);
       onLockChange?.(pedidoId, data.lock || null);
       toast({ title: "Auditoria assumida", description: "Você é o responsável por este orçamento." });
@@ -299,14 +300,14 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
       });
-      const data = await res.json().catch(() => ({}));
+      const data = res.ok || res.status === 409 ? await res.json().catch(() => ({})) : {};
       if (res.status === 409) {
         setLock(data.lock || null);
         onLockChange?.(pedidoId, data.lock || null);
         toast({ title: "Não foi possível aprovar", description: data.error, variant: "destructive" });
         return;
       }
-      if (!res.ok) throw new Error(data.error || "Falha ao aprovar o orçamento.");
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao aprovar o orçamento."));
       setLock(null);
       onLockChange?.(pedidoId, null);
       onApproved?.(pedidoId, data.aprovacao || null);
@@ -333,8 +334,8 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ erp_pedido_id: pedidoId, texto }),
       });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao solicitar o ajuste."));
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Falha ao solicitar o ajuste.");
       toast({ title: "Ajuste solicitado", description: "O vendedor e o supervisor foram notificados." });
       setAjusteTexto("");
       loadAjustes();
@@ -360,7 +361,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
     setViewingId(doc.id);
     try {
       const res = await fetch(`${API_BASE}/orcamento-documentos/${doc.id}/download`, { headers: authHeaders() });
-      if (!res.ok) throw new Error("Falha ao abrir o documento.");
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao abrir o documento."));
       const blob = await res.blob();
       const objUrl = URL.createObjectURL(blob);
       window.open(objUrl, "_blank", "noopener");
@@ -411,24 +412,22 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
   const emailOk = !!(titular?.email || detalhe?.email);
   const end = titular?.endereco || detalhe?.endereco || null;
   const enderecoOk = !!(end && end.cep && end.logradouro && end.numero && end.bairro && end.cidade);
-  // Título do contrato == canal de vendas selecionado no formulário (já resolvido no relatório).
-  const tituloOk = !!(canalLabel && canalLabel !== "-");
   const planoOk = !!detalhe?.plano_pagamento;
   const docIdOk = attachedTipos.has("documento_identidade");
   const compResOk = attachedTipos.has("comprovante_residencia");
   const taxaAdesaoOk = attachedTipos.has("taxa_adesao");
   const copiaContratoOk = attachedTipos.has("copia_contrato");
 
-  // Valida TODOS os campos de preenchimento obrigatório do formulário (CPF, Nome, Telefone,
-  // E-mail, Endereço, Título do contrato, Plano de pagamento e Produto) e os 4 documentos que o
-  // vendedor precisa anexar. Itens apenas recomendados (data de nascimento, veículo) ficam de fora.
+  // Valida os campos de preenchimento obrigatório do formulário (CPF, Nome, Telefone,
+  // E-mail, Endereço, Plano de pagamento e Produto) e os 4 documentos que o vendedor
+  // precisa anexar. Itens apenas recomendados (data de nascimento, veículo) ficam de fora.
+  // "Título do contrato" (canal de vendas) foi removido do checklist a pedido do usuário.
   const checklist = [
     { label: "CPF informado", ok: cpfOk, level: "critico" },
     { label: "Nome completo", ok: nomeOk, level: "critico" },
     { label: "Telefone informado", ok: telOk, level: "critico" },
     { label: "E-mail informado", ok: emailOk, level: "critico" },
     { label: "Endereço completo", ok: enderecoOk, level: "critico" },
-    { label: "Título do contrato", ok: tituloOk, level: "critico" },
     { label: "Plano de pagamento", ok: planoOk, level: "critico" },
     { label: "Produto selecionado", ok: produtoOk, level: "critico" },
     { label: "Documento (CPF/RG) anexado", ok: docIdOk, level: "doc" },

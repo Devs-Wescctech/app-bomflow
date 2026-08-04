@@ -14,6 +14,7 @@ import {
   Inbox, User as UserIcon, Layers, ArrowRight, MoreVertical, Lock,
 } from "lucide-react";
 import OrcamentoDetalheModal from "@/components/presales/OrcamentoDetalheModal";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = '/api';
 
@@ -233,7 +234,7 @@ export default function PreSalesOrcamentoRelatorio() {
         toast({ title: 'Acesso restrito', description: 'Você não tem permissão para este relatório.', variant: 'destructive' });
         return;
       }
-      if (!res.ok) throw new Error('Falha ao carregar a fila de auditoria.');
+      if (!res.ok) throw new Error(await extractApiError(res, 'Falha ao carregar a fila de auditoria.'));
       const data = await res.json();
       const list = Array.isArray(data.items) ? data.items : [];
       setItems(list);
@@ -288,12 +289,13 @@ export default function PreSalesOrcamentoRelatorio() {
       setTargetLoading(true);
       try {
         const res = await fetch(`${API_BASE}/erp/relatorio-orcamentos/by-pedido/${encodeURIComponent(targetOrc)}`, { headers: getAuthHeaders() });
-        const data = await res.json().catch(() => ({}));
+        const data = res.ok ? await res.json().catch(() => ({})) : {};
+        const errMsg = res.ok ? null : await extractApiError(res, 'Falha ao abrir o orçamento.');
         if (cancelled) return;
         if (!res.ok || !data.item) {
           toast({
             title: 'Orçamento não localizado',
-            description: 'Use a busca por número ou CPF para encontrá-lo.',
+            description: errMsg || 'Use a busca por número ou CPF para encontrá-lo.',
             variant: 'destructive',
           });
           return;

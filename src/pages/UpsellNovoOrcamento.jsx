@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { extractApiError } from "@/utils/apiError";
 
 // Formata um número como celular brasileiro: (XX) 9XXXX-XXXX
 const formatMobilePhone = (v) => {
@@ -389,7 +390,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       const res = await fetch("/api/erp/produtos", {
         headers: { Authorization: `Bearer ${localStorage.getItem("accessToken")}` },
       });
-      if (!res.ok) throw new Error("Erro ao buscar produtos do ERP");
+      if (!res.ok) throw new Error(await extractApiError(res, "Erro ao buscar produtos do ERP"));
       return res.json();
     },
     staleTime: 1000 * 60 * 10,
@@ -408,12 +409,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
         headers: { Authorization: `Bearer ${localStorage.getItem("accessToken")}` },
       });
       if (!res.ok) {
-        let msg = "Erro ao buscar planos de pagamento do ERP";
-        try {
-          const body = await res.json();
-          if (body?.error) msg = body.error;
-        } catch { /* corpo não-JSON: mantém mensagem padrão */ }
-        throw new Error(msg);
+        throw new Error(await extractApiError(res, "Erro ao buscar planos de pagamento do ERP"));
       }
       return res.json();
     },
@@ -876,8 +872,8 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       const r = await fetch(`/api/erp/lookup-cpf?cpf=${encodeURIComponent(cpf)}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("accessToken")}` },
       });
+      if (!r.ok) throw new Error(await extractApiError(r, "Erro ao buscar CPF"));
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error || "Erro ao buscar CPF");
       return data;
     },
     onSuccess: (data) => {

@@ -6,6 +6,7 @@ import {
 import {
   API_BASE, authHeaders, StatusBadge, TrilhaModal, Hero, ClienteCell, formatDateTime,
 } from "@/components/postsales/shared";
+import { extractApiError } from "@/utils/apiError";
 
 // Equipe do Pré-venda: orçamentos congelados pelo Pós-Vendas ("não resolvido").
 // Liberar = volta à fila do Pós-Vendas. Não liberar = encaminha à decisão final
@@ -21,8 +22,8 @@ export default function PosVendasCongelados() {
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/postsales/congelados`, { headers: authHeaders() });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao carregar os congelados."));
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Falha ao carregar os congelados.");
       setItems(Array.isArray(json.items) ? json.items : []);
     } catch (e) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });
@@ -41,8 +42,8 @@ export default function PosVendasCongelados() {
       const res = await fetch(`${API_BASE}/postsales/${item.id}/${path}`, {
         method: "POST", headers: authHeaders(),
       });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao registrar a decisão."));
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Falha ao registrar a decisão.");
       toast({
         title: acao === "liberar" ? "Orçamento liberado" : "Não liberado",
         description: acao === "liberar"

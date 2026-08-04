@@ -1,3 +1,4 @@
+import { apiErrorMessage } from "@/utils/apiError";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,12 +33,12 @@ export default function PublicProposal() {
         console.log('Fetching proposal from:', functionUrl);
         
         const response = await fetch(functionUrl);
-        const data = await response.json();
+        const data = await response.json().catch(() => null);
         
         console.log('Response:', data);
         
-        if (!response.ok || !data.success) {
-          throw new Error(data.error || 'Erro ao carregar proposta');
+        if (!response.ok || !data?.success) {
+          throw new Error(apiErrorMessage(response.status, data, 'Erro ao carregar proposta'));
         }
         
         setLead(data.lead);
@@ -71,12 +72,12 @@ export default function PublicProposal() {
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
       
       console.log('Response data:', data);
       
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Erro ao processar resposta');
+      if (!response.ok || !data?.success) {
+        throw new Error(apiErrorMessage(response.status, data, 'Erro ao processar resposta'));
       }
 
       setResponseSubmitted(true);

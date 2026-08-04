@@ -14,6 +14,7 @@ import {
   ClipboardCheck, Calendar, Shield,
   Copy, RefreshCw, Clock, Download, Save
 } from "lucide-react";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = '/api';
 
@@ -211,8 +212,7 @@ export default function BomAutoConsulta() {
       });
 
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || errData.message || 'Erro ao consultar cliente.');
+        throw new Error(await extractApiError(res, 'Erro ao consultar cliente.'));
       }
 
       const data = await res.json();
@@ -296,8 +296,7 @@ export default function BomAutoConsulta() {
       });
 
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || errData.message || 'Erro ao registrar atendimento.');
+        throw new Error(await extractApiError(res, 'Erro ao registrar atendimento.'));
       }
 
       const atendimento = await res.json();
@@ -353,7 +352,7 @@ export default function BomAutoConsulta() {
           termo_descricao_produto: termoDescricaoProduto,
         }),
       });
-      if (!resp.ok) throw new Error('Falha ao salvar');
+      if (!resp.ok) throw new Error(await extractApiError(resp, 'Falha ao salvar'));
       setTermoSalvo(true);
       toast({ title: "Autorização salva com sucesso!", description: "O botão para exportar o PDF foi habilitado." });
     } catch {

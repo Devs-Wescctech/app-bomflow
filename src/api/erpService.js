@@ -1,3 +1,5 @@
+import { extractApiError, apiErrorMessage } from '@/utils/apiError';
+
 const API_BASE = '/api';
 
 function getAuthHeaders() {
@@ -21,12 +23,12 @@ export async function buscarClienteERP(cpf) {
     body: JSON.stringify({ cpf: cpfLimpo }),
   });
   
-  const data = await response.json();
-  
+  const data = await response.json().catch(() => null);
+
   if (!response.ok) {
-    const error = new Error(data.error || 'Erro ao buscar cliente no ERP');
+    const error = new Error(apiErrorMessage(response.status, data, 'Erro ao buscar cliente no ERP'));
     error.status = response.status;
-    error.data = data;
+    error.data = data || {};
     throw error;
   }
   
@@ -49,12 +51,12 @@ export async function buscarReativacaoERP(cpf) {
     body: JSON.stringify({ cpf: cpfLimpo }),
   });
 
-  const data = await response.json();
+  const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const error = new Error(data.error || 'Erro ao buscar cliente de reativação no ERP');
+    const error = new Error(apiErrorMessage(response.status, data, 'Erro ao buscar cliente de reativação no ERP'));
     error.status = response.status;
-    error.data = data;
+    error.data = data || {};
     throw error;
   }
 
@@ -77,12 +79,12 @@ export async function buscarIndicadorERP(cpf) {
     body: JSON.stringify({ cpf: cpfLimpo }),
   });
 
-  const data = await response.json();
+  const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const error = new Error(data.error || 'Erro ao buscar indicador no ERP');
+    const error = new Error(apiErrorMessage(response.status, data, 'Erro ao buscar indicador no ERP'));
     error.status = response.status;
-    error.data = data;
+    error.data = data || {};
     throw error;
   }
 
@@ -106,12 +108,12 @@ export async function buscarIndicadorPorTelefoneERP(phone) {
     body: JSON.stringify({ sms: smsLimpo }),
   });
 
-  const data = await response.json();
+  const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const error = new Error(data.error || 'Erro ao buscar indicador no ERP por telefone');
+    const error = new Error(apiErrorMessage(response.status, data, 'Erro ao buscar indicador no ERP por telefone'));
     error.status = response.status;
-    error.data = data;
+    error.data = data || {};
     throw error;
   }
 
@@ -147,12 +149,12 @@ export async function registrarCanalErp({ agentId, pessoaId, contratoId, grupoId
     body: JSON.stringify({ agentId, pessoaId, contratoId, grupoId }),
   });
 
-  const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(data.error || 'Erro ao registrar agente no canal de vendas do ERP');
+    const error = new Error(await extractApiError(response, 'Erro ao registrar agente no canal de vendas do ERP'));
     error.status = response.status;
     throw error;
   }
+  const data = await response.json().catch(() => ({}));
   return data;
 }
 
@@ -164,12 +166,12 @@ export async function previewSyncAgentesErp(agentIds) {
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ agentIds: agentIds || null }),
   });
-  const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(data.error || 'Erro ao pré-visualizar a sincronização ERP');
+    const error = new Error(await extractApiError(response, 'Erro ao pré-visualizar a sincronização ERP'));
     error.status = response.status;
     throw error;
   }
+  const data = await response.json().catch(() => ({}));
   return data; // { items: [...] }
 }
 
@@ -184,12 +186,12 @@ export async function commitSyncAgentesErp(items) {
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ items }),
   });
-  const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(data.error || 'Erro ao gravar a sincronização ERP');
+    const error = new Error(await extractApiError(response, 'Erro ao gravar a sincronização ERP'));
     error.status = response.status;
     throw error;
   }
+  const data = await response.json().catch(() => ({}));
   return data; // { results: [...] }
 }
 
@@ -199,8 +201,7 @@ export async function buscarCanaisVenda() {
   });
 
   if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    const error = new Error(data.error || 'Erro ao buscar canais de venda no ERP');
+    const error = new Error(await extractApiError(response, 'Erro ao buscar canais de venda no ERP'));
     error.status = response.status;
     throw error;
   }

@@ -20,6 +20,7 @@ import {
 import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import { extractApiError } from "@/utils/apiError";
 
 const API_BASE = '/api';
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
@@ -78,7 +79,7 @@ export default function LeadGeneratorDashboard() {
       const res = await fetch(`${API_BASE}/functions/lead-generator-whatsapp-dashboard?${dashboardQueryParams}`, {
         headers: { ...getAuthHeaders() },
       });
-      if (!res.ok) throw new Error('Erro ao carregar dashboard');
+      if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao carregar dashboard'));
       return res.json();
     },
     refetchInterval: 30000,
@@ -90,7 +91,7 @@ export default function LeadGeneratorDashboard() {
       const res = await fetch(`${API_BASE}/functions/lead-generator-conversions-metrics?${dashboardQueryParams}`, {
         headers: { ...getAuthHeaders() },
       });
-      if (!res.ok) throw new Error('Erro ao carregar conversões');
+      if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao carregar conversões'));
       return res.json();
     },
     refetchInterval: 60000,
@@ -102,7 +103,7 @@ export default function LeadGeneratorDashboard() {
       const res = await fetch(`${API_BASE}/functions/lead-generator-roi-metrics?${dashboardQueryParams}`, {
         headers: { ...getAuthHeaders() },
       });
-      if (!res.ok) throw new Error('Erro ao carregar métricas ROI');
+      if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao carregar métricas ROI'));
       return res.json();
     },
     refetchInterval: 60000,
@@ -169,7 +170,7 @@ export default function LeadGeneratorDashboard() {
       const res = await fetch(`${API_BASE}/functions/lead-generator-whatsapp-logs-list?${logsQueryParams}`, {
         headers: { ...getAuthHeaders() },
       });
-      if (!res.ok) throw new Error('Erro ao carregar logs');
+      if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao carregar logs'));
       return res.json();
     },
     refetchInterval: 30000,
@@ -183,8 +184,8 @@ export default function LeadGeneratorDashboard() {
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ from: dateRange.from, to: dateRange.to }),
       });
+      if (!res.ok) throw new Error(await extractApiError(res, 'Erro'));
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro');
       if (data.matched > 0) {
         toast.success(`${data.matched} nova(s) conversão(ões) identificada(s)!`);
       } else {

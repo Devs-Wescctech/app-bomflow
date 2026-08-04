@@ -6,6 +6,7 @@ import {
 import {
   API_BASE, authHeaders, StatusBadge, PrazoBadge, TrilhaModal, Hero, ClienteCell,
 } from "@/components/postsales/shared";
+import { extractApiError } from "@/utils/apiError";
 
 // Coordenador/supervisor: devoluções do Pós-Vendas para a sua equipe, com motivo e
 // prazo de 3 dias. "Marcar como resolvida" devolve o orçamento ao auditor reavaliar.
@@ -21,8 +22,8 @@ export default function PosVendasDevolucoes() {
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/postsales/devolucoes`, { headers: authHeaders() });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao carregar as devoluções."));
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Falha ao carregar as devoluções.");
       setItems(Array.isArray(json.items) ? json.items : []);
     } catch (e) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });
@@ -41,8 +42,8 @@ export default function PosVendasDevolucoes() {
         method: "POST", headers: authHeaders(),
         body: JSON.stringify({ observacao: obs[item.id] || "" }),
       });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao marcar como resolvida."));
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Falha ao marcar como resolvida.");
       toast({ title: "Pendência resolvida", description: "O auditor do Pós-Vendas foi notificado para reavaliar." });
       await load();
     } catch (e) {

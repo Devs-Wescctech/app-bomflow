@@ -66,6 +66,7 @@ import ReassignLeadModal from "@/components/sales/ReassignLeadModal";
 import ReassignmentLog from "@/components/sales/ReassignmentLog";
 
 import { canViewAll, canViewTeam } from "@/components/utils/permissions.jsx";
+import { extractApiError } from "@/utils/apiError";
 
 const STAGES = [
   { value: "novo", label: "Novo", color: "bg-gray-500", badge: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100" },
@@ -177,8 +178,7 @@ export default function LeadDetail() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Erro ao buscar produtos do ERP');
+        throw new Error(await extractApiError(res, 'Erro ao buscar produtos do ERP'));
       }
       return res.json();
     },

@@ -1,3 +1,4 @@
+import { extractApiError } from "@/utils/apiError";
 const API_BASE = '/api';
 
 function getAuthHeaders() {
@@ -18,8 +19,7 @@ async function fetchChannelAPI(endpoint, options = {}) {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: response.statusText }));
-    throw new Error(error.message || 'API Error');
+    throw new Error(await extractApiError(response, 'API Error'));
   }
 
   return response.json();

@@ -95,6 +95,11 @@ function formatCpfDigits(cpf) {
 // ou não houver Pessoa cadastrada com ele. Usado para reaproveitar Pessoas existentes
 // (evita duplicar CPF — o ERP bloqueia CPF duplicado) ao cadastrar dependentes.
 const ERP_TIPO_DOCUMENTO_CPF = 580;
+// Expõe o pool auditado para consultas somente-leitura de outros módulos (ex.: Bom Pet).
+export function getErpPool() {
+  return getPool();
+}
+
 export async function findPessoaIdByCpf(cpf) {
   const formatted = formatCpfDigits(cpf);
   if (!formatted) return null;
