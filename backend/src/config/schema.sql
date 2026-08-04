@@ -1837,3 +1837,13 @@ CREATE TABLE IF NOT EXISTS bom_pet_pets_falecidos (
   usuario VARCHAR(255) NOT NULL,
   data_hora TIMESTAMP DEFAULT NOW()
 );
+
+-- =====================
+-- AUTOMAÇÕES PF: parada por resposta e cooldown de 30 dias
+-- =====================
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS automation_whu_chat_id VARCHAR(64);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS automation_responded_at TIMESTAMP DEFAULT NULL;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS automation_cycle_started_at TIMESTAMP DEFAULT NULL;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS automation_cooldown_until TIMESTAMP DEFAULT NULL;
+CREATE INDEX IF NOT EXISTS idx_leads_automation_whu_chat_id ON leads (automation_whu_chat_id);
+CREATE INDEX IF NOT EXISTS idx_leads_automation_cooldown ON leads (automation_cooldown_until);

@@ -140,11 +140,23 @@ app.post('/api/api_chatid_indicacoes', async (req, res) => {
       );
     }
 
-    console.log(`[api_chatid_indicacoes] chatId=${chatId} → retorno_whu=${found}`);
+    // Vendas PF: resposta do cliente também interrompe as automações PF
+    // (leads.automation_responded_at). Fallback por telefone quando o chat
+    // não bate (o WHU pode reciclar o chatId entre disparos).
+    let pfFound = false;
+    try {
+      const { markLeadRespondedByChat } = await import('./services/pfAutomationCycle.js');
+      const rawPhone = req.body.phone || req.body.number || req.body.contactNumber || null;
+      pfFound = await markLeadRespondedByChat(chatId, rawPhone, dbQuery);
+    } catch (pfError) {
+      console.error('[api_chatid_indicacoes] Erro ao marcar resposta PF:', pfError.message);
+    }
+
+    console.log(`[api_chatid_indicacoes] chatId=${chatId} → retorno_whu=${found}, lead_pf=${pfFound}`);
 
     return res.json({
-      success: found,
-      message: found ? 'Chat encontrado' : 'Chat não encontrado'
+      success: found || pfFound,
+      message: (found || pfFound) ? 'Chat encontrado' : 'Chat não encontrado'
     });
   } catch (error) {
     console.error('[api_chatid_indicacoes] Error:', error.message);
