@@ -1115,8 +1115,8 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       if (petIncompleto) {
         toast.error("Preencha todos os dados do pet (nome, tipo, raça, cor e porte)"); return false;
       }
-      // Beneficiários de dependente pago (produto DEPENDENTE > 0,01): CPF, nome completo e
-      // data de nascimento são obrigatórios, pois o card é criado automaticamente para o item.
+      // Beneficiários de dependente pago (produto DEPENDENTE > 0,01): nome completo e
+      // data de nascimento são obrigatórios; CPF é opcional (se informado, deve ser válido).
       for (const b of beneficiarios) {
         if (!dependentePagoIds.includes(String(b.usua_produtos))) continue;
         const prod = erpProdutos.find((p) => String(p.id) === String(b.usua_produtos));
@@ -1124,8 +1124,9 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
         if (!b.usua_nome_completo?.trim()) {
           toast.error(`Informe o nome completo do beneficiário para "${desc}"`); return false;
         }
-        if (!isValidCpf(b.usua_cpf || "")) {
-          toast.error(`Informe um CPF válido para o beneficiário de "${desc}"`); return false;
+        const cpfDep = (b.usua_cpf || "").replace(/\D/g, "");
+        if (cpfDep && !isValidCpf(b.usua_cpf || "")) {
+          toast.error(`CPF inválido para o beneficiário de "${desc}"`); return false;
         }
         if (!b.usua_data_nascimento) {
           toast.error(`Informe a data de nascimento do beneficiário de "${desc}"`); return false;
@@ -1157,23 +1158,24 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
         toast.error('O produto/plano do beneficiário Principal precisa estar selecionado no passo "Plano". Volte e selecione-o, ou escolha aqui um dos produtos já selecionados.');
         return false;
       }
-      // Beneficiário comum (não condutor/veículo e não pet) com nome preenchido precisa de CPF válido.
+      // Beneficiário comum: CPF opcional. Se informado, precisa ser válido.
       if (!isBomAuto) {
-        const benefSemCpf = beneficiarios.find(
+        const benefCpfInvalido = beneficiarios.find(
           (b) =>
             b.usua_nome_completo?.trim() &&
             // Card é de pet (isento de CPF) só se for realmente pet — dependente pago (> 0,01) tem
-            // produto próprio e exige CPF mesmo quando o orçamento está em modo BOM PET.
+            // produto próprio mesmo quando o orçamento está em modo BOM PET.
             !(
               !dependentePagoIds.includes(String(b.usua_produtos)) &&
               petProdutoIds.includes(String(b.usua_produtos))
             ) &&
             // Card de veículo não tem CPF (nome é montado dos campos do veículo).
             String(b.usua_produtos) !== veicId &&
+            (b.usua_cpf || "").replace(/\D/g, "") && // só valida se preencheu algo
             !isValidCpf(b.usua_cpf || "")
         );
-        if (benefSemCpf) {
-          toast.error(`Informe um CPF válido para "${benefSemCpf.usua_nome_completo.trim()}"`); return false;
+        if (benefCpfInvalido) {
+          toast.error(`CPF inválido para "${benefCpfInvalido.usua_nome_completo.trim()}"`); return false;
         }
       }
       // Todo produto precisa de ao menos uma pessoa (titular ou beneficiário), senão o fechamento falha no ERP.
@@ -2186,7 +2188,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label className="text-xs">CPF{!isBomAuto && <span className="text-red-500"> *</span>}</Label>
+                      <Label className="text-xs">CPF <span className="text-muted-foreground font-normal">(opcional)</span></Label>
                       <Input
                         value={b.usua_cpf}
                         onChange={(e) => setBenef(i, "usua_cpf", formatCpf(e.target.value))}
