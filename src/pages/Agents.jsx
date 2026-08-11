@@ -65,7 +65,7 @@ const MENU_MODULES = [
   },
   {
     id: "presales",
-    title: "Pré e Pós Vendas",
+    title: "Pré Vendas / Pós Vendas",
     items: [
       { id: "SalesQueueBoard", title: "Board de Vendas" },
       { id: "CreateSalesTicket", title: "Criar Ticket" },

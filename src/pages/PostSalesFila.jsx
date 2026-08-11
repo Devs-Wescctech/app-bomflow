@@ -99,7 +99,7 @@ export default function PostSalesFila() {
                 <span className="relative inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25 backdrop-blur">
                   <ClipboardCheck className="relative w-4 h-4" />
                 </span>
-                <h1 className="text-[20px] md:text-[22px] font-bold tracking-tight leading-none drop-shadow-sm">Fila Pós-Vendas</h1>
+                <h1 className="text-[20px] md:text-[22px] font-bold tracking-tight leading-none drop-shadow-sm">Fila Auditoria (Pós Venda)</h1>
               </div>
               <p className="mt-2.5 text-[14px] md:text-[15px] font-medium text-white/80">
                 {items.length === 0

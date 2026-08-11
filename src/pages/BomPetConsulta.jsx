@@ -14,6 +14,7 @@ import {
   Receipt, MapPin, Stethoscope, Handshake
 } from "lucide-react";
 import { extractApiError } from "@/utils/apiError";
+import termoTemplateImg from "@/assets/bompet-autorizacao-template.png";
 
 const API_BASE = '/api';
 
@@ -299,121 +300,103 @@ export default function BomPetConsulta() {
     const { jsPDF } = await import('jspdf');
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-    const pageW = 210;
-    const margin = 14;
-    const contentW = pageW - margin * 2;
-    let y = margin;
+    // Template oficial BOMPET-AUTORIZACAO como fundo da pagina A4
+    const img = new Image();
+    img.src = termoTemplateImg;
+    await img.decode();
+    doc.addImage(img, 'PNG', 0, 0, 210, 297);
 
-    const C = {
-      black: [30, 30, 30], darkGray: [60, 60, 60], midGray: [110, 110, 110],
-      lightGray: [180, 180, 180], hairline: [210, 210, 210], white: [255, 255, 255],
-      brand: [13, 88, 75],
+    const INK = [25, 25, 90]; // azul-caneta para os valores preenchidos
+    doc.setTextColor(...INK);
+    doc.setFont('helvetica', 'bold');
+
+    // Escreve um valor sobre a linha; reduz a fonte ate caber em maxW
+    const fill = (text, x, y, maxW, size = 9) => {
+      const v = (text ?? '').toString().trim();
+      if (!v) return;
+      let s = size;
+      doc.setFontSize(s);
+      while (doc.getTextWidth(v) > maxW && s > 5.5) {
+        s -= 0.5;
+        doc.setFontSize(s);
+      }
+      let out = v;
+      while (doc.getTextWidth(out) > maxW && out.length > 1) out = out.slice(0, -2) + '\u2026';
+      doc.text(out, x, y);
     };
-    const setF = (style, size) => { doc.setFontSize(size); doc.setFont('helvetica', style); };
-    const setTC = (rgb) => doc.setTextColor(...rgb);
-    const setDC = (rgb) => doc.setDrawColor(...rgb);
-    const setFC = (rgb) => doc.setFillColor(...rgb);
-    const hRule = (yPos, color = C.hairline, lw = 0.25) => {
-      doc.setLineWidth(lw); setDC(color);
-      doc.line(margin, yPos, pageW - margin, yPos);
-    };
-    const labelValue = (label, value, lx, yPos, maxW) => {
-      setF('normal', 6.5); setTC(C.midGray); doc.text(label, lx, yPos);
-      setF('bold', 8.5); setTC(C.black);
-      const lines = doc.splitTextToSize(value || '—', maxW || contentW);
-      doc.text(lines, lx, yPos + 4);
-      return lines.length;
-    };
-
-    doc.setLineWidth(0.25);
-
-    // Cabeçalho próprio do Bom Pet.
-    setFC(C.brand);
-    doc.rect(margin, y, contentW, 14, 'F');
-    setTC(C.white);
-    setF('bold', 11);
-    doc.text('BOM PET — AUTORIZAÇÃO DE SERVIÇO DE CREMAÇÃO', pageW / 2, y + 9, { align: 'center' });
-    setTC(C.black);
-    y += 18;
-
-    const procBoxW = 58, procBoxH = 10;
-    const procBoxX = pageW - margin - procBoxW;
-    setDC(C.lightGray); doc.setLineWidth(0.3);
-    doc.rect(procBoxX, y - 1, procBoxW, procBoxH);
-    setF('normal', 6); setTC(C.midGray);
-    doc.text('N° do Processo:', procBoxX + 2, y + 3.5);
-    setF('bold', 8); setTC(C.black);
-    doc.text(at?.protocolo || '', procBoxX + procBoxW - 2, y + 3.5, { align: 'right' });
-    y += procBoxH + 3;
-    hRule(y); y += 5;
-
-    const halfW = (contentW - 6) / 2;
-    labelValue('Empresa Contratada', 'Bom Pet', margin, y, halfW);
-    y += 10; hRule(y); y += 4;
-
-    labelValue('Atendente Responsável', at?.usuario || '', margin, y, halfW);
-    labelValue('Data e Hora do Atendimento', formatDateTime(at?.data_hora || at?.created_at), margin + halfW + 6, y, halfW);
-    y += 10; hRule(y); y += 4;
 
     const tel = at?.telefone_contato
       ? at.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : '';
-    labelValue('Fone para Contato', tel, margin, y, halfW);
-    labelValue('Número do Contrato', at?.contratos_servicos || '', margin + halfW + 6, y, halfW);
-    y += 10; hRule(y); y += 4;
 
-    labelValue('Nome do Titular', at?.nome_cliente || '', margin, y, halfW);
-    labelValue('Documento (CPF)', at?.documento_cliente || '', margin + halfW + 6, y, halfW);
-    y += 10; hRule(y); y += 4;
+    // ── Campos sobre as linhas do formulario ─────────────────────────────────
+    fill(at?.protocolo, 155, 78.5, 42, 9);                                   // Nº de Processo
+    fill('Bom Pet', 42, 103.5, 155);                                          // Empresa Contratada
+    fill(termoLocal || at?.termo_local, 24, 117.5, 100);                      // Cidade
+    fill(tel, 148, 117.5, 50);                                                // Fone
+    fill(at?.usuario, 37, 131.5, 90);                                         // Atendente Resp.
 
-    labelValue('Pet', at?.pet_descricao || at?.pet_nome || '', margin, y, contentW);
-    y += 10; hRule(y); y += 4;
+    // Data e Hora: partes centralizadas entre os traços pré-impressos (__/__/__  __:__)
+    const dt = new Date(at?.data_hora || at?.created_at || Date.now());
+    const dd = String(dt.getDate()).padStart(2, '0');
+    const mo = String(dt.getMonth() + 1).padStart(2, '0');
+    const yyyy = String(dt.getFullYear());
+    const hh = String(dt.getHours()).padStart(2, '0');
+    const mi = String(dt.getMinutes()).padStart(2, '0');
+    const seg = (text, cx, y) => {
+      doc.setFontSize(10);
+      doc.text(text, cx, y, { align: 'center' });
+    };
+    seg(dd, 137.4, 131.8);
+    seg(mo, 151.6, 131.8);
+    seg(yyyy, 165.0, 131.8);
+    seg(hh, 179.8, 131.8);
+    seg(mi, 193.5, 131.8);
+    fill(tel, 61, 145.5, 135);                                                // Fone p/ contato familiares
+    fill(at?.contratos_servicos, 42, 159.5, 155);                             // Numero do Contrato
+    const titular = [at?.nome_cliente, at?.documento_cliente ? `CPF ${at.documento_cliente}` : '']
+      .filter(Boolean).join(' \u2014 ');
+    fill(titular, 36, 173.5, 160);                                            // Nome do Titular
+    fill(at?.pet_descricao || at?.pet_nome, 31, 187.5, 165);                  // Nome do PET
 
-    labelValue('Local da Remoção', at?.remocao_local || '', margin, y, halfW);
-    labelValue('Endereço da Remoção', at?.remocao_endereco || '', margin + halfW + 6, y, halfW);
-    y += 10; hRule(y); y += 4;
+    // Local onde se encontra o PET: marca Residencia ou Clinica + descricao na linha
+    const emClinica = !!at?.clinica_nome;
+    doc.setFillColor(...INK);
+    doc.circle(emClinica ? 106.0 : 85.2, 201.5, 1.9, 'F');
+    const rua = (termoRua || at?.termo_rua || '').trim();
+    const localPet = (emClinica
+      ? [at?.clinica_nome, at?.remocao_local]
+      : [at?.remocao_local, at?.remocao_endereco]
+    ).concat(rua).filter(Boolean).join(' \u2014 ');
+    fill(localPet, 118, 201.5, 78);
 
-    labelValue('Clínica Veterinária', at?.clinica_nome || '', margin, y, halfW);
-    labelValue('Parceiro Operacional', at?.parceiro_nome || '', margin + halfW + 6, y, halfW);
-    y += 10; hRule(y); y += 4;
-
-    labelValue('Local / Cidade (termo)', termoLocal || at?.termo_local || '', margin, y, halfW);
-    labelValue('Rua / Ponto de Referência (termo)', termoRua || at?.termo_rua || '', margin + halfW + 6, y, halfW);
-    y += 10; hRule(y, C.darkGray, 0.5); y += 5;
-
-    labelValue('Valores Combinados', termoValoresCombinados || at?.termo_valores_combinados || '', margin, y, halfW);
-    y += 10;
-    labelValue('Descrição do Serviço Contratado', termoDescricaoProduto || at?.termo_descricao_produto || '', margin, y, contentW);
-    y += 12;
-
-    if (at?.observacoes) {
-      hRule(y); y += 4;
-      setF('normal', 6.5); setTC(C.midGray);
-      doc.text('Observações:', margin, y);
-      setF('normal', 8); setTC(C.black);
-      const obsLines = doc.splitTextToSize(at.observacoes, contentW - 24);
-      doc.text(obsLines, margin + 22, y);
-      y += obsLines.length * 5;
+    // Caixa esquerda: valores + descricao do produto
+    fill(termoValoresCombinados || at?.termo_valores_combinados, 48, 226.5, 52);
+    const descricao = (termoDescricaoProduto || at?.termo_descricao_produto || '').trim();
+    if (descricao) {
+      doc.setFontSize(8.5);
+      const firstLineW = 37;  // espaco apos o rotulo "Descricao do Produto Contratado:"
+      const fullLineW  = 85;  // linhas pautadas abaixo
+      if (doc.getTextWidth(descricao) <= firstLineW) {
+        fill(descricao, 63, 235.5, firstLineW, 8.5);
+      } else {
+        const ruledYs = [245.5, 254.5, 263.3, 272, 280.5];
+        let lines = doc.splitTextToSize(descricao, fullLineW);
+        if (lines.length > ruledYs.length) {
+          doc.setFontSize(7);
+          lines = doc.splitTextToSize(descricao, fullLineW);
+        }
+        lines.slice(0, ruledYs.length).forEach((ln, i) => {
+          fill(ln, 15, ruledYs[i], fullLineW, doc.getFontSize());
+        });
+      }
     }
 
-    y += 4; hRule(y, C.darkGray, 0.5); y += 8;
+    // Data (canto direito): partes centralizadas entre os traços (__/__/__)
+    seg(dd, 127.1, 226.4);
+    seg(mo, 141.2, 226.4);
+    seg(yyyy, 156.2, 226.4);
 
-    const sigW = (contentW - 10) / 2;
-    ['Contratante', 'Atendente'].forEach((label, i) => {
-      const x = margin + i * (sigW + 10);
-      setDC(C.darkGray); doc.setLineWidth(0.4);
-      doc.line(x, y + 10, x + sigW, y + 10);
-      setF('normal', 6.5); setTC(C.midGray);
-      doc.text(label, x + sigW / 2, y + 14, { align: 'center' });
-    });
-    y += 20;
-
-    setF('normal', 7); setTC(C.midGray);
-    doc.text('Data: ', margin, y);
-    setF('bold', 8); setTC(C.black);
-    doc.text(formatDate(at?.data_hora || at?.created_at), margin + 10, y);
-
-    setDC(C.lightGray); doc.setLineWidth(0.4);
-    doc.rect(margin - 2, margin - 2, contentW + 4, y - margin + 8);
+    // Assinaturas ficam em branco para assinatura manual
 
     doc.save(`autorizacao-bompet-${at?.protocolo || 'cremacao'}.pdf`);
   }
@@ -913,8 +896,9 @@ export default function BomPetConsulta() {
           </Card>
 
           {/* ── AUTORIZAÇÃO DE CREMAÇÃO ── */}
-          <Card className="border-gray-300 dark:border-gray-600 shadow-lg">
-            <CardHeader>
+          {/* Outer card: just provides the section label and action buttons */}
+          <Card className="border-gray-300 dark:border-gray-600 shadow-lg overflow-hidden">
+            <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-gradient-to-br from-teal-700 to-emerald-900 shadow-lg">
                   <FileText className="w-5 h-5 text-white" />
@@ -922,49 +906,100 @@ export default function BomPetConsulta() {
                 Autorização de Serviço de Cremação
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="w-full rounded-xl bg-gradient-to-r from-teal-700 to-emerald-600 text-white text-center py-5 px-4">
-                <p className="text-lg font-extrabold tracking-widest flex items-center justify-center gap-2">
-                  <PawPrint className="w-5 h-5" />
-                  BOM PET — AUTORIZAÇÃO DE SERVIÇO DE CREMAÇÃO
-                </p>
-              </div>
+            <CardContent className="space-y-4">
 
-              <div className="flex justify-end">
-                <div className="border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 min-w-[200px]">
-                  <p className="text-[10px] uppercase tracking-widest text-gray-500">N° do Processo</p>
-                  <p className="font-mono font-bold text-gray-900 dark:text-gray-100 text-base">{atendimentoFinalizado.protocolo || '-'}</p>
+              {/* ── Preview do formulário oficial (espelha o PDF BOMPET-AUTORIZACAO) ── */}
+              <div className="bg-white border border-gray-300 rounded-2xl p-6 space-y-4 text-gray-900">
+
+                {/* Faixa de título escura como no modelo */}
+                <div className="rounded-full bg-[#2d2d2d] py-2.5 px-6 text-center">
+                  <p className="text-xs sm:text-sm font-extrabold tracking-wide uppercase text-white">
+                    AUTORIZAÇÃO DE SERVIÇOS DE ASSESSORIA PET
+                  </p>
+                </div>
+
+                {/* Pill Nº de Processo à direita */}
+                <div className="flex justify-end">
+                  <div className="bg-gray-200 border border-gray-300 rounded-lg px-4 py-1.5 flex items-baseline gap-2">
+                    <span className="text-[10px] text-gray-600">Nº de Processo:</span>
+                    <span className="font-mono font-bold text-gray-900 text-sm">{atendimentoFinalizado.protocolo || ''}</span>
+                  </div>
+                </div>
+
+                {/* Campos em estilo formulário: rótulo + valor sublinhado */}
+                <div className="space-y-3 pt-2">
+                  {[
+                    ['Empresa Contratada:', 'Bom Pet'],
+                    ['Cidade:', termoLocal || atendimentoFinalizado.termo_local],
+                    ['Fone:', atendimentoFinalizado.telefone_contato ? atendimentoFinalizado.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : ''],
+                    ['Atendente Resp.:', atendimentoFinalizado.usuario],
+                    ['Data e Hora:', formatDateTime(atendimentoFinalizado.data_hora || atendimentoFinalizado.created_at)],
+                    ['Fone para Contato com Familiares:', atendimentoFinalizado.telefone_contato ? atendimentoFinalizado.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : ''],
+                    ['Número do Contrato:', atendimentoFinalizado.contratos_servicos],
+                    ['Nome do Titular:', [atendimentoFinalizado.nome_cliente, atendimentoFinalizado.documento_cliente ? `CPF ${atendimentoFinalizado.documento_cliente}` : ''].filter(Boolean).join(' — ')],
+                    ['Nome do PET:', atendimentoFinalizado.pet_descricao || atendimentoFinalizado.pet_nome],
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex items-baseline gap-2 text-sm">
+                      <span className="text-gray-600 whitespace-nowrap text-xs">{label}</span>
+                      <span className="flex-1 border-b border-gray-400 font-semibold text-blue-900 px-1 min-h-[1.25rem]">{value || ''}</span>
+                    </div>
+                  ))}
+
+                  {/* Local / Cidade onde se encontra o PET */}
+                  <div className="flex flex-wrap items-baseline gap-2 text-sm">
+                    <span className="text-gray-600 text-xs">Local / Cidade onde se encontra o PET:</span>
+                    <span className="flex items-center gap-1 text-xs text-gray-600">
+                      Residência
+                      <span className={`inline-block w-4 h-4 rounded-full border-2 border-gray-500 ${!atendimentoFinalizado.clinica_nome ? 'bg-blue-900' : ''}`} />
+                    </span>
+                    <span className="flex items-center gap-1 text-xs text-gray-600">
+                      Clínica
+                      <span className={`inline-block w-4 h-4 rounded-full border-2 border-gray-500 ${atendimentoFinalizado.clinica_nome ? 'bg-blue-900' : ''}`} />
+                    </span>
+                    <span className="flex-1 border-b border-gray-400 font-semibold text-blue-900 px-1 min-h-[1.25rem]">
+                      {(atendimentoFinalizado.clinica_nome
+                        ? [atendimentoFinalizado.clinica_nome, atendimentoFinalizado.remocao_local]
+                        : [atendimentoFinalizado.remocao_local, atendimentoFinalizado.remocao_endereco]
+                      ).concat((termoRua || atendimentoFinalizado.termo_rua || '').trim()).filter(Boolean).join(' — ')}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Rodapé do formulário: caixa esquerda + data/assinaturas à direita */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                  <div className="border border-gray-400 rounded-md p-4 space-y-2">
+                    <div className="flex items-baseline gap-2 text-sm">
+                      <span className="text-gray-600 text-xs whitespace-nowrap">Valores Combinados:</span>
+                      <span className="flex-1 border-b border-gray-400 font-semibold text-blue-900 px-1 min-h-[1.25rem]">{termoValoresCombinados || atendimentoFinalizado.termo_valores_combinados || ''}</span>
+                    </div>
+                    <p className="text-xs text-gray-600">Descrição do Produto Contratado:</p>
+                    <p className="text-sm font-semibold text-blue-900 border-b border-gray-400 min-h-[1.25rem] whitespace-pre-wrap">{termoDescricaoProduto || atendimentoFinalizado.termo_descricao_produto || ''}</p>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-baseline gap-2 text-sm">
+                      <span className="text-gray-600 text-xs">Data:</span>
+                      <span className="border-b border-gray-400 font-semibold text-blue-900 px-2">{formatDate(atendimentoFinalizado.data_hora || atendimentoFinalizado.created_at)}</span>
+                    </div>
+                    <div className="bg-gray-200 rounded-md p-4 space-y-5">
+                      <p className="text-xs font-semibold text-gray-700">Assinaturas:</p>
+                      {['Contratante:', 'Atendente:'].map(sig => (
+                        <div key={sig} className="flex items-baseline gap-2 text-xs text-gray-600">
+                          {sig}
+                          <span className="flex-1 border-b border-gray-500" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 border-t border-gray-200 dark:border-gray-700 pt-4">
-                {[
-                  ['Empresa Contratada', 'Bom Pet'],
-                  ['Atendente Resp.', atendimentoFinalizado.usuario],
-                  ['Data e Hora', formatDateTime(atendimentoFinalizado.data_hora || atendimentoFinalizado.created_at)],
-                  ['Fone para Contato', atendimentoFinalizado.telefone_contato ? atendimentoFinalizado.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : '-'],
-                  ['Número do Contrato', atendimentoFinalizado.contratos_servicos],
-                  ['Nome do Titular', atendimentoFinalizado.nome_cliente],
-                  ['Documento', atendimentoFinalizado.documento_cliente],
-                  ['Pet', atendimentoFinalizado.pet_descricao || atendimentoFinalizado.pet_nome],
-                  ['Local da Remoção', atendimentoFinalizado.remocao_local],
-                  ['Endereço da Remoção', atendimentoFinalizado.remocao_endereco],
-                  ['Clínica Veterinária', atendimentoFinalizado.clinica_nome],
-                  ['Parceiro Operacional', atendimentoFinalizado.parceiro_nome],
-                ].map(([label, value]) => (
-                  <div key={label} className="space-y-0.5">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">{label}</p>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-1">{value || '-'}</p>
-                  </div>
-                ))}
-              </div>
-
+              {/* Campos editáveis (preencher antes de salvar) */}
               <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-4">
                 <p className="text-xs font-bold uppercase tracking-widest text-gray-500">Campos a preencher</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <Label className="text-xs">Local / Cidade</Label>
-                    <Input value={termoLocal} onChange={e => setTermoLocal(e.target.value)} disabled={termoSalvo} placeholder="Ex: Residência — cidade" />
+                    <Input value={termoLocal} onChange={e => setTermoLocal(e.target.value)} disabled={termoSalvo} placeholder="Ex: Porto Alegre" />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Rua / Ponto de Referência</Label>
@@ -977,35 +1012,31 @@ export default function BomPetConsulta() {
                     <Input value={termoValoresCombinados} onChange={e => setTermoValoresCombinados(e.target.value)} disabled={termoSalvo} placeholder="Ex: R$ 0,00 — incluso no plano" />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Descrição do Serviço Contratado</Label>
+                    <Label className="text-xs">Descrição do Produto Contratado</Label>
                     <Textarea value={termoDescricaoProduto} onChange={e => setTermoDescricaoProduto(e.target.value)} disabled={termoSalvo} rows={3} placeholder="Descreva o serviço de cremação contratado..." />
                   </div>
                 </div>
               </div>
 
-              <div className="border-t border-gray-200 dark:border-gray-700 pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                  <p className="text-[10px] uppercase tracking-widest text-gray-500">Data do Registro</p>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{formatDate(atendimentoFinalizado.data_hora || atendimentoFinalizado.created_at)}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  {termoSalvo ? (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded-lg border border-emerald-300 dark:border-emerald-700 text-xs font-semibold">
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      Dados salvos com sucesso
-                    </div>
-                  ) : (
-                    <Button onClick={handleSalvarTermo} className="bg-gray-800 hover:bg-gray-900 text-white gap-2">
-                      <Save className="w-4 h-4" />
-                      Salvar
-                    </Button>
-                  )}
-                  <Button onClick={() => exportTermoPDF()} disabled={!termoSalvo} className="bg-red-600 hover:bg-red-700 text-white gap-2 disabled:opacity-40">
-                    <Download className="w-4 h-4" />
-                    Exportar PDF
+              {/* Action buttons */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
+                {termoSalvo ? (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded-lg border border-emerald-300 dark:border-emerald-700 text-xs font-semibold">
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Dados salvos com sucesso
+                  </div>
+                ) : (
+                  <Button onClick={handleSalvarTermo} className="bg-gray-800 hover:bg-gray-900 text-white gap-2">
+                    <Save className="w-4 h-4" />
+                    Salvar
                   </Button>
-                </div>
+                )}
+                <Button onClick={() => exportTermoPDF()} disabled={!termoSalvo} className="bg-red-600 hover:bg-red-700 text-white gap-2 disabled:opacity-40">
+                  <Download className="w-4 h-4" />
+                  Exportar PDF
+                </Button>
               </div>
+
             </CardContent>
           </Card>
 

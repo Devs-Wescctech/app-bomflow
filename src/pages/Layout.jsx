@@ -166,7 +166,7 @@ const menuModules = [
   },
   {
     id: "presales",
-    title: "Pré e Pós Vendas",
+    title: "Pré Vendas",
     icon: ShoppingCart,
     gradient: "from-purple-500 to-pink-500",
     items: [
@@ -174,7 +174,16 @@ const menuModules = [
       { title: "Criar Ticket", url: createPageUrl("CreateSalesTicket"), icon: Plus, highlight: true },
       { title: "Tickets de Vendas", url: createPageUrl("SalesTickets"), icon: ShoppingCart },
       { title: "Fila Pré Vendas", url: createPageUrl("PreSalesOrcamentoRelatorio"), icon: FileBarChart, auditReport: true },
-      { title: "Fila Pós Vendas", url: createPageUrl("PostSalesFila"), icon: ClipboardCheck, auditReport: true },
+    ]
+  },
+  {
+    id: "postsales",
+    moduleId: "presales",
+    title: "Pós Vendas",
+    icon: ClipboardCheck,
+    gradient: "from-orange-500 to-amber-500",
+    items: [
+      { title: "Fila Auditoria (Pós Venda)", url: createPageUrl("PostSalesFila"), icon: ClipboardCheck, auditReport: true },
       { title: "Avisos & Cancelamentos", url: createPageUrl("PreSalesAjustesMonitor"), icon: ShieldAlert, auditReport: true },
       { title: "Fila Pós Vendas", url: createPageUrl("PosVendasFila"), icon: ClipboardCheck, postSales: true },
       { title: "Monitor Pós-Vendas", url: createPageUrl("PosVendasMonitor"), icon: Activity, postSales: true },
