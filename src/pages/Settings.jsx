@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,15 +26,15 @@ export default function Settings() {
     queryKey: ['systemSettings'],
     queryFn: () => base44.entities.SystemSettings.list(),
     initialData: [],
-    onSuccess: (data) => {
-      const logoSetting = data.find(s => s.setting_key === 'company_logo');
-      const nameSetting = data.find(s => s.setting_key === 'company_name');
-      const colorSetting = data.find(s => s.setting_key === 'primary_color');
-      
-      if (nameSetting) setCompanyName(nameSetting.setting_value);
-      if (colorSetting) setPrimaryColor(colorSetting.setting_value);
-    }
   });
+
+  useEffect(() => {
+    const nameSetting = settings.find(s => s.setting_key === 'company_name');
+    const colorSetting = settings.find(s => s.setting_key === 'primary_color');
+
+    if (nameSetting) setCompanyName(nameSetting.setting_value);
+    if (colorSetting) setPrimaryColor(colorSetting.setting_value);
+  }, [settings]);
 
   const createOrUpdateSettingMutation = useMutation({
     mutationFn: async ({ key, value, type, category }) => {
