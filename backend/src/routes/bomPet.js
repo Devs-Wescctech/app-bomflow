@@ -210,19 +210,30 @@ router.get('/consulta', authMiddleware, bomPetAuth, async (req, res) => {
 
     // Status local Falecido (nunca gravado no ERP).
     const falecidosRes = await query(
-      'SELECT pet_contrato_id FROM bom_pet_pets_falecidos WHERE documento_cliente = $1',
+      'SELECT pet_contrato_id, pet_nome FROM bom_pet_pets_falecidos WHERE documento_cliente = $1',
       [docDigits]
     );
-    const falecidos = new Set(falecidosRes.rows.map((r) => String(r.pet_contrato_id)));
+    // Pets do mesmo plano compartilham o contrato_id — o nome desambigua.
+    const falecidos = new Set(
+      falecidosRes.rows.map((r) => `${r.pet_contrato_id}::${normalizeName(r.pet_nome)}`)
+    );
+    const falecidosSemNome = new Set(
+      falecidosRes.rows.filter((r) => !r.pet_nome).map((r) => String(r.pet_contrato_id))
+    );
 
-    const pets = petRows.map((r) => ({
-      nome: (r.texto_original_veiculo || '').split(' - ')[0].trim(),
-      descricao: r.texto_original_veiculo || '',
-      contrato_id: r.contrato_id,
-      contrato_servicos: r.contrato_servicos,
-      situacao_contrato: mapSituacaoContrato(r.situacao_contrato),
-      status: falecidos.has(String(r.contrato_id)) ? 'Falecido' : 'Ativo',
-    }));
+    const pets = petRows.map((r) => {
+      const nome = (r.texto_original_veiculo || '').split(' - ')[0].trim();
+      const falecido = falecidos.has(`${r.contrato_id}::${normalizeName(nome)}`) ||
+        falecidosSemNome.has(String(r.contrato_id));
+      return {
+        nome,
+        descricao: r.texto_original_veiculo || '',
+        contrato_id: r.contrato_id,
+        contrato_servicos: r.contrato_servicos,
+        situacao_contrato: mapSituacaoContrato(r.situacao_contrato),
+        status: falecido ? 'Falecido' : 'Ativo',
+      };
+    });
 
     // Única regra de elegibilidade financeira: adimplente/inadimplente.
     const inadimplente = rows.some((r) => mapSituacaoFinanceira(r.situacao_financeira) === 'INADIMPLENTE');
@@ -359,25 +370,32 @@ router.post('/atendimentos', authMiddleware, bomPetAuth, async (req, res) => {
     }
 
     const titularNorm = normalizeName(erpRows[0].contratante);
-    const petRow = erpRows.find(
-      (r) => String(r.contrato_id) === String(pet_contrato_id) &&
-             normalizeName(r.texto_original_veiculo) !== titularNorm
-    );
+    // Pets do mesmo plano compartilham o contrato_id; o nome (validado contra o ERP)
+    // desambigua qual pet foi selecionado.
+    const bodyPetNome = normalizeName(pet_nome);
+    const petRow = erpRows.find((r) => {
+      if (String(r.contrato_id) !== String(pet_contrato_id)) return false;
+      const texto = normalizeName(r.texto_original_veiculo);
+      if (texto === titularNorm) return false;
+      if (!bodyPetNome) return true;
+      return texto.split(' - ')[0].trim() === bodyPetNome;
+    });
     if (!petRow) {
       return res.status(400).json({ message: 'Pet não incluído no plano do cliente — atendimento negado.' });
     }
 
     // Pet já marcado como Falecido localmente não pode gerar novo atendimento.
     const falecidoRes = await query(
-      'SELECT 1 FROM bom_pet_pets_falecidos WHERE pet_contrato_id = $1',
-      [petRow.contrato_id]
+      `SELECT 1 FROM bom_pet_pets_falecidos
+        WHERE pet_contrato_id = $1 AND (pet_nome IS NULL OR UPPER(pet_nome) = UPPER($2))`,
+      [petRow.contrato_id, (petRow.texto_original_veiculo || '').split(' - ')[0].trim()]
     );
     if (falecidoRes.rows.length > 0) {
       return res.status(400).json({ message: 'Este pet já está marcado como Falecido.' });
     }
 
     // Situação financeira derivada do ERP, nunca do body.
-    void situacao_financeira; void nome_cliente; void pet_nome; void pet_descricao; void contratos_servicos;
+    void situacao_financeira; void nome_cliente; void pet_descricao; void contratos_servicos;
     const sitFin = erpRows.some((r) => mapSituacaoFinanceira(r.situacao_financeira) === 'INADIMPLENTE')
       ? 'INADIMPLENTE' : 'ADIMPLENTE';
     const comprovanteFlag = comprovante_pagamento_recebido === true;
