@@ -329,9 +329,9 @@ const menuModules = [
     icon: PawPrint,
     gradient: "from-teal-600 to-emerald-500",
     items: [
-      { title: "Consulta Cliente", url: createPageUrl("BomPetConsulta"), icon: Search, alwaysVisible: true },
-      { title: "Painel Operacional", url: createPageUrl("BomPetPainel"), icon: ClipboardList, alwaysVisible: true },
-      { title: "Relatório de Utilizações", url: createPageUrl("BomPetRelatorio"), icon: FileBarChart, alwaysVisible: true },
+      { title: "Consulta Cliente", url: createPageUrl("BomPetConsulta"), icon: Search },
+      { title: "Painel Operacional", url: createPageUrl("BomPetPainel"), icon: ClipboardList },
+      { title: "Relatório de Utilizações", url: createPageUrl("BomPetRelatorio"), icon: FileBarChart },
     ]
   },
   {
