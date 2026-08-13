@@ -175,6 +175,15 @@ const MENU_MODULES = [
     ]
   },
   {
+    id: "bom_pet",
+    title: "Bom Pet",
+    items: [
+      { id: "BomPetConsulta", title: "Consulta Cliente" },
+      { id: "BomPetPainel", title: "Painel Operacional" },
+      { id: "BomPetRelatorio", title: "Relatório de Utilizações" },
+    ]
+  },
+  {
     id: "apps",
     title: "APPs",
     items: [
