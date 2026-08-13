@@ -214,7 +214,8 @@ export default function BomPetConsulta() {
       toast({ title: "Erro", description: "Selecione o pet.", variant: "destructive" });
       return;
     }
-    const pet = pets.find(p => String(p.contrato_id) === selectedPet);
+    // Pets do mesmo plano compartilham o contrato_id; a chave única é contrato_id + nome.
+    const pet = pets.find(p => `${p.contrato_id}::${p.nome}` === selectedPet);
     if (!pet) {
       toast({ title: "Atendimento negado", description: "Pet não incluído no plano do cliente.", variant: "destructive" });
       return;
@@ -772,11 +773,11 @@ export default function BomPetConsulta() {
                   </SelectTrigger>
                   <SelectContent>
                     {petsAtivos.map((p) => (
-                      <SelectItem key={p.contrato_id} value={String(p.contrato_id)}>
+                      <SelectItem key={`${p.contrato_id}::${p.nome}`} value={`${p.contrato_id}::${p.nome}`}>
                         <div className="flex items-center gap-2">
                           <PawPrint className="w-4 h-4 text-teal-500" />
                           <span className="font-bold">{p.nome}</span>
-                          <span className="text-gray-500">{p.descricao.replace(p.nome, '').replace(/^ - /, '')}</span>
+                          <span className="text-gray-500">{(p.descricao || '').replace(p.nome || '', '').replace(/^ - /, '')}</span>
                         </div>
                       </SelectItem>
                     ))}
