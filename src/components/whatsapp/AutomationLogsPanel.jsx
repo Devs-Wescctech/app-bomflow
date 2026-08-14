@@ -257,6 +257,9 @@ export default function AutomationLogsPanel({ automationType, colorScheme = "amb
       case 'error': return statusInfo.type === 'error';
       case 'skipped': return statusInfo.type === 'skipped';
       case 'pending': return statusInfo.type === 'pending';
+      // Semântica igual à dos cards do topo: "Recebidos" inclui os já lidos.
+      case 'delivered': return log.delivery_status === 'delivered' || log.delivery_status === 'read';
+      case 'read': return log.delivery_status === 'read';
       default: return true;
     }
   };
@@ -363,65 +366,72 @@ export default function AutomationLogsPanel({ automationType, colorScheme = "amb
 
             <div className="p-4 space-y-4 flex-1 overflow-hidden flex flex-col">
               <div className="grid grid-cols-7 gap-3">
-                <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
+                {/* Cards clicáveis: cada um ativa o filtro correspondente na barra de abas */}
+                <button type="button" onClick={() => handleTabChange('all')} className={`flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg text-left cursor-pointer transition-shadow hover:shadow ${activeTab === 'all' ? 'ring-2 ring-blue-400' : ''}`}>
                   <Activity className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                   <div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">Total</p>
                     <p className="font-bold text-gray-900 dark:text-gray-100">{stats.total}</p>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950 rounded-lg">
+                </button>
+                <button type="button" onClick={() => handleTabChange('success')} className={`flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950 rounded-lg text-left cursor-pointer transition-shadow hover:shadow ${activeTab === 'success' ? 'ring-2 ring-green-400' : ''}`}>
                   <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
                   <div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">Enviados</p>
                     <p className="font-bold text-green-600 dark:text-green-400">{stats.success}</p>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 p-3 bg-teal-50 dark:bg-teal-950 rounded-lg">
+                </button>
+                <button type="button" onClick={() => handleTabChange('delivered')} className={`flex items-center gap-2 p-3 bg-teal-50 dark:bg-teal-950 rounded-lg text-left cursor-pointer transition-shadow hover:shadow ${activeTab === 'delivered' ? 'ring-2 ring-teal-400' : ''}`}>
                   <CheckCheck className="w-5 h-5 text-teal-600 dark:text-teal-400" />
                   <div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">Recebidos</p>
                     <p className="font-bold text-teal-600 dark:text-teal-400">{stats.delivered}</p>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 p-3 bg-sky-50 dark:bg-sky-950 rounded-lg">
+                </button>
+                <button type="button" onClick={() => handleTabChange('read')} className={`flex items-center gap-2 p-3 bg-sky-50 dark:bg-sky-950 rounded-lg text-left cursor-pointer transition-shadow hover:shadow ${activeTab === 'read' ? 'ring-2 ring-sky-400' : ''}`}>
                   <Eye className="w-5 h-5 text-sky-600 dark:text-sky-400" />
                   <div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">Lidos</p>
                     <p className="font-bold text-sky-600 dark:text-sky-400">{stats.read}</p>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950 rounded-lg">
+                </button>
+                <button type="button" onClick={() => handleTabChange('error')} className={`flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950 rounded-lg text-left cursor-pointer transition-shadow hover:shadow ${activeTab === 'error' ? 'ring-2 ring-red-400' : ''}`}>
                   <XCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
                   <div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">Erros</p>
                     <p className="font-bold text-red-600 dark:text-red-400">{stats.errors}</p>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                </button>
+                <button type="button" onClick={() => handleTabChange('skipped')} className={`flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg text-left cursor-pointer transition-shadow hover:shadow ${activeTab === 'skipped' ? 'ring-2 ring-gray-400' : ''}`}>
                   <SkipForward className="w-5 h-5 text-gray-600 dark:text-gray-400" />
                   <div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">Ignorados</p>
                     <p className="font-bold text-gray-600 dark:text-gray-400">{stats.skipped}</p>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg">
+                </button>
+                <button type="button" onClick={() => handleTabChange('pending')} className={`flex items-center gap-2 p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg text-left cursor-pointer transition-shadow hover:shadow ${activeTab === 'pending' ? 'ring-2 ring-yellow-400' : ''}`}>
                   <Clock className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
                   <div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">Pendentes</p>
                     <p className="font-bold text-yellow-600 dark:text-yellow-400">{stats.pending}</p>
                   </div>
-                </div>
+                </button>
               </div>
 
               <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
                 <div className="flex items-center justify-between gap-4 flex-wrap">
-                  <TabsList className="grid grid-cols-5 w-auto">
+                  <TabsList className="grid grid-cols-7 w-auto">
                     <TabsTrigger value="all" className={colors.tabActive}>
                       Todos ({stats.total})
                     </TabsTrigger>
                     <TabsTrigger value="success" className="data-[state=active]:bg-green-100 data-[state=active]:text-green-700">
                       Enviados ({stats.success})
+                    </TabsTrigger>
+                    <TabsTrigger value="delivered" className="data-[state=active]:bg-teal-100 data-[state=active]:text-teal-700">
+                      Recebidos ({stats.delivered})
+                    </TabsTrigger>
+                    <TabsTrigger value="read" className="data-[state=active]:bg-sky-100 data-[state=active]:text-sky-700">
+                      Lidos ({stats.read})
                     </TabsTrigger>
                     <TabsTrigger value="error" className="data-[state=active]:bg-red-100 data-[state=active]:text-red-700">
                       Erros ({stats.errors})
