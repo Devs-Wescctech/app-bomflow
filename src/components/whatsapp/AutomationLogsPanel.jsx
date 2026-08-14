@@ -27,7 +27,9 @@ import {
   ChevronRight,
   Info,
   UserCheck,
-  ExternalLink
+  CheckCheck,
+  AlertTriangle,
+  Eye
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -57,6 +59,7 @@ export default function AutomationLogsPanel({ automationType, colorScheme = "amb
   const [activeTab, setActiveTab] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedLogs, setExpandedLogs] = useState({});
+  const [expandedSections, setExpandedSections] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const logsPerPage = 15;
 
@@ -82,6 +85,19 @@ export default function AutomationLogsPanel({ automationType, colorScheme = "amb
   };
 
   const colors = colorClasses[colorScheme] || colorClasses.amber;
+
+  // Dispara a sincronização dos status de entrega/leitura (WHU) em background.
+  // Não bloqueia a listagem: a lista carrega e os status chegam no próximo refetch.
+  const triggerDeliverySync = () => {
+    fetch('/api/whatsapp/automation-logs/sync-delivery', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ automationType })
+    }).catch(() => {});
+  };
 
   const { data: logs = [], isLoading, refetch } = useQuery({
     queryKey: ['automationLogs', automationType],
@@ -136,8 +152,28 @@ export default function AutomationLogsPanel({ automationType, colorScheme = "amb
     }
   });
 
-  const getStatusInfo = (status, success) => {
+  // Status unificado num único campo: Erro/Enviado e, conforme a confirmação
+  // do WHU chega, o mesmo badge evolui para Recebido → Lido (ou Não entregue).
+  const getStatusInfo = (status, success, deliveryStatus, deliveryErrorMessage) => {
     if (success || status === 'executed' || status === 'sent') {
+      if (deliveryStatus === 'read') {
+        return {
+          badge: <Badge className="bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-300 text-xs gap-1" title="O cliente visualizou a mensagem"><CheckCheck className="w-3 h-3" />Lido</Badge>,
+          type: 'success'
+        };
+      }
+      if (deliveryStatus === 'delivered') {
+        return {
+          badge: <Badge className="bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300 text-xs gap-1" title="A mensagem chegou no celular do cliente"><CheckCheck className="w-3 h-3" />Recebido</Badge>,
+          type: 'success'
+        };
+      }
+      if (deliveryStatus === 'failed') {
+        return {
+          badge: <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300 text-xs gap-1" title={deliveryErrorMessage || 'A mensagem foi aceita, mas não chegou no celular do cliente'}><AlertTriangle className="w-3 h-3" />Não entregue</Badge>,
+          type: 'success'
+        };
+      }
       return { 
         badge: <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 text-xs gap-1"><CheckCircle2 className="w-3 h-3" />Enviado</Badge>,
         type: 'success'
@@ -205,10 +241,17 @@ export default function AutomationLogsPanel({ automationType, colorScheme = "amb
     }));
   };
 
+  const toggleSection = (key) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
   const enrichedLogs = Array.isArray(logs) ? logs.map(parseActionResult) : [];
 
   const filterByTab = (log) => {
-    const statusInfo = getStatusInfo(log.status, log.success);
+    const statusInfo = getStatusInfo(log.status, log.success, log.delivery_status, log.delivery_error_message);
     switch (activeTab) {
       case 'success': return statusInfo.type === 'success';
       case 'error': return statusInfo.type === 'error';
@@ -242,7 +285,9 @@ export default function AutomationLogsPanel({ automationType, colorScheme = "amb
     success: enrichedLogs.filter(l => getStatusInfo(l.status, l.success).type === 'success').length,
     errors: enrichedLogs.filter(l => getStatusInfo(l.status, l.success).type === 'error').length,
     skipped: enrichedLogs.filter(l => getStatusInfo(l.status, l.success).type === 'skipped').length,
-    pending: enrichedLogs.filter(l => getStatusInfo(l.status, l.success).type === 'pending').length
+    pending: enrichedLogs.filter(l => getStatusInfo(l.status, l.success).type === 'pending').length,
+    delivered: enrichedLogs.filter(l => l.delivery_status === 'delivered' || l.delivery_status === 'read').length,
+    read: enrichedLogs.filter(l => l.delivery_status === 'read').length
   };
 
   const handleTabChange = (value) => {
@@ -254,7 +299,10 @@ export default function AutomationLogsPanel({ automationType, colorScheme = "amb
     <>
       <Button
         variant="outline"
-        onClick={() => setIsOpen(true)}
+        onClick={() => {
+          setIsOpen(true);
+          triggerDeliverySync();
+        }}
         className="gap-2"
       >
         <FileText className="w-4 h-4" />
@@ -280,7 +328,10 @@ export default function AutomationLogsPanel({ automationType, colorScheme = "amb
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => refetch()}
+                  onClick={() => {
+                    triggerDeliverySync();
+                    refetch();
+                  }}
                   disabled={isLoading}
                   className="gap-1"
                 >
@@ -311,7 +362,7 @@ export default function AutomationLogsPanel({ automationType, colorScheme = "amb
             </div>
 
             <div className="p-4 space-y-4 flex-1 overflow-hidden flex flex-col">
-              <div className="grid grid-cols-5 gap-3">
+              <div className="grid grid-cols-7 gap-3">
                 <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
                   <Activity className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                   <div>
@@ -324,6 +375,20 @@ export default function AutomationLogsPanel({ automationType, colorScheme = "amb
                   <div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">Enviados</p>
                     <p className="font-bold text-green-600 dark:text-green-400">{stats.success}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 p-3 bg-teal-50 dark:bg-teal-950 rounded-lg">
+                  <CheckCheck className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Recebidos</p>
+                    <p className="font-bold text-teal-600 dark:text-teal-400">{stats.delivered}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 p-3 bg-sky-50 dark:bg-sky-950 rounded-lg">
+                  <Eye className="w-5 h-5 text-sky-600 dark:text-sky-400" />
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Lidos</p>
+                    <p className="font-bold text-sky-600 dark:text-sky-400">{stats.read}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950 rounded-lg">
@@ -434,7 +499,7 @@ export default function AutomationLogsPanel({ automationType, colorScheme = "amb
                         <div className="max-h-[400px] overflow-y-auto">
                           <div className="divide-y dark:divide-gray-700">
                             {paginatedLogs.map(log => {
-                              const statusInfo = getStatusInfo(log.status, log.success);
+                              const statusInfo = getStatusInfo(log.status, log.success, log.delivery_status, log.delivery_error_message);
                               const isExpanded = expandedLogs[log.id];
                               
                               return (
@@ -559,6 +624,35 @@ export default function AutomationLogsPanel({ automationType, colorScheme = "amb
                                           </div>
                                         )}
 
+                                        {(log.delivery_status && log.delivery_status !== 'unverifiable') && (
+                                          <div className="pt-2 border-t dark:border-gray-700">
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Status de Entrega</p>
+                                            <div className="flex items-center gap-4 text-sm flex-wrap">
+                                              <span className="text-gray-700 dark:text-gray-300">
+                                                {log.delivery_status === 'sent' && 'Enviado (aguardando recebimento)'}
+                                                {log.delivery_status === 'delivered' && 'Recebido'}
+                                                {log.delivery_status === 'read' && 'Lido'}
+                                                {log.delivery_status === 'failed' && 'Não entregue'}
+                                              </span>
+                                              {log.delivered_at && (
+                                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                                  Entregue em {format(new Date(log.delivered_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                                                </span>
+                                              )}
+                                              {log.read_at && (
+                                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                                  Lido em {format(new Date(log.read_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                                                </span>
+                                              )}
+                                            </div>
+                                            {log.delivery_status === 'failed' && log.delivery_error_message && (
+                                              <p className="text-sm text-orange-700 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/50 p-2 rounded mt-2">
+                                                {log.delivery_error_message}
+                                              </p>
+                                            )}
+                                          </div>
+                                        )}
+
                                         {log.error_message && (
                                           <div className="pt-2 border-t dark:border-gray-700">
                                             <p className="text-xs text-red-500 mb-1">Mensagem de Erro</p>
@@ -570,19 +664,37 @@ export default function AutomationLogsPanel({ automationType, colorScheme = "amb
 
                                         {log.raw_result?.api_response && (
                                           <div className="pt-2 border-t dark:border-gray-700">
-                                            <p className="text-xs text-green-600 dark:text-green-400 mb-1 font-medium">Resposta da API WHU</p>
-                                            <pre className="text-xs text-gray-700 dark:text-gray-300 bg-green-50 dark:bg-green-950/30 p-2 rounded border border-green-200 dark:border-green-900 overflow-x-auto max-h-48">
-                                              {JSON.stringify(log.raw_result.api_response, null, 2)}
-                                            </pre>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => { e.stopPropagation(); toggleSection(`${log.id}:api`); }}
+                                              className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium hover:underline"
+                                            >
+                                              {expandedSections[`${log.id}:api`] ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                              Resposta da API WHU
+                                            </button>
+                                            {expandedSections[`${log.id}:api`] && (
+                                              <pre className="mt-1 text-xs text-gray-700 dark:text-gray-300 bg-green-50 dark:bg-green-950/30 p-2 rounded border border-green-200 dark:border-green-900 overflow-x-auto max-h-48">
+                                                {JSON.stringify(log.raw_result.api_response, null, 2)}
+                                              </pre>
+                                            )}
                                           </div>
                                         )}
 
                                         {log.raw_result && Object.keys(log.raw_result).length > 0 && (
                                           <div className="pt-2 border-t dark:border-gray-700">
-                                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Dados Completos do Log</p>
-                                            <pre className="text-xs text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 p-2 rounded border dark:border-gray-700 overflow-x-auto max-h-32">
-                                              {JSON.stringify(log.raw_result, null, 2)}
-                                            </pre>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => { e.stopPropagation(); toggleSection(`${log.id}:full`); }}
+                                              className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 font-medium hover:underline"
+                                            >
+                                              {expandedSections[`${log.id}:full`] ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                              Dados Completos do Log
+                                            </button>
+                                            {expandedSections[`${log.id}:full`] && (
+                                              <pre className="mt-1 text-xs text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 p-2 rounded border dark:border-gray-700 overflow-x-auto max-h-32">
+                                                {JSON.stringify(log.raw_result, null, 2)}
+                                              </pre>
+                                            )}
                                           </div>
                                         )}
                                       </div>

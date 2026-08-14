@@ -157,6 +157,11 @@ export async function sendWhatsAppMessageWithToken(lead, agent, templateId, chan
     }
   }
 
+  // Conversa nova não devolve messageSentId; completa para permitir o rastreio de entrega.
+  if (!usedFallback) {
+    result = await enrichWithMessageSentId(result, { channelToken });
+  }
+
   return { ...result, usedFallback };
 }
 
@@ -351,8 +356,8 @@ export async function sendTextMessageWithToken({ number, message, channelToken }
 // Busca o histórico de UMA conversa no WHU. O objeto do chat inclui um array `messages`
 // (campos: IdMessage, text, isSentByMe, dhMessage, isSystemMessage, ...) além de contact/
 // lastMessage/countUnreadMessages. Usado para complementar a thread na caixa de entrada.
-export async function getChatWithMessages(chatId, { timeoutMs = 8000 } = {}) {
-  const token = process.env.RUDO_WHATSAPP_TOKEN;
+export async function getChatWithMessages(chatId, { timeoutMs = 8000, channelToken = null } = {}) {
+  const token = channelToken || process.env.RUDO_WHATSAPP_TOKEN;
   if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
   if (!chatId) return null;
 
@@ -373,6 +378,83 @@ export async function getChatWithMessages(chatId, { timeoutMs = 8000 } = {}) {
       return null;
     }
     return response.json().catch(() => null);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// O create-new (conversa nova) NÃO devolve messageSentId — só o send-template em
+// conversa já aberta devolve. Sem esse ID não dá para rastrear entrega/leitura.
+// Este helper completa o resultado buscando o ID da última mensagem de saída do
+// chat recém-criado. Best-effort: nunca lança; se não achar, devolve como veio.
+export async function enrichWithMessageSentId(result, { channelToken = null } = {}) {
+  try {
+    if (!result || result.messageSentId || result.message_sent_id) return result;
+    const chatId = result.chatId || result.currentChatId || result.chat_id || null;
+    if (!chatId) return result;
+    const chat = await getChatWithMessages(chatId, { channelToken });
+    const messages = Array.isArray(chat?.messages) ? chat.messages : [];
+    const outbound = [...messages].reverse().find((m) => m && (m.isSentByMe === true || m.fromMe === true));
+    const msgId = outbound?.idMessage || outbound?.IdMessage || outbound?.id || null;
+    if (msgId) return { ...result, messageSentId: String(msgId) };
+    return result;
+  } catch {
+    return result;
+  }
+}
+
+// Consulta o status de UMA mensagem no WHU: GET /chats/messages/{id}
+// (MessageInfoApiModel). Serviço reutilizável — hoje só o painel de logs consome,
+// mas outras telas podem usar depois. Retorna:
+//   { ok: true, status, sentAt, deliveredAt, readAt, erroredAt, errorMessage }
+//   { ok: false, notFound: true }   → 400 chat_16/chat_17 (mensagem inexistente; não repetir)
+//   { ok: false, unavailable: true } → API fora/timeout (tentar de novo depois)
+// status: 0 aguardando, 1 enviada, 2 entregue, 3 visualizada, 4 excluída, 5 reproduzida, -1 erro.
+// Aceita `channelToken` para mensagens enviadas por canais próprios (automations
+// de canal: upsell_channel/referral_channel) — a mensagem só é visível para o
+// token do canal que a enviou.
+export async function getMessageDeliveryInfo(messageId, { timeoutMs = 8000, channelToken = null } = {}) {
+  const token = channelToken || process.env.RUDO_WHATSAPP_TOKEN;
+  if (!token) throw new Error('RUDO_WHATSAPP_TOKEN not configured');
+  if (!messageId) return { ok: false, notFound: true };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${RUDO_API_BASE}/chats/messages/${encodeURIComponent(messageId)}`, {
+      method: 'GET',
+      headers: {
+        'access-token': token,
+        'Accept': 'application/json',
+      },
+      signal: controller.signal,
+    });
+
+    if (response.status === 400 || response.status === 404) {
+      // chat_16/chat_17 = mensagem não existe no WHU → não verificável, não reconsultar.
+      return { ok: false, notFound: true };
+    }
+    if (!response.ok) {
+      return { ok: false, unavailable: true };
+    }
+
+    const data = await response.json().catch(() => null);
+    if (!data || typeof data !== 'object') {
+      return { ok: false, unavailable: true };
+    }
+
+    const status = Number(data.status);
+    return {
+      ok: true,
+      status: Number.isFinite(status) ? status : null,
+      sentAt: data.utcDhMessageSent || null,
+      deliveredAt: data.utcDhMessageDelivered || null,
+      readAt: data.utcDhMessageRead || null,
+      erroredAt: data.utcDhMessageErrored || null,
+      errorMessage: data.errorMessage || null,
+    };
+  } catch {
+    return { ok: false, unavailable: true };
   } finally {
     clearTimeout(timer);
   }
@@ -637,6 +719,11 @@ export async function sendWhatsAppMessage(lead, agent, templateId, templateCompo
     } else {
       throw error;
     }
+  }
+
+  // Conversa nova não devolve messageSentId; completa para permitir o rastreio de entrega.
+  if (!usedFallback) {
+    result = await enrichWithMessageSentId(result);
   }
 
   // Always update contact attributes when we have an agent
