@@ -798,6 +798,15 @@ CREATE TABLE IF NOT EXISTS automation_logs (
     executed_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Status de entrega/leitura (segundo nível, via GET /chats/messages/{id} da WHU).
+-- delivery_status: 'sent' | 'delivered' | 'read' | 'failed' | 'unverifiable'
+ALTER TABLE automation_logs ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(20);
+ALTER TABLE automation_logs ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP;
+ALTER TABLE automation_logs ADD COLUMN IF NOT EXISTS read_at TIMESTAMP;
+ALTER TABLE automation_logs ADD COLUMN IF NOT EXISTS delivery_error_at TIMESTAMP;
+ALTER TABLE automation_logs ADD COLUMN IF NOT EXISTS delivery_error_message TEXT;
+ALTER TABLE automation_logs ADD COLUMN IF NOT EXISTS delivery_checked_at TIMESTAMP;
+
 ALTER TABLE sla_policies ADD COLUMN IF NOT EXISTS first_response_minutes INTEGER;
 ALTER TABLE sla_policies ADD COLUMN IF NOT EXISTS resolution_minutes INTEGER;
 ALTER TABLE sla_policies ADD COLUMN IF NOT EXISTS pause_on_statuses TEXT[] DEFAULT '{"awaiting_customer", "awaiting_third_party", "on_hold"}';

@@ -25,6 +25,7 @@ import leadImportsRoutes from './routes/leadImports.js';
 import erpAuditLogsRoutes from './routes/erpAuditLogs.js';
 import { installErpFetchAudit, erpOriginMiddleware, withErpOrigin, cleanupErpRequestLogs } from './services/erpAuditService.js';
 import { runAllAutomations, checkValidacaoPagamento } from './services/automationService.js';
+import { syncDeliveryStatuses } from './services/deliveryStatusService.js';
 import cron from 'node-cron';
 import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport, runPerspectivaBatch, sendPerspectivaReport, runPresalesAjusteAutoCancel, runPresalesAjusteAvisoPrazo } from './routes/functions.js';
 import { recoverStuckQueues } from './services/whatsappQueueService.js';
@@ -235,6 +236,19 @@ initDatabase()
     }, AUTOMATION_INTERVAL);
     
     console.log(`[Automations] Scheduler initialized. Running every ${AUTOMATION_INTERVAL / 60000} minutes.`);
+
+    // Retaguarda: mantém os status de entrega/leitura (WHU) dos logs recentes
+    // atualizados mesmo sem ninguém abrir o painel — captura o erro -1 assíncrono
+    // da Meta. Rotina leve: poucas dezenas de mensagens por ciclo.
+    const DELIVERY_SYNC_INTERVAL = 12 * 60 * 1000;
+    setInterval(() => {
+      syncDeliveryStatuses({ limit: 40 })
+        .then((r) => {
+          if (r.eligible) console.log(`[DeliverySync] Ciclo periódico: ${r.synced}/${r.eligible} logs sincronizados.`);
+        })
+        .catch((err) => console.error('[DeliverySync] Erro no ciclo periódico:', err.message));
+    }, DELIVERY_SYNC_INTERVAL);
+    console.log(`[DeliverySync] Rotina periódica agendada a cada ${DELIVERY_SYNC_INTERVAL / 60000} minutos.`);
 
     // Validação de pagamento (API_VALIDACAO_PAGAMENTO): fora do ciclo horário.
     // Roda apenas 2x/dia — 01:00 e 22:00 no horário de Brasília — porque a

@@ -4,6 +4,7 @@ import { getWhatsAppTemplates, getWhatsAppTemplatesByToken, sendWhatsAppMessage,
 import { query } from '../config/database.js';
 import { runAllAutomations, getAutomationLogs } from '../services/automationService.js';
 import { createLeadWhatsAppContact, getLeadWhatsAppContacts } from '../services/leadWhatsAppContactService.js';
+import { syncDeliveryStatuses } from '../services/deliveryStatusService.js';
 
 function snakeToCamel(str) {
   return str.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
@@ -366,6 +367,16 @@ router.get('/automation-logs', authMiddleware, async (req, res) => {
     console.error('Error fetching automation logs:', error);
     res.status(500).json({ message: error.message });
   }
+});
+
+// Dispara a sincronização dos status de entrega/leitura com a WHU sem travar a
+// tela: responde imediatamente e o sync roda em background (a lista atualiza no
+// próximo refetch do painel).
+router.post('/automation-logs/sync-delivery', authMiddleware, async (req, res) => {
+  const { automationType } = req.body || {};
+  syncDeliveryStatuses({ automationType: automationType || null })
+    .catch((err) => console.error('[DeliverySync] Erro na sincronização sob demanda:', err.message));
+  res.json({ message: 'Sincronização de status de entrega iniciada' });
 });
 
 router.post('/run-automations', authMiddleware, async (req, res) => {
