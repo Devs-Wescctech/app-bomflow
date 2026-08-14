@@ -243,6 +243,7 @@ router.post('/send-and-tag', authMiddleware, async (req, res) => {
       success: true,
       tagged,
       contactId,
+      conversationId: inboxConversationId,
       vendedor: vendedorNome ? { id: vendedorId, name: vendedorNome } : null,
       usedFallback: sendResult.usedFallback || false,
     });
