@@ -269,6 +269,8 @@ export default function Agents() {
   const [agentFilterType, setAgentFilterType] = useState("all");
   const [agentFilterActive, setAgentFilterActive] = useState("all");
   const [agentFilterTeam, setAgentFilterTeam] = useState("all");
+  const [teamFilterActive, setTeamFilterActive] = useState("all");
+  const [queueFilterActive, setQueueFilterActive] = useState("all");
   const [creatingStep, setCreatingStep] = useState(null);
 
   const [formData, setFormData] = useState({
@@ -343,6 +345,38 @@ export default function Agents() {
     staleTime: 1000 * 60 * 5,
     retry: 2,
   });
+
+  const PAGE_SIZE = 100;
+  const [inactivityRows, setInactivityRows] = useState([]);
+  const [inactivityTotal, setInactivityTotal] = useState(null); // null = ainda não carregou
+  const [inactivityOffset, setInactivityOffset] = useState(0);
+  const [inactivityLogLoading, setInactivityLogLoading] = useState(false);
+  const [inactivityLogError, setInactivityLogError] = useState(null);
+
+  // Carrega uma página do histórico e acumula as linhas
+  const fetchInactivityPage = async (offset = 0, reset = false) => {
+    setInactivityLogLoading(true);
+    setInactivityLogError(null);
+    try {
+      const res = await fetch(`/api/agents/inactivity-log?limit=${PAGE_SIZE}&offset=${offset}`);
+      if (!res.ok) throw new Error('Erro ao carregar histórico');
+      const data = await res.json();
+      setInactivityRows(prev => reset ? data.rows : [...prev, ...data.rows]);
+      setInactivityTotal(data.total);
+      setInactivityOffset(offset + data.rows.length);
+    } catch (err) {
+      setInactivityLogError(err.message);
+    } finally {
+      setInactivityLogLoading(false);
+    }
+  };
+
+  // Carrega a primeira página quando o admin abre a aba pela primeira vez
+  useEffect(() => {
+    if (isAdmin && activeTab === 'inactivity' && inactivityTotal === null) {
+      fetchInactivityPage(0, true);
+    }
+  }, [isAdmin, activeTab]);
 
   const createAgentMutation = useMutation({
     mutationFn: (data) => base44.entities.Agent.create(data),
@@ -1121,6 +1155,23 @@ export default function Agents() {
     return agents.filter(a => a.teamId === teamId).length;
   };
 
+  const getInactiveAgentCountByTeam = (teamId) => {
+    return agents.filter(a => a.teamId === teamId && a.active === false).length;
+  };
+
+  const getInactiveAgentCountByQueue = (queueId) => {
+    return agents.filter(a => (a.queueIds || a.queue_ids)?.includes(queueId) && a.active === false).length;
+  };
+
+  const formatLastAccess = (agent) => {
+    const ts = agent.lastActivityAt || agent.lastLoginAt;
+    if (!ts) return 'Nunca acessou';
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return 'Nunca acessou';
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+      ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  };
+
   const getQueueCountByTeam = (teamId) => {
     return queues.filter(q => q.teamId === teamId).length;
   };
@@ -1217,6 +1268,12 @@ export default function Agents() {
             <Settings className="w-4 h-4 mr-2" />
             Tipos de Agente
           </TabsTrigger>
+          {isAdmin && (
+            <TabsTrigger value="inactivity" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+              <ShieldX className="w-4 h-4 mr-2" />
+              Inativações
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="agents" className="mt-6">
@@ -1225,6 +1282,9 @@ export default function Agents() {
               {filteredAgents.length !== agents.length
                 ? `${filteredAgents.length} de ${agents.length} agente(s)`
                 : `${agents.length} agente(s) cadastrado(s)`}
+              {agents.filter(a => a.active === false).length > 0 && (
+                <span className="text-amber-600 dark:text-amber-400"> • {agents.filter(a => a.active === false).length} inativo(s)</span>
+              )}
             </p>
             <div className="flex items-center gap-2">
               <Button
@@ -1321,7 +1381,7 @@ export default function Agents() {
                               </span>
                             </div>
                           )}
-                          {agent.online && (
+                          {agent.online && agent.active && (
                             <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 rounded-full ring-2 ring-white dark:ring-gray-900"></div>
                           )}
                         </div>
@@ -1404,9 +1464,13 @@ export default function Agents() {
                         </div>
                       )}
                       
+                      <div className="flex items-center gap-2 pt-2 text-xs text-gray-500 dark:text-gray-400">
+                        <Clock className="w-3.5 h-3.5 text-gray-400" />
+                        <span>Último acesso: {formatLastAccess(agent)}</span>
+                      </div>
                       
                       <div className="flex items-center gap-2 pt-2">
-                        {agent.online ? (
+                        {!agent.active ? null : agent.online ? (
                           <Badge className="bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300">
                             <UserCheck className="w-3 h-3 mr-1" />
                             Online
@@ -1418,8 +1482,10 @@ export default function Agents() {
                           </Badge>
                         )}
                         {!agent.active && (
-                          <Badge variant="outline" className="bg-gray-100 dark:bg-gray-800">
-                            Inativo
+                          <Badge variant="outline" className={agent.deactivationReason === 'inatividade'
+                            ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                            : 'bg-gray-100 dark:bg-gray-800'}>
+                            {agent.deactivationReason === 'inatividade' ? 'Inativo (inatividade)' : 'Inativo'}
                           </Badge>
                         )}
                       </div>
@@ -1440,7 +1506,12 @@ export default function Agents() {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Times</h3>
-                  <p className="text-sm text-gray-500">{teams.length} time(s) • {teams.filter(t => t.active).length} ativo(s)</p>
+                  <p className="text-sm text-gray-500">
+                    {teams.length} time(s) • {teams.filter(t => t.active).length} ativo(s)
+                    {agents.filter(a => a.active === false).length > 0 && (
+                      <span className="text-amber-600 dark:text-amber-400"> • {agents.filter(a => a.active === false).length} agente(s) inativo(s)</span>
+                    )}
+                  </p>
                 </div>
               </div>
               <Button 
@@ -1456,9 +1527,29 @@ export default function Agents() {
             </div>
           </div>
 
+          <div className="flex items-center gap-2 mb-4">
+            <Select value={teamFilterActive} onValueChange={setTeamFilterActive}>
+              <SelectTrigger className="w-[160px] h-9 text-sm">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os status</SelectItem>
+                <SelectItem value="active">Ativos</SelectItem>
+                <SelectItem value="inactive">Inativos</SelectItem>
+                <SelectItem value="with_inactive_agents">Com agentes inativos</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {teams.map(team => {
+            {teams.filter(team => {
+              if (teamFilterActive === "active") return team.active !== false;
+              if (teamFilterActive === "inactive") return team.active === false;
+              if (teamFilterActive === "with_inactive_agents") return getInactiveAgentCountByTeam(team.id) > 0;
+              return true;
+            }).map(team => {
               const agentCount = getAgentCountByTeam(team.id);
+              const inactiveCount = getInactiveAgentCountByTeam(team.id);
               const queueCount = getQueueCountByTeam(team.id);
               
               return (
@@ -1523,7 +1614,9 @@ export default function Agents() {
                         <Users className="w-4 h-4 text-blue-500" />
                         <div>
                           <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{agentCount}</p>
-                          <p className="text-xs text-gray-500">Agentes</p>
+                          <p className="text-xs text-gray-500">
+                            Agentes{inactiveCount > 0 && <span className="text-amber-600 dark:text-amber-400"> • {inactiveCount} inativo(s)</span>}
+                          </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 p-2 bg-purple-50 dark:bg-purple-950/30 rounded-lg">
@@ -1550,7 +1643,12 @@ export default function Agents() {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Filas</h3>
-                  <p className="text-sm text-gray-500">{queues.length} fila(s) • {queues.filter(q => q.active).length} ativa(s)</p>
+                  <p className="text-sm text-gray-500">
+                    {queues.length} fila(s) • {queues.filter(q => q.active).length} ativa(s)
+                    {agents.filter(a => a.active === false).length > 0 && (
+                      <span className="text-amber-600 dark:text-amber-400"> • {agents.filter(a => a.active === false).length} agente(s) inativo(s)</span>
+                    )}
+                  </p>
                 </div>
               </div>
               <Button 
@@ -1566,10 +1664,30 @@ export default function Agents() {
             </div>
           </div>
 
+          <div className="flex items-center gap-2 mb-4">
+            <Select value={queueFilterActive} onValueChange={setQueueFilterActive}>
+              <SelectTrigger className="w-[160px] h-9 text-sm">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os status</SelectItem>
+                <SelectItem value="active">Ativas</SelectItem>
+                <SelectItem value="inactive">Inativas</SelectItem>
+                <SelectItem value="with_inactive_agents">Com agentes inativos</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {queues.map(queue => {
+            {queues.filter(queue => {
+              if (queueFilterActive === "active") return queue.active !== false;
+              if (queueFilterActive === "inactive") return queue.active === false;
+              if (queueFilterActive === "with_inactive_agents") return getInactiveAgentCountByQueue(queue.id) > 0;
+              return true;
+            }).map(queue => {
               const priorityConfig = PRIORITY_CONFIG[queue.defaultPriority] || PRIORITY_CONFIG.P3;
-              const agentCount = agents?.filter(a => a.queue_ids?.includes(queue.id)).length || 0;
+              const agentCount = agents?.filter(a => (a.queueIds || a.queue_ids)?.includes(queue.id)).length || 0;
+              const inactiveCount = getInactiveAgentCountByQueue(queue.id);
               
               return (
                 <Card key={queue.id} className={`border-2 border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-emerald-300 dark:hover:border-emerald-700 hover:shadow-lg transition-all ${!queue.active ? 'opacity-60' : ''}`}>
@@ -1619,7 +1737,9 @@ export default function Agents() {
                         <Users className="w-4 h-4 text-emerald-500" />
                         <div>
                           <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{agentCount}</p>
-                          <p className="text-xs text-gray-500">Agentes</p>
+                          <p className="text-xs text-gray-500">
+                            Agentes{inactiveCount > 0 && <span className="text-amber-600 dark:text-amber-400"> • {inactiveCount} inativo(s)</span>}
+                          </p>
                         </div>
                       </div>
                       <div className={`flex items-center gap-2 p-2 rounded-lg ${
@@ -1743,6 +1863,123 @@ export default function Agents() {
             })}
           </div>
         </TabsContent>
+
+        {/* Aba: Histórico de Inativações Automáticas */}
+        {isAdmin && (
+          <TabsContent value="inactivity" className="mt-6">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Histórico de Inativações Automáticas</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  {inactivityTotal !== null
+                    ? `${inactivityRows.length} de ${inactivityTotal} registro(s) carregado(s)`
+                    : 'Carregando histórico…'}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchInactivityPage(0, true)}
+                disabled={inactivityLogLoading}
+              >
+                {inactivityLogLoading && inactivityOffset === 0
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Activity className="w-4 h-4 mr-2" />}
+                Atualizar
+              </Button>
+            </div>
+
+            {inactivityLogError && (
+              <Alert className="mb-4 bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800">
+                <AlertDescription className="text-red-700 dark:text-red-300">{inactivityLogError}</AlertDescription>
+              </Alert>
+            )}
+
+            {inactivityLogLoading && inactivityRows.length === 0 ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+              </div>
+            ) : !inactivityRows.length ? (
+              <Card className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
+                <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                  <ShieldX className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-4" />
+                  <p className="text-gray-500 dark:text-gray-400 font-medium">Nenhuma inativação automática registrada</p>
+                  <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">Os registros aparecem aqui quando agentes são inativados por inatividade</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
+                  <table className="w-full text-sm bg-white dark:bg-gray-900">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800">
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Agente</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Motivo</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Última Atividade</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Inativado em</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Status Atual</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {inactivityRows.map((entry) => {
+                        const lastActivity = entry.lastActivityAt || entry.lastLoginAt;
+                        return (
+                          <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                            <td className="px-4 py-3">
+                              <div className="font-medium text-gray-900 dark:text-gray-100">{entry.agentName || entry.currentName || '—'}</div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400">{entry.agentEmail || '—'}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge variant="outline" className="text-orange-700 border-orange-300 bg-orange-50 dark:text-orange-300 dark:bg-orange-950 dark:border-orange-700 capitalize">
+                                {entry.reason}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                              {lastActivity
+                                ? new Date(lastActivity).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                : <span className="text-gray-400">—</span>}
+                            </td>
+                            <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                              <div className="flex items-center gap-1">
+                                <Clock className="w-3.5 h-3.5 text-gray-400" />
+                                {new Date(entry.deactivatedAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              {entry.currentlyActive === null ? (
+                                <Badge variant="outline" className="text-gray-400">Conta removida</Badge>
+                              ) : entry.currentlyActive ? (
+                                <Badge className="bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300">Ativo</Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-gray-500 dark:text-gray-400">Inativo</Badge>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Botão "Carregar mais" — visível enquanto houver registros não carregados */}
+                {inactivityTotal !== null && inactivityRows.length < inactivityTotal && (
+                  <div className="flex justify-center mt-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => fetchInactivityPage(inactivityOffset)}
+                      disabled={inactivityLogLoading}
+                      className="min-w-[200px]"
+                    >
+                      {inactivityLogLoading
+                        ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Carregando…</>
+                        : <>Carregar mais ({inactivityTotal - inactivityRows.length} restante{inactivityTotal - inactivityRows.length !== 1 ? 's' : ''})</>}
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Dialog Reset Password */}

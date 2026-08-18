@@ -10,16 +10,16 @@ router.post('/register', async (req, res) => {
     const { email, password, full_name } = req.body;
     
     if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required' });
+      return res.status(400).json({ message: 'Informe e-mail e senha' });
     }
     
     if (password.length < 6) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+      return res.status(400).json({ message: 'A senha deve ter pelo menos 6 caracteres' });
     }
     
     const existing = await query('SELECT id FROM agents WHERE email = $1', [email]);
     if (existing.rows.length > 0) {
-      return res.status(400).json({ message: 'Email already registered' });
+      return res.status(400).json({ message: 'E-mail já cadastrado' });
     }
     
     const password_hash = await bcrypt.hash(password, 10);
@@ -107,30 +107,37 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
     
     if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required' });
+      return res.status(400).json({ message: 'Informe e-mail e senha' });
     }
     
     const result = await query('SELECT a.*, t.name AS team_name FROM agents a LEFT JOIN teams t ON t.id = a.team_id WHERE a.email = $1', [email]);
     
     if (result.rows.length === 0) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: 'E-mail ou senha inválidos' });
     }
     
     const agent = result.rows[0];
     
     if (!agent.password_hash) {
-      return res.status(401).json({ message: 'Password not set. Contact administrator.' });
+      return res.status(401).json({ message: 'Senha não definida. Contate o administrador.' });
     }
     
     const validPassword = await bcrypt.compare(password, agent.password_hash);
     
     if (!validPassword) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: 'E-mail ou senha inválidos' });
     }
     
     if (!agent.active) {
-      return res.status(401).json({ message: 'Account is inactive. Contact administrator.' });
+      if (agent.deactivation_reason === 'inatividade') {
+        return res.status(401).json({ message: 'Conta bloqueada por inatividade. Contate o administrador.' });
+      }
+      return res.status(401).json({ message: 'Conta inativa. Contate o administrador.' });
     }
+    
+    // Registra último login e atividade (rastreamento de inatividade)
+    query('UPDATE agents SET last_login_at = NOW(), last_activity_at = NOW() WHERE id = $1', [agent.id])
+      .catch(err => console.error('[ActivityTracking] Falha ao registrar login:', err.message));
     
     const tokens = generateTokens(agent);
     const agentTypeConfig = await getAgentTypeConfig(agent.agent_type);
@@ -150,22 +157,30 @@ router.post('/refresh', async (req, res) => {
     const { refreshToken } = req.body;
     
     if (!refreshToken) {
-      return res.status(400).json({ message: 'Refresh token required' });
+      return res.status(400).json({ message: 'Sessão expirada. Faça login novamente.' });
     }
     
     const decoded = verifyToken(refreshToken);
     
     if (!decoded) {
-      return res.status(401).json({ message: 'Invalid refresh token' });
+      return res.status(401).json({ message: 'Sessão expirada. Faça login novamente.' });
     }
     
     const result = await query('SELECT a.*, t.name AS team_name FROM agents a LEFT JOIN teams t ON t.id = a.team_id WHERE a.id = $1', [decoded.id]);
     
     if (result.rows.length === 0) {
-      return res.status(401).json({ message: 'User not found' });
+      return res.status(401).json({ message: 'Usuário não encontrado' });
     }
     
     const agent = result.rows[0];
+    
+    if (!agent.active) {
+      const message = agent.deactivation_reason === 'inatividade'
+        ? 'Conta bloqueada por inatividade. Contate o administrador.'
+        : 'Conta inativa. Contate o administrador.';
+      return res.status(401).json({ message });
+    }
+    
     const tokens = generateTokens(agent);
     const agentTypeConfig = await getAgentTypeConfig(agent.agent_type);
     
@@ -184,7 +199,7 @@ router.get('/me', authMiddleware, async (req, res) => {
     const result = await query('SELECT a.*, t.name AS team_name FROM agents a LEFT JOIN teams t ON t.id = a.team_id WHERE a.id = $1', [req.user.id]);
     
     if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: 'Usuário não encontrado' });
     }
     
     const agent = result.rows[0];
@@ -202,24 +217,24 @@ router.post('/change-password', authMiddleware, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     
     if (!currentPassword || !newPassword) {
-      return res.status(400).json({ message: 'Current and new password are required' });
+      return res.status(400).json({ message: 'Informe a senha atual e a nova senha' });
     }
     
     if (newPassword.length < 6) {
-      return res.status(400).json({ message: 'New password must be at least 6 characters' });
+      return res.status(400).json({ message: 'A nova senha deve ter pelo menos 6 caracteres' });
     }
     
     const result = await query('SELECT * FROM agents WHERE id = $1', [req.user.id]);
     
     if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: 'Usuário não encontrado' });
     }
     
     const agent = result.rows[0];
     const validPassword = await bcrypt.compare(currentPassword, agent.password_hash);
     
     if (!validPassword) {
-      return res.status(401).json({ message: 'Current password is incorrect' });
+      return res.status(401).json({ message: 'Senha atual incorreta' });
     }
     
     const newHash = await bcrypt.hash(newPassword, 10);
@@ -229,7 +244,7 @@ router.post('/change-password', authMiddleware, async (req, res) => {
       [newHash, req.user.id]
     );
     
-    res.json({ success: true, message: 'Password changed successfully' });
+    res.json({ success: true, message: 'Senha alterada com sucesso' });
   } catch (error) {
     console.error('Error changing password:', error);
     res.status(500).json({ message: error.message });
@@ -237,7 +252,7 @@ router.post('/change-password', authMiddleware, async (req, res) => {
 });
 
 router.post('/logout', (req, res) => {
-  res.json({ success: true, message: 'Logged out successfully' });
+  res.json({ success: true, message: 'Sessão encerrada' });
 });
 
 export default router;
