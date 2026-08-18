@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { createCrudRouter } from '../utils/crud.js';
-import { authMiddleware, optionalAuth } from '../middleware/auth.js';
+import { authMiddleware, optionalAuth, invalidateAgentActiveCache } from '../middleware/auth.js';
 import { loadAgentMiddleware, requireRole } from '../middleware/permissions.js';
 import { query, pool } from '../config/database.js';
 import { registerAgentInCanal } from '../services/erpDbService.js';
@@ -43,6 +43,16 @@ pool.query(`
   ALTER TABLE leads_upsell ADD COLUMN IF NOT EXISTS dependents JSONB DEFAULT '[]'::jsonb;
 `).then(() => console.log('[Migration] leads_upsell ERP columns OK'))
   .catch(e => console.error('[Migration] leads_upsell ERP columns error:', e.message));
+
+pool.query(`
+  ALTER TABLE agents ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;
+  ALTER TABLE agents ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMP;
+  ALTER TABLE agents ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMP;
+  ALTER TABLE agents ADD COLUMN IF NOT EXISTS deactivation_reason VARCHAR(50);
+  ALTER TABLE agents ALTER COLUMN last_activity_at SET DEFAULT NOW();
+  UPDATE agents SET last_activity_at = NOW() WHERE last_activity_at IS NULL AND active = TRUE;
+`).then(() => console.log('[Migration] agents activity tracking OK'))
+  .catch(e => console.error('[Migration] agents activity tracking error:', e.message));
 
 pool.query(`
   ALTER TABLE activities_upsell ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES agents(id);
@@ -874,6 +884,7 @@ router.get('/agents', authMiddleware, async (req, res) => {
              queue_ids, work_unit, role, must_reset_password, erp_agent_id,
              whatsapp_access_token, whatsapp_token_expires_at,
              canal_venda, canal_venda_id, canal_venda_grupo_id, erp_agente_venda_id,
+             last_login_at, last_activity_at, deactivated_at, deactivation_reason,
              created_at, updated_at
       FROM agents 
       ORDER BY created_at DESC 
@@ -899,6 +910,7 @@ router.get('/agents/:id', authMiddleware, async (req, res) => {
              whatsapp_access_token, whatsapp_token_expires_at,
              whatsapp_channel_token,
              canal_venda, canal_venda_id, canal_venda_grupo_id, erp_agente_venda_id,
+             last_login_at, last_activity_at, deactivated_at, deactivation_reason,
              created_at, updated_at
       FROM agents WHERE id = $1
     `, [id]);
@@ -921,7 +933,36 @@ router.get('/agents/:id', authMiddleware, async (req, res) => {
   }
 });
 
-router.post('/agents', authMiddleware, async (req, res) => {
+// Autorização de gestão de agentes: verificada SEMPRE no banco (nunca no payload
+// ou apenas no token), para impedir auto-promoção e escalada de privilégio.
+export async function requesterCanManageAgents(req) {
+  const result = await query('SELECT agent_type, permissions, active FROM agents WHERE id = $1', [req.user.id]);
+  if (result.rows.length === 0) return false;
+  const row = result.rows[0];
+  if (row.active === false) return false;
+  return row.agent_type === 'admin' || row.permissions?.can_manage_agents === true;
+}
+
+function requireAgentManager(req, res, next) {
+  requesterCanManageAgents(req)
+    .then((ok) => {
+      if (!ok) return res.status(403).json({ message: 'Apenas administradores/gestores podem gerenciar agentes.' });
+      next();
+    })
+    .catch((err) => {
+      console.error('Error checking agent management permission:', err);
+      res.status(503).json({ message: 'Não foi possível verificar permissões. Tente novamente.' });
+    });
+}
+
+// Campos que um agente comum pode alterar no próprio cadastro (sem privilégios).
+const SELF_EDITABLE_AGENT_FIELDS = new Set([
+  'name', 'photo_url', 'online', 'working_hours',
+  'password_hash', 'password_updated_at', 'must_reset_password',
+  'whatsapp_access_token', 'whatsapp_token_expires_at',
+]);
+
+router.post('/agents', authMiddleware, requireAgentManager, async (req, res) => {
   try {
     const data = convertKeysToSnake(req.body);
     
@@ -1001,6 +1042,47 @@ router.put('/agents/:id', authMiddleware, async (req, res) => {
       delete data.password;
     }
     
+    // Campos de inativação são controlados exclusivamente pelo servidor.
+    delete data.deactivated_at;
+    delete data.deactivation_reason;
+    delete data.last_activity_at;
+    delete data.last_login_at;
+    
+    // Autorização (sempre pelo banco): gestores editam qualquer agente; um agente
+    // comum só edita o PRÓPRIO cadastro e apenas campos sem privilégio (nunca
+    // agent_type, role, permissions, active, team, e-mail etc.).
+    const canManage = await requesterCanManageAgents(req);
+    if (!canManage) {
+      if (id !== req.user.id) {
+        return res.status(403).json({ message: 'Apenas administradores/gestores podem editar outros agentes.' });
+      }
+      for (const key of Object.keys(data)) {
+        if (!SELF_EDITABLE_AGENT_FIELDS.has(key)) {
+          delete data[key];
+        }
+      }
+      if (Object.keys(data).length === 0) {
+        return res.status(403).json({ message: 'Campos não permitidos para edição do próprio cadastro.' });
+      }
+    }
+    
+    // Mudança de status (ativar/inativar) — só chega aqui com canManage.
+    if (data.active !== undefined) {
+      const nextActive = data.active === true || data.active === 'true';
+      const current = await query('SELECT active FROM agents WHERE id = $1', [id]);
+      if (current.rows.length === 0) {
+        return res.status(404).json({ message: 'Agent not found' });
+      }
+      const currentActive = current.rows[0].active !== false;
+      if (nextActive !== currentActive && nextActive) {
+        // Reativação: limpa dados de inativação e reinicia o relógio de atividade.
+        data.deactivated_at = null;
+        data.deactivation_reason = null;
+        data.last_activity_at = new Date();
+      }
+      data.active = nextActive;
+    }
+    
     const keys = Object.keys(data);
     const values = keys.map(k => data[k]);
     
@@ -1021,6 +1103,8 @@ router.put('/agents/:id', authMiddleware, async (req, res) => {
     const agent = result.rows[0];
     delete agent.password_hash;
     
+    invalidateAgentActiveCache(id);
+    
     res.json(convertKeysToCamel(agent));
   } catch (error) {
     console.error('Error updating agent:', error);
@@ -1028,7 +1112,7 @@ router.put('/agents/:id', authMiddleware, async (req, res) => {
   }
 });
 
-router.delete('/agents/:id', authMiddleware, async (req, res) => {
+router.delete('/agents/:id', authMiddleware, requireAgentManager, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await query('DELETE FROM agents WHERE id = $1 RETURNING id, name, email', [id]);
@@ -1074,7 +1158,7 @@ router.post('/agents/filter', authMiddleware, async (req, res) => {
   }
 });
 
-router.post('/agents/:id/reset-password', authMiddleware, async (req, res) => {
+router.post('/agents/:id/reset-password', authMiddleware, requireAgentManager, async (req, res) => {
   try {
     const { id } = req.params;
     const { newPassword } = req.body;

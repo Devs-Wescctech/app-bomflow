@@ -1298,6 +1298,16 @@ ALTER TABLE referrals ADD COLUMN IF NOT EXISTS last_contact_at TIMESTAMP;
 -- Add supervisor relationship to agents
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS supervisor_id UUID REFERENCES agents(id);
 
+-- Access tracking + automatic inactivation (30 dias sem uso)
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMP;
+-- Toda conta nova nasce com um marco inicial: nunca usada, é inativada ~30 dias após a criação.
+ALTER TABLE agents ALTER COLUMN last_activity_at SET DEFAULT NOW();
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMP;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS deactivation_reason VARCHAR(50);
+-- Backfill: agentes sem registro contam a partir do deploy (nunca inativados no dia 1)
+UPDATE agents SET last_activity_at = NOW() WHERE last_activity_at IS NULL AND active = TRUE;
+
 -- WhatsApp number validation cache (WHU /wa-number-check)
 CREATE TABLE IF NOT EXISTS whatsapp_number_validations (
   phone VARCHAR(20) PRIMARY KEY,

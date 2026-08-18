@@ -29,6 +29,7 @@ import { syncDeliveryStatuses } from './services/deliveryStatusService.js';
 import cron from 'node-cron';
 import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport, runPerspectivaBatch, sendPerspectivaReport, runPresalesAjusteAutoCancel, runPresalesAjusteAvisoPrazo } from './routes/functions.js';
 import { recoverStuckQueues } from './services/whatsappQueueService.js';
+import { deactivateInactiveAgents } from './services/inactivityService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -356,6 +357,16 @@ initDatabase()
       cleanupErpRequestLogs(30).catch((e) => console.error('[erpAudit] Cron de limpeza falhou:', e.message));
     });
     console.log('[erpAudit] Cron de retenção agendado: todos os dias às 02:30 (30 dias).');
+
+    // Inativação automática: agentes com 30+ dias sem atividade registrada
+    // (exceto o usuário master) viram active=false com motivo 'inatividade'.
+    cron.schedule('15 6 * * *', () => {
+      console.log('[Inatividade] Iniciando rotina diária de inativação por inatividade...');
+      deactivateInactiveAgents()
+        .then((r) => console.log(`[Inatividade] Rotina concluída: ${r.deactivated} agente(s) inativado(s).`))
+        .catch((e) => console.error('[Inatividade] Rotina diária falhou:', e.message));
+    }, { timezone: 'America/Sao_Paulo' });
+    console.log('[Inatividade] Cron agendado: todos os dias às 06:15 (horário de Brasília).');
 
     try {
       await recoverStuckQueues();
