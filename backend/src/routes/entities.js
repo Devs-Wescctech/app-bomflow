@@ -55,6 +55,23 @@ pool.query(`
   .catch(e => console.error('[Migration] agents activity tracking error:', e.message));
 
 pool.query(`
+  CREATE TABLE IF NOT EXISTS agent_inactivity_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_id UUID NOT NULL,
+    agent_name VARCHAR(255),
+    agent_email VARCHAR(255),
+    reason VARCHAR(100) NOT NULL DEFAULT 'inatividade',
+    last_activity_at TIMESTAMP,
+    last_login_at TIMESTAMP,
+    deactivated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_agent_inactivity_log_agent ON agent_inactivity_log(agent_id);
+  CREATE INDEX IF NOT EXISTS idx_agent_inactivity_log_created ON agent_inactivity_log(created_at DESC);
+`).then(() => console.log('[Migration] agent_inactivity_log OK'))
+  .catch(e => console.error('[Migration] agent_inactivity_log error:', e.message));
+
+pool.query(`
   ALTER TABLE activities_upsell ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES agents(id);
 `).then(() => console.log('[Migration] activities_upsell.created_by OK'))
   .catch(e => console.error('[Migration] activities_upsell.created_by error:', e.message));
@@ -896,6 +913,32 @@ router.get('/agents', authMiddleware, async (req, res) => {
     }));
   } catch (error) {
     console.error('Error listing agents:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Histórico de inativações automáticas — somente admin/gestor
+router.get('/agents/inactivity-log', authMiddleware, requireAgentManager, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 200, 500);
+    const offset = parseInt(req.query.offset) || 0;
+    const result = await query(
+      `SELECT l.id, l.agent_id, l.agent_name, l.agent_email, l.reason,
+              l.last_activity_at, l.last_login_at, l.deactivated_at, l.created_at,
+              a.name AS current_name, a.active AS currently_active
+         FROM agent_inactivity_log l
+         LEFT JOIN agents a ON a.id = l.agent_id
+        ORDER BY l.created_at DESC
+        LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    const total = await query('SELECT COUNT(*) FROM agent_inactivity_log');
+    res.json({
+      rows: result.rows.map(convertKeysToCamel),
+      total: parseInt(total.rows[0].count),
+    });
+  } catch (error) {
+    console.error('Error fetching inactivity log:', error);
     res.status(500).json({ message: error.message });
   }
 });

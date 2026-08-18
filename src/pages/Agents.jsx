@@ -346,6 +346,38 @@ export default function Agents() {
     retry: 2,
   });
 
+  const PAGE_SIZE = 100;
+  const [inactivityRows, setInactivityRows] = useState([]);
+  const [inactivityTotal, setInactivityTotal] = useState(null); // null = ainda não carregou
+  const [inactivityOffset, setInactivityOffset] = useState(0);
+  const [inactivityLogLoading, setInactivityLogLoading] = useState(false);
+  const [inactivityLogError, setInactivityLogError] = useState(null);
+
+  // Carrega uma página do histórico e acumula as linhas
+  const fetchInactivityPage = async (offset = 0, reset = false) => {
+    setInactivityLogLoading(true);
+    setInactivityLogError(null);
+    try {
+      const res = await fetch(`/api/agents/inactivity-log?limit=${PAGE_SIZE}&offset=${offset}`);
+      if (!res.ok) throw new Error('Erro ao carregar histórico');
+      const data = await res.json();
+      setInactivityRows(prev => reset ? data.rows : [...prev, ...data.rows]);
+      setInactivityTotal(data.total);
+      setInactivityOffset(offset + data.rows.length);
+    } catch (err) {
+      setInactivityLogError(err.message);
+    } finally {
+      setInactivityLogLoading(false);
+    }
+  };
+
+  // Carrega a primeira página quando o admin abre a aba pela primeira vez
+  useEffect(() => {
+    if (isAdmin && activeTab === 'inactivity' && inactivityTotal === null) {
+      fetchInactivityPage(0, true);
+    }
+  }, [isAdmin, activeTab]);
+
   const createAgentMutation = useMutation({
     mutationFn: (data) => base44.entities.Agent.create(data),
     /* MODIFICADO — chama ERP após criar agente no BomFlow */
@@ -1236,6 +1268,12 @@ export default function Agents() {
             <Settings className="w-4 h-4 mr-2" />
             Tipos de Agente
           </TabsTrigger>
+          {isAdmin && (
+            <TabsTrigger value="inactivity" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+              <ShieldX className="w-4 h-4 mr-2" />
+              Inativações
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="agents" className="mt-6">
@@ -1825,6 +1863,123 @@ export default function Agents() {
             })}
           </div>
         </TabsContent>
+
+        {/* Aba: Histórico de Inativações Automáticas */}
+        {isAdmin && (
+          <TabsContent value="inactivity" className="mt-6">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Histórico de Inativações Automáticas</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  {inactivityTotal !== null
+                    ? `${inactivityRows.length} de ${inactivityTotal} registro(s) carregado(s)`
+                    : 'Carregando histórico…'}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchInactivityPage(0, true)}
+                disabled={inactivityLogLoading}
+              >
+                {inactivityLogLoading && inactivityOffset === 0
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Activity className="w-4 h-4 mr-2" />}
+                Atualizar
+              </Button>
+            </div>
+
+            {inactivityLogError && (
+              <Alert className="mb-4 bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800">
+                <AlertDescription className="text-red-700 dark:text-red-300">{inactivityLogError}</AlertDescription>
+              </Alert>
+            )}
+
+            {inactivityLogLoading && inactivityRows.length === 0 ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+              </div>
+            ) : !inactivityRows.length ? (
+              <Card className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
+                <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                  <ShieldX className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-4" />
+                  <p className="text-gray-500 dark:text-gray-400 font-medium">Nenhuma inativação automática registrada</p>
+                  <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">Os registros aparecem aqui quando agentes são inativados por inatividade</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
+                  <table className="w-full text-sm bg-white dark:bg-gray-900">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800">
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Agente</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Motivo</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Última Atividade</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Inativado em</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Status Atual</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {inactivityRows.map((entry) => {
+                        const lastActivity = entry.lastActivityAt || entry.lastLoginAt;
+                        return (
+                          <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                            <td className="px-4 py-3">
+                              <div className="font-medium text-gray-900 dark:text-gray-100">{entry.agentName || entry.currentName || '—'}</div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400">{entry.agentEmail || '—'}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge variant="outline" className="text-orange-700 border-orange-300 bg-orange-50 dark:text-orange-300 dark:bg-orange-950 dark:border-orange-700 capitalize">
+                                {entry.reason}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                              {lastActivity
+                                ? new Date(lastActivity).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                : <span className="text-gray-400">—</span>}
+                            </td>
+                            <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                              <div className="flex items-center gap-1">
+                                <Clock className="w-3.5 h-3.5 text-gray-400" />
+                                {new Date(entry.deactivatedAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              {entry.currentlyActive === null ? (
+                                <Badge variant="outline" className="text-gray-400">Conta removida</Badge>
+                              ) : entry.currentlyActive ? (
+                                <Badge className="bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300">Ativo</Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-gray-500 dark:text-gray-400">Inativo</Badge>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Botão "Carregar mais" — visível enquanto houver registros não carregados */}
+                {inactivityTotal !== null && inactivityRows.length < inactivityTotal && (
+                  <div className="flex justify-center mt-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => fetchInactivityPage(inactivityOffset)}
+                      disabled={inactivityLogLoading}
+                      className="min-w-[200px]"
+                    >
+                      {inactivityLogLoading
+                        ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Carregando…</>
+                        : <>Carregar mais ({inactivityTotal - inactivityRows.length} restante{inactivityTotal - inactivityRows.length !== 1 ? 's' : ''})</>}
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Dialog Reset Password */}

@@ -1,7 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { query, pool } from '../config/database.js';
-import { deactivateInactiveAgents } from './inactivityService.js';
+import { deactivateInactiveAgents, logTableReady } from './inactivityService.js';
 import { checkAgentActiveStatus, invalidateAgentActiveCache, inactiveAccountMessage } from '../middleware/auth.js';
 import { requesterCanManageAgents } from '../routes/entities.js';
 
@@ -18,6 +18,9 @@ const ids = {};
 let masterBackup = null;
 
 before(async () => {
+  // Aguarda a tabela de log estar disponível antes de prosseguir nos testes
+  await logTableReady;
+
   // Agente com 40 dias sem atividade → deve ser inativado
   const oldAgent = await query(
     `INSERT INTO agents (name, email, agent_type, active, last_activity_at, last_login_at)
@@ -72,6 +75,11 @@ after(async () => {
         `UPDATE agents SET last_activity_at = $2, last_login_at = $3, active = TRUE, deactivated_at = NULL, deactivation_reason = NULL WHERE id = $1`,
         [masterBackup.id, masterBackup.last_activity_at, masterBackup.last_login_at]);
     }
+    // Limpa registros de log criados por este teste
+    await query(
+      `DELETE FROM agent_inactivity_log WHERE agent_id = ANY($1::uuid[])`,
+      [Object.values(ids)]
+    );
     await query(`DELETE FROM agents WHERE email = ANY($1::text[])`, [Object.values(emails)]);
   } finally {
     await pool.end();
@@ -106,6 +114,57 @@ test('rotina inativa apenas agentes com 30+ dias sem uso, preservando master e s
     const master = await query(`SELECT active FROM agents WHERE id = $1`, [masterBackup.id]);
     assert.equal(master.rows[0].active, true, 'usuário master é isento da regra');
   }
+});
+
+test('cada inativação persiste exatamente um registro no histórico de auditoria', async () => {
+  // Os dois agentes inativados pelo teste anterior devem ter gerado exatamente
+  // uma linha de log cada. O SELECT usa agent_id e filtra só os do teste para
+  // garantir isolamento entre execuções paralelas.
+  const logRows = await query(
+    `SELECT agent_id, agent_name, agent_email, reason, last_activity_at, deactivated_at
+       FROM agent_inactivity_log
+      WHERE agent_id = ANY($1::uuid[])
+      ORDER BY agent_id`,
+    [[ids.old, ids.neverUsed, ids.recent, ids.noRecord, ids.fresh]]
+  );
+
+  // Só os dois agentes inativados devem ter entradas
+  const loggedIds = logRows.rows.map(r => r.agent_id);
+  assert.ok(loggedIds.includes(ids.old), 'agente inativado deve ter entrada no log');
+  assert.ok(loggedIds.includes(ids.neverUsed), 'agente nunca usado deve ter entrada no log');
+  assert.ok(!loggedIds.includes(ids.recent), 'agente ativo não deve ter entrada no log');
+  assert.ok(!loggedIds.includes(ids.noRecord), 'agente sem registro não deve ter entrada no log');
+  assert.ok(!loggedIds.includes(ids.fresh), 'conta recém-criada não deve ter entrada no log');
+  assert.equal(logRows.rows.length, 2, 'exatamente dois registros de log para as duas inativações');
+
+  // Verifica campos obrigatórios do registro
+  const oldLog = logRows.rows.find(r => r.agent_id === ids.old);
+  assert.equal(oldLog.reason, 'inatividade');
+  assert.ok(oldLog.deactivated_at, 'log deve registrar data da inativação');
+  assert.ok(oldLog.last_activity_at, 'log deve capturar última atividade');
+  assert.ok(oldLog.agent_name, 'log deve capturar nome do agente');
+  assert.ok(oldLog.agent_email, 'log deve capturar e-mail do agente');
+});
+
+test('sem agentes elegíveis, nenhum registro é criado no log', async () => {
+  // Após o primeiro ciclo, os agentes elegíveis já estão inativos.
+  // Um segundo ciclo não deve criar novas entradas.
+  const before = await query(
+    `SELECT COUNT(*) FROM agent_inactivity_log WHERE agent_id = ANY($1::uuid[])`,
+    [[ids.old, ids.neverUsed]]
+  );
+  const rerun = await deactivateInactiveAgents();
+  const after = await query(
+    `SELECT COUNT(*) FROM agent_inactivity_log WHERE agent_id = ANY($1::uuid[])`,
+    [[ids.old, ids.neverUsed]]
+  );
+
+  assert.equal(rerun.deactivated, 0, 'segundo ciclo não deve inativar ninguém');
+  assert.equal(
+    parseInt(after.rows[0].count),
+    parseInt(before.rows[0].count),
+    'segundo ciclo não deve criar novos registros de log'
+  );
 });
 
 test('token de agente inativado é rejeitado pela verificação de status ativo', async () => {
