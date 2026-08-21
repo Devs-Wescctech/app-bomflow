@@ -142,24 +142,8 @@ export async function buscarHistoricoIndicacoes(cpf) {
   return response.json();
 }
 
-export async function registrarCanalErp({ agentId, pessoaId, contratoId, grupoId }) {
-  const response = await fetch('/api/erp/registrar-canal', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-    body: JSON.stringify({ agentId, pessoaId, contratoId, grupoId }),
-  });
-
-  if (!response.ok) {
-    const error = new Error(await extractApiError(response, 'Erro ao registrar agente no canal de vendas do ERP'));
-    error.status = response.status;
-    throw error;
-  }
-  const data = await response.json().catch(() => ({}));
-  return data;
-}
-
 // Pré-visualiza a sincronização ERP dos agentes (não grava nada).
-// agentIds opcional; sem ele o backend traz todos os ativos sem erp_agent_id.
+// agentIds opcional; sem ele o backend revalida todos os agentes ativos.
 export async function previewSyncAgentesErp(agentIds) {
   const response = await fetch('/api/erp/sync-agentes/preview', {
     method: 'POST',
@@ -176,10 +160,8 @@ export async function previewSyncAgentesErp(agentIds) {
 }
 
 // Grava o vínculo ERP dos agentes selecionados.
-// items: [{ agentId, force?, recanal? }]
-//   force   — grava erp_agent_id mesmo com nome divergente (revisado pelo admin)
-//   recanal — força re-registro do canal mesmo já tendo erp_agente_venda_id
-//             (usado na edição quando o canal_venda_id foi alterado)
+// items: [{ agentId, provision?, preferredLogin? }]
+//   provision — cria Pessoa/Usuário ausente; usado somente na criação/edição
 export async function commitSyncAgentesErp(items) {
   const response = await fetch('/api/erp/sync-agentes/commit', {
     method: 'POST',
