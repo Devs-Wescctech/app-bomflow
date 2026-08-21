@@ -145,9 +145,12 @@ export async function resolveAgentErpByCpf(cpf) {
   const docRes = await db.query(
     `SELECT pessoa_id FROM documentos_pessoas
        WHERE tipo_documento_id = $1 AND documento = $2
-       LIMIT 1`,
+       ORDER BY pessoa_id`,
     [ERP_TIPO_DOCUMENTO_CPF, formatted]
   );
+  if (docRes.rows.length > 1) {
+    return { status: 'pessoas_ambiguas', pessoaInternalId: null, pessoaCodigo: null, nomeErp: null, situacaoPessoa: null, usuarioId: null, login: null, usuarioAtivo: null };
+  }
   const pessoaInternalId = docRes.rows[0]?.pessoa_id ? Number(docRes.rows[0].pessoa_id) : null;
   if (!pessoaInternalId) {
     return { status: 'pessoa_nao_encontrada', pessoaInternalId: null, pessoaCodigo: null, nomeErp: null, situacaoPessoa: null, usuarioId: null, login: null, usuarioAtivo: null };
@@ -164,14 +167,15 @@ export async function resolveAgentErpByCpf(cpf) {
   const usrRes = await db.query(
     `SELECT id, login, nome_completo, ativo FROM usuarios
        WHERE pessoa_id = $1
-       ORDER BY (login NOT LIKE 'user.%') DESC, (ativo = 'S') DESC, id ASC
-       LIMIT 1`,
+       ORDER BY id`,
     [pessoaInternalId]
   );
-  const usuario = usrRes.rows[0] || null;
+  const usuario = usrRes.rows.length === 1 ? usrRes.rows[0] : null;
 
   return {
-    status: usuario ? 'ok' : 'usuario_nao_encontrado',
+    status: usuario
+      ? 'ok'
+      : (usrRes.rows.length > 1 ? 'usuarios_ambiguos' : 'usuario_nao_encontrado'),
     pessoaInternalId,
     pessoaCodigo: pessoa?.pessoa ? String(pessoa.pessoa) : null,
     nomeErp: pessoa?.nome_completo || null,
@@ -179,6 +183,11 @@ export async function resolveAgentErpByCpf(cpf) {
     usuarioId: usuario?.id ? Number(usuario.id) : null,
     login: usuario?.login || null,
     usuarioAtivo: usuario?.ativo || null,
+    usuariosEncontrados: usrRes.rows.map((u) => ({
+      id: u.id ? Number(u.id) : null,
+      login: u.login || null,
+      ativo: u.ativo || null,
+    })),
   };
 }
 
@@ -437,7 +446,7 @@ export async function getOrcamentoDetalhe(pedidoId) {
  * em pessoas_contratos. Se o par (pessoa_id, contrato_id) já existir,
  * retorna o id existente sem criar duplicata.
  *
- * @param {number} pessoaId    - erp_agent_id do agente (id interno do ERP)
+ * @param {number} pessoaId    - id interno de pessoas (nunca agents.erp_agent_id)
  * @param {number} contratoId  - canal_venda_id (id da api_canal_vendas)
  * @param {number|null} grupoId - canal_venda_grupo_id (grupo_id da api_canal_vendas)
  * @returns {Promise<number>}  - id gerado em pessoas_contratos (agente_venda_id)
@@ -447,12 +456,19 @@ export async function registerAgentInCanal(pessoaId, contratoId, grupoId) {
 
   const existing = await db.query(
     `SELECT id FROM pessoas_contratos
-     WHERE pessoa_id = $1 AND contrato_id = $2
-     LIMIT 1`,
-    [pessoaId, contratoId]
+     WHERE pessoa_id = $1
+       AND contrato_id = $2
+       AND grupo_id IS NOT DISTINCT FROM $3
+     ORDER BY id`,
+    [pessoaId, contratoId, grupoId || null]
   );
 
-  if (existing.rows.length > 0) {
+  if (existing.rows.length > 1) {
+    throw new Error(
+      `Há ${existing.rows.length} vínculos para esta Pessoa e canal no ERP. Revise os registros antes de escolher um agente_venda_id.`
+    );
+  }
+  if (existing.rows.length === 1) {
     const existingId = existing.rows[0].id;
     console.log(`[erpDbService] Agente ${pessoaId} já vinculado ao canal ${contratoId} — id: ${existingId}`);
     return Number(existingId);
@@ -478,6 +494,30 @@ export async function registerAgentInCanal(pessoaId, contratoId, grupoId) {
   const newId = Number(result.rows[0].id);
   console.log(`[erpDbService] Agente ${pessoaId} registrado no canal ${contratoId} — agente_venda_id: ${newId}`);
   return newId;
+}
+
+/**
+ * Confirma, sem criar nem alterar registros, se agents.erp_agente_venda_id
+ * corresponde exatamente à Pessoa, canal e grupo selecionados.
+ */
+export async function validateAgentInCanal(pessoaId, contratoId, grupoId, agenteVendaId) {
+  if (!pessoaId || !contratoId || !agenteVendaId) return false;
+  const db = getPool();
+  const result = await db.query(
+    `SELECT id FROM pessoas_contratos
+      WHERE pessoa_id = $1
+        AND contrato_id = $2
+        AND grupo_id IS NOT DISTINCT FROM $3
+      ORDER BY id`,
+    [Number(pessoaId), Number(contratoId), grupoId ? Number(grupoId) : null]
+  );
+
+  if (result.rows.length > 1) {
+    throw new Error(
+      `Há ${result.rows.length} vínculos para esta Pessoa, canal e grupo no ERP. Revise os registros antes de enviar o orçamento.`
+    );
+  }
+  return result.rows.length === 1 && Number(result.rows[0].id) === Number(agenteVendaId);
 }
 
 /**

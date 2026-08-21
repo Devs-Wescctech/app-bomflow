@@ -10,8 +10,8 @@ import { Plus, Edit, Trash2, UserCheck, UserX, Activity, Upload, Loader2, Messag
 import { canManageAgents, isSupervisorType } from "@/components/utils/permissions.jsx";
 import ErpSyncDialog from "@/components/agents/ErpSyncDialog";
 /* NOVO — integração ERP */
-import { createPessoaErp, createUsuarioErp, getPessoaByErp } from "@/api/erpClient";
-import { buscarCanaisVenda, registrarCanalErp, commitSyncAgentesErp } from "@/api/erpService";
+import { getPessoaByErp } from "@/api/erpClient";
+import { buscarCanaisVenda, commitSyncAgentesErp } from "@/api/erpService";
 import {
   Dialog,
   DialogContent,
@@ -258,7 +258,6 @@ export default function Agents() {
   const [resettingPassword, setResettingPassword] = useState(false);
 
   /* NOVO — estados de integração ERP */
-  const [erpPessoaCode, setErpPessoaCode] = useState("");
   const [loadingErpPessoa, setLoadingErpPessoa] = useState(false);
   const [erpPessoaResult, setErpPessoaResult] = useState(null); // { nome_completo, pessoa } | { notFound: true } | null
   // Controla se o usuário editou o Login ERP manualmente. Enquanto false, o
@@ -287,6 +286,7 @@ export default function Agents() {
     canalVendaId: null,
     canalVendaGrupoId: null,
     erpAgentId: "",
+    erpAgenteVendaId: "",
     erpLogin: "",
     erpEmail: "",
     queueIds: [],
@@ -305,6 +305,13 @@ export default function Agents() {
       can_manage_settings: false,
     }
   });
+  const usuariosErpAmbiguos = (erpPessoaResult?.usuariosAmbiguos?.length || 0) > 1;
+  const erpUsuarioSalvoValidado = Boolean(
+    formData.erpAgentId &&
+    erpPessoaResult?.usuarioErp?.id &&
+    Number(formData.erpAgentId) === Number(erpPessoaResult.usuarioErp.id) &&
+    !usuariosErpAmbiguos
+  );
 
 
   const { data: agents = [], isLoading: agentsLoading } = useQuery({
@@ -379,147 +386,32 @@ export default function Agents() {
   }, [isAdmin, activeTab]);
 
   const createAgentMutation = useMutation({
-    mutationFn: (data) => base44.entities.Agent.create(data),
-    /* MODIFICADO — chama ERP após criar agente no BomFlow */
+    mutationFn: ({ data }) => base44.entities.Agent.create(data),
     onSuccess: async (novoAgente, variables) => {
-      const finalizar = () => {
+      try {
+        setCreatingStep('erp_usuario');
+        const resp = await commitSyncAgentesErp([{
+          agentId: novoAgente.id,
+          provision: true,
+          preferredLogin: variables?.preferredLogin || undefined,
+        }]);
+        const result = resp?.results?.[0];
+        if (result?.status === 'ok') {
+          toast.success('Agente criado, Usuário ERP validado e canal vinculado.');
+        } else if (result?.status === 'vinculado_sem_canal') {
+          toast.warning(`Agente criado e Usuário ERP validado, mas falta o canal: ${result.canalErro}`, { duration: 10000 });
+        } else if (result?.status === 'ja_vinculado') {
+          toast.success('Agente criado e vínculo ERP confirmado.');
+        } else {
+          toast.warning(`Agente criado no Bom Flow, mas o vínculo ERP requer revisão: ${result?.erro || result?.status || 'erro desconhecido'}`, { duration: 12000 });
+        }
+      } catch (erpError) {
+        toast.error('Agente criado no Bom Flow, mas não foi possível validar o vínculo ERP: ' + erpError.message, { duration: 12000 });
+      } finally {
+        setCreatingStep(null);
         queryClient.invalidateQueries({ queryKey: ['agents'] });
         setIsDialogOpen(false);
         resetForm();
-      };
-
-      let keepSheetOpen = false;
-
-      try {
-        const deveVincularErp = (erpPessoaCode || erpPessoaResult?.notFound) && !formData.erpAgentId;
-        if (deveVincularErp) {
-          try {
-            let codigoPessoa = erpPessoaCode;
-            // ID interno da Pessoa no ERP (PK numérica ~300M) — necessário para pessoas_contratos
-            let pessoaInternalId = erpPessoaResult?.id || null;
-
-            // Se CPF não estava no ERP, cria a pessoa primeiro
-            if (!codigoPessoa) {
-              if (erpPessoaResult?.notFound) {
-                setCreatingStep('erp_pessoa');
-                const criada = await createPessoaErp({
-                  tipo_pessoa: "Física",
-                  nome_completo: formData.name.toUpperCase(),
-                  cpf: formData.cpf,
-                  situacao: "A",
-                });
-                codigoPessoa = String(criada.pessoa || "");
-                pessoaInternalId = criada.id || null; // ex: 302505993
-                setErpPessoaCode(codigoPessoa);
-              } else {
-                toast.error(
-                  'Use o botão "Consultar ERP" antes de salvar para identificar ou criar a Pessoa no ERP.'
-                );
-                keepSheetOpen = true;
-                return;
-              }
-            }
-            if (!codigoPessoa) {
-              throw new Error("ERP não retornou um ID de pessoa válido.");
-            }
-            // Monta login ERP — nunca usa email como fallback
-            const loginErp = (
-              (formData.erpLogin || "").toLowerCase().trim() ||
-              generateErpLogin(formData.name).toLowerCase().trim()
-            );
-            if (!loginErp) {
-              toast.error("Preencha o campo 'Login ERP' antes de salvar.");
-              keepSheetOpen = true;
-              return;
-            }
-            // Se a consulta ERP já encontrou um usuário vinculado à Pessoa,
-            // reaproveita esse usuário em vez de criar outro (evita duplicar no ERP).
-            let erpUserId = null;
-            if (erpPessoaResult?.usuarioErp?.id) {
-              erpUserId = erpPessoaResult.usuarioErp.id;
-              console.log('[createAgent] Reaproveitando usuário ERP existente:', erpPessoaResult.usuarioErp.login, 'id:', erpUserId);
-            } else {
-              // Envia SOMENTE os campos necessários ao ERP (login + pessoa).
-              // estabelecimento_padrao (104), senha_prot e copiar_direitos_de são
-              // injetados pelo backend. `ativo` é omitido de propósito: ele dispara
-              // a validação de e-mail da Pessoa no ERP e bloqueia a criação.
-              setCreatingStep('erp_usuario');
-              const result = await createUsuarioErp({
-                login: loginErp,
-                pessoa: codigoPessoa,
-              });
-              erpUserId = result?.id || result?.usuario || null;
-            }
-            if (erpUserId) {
-              await base44.entities.Agent.update(novoAgente.id, { erpAgentId: erpUserId });
-            }
-
-            // Registra agente no canal de vendas do ERP (INSERT em pessoas_contratos)
-            // Usa `variables` (dados do mutate) em vez de `formData` para evitar
-            // stale-closure — variables é imutável e capturado no momento do submit.
-            const canalVendaId    = variables?.canalVendaId    ?? null;
-            const canalVendaGrupoId = variables?.canalVendaGrupoId ?? null;
-            console.log('[createAgent] canal check — pessoaInternalId:', pessoaInternalId, 'canalVendaId:', canalVendaId);
-            if (pessoaInternalId && canalVendaId) {
-              try {
-                setCreatingStep('erp_canal');
-                await registrarCanalErp({
-                  agentId: novoAgente.id,
-                  pessoaId: pessoaInternalId,
-                  contratoId: canalVendaId,
-                  grupoId: canalVendaGrupoId || null,
-                });
-                console.log(`[createAgent] Agente ${novoAgente.id} registrado no canal ERP ${canalVendaId}`);
-              } catch (canalErr) {
-                console.warn('[createAgent] Falha ao registrar canal ERP:', canalErr.message);
-                toast.warning(
-                  `Agente criado, mas o vínculo com o canal de vendas ERP falhou: ${canalErr.message}`,
-                  { duration: 10000 }
-                );
-              }
-            } else if (canalVendaId && !pessoaInternalId) {
-              console.warn('[createAgent] Canal configurado mas pessoaInternalId indisponível — vínculo ERP omitido.');
-            } else if (!canalVendaId) {
-              console.log('[createAgent] Nenhum canal de vendas selecionado — INSERT em pessoas_contratos omitido.');
-            }
-
-            toast.success('Agente criado e usuário ERP vinculado com sucesso!');
-          } catch (erpError) {
-            console.error('ERRO createUsuarioErp debug:', erpError);
-            const msgErpLimpa = (erpError.message || "")
-              .replace(/<[^>]+>/g, "")
-              .trim();
-            // Detecta conflito de login, e-mail ou Pessoa já vinculada no ERP
-            const isDuplicate =
-              /utilizado pelo usu[aá]rio/i.test(msgErpLimpa) ||
-              /j[aá] pertence ao usu[aá]rio/i.test(msgErpLimpa) ||
-              /j[aá] est[aá] sendo utilizado/i.test(msgErpLimpa) ||
-              /n[aã]o pode ser utilizada pois poss?u[ií] um e-mail/i.test(msgErpLimpa);
-            if (isDuplicate) {
-              keepSheetOpen = true;
-              // Muda para modo edição para que o próximo save seja um UPDATE
-              setEditingAgent(novoAgente);
-              toast.error(
-                `Erro no ERP: ${msgErpLimpa}`,
-                { duration: 15000 }
-              );
-            } else {
-              toast.error('Agente criado no BomFlow, mas erro ao vincular ERP: ' + msgErpLimpa);
-            }
-          }
-        } else {
-          toast.success('Agente criado com sucesso!');
-        }
-      } catch (unexpectedError) {
-        console.error('[createAgentMutation] Erro inesperado no onSuccess:', unexpectedError);
-        toast.error('Agente criado, mas ocorreu um erro inesperado: ' + unexpectedError.message);
-      } finally {
-        setCreatingStep(null);
-        if (keepSheetOpen) {
-          queryClient.invalidateQueries({ queryKey: ['agents'] });
-        } else {
-          finalizar();
-        }
       }
     },
     onError: (error) => {
@@ -537,25 +429,21 @@ export default function Agents() {
       resetForm();
       toast.success('Agente atualizado com sucesso!');
 
-      // Só aciona o ERP quando há CPF e algo a vincular (sem erp_agent_id ou com canal).
-      // O endpoint é idempotente: se já estiver tudo vinculado, retorna 'ja_vinculado'.
-      const data = variables?.data || {};
-      const canalChanged = !!variables?.canalChanged;
-      const temCpf = !!(data.cpf && String(data.cpf).replace(/\D/g, ''));
-      const precisaErp = temCpf && (!data.erpAgentId || !!data.canalVendaId);
-      if (!precisaErp) return;
-
       try {
-        const resp = await commitSyncAgentesErp([{ agentId: variables.id, recanal: canalChanged }]);
+        const resp = await commitSyncAgentesErp([{
+          agentId: variables.id,
+          provision: true,
+          preferredLogin: variables?.preferredLogin || undefined,
+        }]);
         const r = resp?.results?.[0];
         if (r) {
           const acts = r.actions || [];
           if (r.status === 'ok') {
-            if (acts.includes('vinculo') && acts.includes('canal')) {
+            if ((acts.includes('vinculo') || acts.includes('reparo_vinculo')) && acts.includes('canal')) {
               toast.success('Agente vinculado ao ERP e canal de vendas registrado.');
             } else if (acts.includes('canal')) {
               toast.success('Canal de vendas registrado no ERP.');
-            } else if (acts.includes('vinculo')) {
+            } else if (acts.includes('vinculo') || acts.includes('reparo_vinculo')) {
               toast.success('Agente vinculado ao ERP.');
             }
           } else if (r.status === 'nome_divergente') {
@@ -783,6 +671,7 @@ export default function Agents() {
       canalVendaId: null,
       canalVendaGrupoId: null,
       erpAgentId: "",
+      erpAgenteVendaId: "",
       erpLogin: "",
       erpEmail: "",
       queueIds: [],
@@ -806,7 +695,6 @@ export default function Agents() {
     setChannelTokenChanged(false);
     setShowTokenField(false);
     /* NOVO — reset estados ERP */
-    setErpPessoaCode("");
     setLoadingErpPessoa(false);
     setErpPessoaResult(null);
   };
@@ -906,6 +794,7 @@ export default function Agents() {
       canalVendaId: agent.canalVendaId || null,
       canalVendaGrupoId: agent.canalVendaGrupoId || null,
       erpAgentId: agent.erpAgentId != null ? String(agent.erpAgentId) : "",
+      erpAgenteVendaId: agent.erpAgenteVendaId != null ? String(agent.erpAgenteVendaId) : "",
       erpLogin: generateErpLogin(agent.name || ""),
       erpEmail: "",
       queueIds: agent.queueIds || [],
@@ -918,8 +807,29 @@ export default function Agents() {
     });
     setShowTokenField(false);
     setChannelTokenChanged(false);
-    /* NOVO — preenche código da pessoa ERP ao editar */
-    setErpPessoaCode(agent.erpPessoaCode || "");
+    setErpPessoaResult(null);
+    if (agent.cpf) {
+      setLoadingErpPessoa(true);
+      try {
+        const { pessoa, usuarioErp, usuariosAmbiguos } = await getPessoaByErp(agent.cpf, agent.erpAgentId);
+        if (pessoa) {
+          setErpPessoaResult({
+            ...pessoa,
+            usuarioErp: usuarioErp || null,
+            usuariosAmbiguos: usuariosAmbiguos || [],
+          });
+          if (usuarioErp?.login) {
+            setFormData((prev) => ({ ...prev, erpLogin: usuarioErp.login }));
+          }
+        } else {
+          setErpPessoaResult({ notFound: true });
+        }
+      } catch (error) {
+        console.warn('[Agents] Não foi possível carregar o login ERP do agente:', error.message);
+      } finally {
+        setLoadingErpPessoa(false);
+      }
+    }
     if (agent.agentType === 'indicacoes_atendente') {
       try {
         const token = localStorage.getItem('accessToken');
@@ -1021,13 +931,16 @@ export default function Agents() {
     setLoadingErpPessoa(true);
     setErpPessoaResult(null);
     try {
-      const { pessoa, usuarioErp } = await getPessoaByErp(formData.cpf);
+      const { pessoa, usuarioErp, usuariosAmbiguos } = await getPessoaByErp(formData.cpf, formData.erpAgentId);
       if (pessoa) {
         // pessoa.pessoa = código ERP curto (ex: "2606501") — campo "pessoa" no POST /Usuarios
         // pessoa.id     = ID do registro/contrato (ex: 301228219) — NÃO usar para Usuário
         const codigoErp = String(pessoa.pessoa || "");
-        setErpPessoaCode(codigoErp);
-        setErpPessoaResult({ ...pessoa, usuarioErp: usuarioErp || null });
+        setErpPessoaResult({
+          ...pessoa,
+          usuarioErp: usuarioErp || null,
+          usuariosAmbiguos: usuariosAmbiguos || [],
+        });
         // Auto-preenche os campos do formulário com dados do ERP
         setFormData(prev => {
           const nomeErp = pessoa.nome_titular || prev.name;
@@ -1051,7 +964,7 @@ export default function Agents() {
           // Caso residual real: nem a view nem o fallback (API/banco) acharam o código.
           toast.warning(
             "Pessoa encontrada no ERP mas o código de Pessoa não foi retornado. " +
-            "Verifique os logs do backend e informe o ID manualmente.",
+            "O vínculo não será salvo automaticamente; revise o cadastro no ERP.",
             { duration: 8000 }
           );
         }
@@ -1066,16 +979,17 @@ export default function Agents() {
   };
 
   const handleSubmit = () => {
-    if (formData.erpAgentId && isNaN(Number(formData.erpAgentId))) {
-      toast.error("ID do Agente no ERP deve ser numérico.");
-      return;
-    }
-
-    // erpLogin e erpEmail são campos temporários de UI — não vão para o banco de dados
-    const { erpLogin: _erpLogin, erpEmail: _erpEmail, ...formDataToSave } = formData;
+    // Login é apenas uma preferência de provisionamento. Os dois IDs ERP são
+    // exclusivamente gerenciados pela sincronização server-side por CPF.
+    const {
+      erpLogin: _erpLogin,
+      erpEmail: _erpEmail,
+      erpAgentId: _erpAgentId,
+      erpAgenteVendaId: _erpAgenteVendaId,
+      ...formDataToSave
+    } = formData;
     const dataToSend = { 
       ...formDataToSave,
-      erpAgentId: formData.erpAgentId ? Number(formData.erpAgentId) : null,
       canalVendaId: formData.canalVendaId ? Number(formData.canalVendaId) : null,
       canalVendaGrupoId: formData.canalVendaGrupoId ? Number(formData.canalVendaGrupoId) : null,
       supervisorId: formData.supervisorId && formData.supervisorId !== "none" ? formData.supervisorId : null,
@@ -1089,17 +1003,17 @@ export default function Agents() {
       if (channelTokenChanged) {
         dataToSend.whatsappChannelToken = channelTokenInput || null;
       }
-      // Frente 2: detecta troca de canal de vendas para forçar re-registro no ERP.
-      const prevCanal = editingAgent?.canalVendaId ? Number(editingAgent.canalVendaId) : null;
-      const canalChanged = !!dataToSend.canalVendaId && dataToSend.canalVendaId !== prevCanal;
       updateAgentMutation.mutate({
         id: editingAgent.id,
         data: dataToSend,
-        canalChanged
+        preferredLogin: formData.erpLogin || undefined,
       });
     } else {
       setCreatingStep('agent');
-      createAgentMutation.mutate(dataToSend);
+      createAgentMutation.mutate({
+        data: dataToSend,
+        preferredLogin: formData.erpLogin || undefined,
+      });
     }
   };
 
@@ -2081,15 +1995,18 @@ export default function Agents() {
                     <Label className="text-gray-900 dark:text-gray-100">Login ERP</Label>
                     <Input
                       value={formData.erpLogin}
+                      readOnly={erpUsuarioSalvoValidado}
                       onChange={(e) => {
                         setErpLoginTouched(true);
                         setFormData(prev => ({ ...prev, erpLogin: e.target.value }));
                       }}
                       placeholder="ex: marcelo.a"
-                      className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                      className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 read-only:opacity-70"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Login gerado automaticamente a partir do nome. Edite se necessário para evitar conflitos no ERP.
+                      {erpUsuarioSalvoValidado
+                        ? "Login encontrado no cadastro do Usuário ERP correspondente ao CPF."
+                        : "Login usado somente se for necessário criar um novo Usuário ERP."}
                     </p>
                   </div>
 
@@ -2145,10 +2062,16 @@ export default function Agents() {
                         <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" />
                         <div className="text-sm">
                           <span className="font-medium text-green-800 dark:text-green-300">{erpPessoaResult.nome_titular}</span>
-                          {erpPessoaResult.id && (
-                            <span className="text-green-600 dark:text-green-400 ml-2 text-xs">(Cód. ERP: {erpPessoaResult.id})</span>
-                          )}
+                          <span className="text-green-600 dark:text-green-400 ml-2 text-xs">Pessoa localizada pelo CPF</span>
                         </div>
+                      </div>
+                    )}
+                    {erpPessoaResult?.usuariosAmbiguos?.length > 1 && (
+                      <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <p className="text-sm text-amber-800 dark:text-amber-300">
+                          Há mais de um Usuário ERP para esta Pessoa. A sincronização não escolherá um automaticamente; revise o cadastro.
+                        </p>
                       </div>
                     )}
                     {erpPessoaResult?.notFound && (
@@ -2161,19 +2084,33 @@ export default function Agents() {
                     )}
                   </div>
 
-                  {/* C — Indicador de status da vinculação ERP */}
-                  <div>
-                    {formData.erpAgentId ? (
-                      <Badge className="bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300">
-                        Usuário ERP vinculado (ID: {formData.erpAgentId})
+                  {/* C — Identificadores separados: Usuário ERP e vínculo do canal */}
+                  <div className="flex flex-wrap gap-2">
+                    {erpUsuarioSalvoValidado ? (
+                      <Badge className="bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300 whitespace-normal">
+                        Usuário ERP — ID {formData.erpAgentId}
+                        {erpPessoaResult?.usuarioErp?.login ? ` • ${erpPessoaResult.usuarioErp.login}` : ""}
+                      </Badge>
+                    ) : formData.erpAgentId ? (
+                      <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 whitespace-normal">
+                        ID salvo {formData.erpAgentId} ainda não validado como Usuário ERP; salve para ressincronizar
                       </Badge>
                     ) : erpPessoaResult?.usuarioErp?.login ? (
-                      <Badge className="bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300">
-                        Usuário ERP vinculado: {erpPessoaResult.usuarioErp.login}
+                      <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 whitespace-normal">
+                        Usuário ERP encontrado — ID {erpPessoaResult.usuarioErp.id} • {erpPessoaResult.usuarioErp.login}; salve para vincular
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800">
                         Sem usuário ERP vinculado
+                      </Badge>
+                    )}
+                    {formData.erpAgenteVendaId ? (
+                      <Badge variant="outline" className="text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30">
+                        Canal ERP salvo — ID {formData.erpAgenteVendaId}; revalidado ao salvar
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30">
+                        Canal ERP ainda não vinculado
                       </Badge>
                     )}
                   </div>
@@ -2405,17 +2342,6 @@ export default function Agents() {
                 )}
               </div>
 
-              <div>
-                <Label className="text-gray-900 dark:text-gray-100">ID do Agente no ERP</Label>
-                <Input
-                  type="number"
-                  value={formData.erpAgentId}
-                  onChange={(e) => setFormData({...formData, erpAgentId: e.target.value})}
-                  placeholder="Ex: 12345"
-                  className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-                />
-                <p className="text-xs text-gray-400 mt-1">Identificador do agente no sistema ERP (opcional)</p>
-              </div>
             </div>
 
             {editingAgent && formData.agentType === 'indicacoes_atendente' && (

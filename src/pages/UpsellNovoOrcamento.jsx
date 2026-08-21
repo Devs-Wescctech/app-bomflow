@@ -233,16 +233,6 @@ function montarNomePet(b) {
   return partes.join("/");
 }
 
-function erpLoginFromEmail(email) {
-  if (!email) return undefined;
-  const atIdx = email.indexOf("@");
-  if (atIdx < 0) return undefined;
-  const local = email.slice(0, atIdx).toLowerCase().trim();
-  const domain = email.slice(atIdx + 1).replace(/\.[^.]+$/, "").toLowerCase().trim();
-  if (!local || !domain) return undefined;
-  return `user.${local}.${domain}`;
-}
-
 function formatCpf(v) {
   const d = v.replace(/\D/g, "").slice(0, 11);
   if (d.length <= 3) return d;
@@ -380,9 +370,6 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       whatsapp_do_cliente: initialLead.whatsapp || initialLead.telefone || f.whatsapp_do_cliente,
     }));
   }, [initialLead]);
-
-  const currentAgent = user?.agent;
-  const erpAgenteVendaId = currentAgent?.erp_agente_venda_id ?? currentAgent?.erpAgenteVendaId ?? null;
 
   const { data: erpProdutos = [], isLoading: loadingProdutos } = useQuery({
     queryKey: ["erpProdutos"],
@@ -957,8 +944,6 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     const p = {
       tipo_pedido: "ORÇAMENTO",
       nome_estabelecimento: NOME_ESTABELECIMENTO_FIXO,
-      agente_venda_id: erpAgenteVendaId ? Number(erpAgenteVendaId) : undefined,
-      usuario_inclusao: user?.email ? erpLoginFromEmail(user.email) : undefined,
       contratante_pessoa: form.contratante_pessoa || undefined,
       cpf: form.cpf || undefined,
       pessoa_contato: form.pessoa_contato || undefined,
@@ -989,7 +974,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       lead_id: leadId || undefined,
     };
     return Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
-  }, [form, itensSel, produtosFiltrados, erpProdutos, planoSelecionado, beneficiarios, erpAgenteVendaId, user, modulo]);
+  }, [form, itensSel, produtosFiltrados, erpProdutos, planoSelecionado, beneficiarios, modulo]);
 
   const submitMutation = useMutation({
     mutationFn: async () => {

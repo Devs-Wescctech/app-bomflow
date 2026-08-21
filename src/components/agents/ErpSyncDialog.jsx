@@ -21,7 +21,18 @@ const STATUS_META = {
   sem_cpf:              { label: "Sem CPF",                 cls: "bg-gray-100 text-gray-600 border-gray-200" },
   cpf_invalido:         { label: "CPF inválido",           cls: "bg-gray-100 text-gray-600 border-gray-200" },
   pessoa_nao_encontrada:{ label: "Pessoa não encontrada",  cls: "bg-red-100 text-red-700 border-red-200" },
+  pessoa_sem_codigo:     { label: "Pessoa sem código",       cls: "bg-red-100 text-red-700 border-red-200" },
+  pessoas_ambiguas:      { label: "Pessoas ambíguas",        cls: "bg-red-100 text-red-700 border-red-200" },
   usuario_nao_encontrado:{ label: "Sem usuário ERP",       cls: "bg-red-100 text-red-700 border-red-200" },
+  usuarios_ambiguos:     { label: "Usuários ambíguos",      cls: "bg-red-100 text-red-700 border-red-200" },
+  id_pessoa_legado:      { label: "ID de Pessoa legado",    cls: "bg-amber-100 text-amber-800 border-amber-200" },
+  usuario_inexistente:   { label: "Usuário inexistente",    cls: "bg-amber-100 text-amber-800 border-amber-200" },
+  usuario_outro_cpf:     { label: "Usuário de outro CPF",   cls: "bg-red-100 text-red-700 border-red-200" },
+  vinculo_incorreto:     { label: "Vínculo incorreto",      cls: "bg-amber-100 text-amber-800 border-amber-200" },
+  canal_pendente:        { label: "Canal pendente",         cls: "bg-amber-100 text-amber-800 border-amber-200" },
+  canal_incorreto:       { label: "Canal incorreto",        cls: "bg-amber-100 text-amber-800 border-amber-200" },
+  canal_ambiguo:         { label: "Canal ambíguo",          cls: "bg-red-100 text-red-700 border-red-200" },
+  sem_canal_configurado: { label: "Sem canal configurado",  cls: "bg-gray-100 text-gray-600 border-gray-200" },
   ja_vinculado:         { label: "Já vinculado",           cls: "bg-blue-100 text-blue-700 border-blue-200" },
   erro:                 { label: "Erro",                   cls: "bg-red-100 text-red-700 border-red-200" },
 };
@@ -34,7 +45,10 @@ const RESULT_META = {
   nome_divergente:     { label: "Nome diverge",         cls: "bg-amber-100 text-amber-800 border-amber-200" },
   sem_cpf:             { label: "Sem CPF",              cls: "bg-gray-100 text-gray-600 border-gray-200" },
   pessoa_nao_encontrada:{ label: "Pessoa não encontrada", cls: "bg-red-100 text-red-700 border-red-200" },
+  pessoa_sem_codigo:    { label: "Pessoa sem código",     cls: "bg-red-100 text-red-700 border-red-200" },
+  pessoas_ambiguas:     { label: "Pessoas ambíguas",      cls: "bg-red-100 text-red-700 border-red-200" },
   usuario_nao_encontrado:{ label: "Sem usuário ERP",    cls: "bg-red-100 text-red-700 border-red-200" },
+  usuarios_ambiguos:    { label: "Usuários ambíguos",   cls: "bg-red-100 text-red-700 border-red-200" },
   nao_encontrado:      { label: "Agente não encontrado", cls: "bg-red-100 text-red-700 border-red-200" },
   usuario_ja_vinculado:{ label: "Usuário já vinculado",  cls: "bg-red-100 text-red-700 border-red-200" },
   erro:                { label: "Erro",                 cls: "bg-red-100 text-red-700 border-red-200" },
@@ -45,8 +59,7 @@ function StatusBadge({ status, meta }) {
   return <Badge variant="outline" className={`${m.cls} font-medium`}>{m.label}</Badge>;
 }
 
-// Itens "gravaveis": OK (verde) e nome divergente (precisa confirmação manual).
-const isGravavel = (s) => s === "ok" || s === "nome_divergente";
+const isGravavel = (item) => item?.repairable === true;
 
 export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
   const [loading, setLoading] = useState(false);
@@ -62,8 +75,11 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
       const data = await previewSyncAgentesErp();
       const its = data?.items || [];
       setItems(its);
-      // Pré-seleciona apenas os "ok" (nome confere) — nunca marca divergências.
-      setSelected(new Set(its.filter((i) => i.status === "ok").map((i) => i.agentId)));
+      setSelected(new Set(
+        its
+          .filter((i) => isGravavel(i) && i.status !== "nome_divergente")
+          .map((i) => i.agentId)
+      ));
     } catch (e) {
       toast.error(e.message || "Falha ao carregar a pré-visualização.");
       setItems([]);
@@ -86,15 +102,15 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
     });
   };
 
-  const gravaveis = useMemo(() => items.filter((i) => isGravavel(i.status)), [items]);
-  const okCount = useMemo(() => items.filter((i) => i.status === "ok").length, [items]);
+  const gravaveis = useMemo(() => items.filter(isGravavel), [items]);
+  const okCount = useMemo(() => items.filter(isGravavel).length, [items]);
   const divergentesSelecionados = useMemo(
     () => items.filter((i) => i.status === "nome_divergente" && selected.has(i.agentId)).length,
     [items, selected]
   );
 
   const toggleTodosOk = () => {
-    const okIds = items.filter((i) => i.status === "ok").map((i) => i.agentId);
+    const okIds = items.filter((i) => isGravavel(i) && i.status !== "nome_divergente").map((i) => i.agentId);
     const allSelected = okIds.every((id) => selected.has(id));
     setSelected((prev) => {
       const next = new Set(prev);
@@ -106,8 +122,8 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
 
   const gravar = async () => {
     const payload = items
-      .filter((i) => selected.has(i.agentId) && isGravavel(i.status))
-      .map((i) => ({ agentId: i.agentId, force: i.status === "nome_divergente" }));
+      .filter((i) => selected.has(i.agentId) && isGravavel(i))
+      .map((i) => ({ agentId: i.agentId }));
 
     if (!payload.length) {
       toast.warning("Selecione ao menos um agente para gravar.");
@@ -148,9 +164,9 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
             Sincronizar agentes com o ERP
           </DialogTitle>
           <DialogDescription>
-            Busca no ERP (pelo CPF) o usuário de cada agente sem vínculo e preenche o
-            <span className="font-medium"> erp_agent_id</span> (e o canal de vendas, quando já definido).
-            Confira o casamento antes de gravar — nada é gravado sem sua confirmação.
+            Revalida os agentes pelo CPF, identifica vínculos legados e separa o ID do
+            <span className="font-medium"> Usuário ERP</span> do ID do vínculo do canal.
+            Casos com múltiplos usuários ficam bloqueados para revisão manual.
           </DialogDescription>
         </DialogHeader>
 
@@ -182,7 +198,7 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
                 <tr className="text-left text-gray-500">
                   <th className="p-2 w-10">
                     <Checkbox
-                      checked={okCount > 0 && items.filter((i) => i.status === "ok").every((i) => selected.has(i.agentId))}
+                       checked={okCount > 0 && items.filter((i) => isGravavel(i) && i.status !== "nome_divergente").every((i) => selected.has(i.agentId))}
                       onCheckedChange={toggleTodosOk}
                       aria-label="Selecionar todos prontos"
                     />
@@ -196,7 +212,7 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
               </thead>
               <tbody>
                 {items.map((i) => {
-                  const gravavel = isGravavel(i.status);
+                  const gravavel = isGravavel(i);
                   const r = resultMap.get(i.agentId);
                   return (
                     <tr key={i.agentId} className="border-t hover:bg-gray-50 dark:hover:bg-gray-800/50">
@@ -215,7 +231,10 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
                           <div className="flex flex-col">
                             <span className="text-gray-900 dark:text-gray-100">{i.nomeErp}</span>
                             <span className="text-xs text-gray-500">
-                              login: {i.login || "—"}
+                              Usuário ERP: {i.erpAgentId || "—"} • login: {i.login || "—"}
+                              {i.currentErpAgentId && i.currentErpAgentId !== i.erpAgentId && (
+                                <span className="block text-amber-700">ID salvo hoje: {i.currentErpAgentId}</span>
+                              )}
                               {i.status === "nome_divergente" && (
                                 <span className="inline-flex items-center gap-1 text-amber-600 ml-2">
                                   <AlertTriangle className="w-3 h-3" /> revise o nome
@@ -228,10 +247,10 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
                         )}
                       </td>
                       <td className="p-2 align-top">
-                        {i.status === "erro" && i.erro ? (
+                        {(i.erro || i.canalErro) ? (
                           <div className="flex flex-col gap-0.5">
                             <StatusBadge status={i.status} />
-                            <span className="text-xs text-red-600 break-words max-w-[16rem]">{i.erro}</span>
+                            <span className="text-xs text-red-600 break-words max-w-[16rem]">{i.erro || i.canalErro}</span>
                           </div>
                         ) : (
                           <StatusBadge status={i.status} />

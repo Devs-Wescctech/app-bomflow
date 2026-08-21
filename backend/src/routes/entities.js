@@ -4,7 +4,6 @@ import { createCrudRouter } from '../utils/crud.js';
 import { authMiddleware, optionalAuth, invalidateAgentActiveCache } from '../middleware/auth.js';
 import { loadAgentMiddleware, requireRole } from '../middleware/permissions.js';
 import { query, pool } from '../config/database.js';
-import { registerAgentInCanal } from '../services/erpDbService.js';
 import { 
   notifyLeadAssigned, 
   notifyLeadStageChanged, 
@@ -1005,8 +1004,26 @@ const SELF_EDITABLE_AGENT_FIELDS = new Set([
   'whatsapp_access_token', 'whatsapp_token_expires_at',
 ]);
 
+function hasManagedErpAgentField(body = {}) {
+  return [
+    'erpAgentId',
+    'erp_agent_id',
+    'erpAgenteVendaId',
+    'erp_agente_venda_id',
+  ].some((key) => Object.prototype.hasOwnProperty.call(body, key));
+}
+
+function rejectManagedErpAgentFields(req, res) {
+  if (!hasManagedErpAgentField(req.body)) return false;
+  res.status(400).json({
+    message: 'Os IDs de Usuário ERP e de vínculo do canal são gerenciados pela sincronização por CPF e não podem ser informados manualmente.',
+  });
+  return true;
+}
+
 router.post('/agents', authMiddleware, requireAgentManager, async (req, res) => {
   try {
+    if (rejectManagedErpAgentFields(req, res)) return;
     const data = convertKeysToSnake(req.body);
     
     if (!data.email) {
@@ -1057,6 +1074,7 @@ router.post('/agents', authMiddleware, requireAgentManager, async (req, res) => 
 
 router.put('/agents/:id', authMiddleware, async (req, res) => {
   try {
+    if (rejectManagedErpAgentFields(req, res)) return;
     const { id } = req.params;
     const data = convertKeysToSnake(req.body);
     

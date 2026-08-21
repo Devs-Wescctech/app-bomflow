@@ -114,20 +114,6 @@ const SEXO_OPTIONS = [
 const TIPO_PEDIDO_FIXO = "ORÇAMENTO";
 const NOME_ESTABELECIMENTO_FIXO = "LIMEIRA - CNPA";
 
-// Deriva o login ERP a partir do e-mail do agente logado.
-// Padrão: user.{local}.{domínio_sem_tld}
-// Ex: teste3@bomflow.com → user.teste3.bomflow
-function erpLoginFromEmail(email) {
-  if (!email) return undefined;
-  const atIdx = email.indexOf('@');
-  if (atIdx < 0) return undefined;
-  const local = email.slice(0, atIdx).toLowerCase().trim();
-  const domain = email.slice(atIdx + 1);
-  const domainPart = domain.replace(/\.[^.]+$/, '').toLowerCase().trim();
-  if (!local || !domainPart) return undefined;
-  return `user.${local}.${domainPart}`;
-}
-
 const DEFAULT_FORM = {
   // Contratante
   contratante_pessoa: "",
@@ -353,11 +339,6 @@ export default function ErpOrcamentoForm() {
     const p = {
       tipo_pedido: TIPO_PEDIDO_FIXO,
       nome_estabelecimento: NOME_ESTABELECIMENTO_FIXO,
-      agente_venda_id: erpAgenteVendaId ? Number(erpAgenteVendaId) : undefined,
-      // Usuário que está criando o orçamento — necessário para que o ERP use
-      // as permissões corretas no bloco SGPRC_USUARIO.CAD_ORCAMENTO_SGPRC_USUARIO_FECHAMENTO.
-      // Sem este campo o ERP usa acesso.api (dono do token de serviço) e rejeita o fechamento.
-      usuario_inclusao: user?.email ? erpLoginFromEmail(user.email) : undefined,
       // Contratante
       contratante_pessoa: form.contratante_pessoa || undefined,
       cpf: form.cpf || undefined,
@@ -399,7 +380,7 @@ export default function ErpOrcamentoForm() {
       usua_papeis: form.usua_papeis || undefined,
     };
     return Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
-  }, [form, erpAgenteVendaId, erpProdutos, user]);
+  }, [form, erpProdutos]);
 
   const lookupCpfMutation = useMutation({
     mutationFn: async (cpf) => {
