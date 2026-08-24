@@ -1,9 +1,8 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { registerAgentInCanal, inspectAgentInCanal, validateAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB, findPessoaIdByCpf, getErpLoginsByIds, getRelatorioOrcamentos, resolveAgentErpByCpf } from '../services/erpDbService.js';
+import { validateAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB, findPessoaIdByCpf, getErpLoginsByIds, getRelatorioOrcamentos, resolveAgentErpByCpf } from '../services/erpDbService.js';
 import {
   buildAuthenticatedOrcamentoPayload,
-  classifyAgentCanalAudit,
   classifyAgentErpLink,
   classifyErpSyncError,
   persistResolvedAgentErpLink,
@@ -733,34 +732,9 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
       if (status === 'ok' && !nameMatch) status = 'nome_divergente';
       let canalErro = null;
       let effectiveErpAgenteVendaId = null;
-      if (
-        r.status === 'ok' &&
-        r.pessoaInternalId &&
-        a.canal_venda_id
-      ) {
-        try {
-          const canalInspection = await inspectAgentInCanal(
-            r.pessoaInternalId,
-            a.canal_venda_id,
-            a.canal_venda_grupo_id
-          );
-          const canalClassification = classifyAgentCanalAudit({
-            status,
-            repairable,
-            currentErpAgenteVendaId: a.erp_agente_venda_id,
-            inspection: canalInspection,
-          });
-          status = canalClassification.status;
-          repairable = canalClassification.repairable;
-          effectiveErpAgenteVendaId = canalClassification.effectiveErpAgenteVendaId;
-          canalErro = canalClassification.canalErro;
-        } catch (canalValidationError) {
-          const failure = classifyErpSyncError(canalValidationError, { stage: 'auditoria_canal_erp' });
-          status = failure.status;
-          repairable = false;
-          canalErro = failure.erro;
-          effectiveErpAgenteVendaId = a.erp_agente_venda_id ? Number(a.erp_agente_venda_id) : null;
-        }
+      if (r.status === 'ok' && a.canal_venda_id) {
+        if (status === 'ok' || status === 'ja_vinculado') status = 'canal_pendente';
+        canalErro = 'Canal pendente: a sincronização REST valida somente o Usuário ERP e não consulta nem grava o vínculo de canal.';
       } else if (status === 'ja_vinculado' && !a.canal_venda_id) {
         status = 'sem_canal_configurado';
       }
@@ -867,20 +841,22 @@ router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (
           agent: a,
           resolution: r,
           queryDb: agentMutationLock.client.query.bind(agentMutationLock.client),
-          registerCanal: registerAgentInCanal,
+          syncCanal: false,
         });
         const actions = [...provisionActions, ...persisted.actions];
-        const semCanal = !a.canal_venda_id || !persisted.erpAgenteVendaId;
+        const canalPendente = !!a.canal_venda_id;
         results.push({
           agentId,
-          status: semCanal
+          status: canalPendente
             ? 'vinculado_sem_canal'
             : (actions.length ? 'ok' : 'ja_vinculado'),
           erpAgentId: persisted.erpAgentId,
           erpAgenteVendaId: persisted.erpAgenteVendaId,
           login: r.login,
           actions,
-          canalErro: semCanal ? 'Nenhum canal de vendas válido está vinculado ao agente.' : undefined,
+          canalErro: canalPendente
+            ? 'Usuário ERP sincronizado pela API REST. O vínculo de canal permanece pendente e não foi alterado.'
+            : undefined,
         });
       } catch (persistErr) {
         const failure = classifyErpSyncError(persistErr, { stage: 'persistencia_vinculo_erp' });

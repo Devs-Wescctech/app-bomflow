@@ -227,6 +227,7 @@ export async function persistResolvedAgentErpLink({
   resolution,
   queryDb,
   registerCanal,
+  syncCanal = true,
 }) {
   const agentId = agent?.id;
   const resolvedId = asPositiveNumber(resolution?.usuarioId);
@@ -293,6 +294,13 @@ export async function persistResolvedAgentErpLink({
     }
     erpAgentId = resolvedId;
     actions.push('vinculo');
+  }
+
+  // A sincronização principal usa somente a API REST do ERP. Sem acesso direto
+  // ao banco ERP, o canal permanece pendente e seus espelhos locais não são
+  // alterados por inferência.
+  if (!syncCanal) {
+    return { erpAgentId, erpAgenteVendaId, actions };
   }
 
   const canalId = asPositiveNumber(agent.canal_venda_id);
