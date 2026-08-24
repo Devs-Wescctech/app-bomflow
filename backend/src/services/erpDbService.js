@@ -37,6 +37,23 @@ function auditedQuery(runner, ...args) {
 
 function getPool() {
   if (!pool) {
+    const requiredConfig = [
+      'ERP_DB_HOST',
+      'ERP_DB_PORT',
+      'ERP_DB_NAME',
+      'ERP_DB_USER',
+      'ERP_DB_PASSWORD',
+    ];
+    const missingConfig = requiredConfig.filter((key) => !String(process.env[key] || '').trim());
+    if (missingConfig.length) {
+      const error = new Error(
+        `Configuração do banco ERP incompleta. Variáveis ausentes: ${missingConfig.join(', ')}.`
+      );
+      error.code = 'erp_db_config_missing';
+      error.statusCode = 503;
+      throw error;
+    }
+
     pool = new Pool({
       host: process.env.ERP_DB_HOST,
       port: parseInt(process.env.ERP_DB_PORT) || 5432,
@@ -80,6 +97,31 @@ function getPool() {
     };
   }
   return pool;
+}
+
+function wrapErpDbError(context, error) {
+  if (error?.code === 'canal_ambiguo') return error;
+
+  const nestedMessages = Array.isArray(error?.errors)
+    ? error.errors.map((item) => item?.message || item?.code).filter(Boolean).join('; ')
+    : '';
+  const detail = error?.message || nestedMessages || error?.code || 'sem detalhes retornados pelo driver PostgreSQL';
+  const wrapped = new Error(
+    `${context}: ${detail}. Verifique ERP_DB_HOST/PORT/NAME/USER/PASSWORD e o acesso de rede do container ao banco ERP.`
+  );
+  wrapped.code = error?.code || 'erp_db_indisponivel';
+  wrapped.statusCode = error?.statusCode || 503;
+  wrapped.isErpUpstream = true;
+  wrapped.cause = error;
+  return wrapped;
+}
+
+async function queryErpDb(db, text, params, context) {
+  try {
+    return await db.query(text, params);
+  } catch (error) {
+    throw wrapErpDbError(context, error);
+  }
 }
 
 // Normaliza um CPF para o formato armazenado no ERP (000.000.000-00). Documentos de CPF
@@ -481,12 +523,14 @@ export function selectAgentCanalInspection(rows, grupoId) {
 export async function registerAgentInCanal(pessoaId, contratoId, grupoId) {
   const db = getPool();
 
-  const existing = await db.query(
+  const existing = await queryErpDb(
+    db,
     `SELECT id, grupo_id FROM pessoas_contratos
      WHERE pessoa_id = $1
        AND contrato_id = $2
      ORDER BY id`,
-    [pessoaId, contratoId]
+    [pessoaId, contratoId],
+    'Falha ao consultar vínculos de canal no banco ERP'
   );
   const inspection = selectAgentCanalInspection(existing.rows, grupoId);
 
@@ -505,7 +549,8 @@ export async function registerAgentInCanal(pessoaId, contratoId, grupoId) {
     return inspection.effectiveId;
   }
 
-  const result = await db.query(
+  const result = await queryErpDb(
+    db,
     `INSERT INTO pessoas_contratos (
        id, contrato_id, pessoa_id, titular, data_inicio, data_termino,
        valor, observacoes, fator, margem_consignavel, pessoa_relacionada_id,
@@ -519,7 +564,8 @@ export async function registerAgentInCanal(pessoaId, contratoId, grupoId) {
        null, null, null,
        null, null, $3, 'S'
      ) RETURNING id`,
-    [contratoId, pessoaId, grupoId || null]
+    [contratoId, pessoaId, grupoId || null],
+    'Falha ao gravar vínculo de canal no banco ERP'
   );
 
   const newId = Number(result.rows[0].id);
@@ -540,12 +586,14 @@ export async function inspectAgentInCanal(pessoaId, contratoId, grupoId) {
     return { ids: [], effectiveId: null, ambiguous: false };
   }
   const db = getPool();
-  const result = await db.query(
+  const result = await queryErpDb(
+    db,
     `SELECT id, grupo_id FROM pessoas_contratos
       WHERE pessoa_id = $1
         AND contrato_id = $2
       ORDER BY id`,
-    [Number(pessoaId), Number(contratoId)]
+    [Number(pessoaId), Number(contratoId)],
+    'Falha ao auditar vínculos de canal no banco ERP'
   );
   return selectAgentCanalInspection(result.rows, grupoId);
 }
