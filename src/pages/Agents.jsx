@@ -960,11 +960,17 @@ export default function Agents() {
     try {
       // A edição nunca provisiona nem informa IDs: o backend revalida por CPF e
       // mantém o Usuário ERP salvo imutável antes de reconciliar somente o canal.
-      const data = await commitSyncAgentesErp([{ agentId }]);
+      const data = await commitSyncAgentesErp([{ agentId, reconcileOnly: true }]);
       const result = data?.results?.find((item) => item.agentId === agentId)
         || data?.results?.[0]
         || { status: 'erro', erro: 'O ERP não retornou o resultado da reconciliação.' };
-      const success = result.status === 'ok' || result.status === 'ja_vinculado';
+      const success = ['ok', 'ja_vinculado', 'vinculado_sem_canal'].includes(result.status);
+      const canalConfirmado = result.canalConfirmado === true;
+      const canalRetryable = result.retryable === true || ['canal_pendente', 'erp_indisponivel'].includes(result.canalStatus);
+      const canalPrecisaRevisao = !canalConfirmado
+        && !!result.canalStatus
+        && !canalRetryable
+        && result.canalStatus !== 'sem_canal_configurado';
 
       await refreshEditedAgentState(agentId);
       if (activeEditAgentIdRef.current !== agentId) return success;
@@ -984,12 +990,37 @@ export default function Agents() {
         return false;
       }
 
+      if (canalPrecisaRevisao) {
+        setErpSyncAudit((current) => ({ ...(current || {}), ...result }));
+        setEditSaveState({
+          local: 'saved',
+          erp: 'error',
+          retryable: false,
+          message: `Usuário ERP sincronizado. O canal ERP exige revisão: ${
+            result.canalErro || ERP_SYNC_STATUS_CAUSE[result.canalStatus] || 'o ERP não confirmou o vínculo.'
+          }`,
+        });
+        toast.warning('Usuário ERP sincronizado, mas o canal ERP exige revisão antes de continuar.');
+        return true;
+      }
+
       setEditSaveState({
         local: 'saved',
-        erp: 'success',
-        message: 'Cadastro e vínculo ERP sincronizados.',
+        erp: canalConfirmado ? 'success' : 'pending',
+        retryable: canalRetryable,
+        message: canalConfirmado
+          ? 'Usuário e canal ERP sincronizados.'
+          : result.canalStatus === 'sem_canal_configurado'
+            ? 'Usuário ERP sincronizado. Nenhum canal ERP está configurado.'
+            : 'Usuário ERP sincronizado. O canal ERP permanece pendente para nova tentativa.',
       });
-      toast.success('Agente atualizado e vínculo ERP sincronizado.');
+      if (canalConfirmado) {
+        toast.success('Agente atualizado: Usuário e canal ERP sincronizados.');
+      } else if (result.canalStatus === 'sem_canal_configurado') {
+        toast.warning('Agente atualizado: Usuário ERP sincronizado, sem canal ERP configurado.');
+      } else {
+        toast.warning('Agente atualizado: Usuário ERP sincronizado, mas o canal ERP permanece pendente.');
+      }
       if (closeOnSuccess) {
         setIsDialogOpen(false);
         resetForm();
@@ -1165,7 +1196,7 @@ export default function Agents() {
     
     if (editingAgent) {
       const agentId = editingAgent.id;
-      const shouldReconcileErp = Boolean(formData.erpAgentId);
+      const shouldReconcileErp = String(formData.cpf || '').replace(/\D/g, '').length === 11;
       if (!dataToSend.password) {
         delete dataToSend.password;
       }
@@ -2315,7 +2346,7 @@ export default function Agents() {
                     )}
                     {formData.erpAgenteVendaId ? (
                       <Badge variant="outline" className="text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30">
-                        Canal ERP salvo — ID {formData.erpAgenteVendaId}; revalidado somente pela sincronização manual
+                        Canal ERP salvo — ID {formData.erpAgenteVendaId}; confirmado somente após leitura ou escrita no ERP
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30">
@@ -2342,12 +2373,13 @@ export default function Agents() {
                           <p className="mt-1 text-gray-700 dark:text-gray-300">
                             ID no ERP: {erpSyncAudit?.effectiveErpAgenteVendaId ?? "não encontrado"}
                             {" • "}Espelho no Bom Flow: {erpSyncAudit?.currentErpAgenteVendaId ?? "—"}
-                            {" • "}Status: {erpSyncAudit?.status || "não consultado"}
+                            {" • "}Usuário: {erpSyncAudit?.usuarioStatus || erpSyncAudit?.status || "não consultado"}
+                            {" • "}Canal: {erpSyncAudit?.canalStatus || "não avaliado"}
                           </p>
                           <p className="text-amber-700 dark:text-amber-300">
-                            {erpSyncAudit?.canalErro || erpSyncAudit?.erro || ERP_SYNC_STATUS_CAUSE[erpSyncAudit?.status] || "Aguardando validação do vínculo."}
+                            {erpSyncAudit?.canalErro || erpSyncAudit?.erro || ERP_SYNC_STATUS_CAUSE[erpSyncAudit?.canalStatus] || ERP_SYNC_STATUS_CAUSE[erpSyncAudit?.usuarioStatus || erpSyncAudit?.status] || "Aguardando validação do vínculo."}
                           </p>
-                          {editingAgent && editSaveState?.erp === 'error' && (
+                          {editingAgent && editSaveState?.erp === 'error' && editSaveState?.retryable && (
                             <Button
                               type="button"
                               variant="outline"
@@ -2381,8 +2413,10 @@ export default function Agents() {
                           ? 'sincronizado'
                           : editSaveState.erp === 'syncing'
                             ? 'reconciliando vínculo'
-                            : editSaveState.erp === 'error'
+                          : editSaveState.erp === 'error'
                               ? 'não sincronizado'
+                              : editSaveState.erp === 'pending'
+                                ? 'Usuário sincronizado · canal pendente'
                               : 'aguardando o salvamento local'}
                         <span className="block mt-1">{editSaveState.message}</span>
                       </AlertDescription>

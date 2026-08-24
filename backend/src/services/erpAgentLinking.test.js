@@ -4,11 +4,14 @@ import assert from 'node:assert/strict';
 import {
   buildAuthenticatedOrcamentoPayload,
   classifyAgentCanalAudit,
+  classifyCanalSyncState,
   classifyAgentErpLink,
   classifyErpSyncError,
   hasManagedErpAgentField,
+  mirrorConfirmedAgentCanal,
   persistResolvedAgentErpLink,
   sameCpf,
+  syncResolvedAgentCanal,
 } from './erpAgentLinking.js';
 import { selectAgentCanalInspection } from './erpDbService.js';
 
@@ -37,7 +40,7 @@ function makeDb({
     if (/SELECT id, name FROM agents WHERE erp_agent_id/.test(sql)) {
       return { rows: duplicate ? [duplicate] : [] };
     }
-    if (/SELECT cpf, erp_agent_id, canal_venda_id/.test(sql)) {
+    if (/SELECT cpf, erp_agent_id, (?:erp_agente_venda_id, )?canal_venda_id/.test(sql)) {
       return {
         rows: [current],
         rowCount: 1,
@@ -151,6 +154,41 @@ test('vínculos duplicados da mesma Pessoa e canal permanecem ambíguos e bloque
       matchKind: null,
     }
   );
+});
+
+test('estado do canal só fica confirmado depois de uma leitura inequívoca no ERP', () => {
+  assert.deepEqual(
+    classifyCanalSyncState({
+      hasCanal: true,
+      currentErpAgenteVendaId: 54238947,
+      inspection: { ids: [54238947], effectiveId: 54238947, ambiguous: false },
+    }),
+    {
+      status: 'canal_confirmado',
+      repairable: false,
+      confirmed: true,
+      effectiveErpAgenteVendaId: 54238947,
+    }
+  );
+});
+
+test('duplicidade e divergência do canal são expostas separadamente do Usuário ERP', () => {
+  const duplicated = classifyCanalSyncState({
+    hasCanal: true,
+    currentErpAgenteVendaId: null,
+    inspection: { ids: [54238947, 54238948], effectiveId: null, ambiguous: true },
+  });
+  assert.equal(duplicated.status, 'canal_ambiguo');
+  assert.equal(duplicated.confirmed, false);
+
+  const divergent = classifyCanalSyncState({
+    hasCanal: true,
+    currentErpAgenteVendaId: 54238947,
+    inspection: { ids: [54238948], effectiveId: 54238948, ambiguous: false },
+  });
+  assert.equal(divergent.status, 'canal_divergente');
+  assert.equal(divergent.confirmed, true);
+  assert.equal(divergent.repairable, true);
 });
 
 test('indisponibilidade do banco ERP é separada de vínculo não encontrado', () => {
@@ -313,6 +351,171 @@ test('sincronização REST do Usuário não consulta nem altera o vínculo de ca
     actions: ['vinculo'],
   });
   assert.equal(registerCalls, 0);
+  assert.equal(db.calls.some((call) => /SET erp_agente_venda_id/.test(call.sql)), false);
+});
+
+test('canal sem seleção não apaga o espelho local sem confirmação efetiva no ERP', async () => {
+  const db = makeDb({
+    current: {
+      cpf: '123.456.789-09',
+      erp_agent_id: 297839054,
+      canal_venda_id: null,
+      canal_venda_grupo_id: null,
+    },
+  });
+  let registerCalls = 0;
+
+  const result = await syncResolvedAgentCanal({
+    agent: {
+      id: 'agent-no-canal',
+      cpf: '123.456.789-09',
+      erp_agent_id: 297839054,
+      erp_agente_venda_id: 900123,
+      canal_venda_id: null,
+      canal_venda_grupo_id: null,
+    },
+    resolution: resolution(),
+    queryDb: db,
+    registerCanal: async () => {
+      registerCalls += 1;
+      return 900456;
+    },
+  });
+
+  assert.deepEqual(result, {
+    status: 'sem_canal_configurado',
+    confirmed: false,
+    erpAgenteVendaId: 900123,
+    actions: [],
+  });
+  assert.equal(registerCalls, 0);
+  assert.equal(db.calls.some((call) => /SET erp_agente_venda_id/.test(call.sql)), false);
+});
+
+test('indisponibilidade do canal não desfaz o Usuário ERP já sincronizado por REST', async () => {
+  const db = makeDb();
+  const agent = {
+    id: 'agent-channel-unavailable',
+    cpf: '123.456.789-09',
+    erp_agent_id: null,
+    erp_agente_venda_id: null,
+    canal_venda_id: 77,
+    canal_venda_grupo_id: 12,
+  };
+
+  const usuario = await persistResolvedAgentErpLink({
+    agent,
+    resolution: resolution(),
+    queryDb: db,
+    syncCanal: false,
+  });
+
+  await assert.rejects(
+    () => syncResolvedAgentCanal({
+      agent,
+      resolution: resolution(),
+      queryDb: db,
+      registerCanal: async () => {
+        throw Object.assign(new Error('connect ETIMEDOUT'), { code: 'ETIMEDOUT' });
+      },
+    }),
+    (error) => error.code === 'ETIMEDOUT'
+  );
+
+  assert.equal(usuario.erpAgentId, 297839054);
+  assert.deepEqual(usuario.actions, ['vinculo']);
+  assert.ok(db.calls.some((call) => /SET erp_agent_id =/.test(call.sql)));
+  assert.equal(db.calls.some((call) => /SET erp_agente_venda_id/.test(call.sql)), false);
+});
+
+test('orçamento espelha somente um canal já confirmado, sem criar vínculo no ERP', async () => {
+  const db = makeDb({
+    current: {
+      cpf: '123.456.789-09',
+      erp_agent_id: 297839054,
+      erp_agente_venda_id: null,
+      canal_venda_id: 77,
+      canal_venda_grupo_id: 12,
+    },
+  });
+  let inspectCalls = 0;
+
+  const result = await mirrorConfirmedAgentCanal({
+    agent: {
+      id: 'agent-orcamento',
+      cpf: '123.456.789-09',
+      erp_agent_id: 297839054,
+      erp_agente_venda_id: null,
+      canal_venda_id: 77,
+      canal_venda_grupo_id: 12,
+    },
+    resolution: resolution(),
+    queryDb: db,
+    inspectCanal: async () => {
+      inspectCalls += 1;
+      return { ids: [54238947], effectiveId: 54238947, ambiguous: false };
+    },
+  });
+
+  assert.deepEqual(result, {
+    status: 'canal_confirmado',
+    confirmed: true,
+    erpAgenteVendaId: 54238947,
+    actions: ['canal'],
+  });
+  assert.equal(inspectCalls, 1);
+  assert.ok(db.calls.some((call) => /SET erp_agente_venda_id/.test(call.sql)));
+});
+
+test('orçamento não espelha canal duplicado nem escolhe um ID automaticamente', async () => {
+  const db = makeDb();
+
+  await assert.rejects(
+    () => mirrorConfirmedAgentCanal({
+      agent: {
+        id: 'agent-orcamento-duplicado',
+        cpf: '123.456.789-09',
+        erp_agent_id: 297839054,
+        erp_agente_venda_id: null,
+        canal_venda_id: 77,
+        canal_venda_grupo_id: 12,
+      },
+      resolution: resolution(),
+      queryDb: db,
+      inspectCanal: async () => ({
+        ids: [54238947, 54238948],
+        effectiveId: null,
+        ambiguous: true,
+      }),
+    }),
+    (error) => error.code === 'canal_ambiguo'
+  );
+  assert.equal(db.calls.some((call) => /SET erp_agente_venda_id/.test(call.sql)), false);
+});
+
+test('orçamento não cria vínculo de canal ausente durante a auto-reconciliação', async () => {
+  const db = makeDb();
+
+  await assert.rejects(
+    () => mirrorConfirmedAgentCanal({
+      agent: {
+        id: 'agent-orcamento-sem-canal',
+        cpf: '123.456.789-09',
+        erp_agent_id: 297839054,
+        erp_agente_venda_id: null,
+        canal_venda_id: 77,
+        canal_venda_grupo_id: 12,
+      },
+      resolution: resolution(),
+      queryDb: db,
+      inspectCanal: async () => ({
+        ids: [],
+        effectiveId: null,
+        ambiguous: false,
+      }),
+    }),
+    (error) => error.code === 'canal_nao_confirmado'
+  );
   assert.equal(db.calls.some((call) => /SET erp_agente_venda_id/.test(call.sql)), false);
 });
 

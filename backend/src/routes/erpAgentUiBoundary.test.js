@@ -16,8 +16,9 @@ test('edição encadeia reconciliação sem provisionar ou permitir IDs ERP no p
     'utf8'
   );
 
-  assert.match(source, /commitSyncAgentesErp\(\[\{ agentId \}\]\)/);
+  assert.match(source, /commitSyncAgentesErp\(\[\{ agentId, reconcileOnly: true \}\]\)/);
   assert.doesNotMatch(source, /provision:\s*true/);
+  assert.match(source, /String\(formData\.cpf \|\| ''\)\.replace\(\/\\D\/g, ''\)\.length === 11/);
   assert.match(
     source,
     /delete dataToSend\.password/
@@ -33,6 +34,36 @@ test('gravação ERP permanece disponível somente no diálogo manual', async ()
   assert.match(source, /commitSyncAgentesErp/);
   assert.match(source, /const gravar = async \(\) =>/);
   assert.match(source, /filter\(\(i\) => selected\.has\(i\.agentId\)/);
+});
+
+test('resultado parcial atualiza o Usuário ERP e mantém o problema do canal separado', async () => {
+  const [dialogSource, agentsSource] = await Promise.all([
+    readFile(path.join(workspaceRoot, 'src/components/agents/ErpSyncDialog.jsx'), 'utf8'),
+    readFile(path.join(workspaceRoot, 'src/pages/Agents.jsx'), 'utf8'),
+  ]);
+
+  assert.match(dialogSource, /\["ok", "ja_vinculado", "vinculado_sem_canal"\]\.includes\(r\.status\)/);
+  assert.match(dialogSource, /onDone\?\.\(\)/);
+  assert.match(agentsSource, /const canalPrecisaRevisao = !canalConfirmado/);
+  assert.match(agentsSource, /result\.canalStatus !== 'sem_canal_configurado'/);
+  assert.match(agentsSource, /editSaveState\?\.erp === 'error' && editSaveState\?\.retryable/);
+});
+
+test('orçamento mantém o lock do agente até enviar o cabeçalho ao ERP', async () => {
+  const source = await readFile(
+    path.join(workspaceRoot, 'backend/src/routes/erpProxy.js'),
+    'utf8'
+  );
+
+  assert.match(source, /return \{ payload: authenticatedPayload, releaseAgentLock \}/);
+  assert.match(
+    source,
+    /let r;\s*try \{\s*r = await fetch\(`\$\{ERP_BASE\}\/OrcamentoSgprcUsuario`[\s\S]+?\} finally \{\s*await authenticatedRequest\.releaseAgentLock\(\)/
+  );
+  assert.match(
+    source,
+    /r = await fetch\(`\$\{ERP_BASE\}\/PrePropostaUsuarioSgprc`[\s\S]+?\} finally \{\s*await authenticatedRequest\.releaseAgentLock\(\)/
+  );
 });
 
 test('salvamento local termina antes da reconciliação e a atualização de consultas é aguardada', async () => {

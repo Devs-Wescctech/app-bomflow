@@ -159,9 +159,9 @@ export async function previewSyncAgentesErp(agentIds) {
   return data; // { items: [...] }
 }
 
-// Grava o vínculo ERP dos agentes selecionados.
-// items: [{ agentId, provision?, preferredLogin? }]
-// Esta chamada deve partir apenas de uma ação manual e explícita de sincronização.
+// Grava ou reconcilia o vínculo ERP dos agentes selecionados.
+// items: [{ agentId, provision?, preferredLogin?, reconcileOnly? }]
+// reconcileOnly apenas espelha um canal único já confirmado no ERP.
 export async function commitSyncAgentesErp(items) {
   const response = await fetch('/api/erp/sync-agentes/commit', {
     method: 'POST',

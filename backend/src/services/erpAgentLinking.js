@@ -219,6 +219,290 @@ export function classifyAgentCanalAudit({
 }
 
 /**
+ * Expõe o estado do canal separadamente da identidade do Usuário ERP. Um canal
+ * só é considerado confirmado quando uma leitura direta no ERP encontra um
+ * único pessoas_contratos para a Pessoa e o canal configurado.
+ */
+export function classifyCanalSyncState({
+  hasCanal,
+  currentErpAgenteVendaId,
+  inspection,
+}) {
+  if (!hasCanal) {
+    return {
+      status: 'sem_canal_configurado',
+      repairable: false,
+      confirmed: false,
+      effectiveErpAgenteVendaId: null,
+    };
+  }
+
+  if (inspection?.ambiguous) {
+    return {
+      status: 'canal_ambiguo',
+      repairable: false,
+      confirmed: false,
+      effectiveErpAgenteVendaId: null,
+    };
+  }
+
+  const effectiveErpAgenteVendaId = asPositiveNumber(inspection?.effectiveId);
+  const currentId = asPositiveNumber(currentErpAgenteVendaId);
+  if (!effectiveErpAgenteVendaId) {
+    return {
+      status: 'canal_pendente',
+      repairable: true,
+      confirmed: false,
+      effectiveErpAgenteVendaId: null,
+    };
+  }
+  if (!currentId) {
+    return {
+      status: 'canal_confirmado_nao_espelhado',
+      repairable: true,
+      confirmed: true,
+      effectiveErpAgenteVendaId,
+    };
+  }
+  if (currentId !== effectiveErpAgenteVendaId) {
+    return {
+      status: 'canal_divergente',
+      repairable: true,
+      confirmed: true,
+      effectiveErpAgenteVendaId,
+    };
+  }
+  return {
+    status: 'canal_confirmado',
+    repairable: false,
+    confirmed: true,
+    effectiveErpAgenteVendaId,
+  };
+}
+
+/**
+ * Registra ou reaproveita o vínculo de canal já resolvido no servidor.
+ * O espelho local só é alterado após registerCanal confirmar uma leitura ou
+ * escrita efetiva no ERP. Não há limpeza inferida quando o canal é removido
+ * do cadastro local: isso exige uma operação de negócio própria no ERP.
+ */
+export async function syncResolvedAgentCanal({
+  agent,
+  resolution,
+  queryDb,
+  registerCanal,
+}) {
+  const agentId = agent?.id;
+  const resolvedId = asPositiveNumber(resolution?.usuarioId);
+  const canalId = asPositiveNumber(agent?.canal_venda_id);
+  const currentErpAgenteVendaId = asPositiveNumber(agent?.erp_agente_venda_id);
+  if (!agentId || resolution?.status !== 'ok' || !resolvedId) {
+    throw new Error('Usuário ERP não pôde ser validado antes de sincronizar o canal.');
+  }
+  if (!canalId) {
+    return {
+      status: 'sem_canal_configurado',
+      confirmed: false,
+      erpAgenteVendaId: currentErpAgenteVendaId,
+      actions: [],
+    };
+  }
+
+  const pessoaId = asPositiveNumber(resolution.pessoaInternalId);
+  if (!pessoaId) {
+    const error = new Error('A Pessoa do ERP não foi localizada para registrar o canal de vendas.');
+    error.code = 'pessoa_nao_encontrada';
+    throw error;
+  }
+
+  const current = (await queryDb(
+    `SELECT cpf, erp_agent_id, canal_venda_id, canal_venda_grupo_id
+       FROM agents
+      WHERE id = $1`,
+    [agentId]
+  )).rows[0];
+  if (!sameAgentSnapshot(current, agent, resolvedId)) {
+    const error = new Error(
+      'O CPF ou o canal do agente mudou durante a sincronização. Nenhum vínculo de canal foi gravado.'
+    );
+    error.code = 'agente_alterado_durante_sync';
+    throw error;
+  }
+
+  const confirmedErpAgenteVendaId = asPositiveNumber(await registerCanal(
+    pessoaId,
+    canalId,
+    asPositiveNumber(agent.canal_venda_grupo_id)
+  ));
+  if (!confirmedErpAgenteVendaId) {
+    const error = new Error('O ERP não retornou um vínculo válido para o canal de vendas.');
+    error.code = 'canal_invalido';
+    throw error;
+  }
+
+  const actions = [];
+  if (confirmedErpAgenteVendaId !== currentErpAgenteVendaId) {
+    const linkedCanal = await queryDb(
+      `UPDATE agents
+          SET erp_agente_venda_id = $1, updated_at = NOW()
+        WHERE id = $2
+          AND erp_agent_id = $3
+          AND cpf IS NOT DISTINCT FROM $4
+          AND canal_venda_id = $5
+          AND canal_venda_grupo_id IS NOT DISTINCT FROM $6
+        RETURNING id`,
+      [
+        confirmedErpAgenteVendaId,
+        agentId,
+        resolvedId,
+        agent.cpf ?? null,
+        canalId,
+        asPositiveNumber(agent.canal_venda_grupo_id),
+      ]
+    );
+    if (linkedCanal.rowCount === 0) {
+      const error = new Error(
+        'O CPF ou o canal do agente mudou durante a sincronização. O novo vínculo não foi associado ao cadastro local.'
+      );
+      error.code = 'agente_alterado_durante_sync';
+      throw error;
+    }
+    actions.push('canal');
+  }
+
+  return {
+    status: 'canal_confirmado',
+    confirmed: true,
+    erpAgenteVendaId: confirmedErpAgenteVendaId,
+    actions,
+  };
+}
+
+/**
+ * Espelha no Bom Flow somente um vínculo de canal que já esteja confirmado no
+ * ERP. É usado no pré-processamento de orçamento para recuperar um espelho
+ * local ausente sem criar Pessoa×Canal como efeito colateral da venda.
+ */
+export async function mirrorConfirmedAgentCanal({
+  agent,
+  resolution,
+  queryDb,
+  inspectCanal,
+}) {
+  const agentId = agent?.id;
+  const resolvedId = asPositiveNumber(resolution?.usuarioId);
+  const canalId = asPositiveNumber(agent?.canal_venda_id);
+  const pessoaId = asPositiveNumber(resolution?.pessoaInternalId);
+  if (!agentId || resolution?.status !== 'ok' || !resolvedId || !pessoaId) {
+    throw new Error('Usuário e Pessoa ERP precisam estar confirmados antes de recuperar o canal.');
+  }
+  if (!canalId) {
+    const error = new Error(
+      'Seu cadastro não possui um canal de vendas configurado para confirmar no ERP.'
+    );
+    error.code = 'sem_canal_configurado';
+    error.statusCode = 422;
+    throw error;
+  }
+
+  const current = (await queryDb(
+    `SELECT cpf, erp_agent_id, erp_agente_venda_id, canal_venda_id, canal_venda_grupo_id
+       FROM agents
+      WHERE id = $1`,
+    [agentId]
+  )).rows[0];
+  if (!sameAgentSnapshot(current, agent, resolvedId)) {
+    const error = new Error(
+      'O CPF ou o canal do agente mudou durante a reconciliação automática. O orçamento não foi enviado.'
+    );
+    error.code = 'agente_alterado_durante_sync';
+    throw error;
+  }
+
+  const inspection = await inspectCanal(
+    pessoaId,
+    canalId,
+    asPositiveNumber(agent.canal_venda_grupo_id)
+  );
+  const canal = classifyCanalSyncState({
+    hasCanal: true,
+    currentErpAgenteVendaId: current?.erp_agente_venda_id,
+    inspection,
+  });
+  if (canal.status === 'canal_ambiguo') {
+    const error = new Error(
+      'Há mais de um vínculo para este canal no ERP. O orçamento não pode escolher um deles automaticamente.'
+    );
+    error.code = 'canal_ambiguo';
+    error.statusCode = 422;
+    throw error;
+  }
+  if (!canal.confirmed || !canal.effectiveErpAgenteVendaId) {
+    const error = new Error(
+      'O ERP não possui um vínculo confirmado para o canal deste agente. O orçamento não cria canais automaticamente.'
+    );
+    error.code = 'canal_nao_confirmado';
+    error.statusCode = 422;
+    throw error;
+  }
+
+  const currentErpAgenteVendaId = asPositiveNumber(current?.erp_agente_venda_id);
+  if (
+    currentErpAgenteVendaId
+    && currentErpAgenteVendaId !== canal.effectiveErpAgenteVendaId
+  ) {
+    const error = new Error(
+      'O espelho local do canal diverge do vínculo confirmado no ERP. O orçamento não o substituirá automaticamente.'
+    );
+    error.code = 'canal_divergente';
+    error.statusCode = 422;
+    throw error;
+  }
+  if (currentErpAgenteVendaId) {
+    return {
+      status: 'canal_confirmado',
+      confirmed: true,
+      erpAgenteVendaId: currentErpAgenteVendaId,
+      actions: [],
+    };
+  }
+
+  const mirrored = await queryDb(
+    `UPDATE agents
+        SET erp_agente_venda_id = $1, updated_at = NOW()
+      WHERE id = $2
+        AND erp_agent_id = $3
+        AND erp_agente_venda_id IS NULL
+        AND cpf IS NOT DISTINCT FROM $4
+        AND canal_venda_id = $5
+        AND canal_venda_grupo_id IS NOT DISTINCT FROM $6
+      RETURNING id`,
+    [
+      canal.effectiveErpAgenteVendaId,
+      agentId,
+      resolvedId,
+      agent.cpf ?? null,
+      canalId,
+      asPositiveNumber(agent.canal_venda_grupo_id),
+    ]
+  );
+  if (mirrored.rowCount === 0) {
+    const error = new Error(
+      'O cadastro do agente mudou durante a reconciliação automática. O canal confirmado não foi espelhado.'
+    );
+    error.code = 'agente_alterado_durante_sync';
+    throw error;
+  }
+
+  return {
+    status: 'canal_confirmado',
+    confirmed: true,
+    erpAgenteVendaId: canal.effectiveErpAgenteVendaId,
+    actions: ['canal'],
+  };
+}
+
+/**
  * Persiste somente ids já resolvidos no servidor. O caller continua responsável
  * por resolver CPF/Pessoa/Usuário no ERP e por tratar status ambíguos.
  */
@@ -303,96 +587,14 @@ export async function persistResolvedAgentErpLink({
     return { erpAgentId, erpAgenteVendaId, actions };
   }
 
-  const canalId = asPositiveNumber(agent.canal_venda_id);
-  if (!canalId && erpAgenteVendaId) {
-    const removed = await queryDb(
-      `UPDATE agents
-          SET erp_agente_venda_id = NULL, updated_at = NOW()
-        WHERE id = $1
-          AND erp_agent_id = $2
-          AND cpf IS NOT DISTINCT FROM $3
-          AND canal_venda_id IS NULL
-          AND canal_venda_grupo_id IS NOT DISTINCT FROM $4
-        RETURNING id`,
-      [
-        agentId,
-        resolvedId,
-        agent.cpf ?? null,
-        asPositiveNumber(agent.canal_venda_grupo_id),
-      ]
-    );
-    if (removed.rowCount === 0) {
-      const error = new Error(
-        'O cadastro do agente mudou durante a sincronização. O vínculo do canal não foi removido.'
-      );
-      error.code = 'agente_alterado_durante_sync';
-      throw error;
-    }
-    erpAgenteVendaId = null;
-    actions.push('canal_removido');
-  }
-  if (canalId) {
-    const pessoaId = asPositiveNumber(resolution.pessoaInternalId);
-    if (!pessoaId) {
-      const error = new Error('A Pessoa do ERP não foi localizada para registrar o canal de vendas.');
-      error.code = 'pessoa_nao_encontrada';
-      throw error;
-    }
-
-    const current = (await queryDb(
-      `SELECT cpf, erp_agent_id, canal_venda_id, canal_venda_grupo_id
-         FROM agents
-        WHERE id = $1`,
-      [agentId]
-    )).rows[0];
-    if (!sameAgentSnapshot(current, agent, resolvedId)) {
-      const error = new Error(
-        'O CPF ou o canal do agente mudou durante a sincronização. Nenhum vínculo de canal foi gravado.'
-      );
-      error.code = 'agente_alterado_durante_sync';
-      throw error;
-    }
-
-    const novoVendaId = asPositiveNumber(await registerCanal(
-      pessoaId,
-      canalId,
-      asPositiveNumber(agent.canal_venda_grupo_id)
-    ));
-    if (!novoVendaId) {
-      const error = new Error('O ERP não retornou um vínculo válido para o canal de vendas.');
-      error.code = 'canal_invalido';
-      throw error;
-    }
-    if (novoVendaId !== erpAgenteVendaId) {
-      const linkedCanal = await queryDb(
-        `UPDATE agents
-            SET erp_agente_venda_id = $1, updated_at = NOW()
-          WHERE id = $2
-            AND erp_agent_id = $3
-            AND cpf IS NOT DISTINCT FROM $4
-            AND canal_venda_id = $5
-            AND canal_venda_grupo_id IS NOT DISTINCT FROM $6
-          RETURNING id`,
-        [
-          novoVendaId,
-          agentId,
-          resolvedId,
-          agent.cpf ?? null,
-          canalId,
-          asPositiveNumber(agent.canal_venda_grupo_id),
-        ]
-      );
-      if (linkedCanal.rowCount === 0) {
-        const error = new Error(
-          'O CPF ou o canal do agente mudou durante a sincronização. O novo vínculo não foi associado ao cadastro local.'
-        );
-        error.code = 'agente_alterado_durante_sync';
-        throw error;
-      }
-      actions.push('canal');
-    }
-    erpAgenteVendaId = novoVendaId;
-  }
+  const canal = await syncResolvedAgentCanal({
+    agent,
+    resolution,
+    queryDb,
+    registerCanal,
+  });
+  erpAgenteVendaId = canal.erpAgenteVendaId;
+  actions.push(...canal.actions);
 
   return { erpAgentId, erpAgenteVendaId, actions };
 }
