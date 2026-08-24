@@ -1,8 +1,7 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { inspectAgentInCanal, registerAgentInCanal, validateAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB, findPessoaIdByCpf, getErpLoginsByIds, getRelatorioOrcamentos, resolveAgentErpByCpf } from '../services/erpDbService.js';
+import { inspectAgentInCanal, registerAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB, findPessoaIdByCpf, getErpLoginsByIds, getRelatorioOrcamentos, resolveAgentErpByCpf } from '../services/erpDbService.js';
 import {
-  buildAuthenticatedOrcamentoPayload,
   classifyCanalSyncState,
   classifyAgentErpLink,
   classifyErpSyncError,
@@ -41,92 +40,50 @@ function erpUnavailableError(context, cause) {
   return error;
 }
 
-// A identidade ERP do orçamento é sempre obtida do agente autenticado e validada
-// novamente pela cadeia CPF -> Pessoa -> Usuário. Não há fallback por e-mail e os
-// campos usuario_inclusao/agente_venda_id enviados pelo navegador são ignorados.
-// O lock retornado fica ativo até o cabeçalho chegar ao ERP: uma alteração
-// concorrente do canal não pode trocar a atribuição entre essa validação e o POST.
-async function resolveAuthenticatedOrcamentoPayload(req, token, rawPayload) {
-  const findAgent = async (queryDb) => (await queryDb(
-    `SELECT id, cpf, erp_agent_id, erp_agente_venda_id,
-            canal_venda_id, canal_venda_grupo_id
+// O orçamento legado usa somente a API REST do ERP antes de enviar o cabeçalho:
+// CPF -> Pessoa -> Usuário resolve a autoria, sem consultar pessoas_contratos.
+// O canal só é enviado quando já existe no cadastro local do agente. Nunca
+// aceitamos usuario_inclusao ou agente_venda_id vindos do navegador.
+async function resolveRestOnlyOrcamentoPayload(req, token, rawPayload) {
+  const agent = (await query(
+    `SELECT cpf, erp_agente_venda_id
        FROM agents
       WHERE id = $1 AND active = true`,
     [req.user?.id]
   )).rows[0];
-  const validateAgentCpf = (candidate) => {
-    if (String(candidate.cpf || '').replace(/\D/g, '').length !== 11) {
-      const error = new Error(
-        'Seu cadastro não possui um CPF válido para confirmar o vínculo com o ERP. Solicite a correção em Configurações > Agentes.'
-      );
-      error.statusCode = 422;
-      throw error;
-    }
-  };
-
-  const agentMutationLock = await acquireAgentMutationLock(req.user?.id);
-  let released = false;
-  const releaseAgentLock = async () => {
-    if (released) return;
-    released = true;
-    await agentMutationLock.release().catch((error) => {
-      console.error('[ERP /orcamento] falha ao liberar lock de vínculo do agente:', error.message);
-    });
-  };
-
-  try {
-    let agent = await findAgent(agentMutationLock.client.query.bind(agentMutationLock.client));
-    if (!agent) {
-      throw new Error('Agente autenticado não foi encontrado ou está inativo.');
-    }
-    validateAgentCpf(agent);
-    const resolution = await resolveAgentErpByCpfViaApi(token, agent.cpf);
-
-    // Um espelho ausente não deve impedir a venda quando o vínculo único já
-    // existe no ERP. A reconciliação é propositalmente limitada a confirmar e
-    // copiar esse vínculo; ela nunca cria um canal durante o orçamento.
-    if (!Number(agent.erp_agent_id) || !Number(agent.erp_agente_venda_id)) {
-      const persisted = await persistResolvedAgentErpLink({
-        agent,
-        resolution,
-        queryDb: agentMutationLock.client.query.bind(agentMutationLock.client),
-        syncCanal: false,
-      });
-      const userConfirmedAgent = { ...agent, erp_agent_id: persisted.erpAgentId };
-      const canal = await mirrorConfirmedAgentCanal({
-        agent: userConfirmedAgent,
-        resolution,
-        queryDb: agentMutationLock.client.query.bind(agentMutationLock.client),
-        inspectCanal: inspectAgentInCanal,
-      });
-      agent = {
-        ...userConfirmedAgent,
-        erp_agente_venda_id: canal.erpAgenteVendaId,
-      };
-      console.log(
-        `[ERP /orcamento] Canal confirmado no ERP e espelhado automaticamente para o agente ${agent.id}.`
-      );
-    }
-
-    const authenticatedPayload = buildAuthenticatedOrcamentoPayload(rawPayload, agent, resolution);
-    const canalValido = await validateAgentInCanal(
-      resolution.pessoaInternalId,
-      agent.canal_venda_id,
-      agent.canal_venda_grupo_id,
-      agent.erp_agente_venda_id
+  if (!agent) {
+    throw new Error('Agente autenticado não foi encontrado ou está inativo.');
+  }
+  if (String(agent.cpf || '').replace(/\D/g, '').length !== 11) {
+    const error = new Error(
+      'Seu cadastro não possui um CPF válido para confirmar o Usuário ERP. Solicite a correção em Configurações > Agentes.'
     );
-    if (!canalValido) {
-      const error = new Error(
-        'O vínculo do seu canal de vendas não corresponde à Pessoa/canal/grupo configurados no ERP. Solicite uma nova sincronização em Configurações > Agentes.'
-      );
-      error.statusCode = 422;
-      throw error;
-    }
-    return { payload: authenticatedPayload, releaseAgentLock };
-  } catch (error) {
-    await releaseAgentLock();
+    error.statusCode = 422;
     throw error;
   }
+
+  const resolution = await resolveAgentErpByCpfViaApi(token, agent.cpf);
+  if (resolution?.status !== 'ok' || !String(resolution?.login || '').trim()) {
+    const error = new Error(
+      'Não foi possível confirmar o Usuário ERP pelo CPF cadastrado. Revise o vínculo em Configurações > Agentes.'
+    );
+    error.statusCode = 422;
+    throw error;
+  }
+
+  const {
+    usuario_inclusao: _usuarioInclusaoEnviado,
+    agente_venda_id: _agenteVendaIdEnviado,
+    ...payload
+  } = rawPayload;
+  payload.usuario_inclusao = String(resolution.login).trim();
+
+  const localCanalId = Number(agent.erp_agente_venda_id);
+  if (Number.isFinite(localCanalId) && localCanalId > 0) {
+    payload.agente_venda_id = localCanalId;
+  }
+
+  return payload;
 }
 
 // Normaliza um CPF para o formato que o ERP usa/exige (000.000.000-00).
@@ -1186,31 +1143,24 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Plano de pagamento obrigatório: selecione um plano antes de enviar o orçamento.' });
     }
 
-    // Só depois das validações locais resolve a identidade ERP do agente autenticado.
-    // Sobrescreve os campos de autoria enviados pelo navegador e bloqueia antes do POST
-    // do cabeçalho quando Usuário ERP ou canal estiverem ausentes/inconsistentes.
-    const authenticatedRequest = await resolveAuthenticatedOrcamentoPayload(
+    // Mantém o comportamento legado: a autoria é resolvida pelo CPF via REST e
+    // a ausência de auditoria do banco ERP não bloqueia o cabeçalho.
+    const headerPayload = await resolveRestOnlyOrcamentoPayload(
       req,
       token,
       headerPayloadFromClient
     );
-    const headerPayload = authenticatedRequest.payload;
 
     console.log('[ERP /orcamento] payload enviado ao ERP:', JSON.stringify(headerPayload, null, 2));
     console.log(`[ERP /orcamento] itens recebidos: ${itens.length} | beneficiários totais: ${itens.reduce((a, it) => a + it.beneficiarios.length, 0)}`);
-    let r;
-    try {
-      r = await fetch(`${ERP_BASE}/OrcamentoSgprcUsuario`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(headerPayload),
-      });
-    } finally {
-      await authenticatedRequest.releaseAgentLock();
-    }
+    const r = await fetch(`${ERP_BASE}/OrcamentoSgprcUsuario`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(headerPayload),
+    });
     const data = await r.json().catch(() => ({}));
     console.log('[ERP /orcamento] status HTTP:', r.status);
     console.log('[ERP /orcamento] resposta ERP completa:', JSON.stringify(data, null, 2));
@@ -1343,23 +1293,17 @@ router.post('/pre-proposta', authMiddleware, async (req, res) => {
   try {
     // `modulo` é metadado do Bom Flow (rastreio CRM), NÃO deve ser enviado ao ERP.
     const { modulo: moduloOrcamento, ...payloadFromClient } = { ...req.body };
-    const authenticatedRequest = await resolveAuthenticatedOrcamentoPayload(req, token, payloadFromClient);
-    const payload = authenticatedRequest.payload;
+    const payload = await resolveRestOnlyOrcamentoPayload(req, token, payloadFromClient);
 
     console.log('[ERP pre-proposta] payload enviado ao ERP:', JSON.stringify(payload, null, 2));
-    let r;
-    try {
-      r = await fetch(`${ERP_BASE}/PrePropostaUsuarioSgprc`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-    } finally {
-      await authenticatedRequest.releaseAgentLock();
-    }
+    const r = await fetch(`${ERP_BASE}/PrePropostaUsuarioSgprc`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
     const data = await r.json().catch(() => ({}));
     console.log('[ERP pre-proposta] status HTTP:', r.status);
     console.log('[ERP pre-proposta] resposta ERP completa:', JSON.stringify(data, null, 2));

@@ -25,6 +25,23 @@ test('edição encadeia reconciliação sem provisionar ou permitir IDs ERP no p
   );
 });
 
+test('orçamentos restauram a autoria REST sem auditar canal no banco antes do cabeçalho', async () => {
+  const source = await readFile(
+    path.join(workspaceRoot, 'backend/src/routes/erpProxy.js'),
+    'utf8'
+  );
+
+  assert.match(source, /async function resolveRestOnlyOrcamentoPayload/);
+  assert.match(
+    source,
+    /usuario_inclusao: _usuarioInclusaoEnviado,\s*agente_venda_id: _agenteVendaIdEnviado/
+  );
+  assert.match(source, /const headerPayload = await resolveRestOnlyOrcamentoPayload/);
+  assert.match(source, /const payload = await resolveRestOnlyOrcamentoPayload/);
+  assert.doesNotMatch(source, /resolveAuthenticatedOrcamentoPayload/);
+  assert.doesNotMatch(source, /validateAgentInCanal/);
+});
+
 test('gravação ERP permanece disponível somente no diálogo manual', async () => {
   const source = await readFile(
     path.join(workspaceRoot, 'src/components/agents/ErpSyncDialog.jsx'),
@@ -63,21 +80,21 @@ test('canal confirmado no ERP sem espelho local oferece ação explícita para a
   );
 });
 
-test('orçamento mantém o lock do agente até enviar o cabeçalho ao ERP', async () => {
+test('orçamento REST-only envia o cabeçalho sem lock ou auditoria de canal no banco ERP', async () => {
   const source = await readFile(
     path.join(workspaceRoot, 'backend/src/routes/erpProxy.js'),
     'utf8'
   );
 
-  assert.match(source, /return \{ payload: authenticatedPayload, releaseAgentLock \}/);
   assert.match(
     source,
-    /let r;\s*try \{\s*r = await fetch\(`\$\{ERP_BASE\}\/OrcamentoSgprcUsuario`[\s\S]+?\} finally \{\s*await authenticatedRequest\.releaseAgentLock\(\)/
+    /const r = await fetch\(`\$\{ERP_BASE\}\/OrcamentoSgprcUsuario`, \{/
   );
   assert.match(
     source,
-    /r = await fetch\(`\$\{ERP_BASE\}\/PrePropostaUsuarioSgprc`[\s\S]+?\} finally \{\s*await authenticatedRequest\.releaseAgentLock\(\)/
+    /const r = await fetch\(`\$\{ERP_BASE\}\/PrePropostaUsuarioSgprc`, \{/
   );
+  assert.doesNotMatch(source, /releaseAgentLock/);
 });
 
 test('salvamento local termina antes da reconciliação e a atualização de consultas é aguardada', async () => {
