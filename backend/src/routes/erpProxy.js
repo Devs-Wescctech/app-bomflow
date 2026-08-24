@@ -80,6 +80,14 @@ async function resolveAuthenticatedOrcamentoPayload(req, token, rawPayload) {
       throw new Error('Agente autenticado não foi encontrado ou está inativo.');
     }
     validateAgentCpf(agent);
+    if (!agent.canal_venda_id) {
+      const error = new Error(
+        'Seu cadastro não possui um canal de vendas configurado. Solicite a configuração do canal antes de criar o orçamento.'
+      );
+      error.code = 'sem_canal_configurado';
+      error.statusCode = 422;
+      throw error;
+    }
     const resolution = await resolveAgentErpByCpfViaApi(token, agent.cpf);
 
     // Um espelho ausente não deve impedir a venda quando o vínculo único já

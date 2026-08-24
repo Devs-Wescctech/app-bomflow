@@ -102,6 +102,22 @@ test('orçamento mantém o lock do agente até enviar o cabeçalho ao ERP', asyn
   );
 });
 
+test('orçamento informa canal ausente antes de qualquer auditoria no banco ERP', async () => {
+  const source = await readFile(
+    path.join(workspaceRoot, 'backend/src/routes/erpProxy.js'),
+    'utf8'
+  );
+
+  assert.match(
+    source,
+    /validateAgentCpf\(agent\);\s*if \(!agent\.canal_venda_id\) \{[\s\S]+?error\.code = 'sem_canal_configurado';[\s\S]+?throw error;\s*\}\s*const resolution = await resolveAgentErpByCpfViaApi/
+  );
+  assert.match(
+    source,
+    /Seu cadastro não possui um canal de vendas configurado/
+  );
+});
+
 test('salvamento local termina antes da reconciliação e a atualização de consultas é aguardada', async () => {
   const calls = [];
   const result = await saveAgentThenReconcile({
