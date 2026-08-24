@@ -5,6 +5,7 @@ import {
   buildAuthenticatedOrcamentoPayload,
   classifyAgentCanalAudit,
   classifyAgentErpLink,
+  classifyErpSyncError,
   persistResolvedAgentErpLink,
 } from '../services/erpAgentLinking.js';
 import { acquireAgentMutationLock } from '../services/agentMutationLock.js';
@@ -27,6 +28,15 @@ function getToken(res) {
     return null;
   }
   return token;
+}
+
+function erpUnavailableError(context, cause) {
+  const error = new Error(`${context}: ${cause?.message || 'fonte ERP indisponível'}`);
+  error.code = 'erp_indisponivel';
+  error.isErpUpstream = true;
+  error.retryable = true;
+  error.cause = cause;
+  return error;
 }
 
 // A identidade ERP do orçamento é sempre obtida do agente autenticado e validada
@@ -278,7 +288,7 @@ async function fetchUsuariosByPessoaCodigo(token, pessoaCodigo) {
       return Number(a.id || 0) - Number(b.id || 0);
     });
   } catch (e) {
-    throw new Error(`Falha de acesso ao ERP ao consultar os Usuários: ${e.message}`);
+    throw erpUnavailableError('Falha de acesso ao ERP ao consultar os Usuários', e);
   }
 }
 
@@ -294,7 +304,7 @@ async function fetchUsuarioById(token, usuarioId) {
     });
     return usuarios.find((u) => Number(u?.id) === wanted) || null;
   } catch (e) {
-    throw new Error(`Falha de acesso ao ERP ao validar o Usuário salvo: ${e.message}`);
+    throw erpUnavailableError('Falha de acesso ao ERP ao validar o Usuário salvo', e);
   }
 }
 
@@ -354,7 +364,7 @@ async function resolveAgentErpByCpfViaApi(token, cpf) {
       }
     }
   } catch (e) {
-    throw new Error(`Falha de acesso ao ERP ao consultar a Pessoa: ${e.message}`);
+    throw erpUnavailableError('Falha de acesso ao ERP ao consultar a Pessoa', e);
   }
 
   // Fallback para API_CADASTRO_PESSOAS (clientes com contrato ativo)
@@ -382,7 +392,7 @@ async function resolveAgentErpByCpfViaApi(token, cpf) {
         }
       }
     } catch (e) {
-      throw new Error(`Falha de acesso ao ERP na consulta complementar da Pessoa: ${e.message}`);
+      throw erpUnavailableError('Falha de acesso ao ERP na consulta complementar da Pessoa', e);
     }
   }
 
@@ -683,7 +693,8 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
       try {
         r = await resolveAgentErpByCpfViaApi(token, a.cpf);
       } catch (e) {
-        items.push({ ...base, status: 'erro', erro: e.message });
+        const failure = classifyErpSyncError(e);
+        items.push({ ...base, ...failure, repairable: false });
         continue;
       }
 
@@ -696,11 +707,11 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
         try {
           storedUsuario = await fetchUsuarioById(token, a.erp_agent_id);
         } catch (storedUserError) {
+          const failure = classifyErpSyncError(storedUserError);
           items.push({
             ...base,
-            status: 'erro',
+            ...failure,
             repairable: false,
-            erro: storedUserError.message,
             erpAgentId: r.usuarioId,
             pessoaInternalId: r.pessoaInternalId,
             login: r.login,
@@ -744,9 +755,10 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
           effectiveErpAgenteVendaId = canalClassification.effectiveErpAgenteVendaId;
           canalErro = canalClassification.canalErro;
         } catch (canalValidationError) {
-          status = 'erro';
+          const failure = classifyErpSyncError(canalValidationError);
+          status = failure.status;
           repairable = false;
-          canalErro = canalValidationError.message;
+          canalErro = failure.erro;
         }
       } else if (status === 'ja_vinculado' && !a.canal_venda_id) {
         status = 'sem_canal_configurado';
@@ -864,15 +876,15 @@ router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (
           canalErro: semCanal ? 'Nenhum canal de vendas válido está vinculado ao agente.' : undefined,
         });
       } catch (persistErr) {
+        const failure = classifyErpSyncError(persistErr);
         results.push({
           agentId,
-          status: persistErr.code || 'erro',
-          erro: persistErr.message,
+          ...failure,
           login: r.login,
         });
       }
     } catch (e) {
-      results.push({ agentId, status: 'erro', erro: e.message });
+      results.push({ agentId, ...classifyErpSyncError(e) });
     } finally {
       if (agentMutationLock) {
         await agentMutationLock.release().catch((error) => {

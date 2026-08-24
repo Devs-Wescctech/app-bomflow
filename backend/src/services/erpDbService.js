@@ -451,30 +451,58 @@ export async function getOrcamentoDetalhe(pedidoId) {
  * @param {number|null} grupoId - canal_venda_grupo_id (grupo_id da api_canal_vendas)
  * @returns {Promise<number>}  - id gerado em pessoas_contratos (agente_venda_id)
  */
+export function selectAgentCanalInspection(rows, grupoId) {
+  const selectedGroupId = Number(grupoId) > 0 ? Number(grupoId) : null;
+  const candidates = (Array.isArray(rows) ? rows : [])
+    .map((row) => ({
+      id: Number(row?.id),
+      grupoId: Number(row?.grupo_id) > 0 ? Number(row.grupo_id) : null,
+    }))
+    .filter((row) => Number.isFinite(row.id) && row.id > 0);
+  const ids = candidates.map((row) => row.id);
+
+  if (candidates.length !== 1) {
+    return {
+      ids,
+      effectiveId: null,
+      ambiguous: candidates.length > 1,
+      matchKind: null,
+    };
+  }
+
+  return {
+    ids,
+    effectiveId: candidates[0].id,
+    ambiguous: false,
+    matchKind: candidates[0].grupoId === selectedGroupId ? 'exact' : 'legacy',
+  };
+}
+
 export async function registerAgentInCanal(pessoaId, contratoId, grupoId) {
   const db = getPool();
 
   const existing = await db.query(
-    `SELECT id FROM pessoas_contratos
+    `SELECT id, grupo_id FROM pessoas_contratos
      WHERE pessoa_id = $1
        AND contrato_id = $2
-       AND grupo_id IS NOT DISTINCT FROM $3
      ORDER BY id`,
-    [pessoaId, contratoId, grupoId || null]
+    [pessoaId, contratoId]
   );
+  const inspection = selectAgentCanalInspection(existing.rows, grupoId);
 
-  if (existing.rows.length > 1) {
+  if (inspection.ambiguous) {
     const error = new Error(
-      `Há ${existing.rows.length} vínculos para esta Pessoa e canal no ERP. Revise os registros antes de escolher um agente_venda_id.`
+      `Há ${inspection.ids.length} vínculos para esta Pessoa e canal no ERP. Revise os registros antes de escolher um agente_venda_id.`
     );
     error.code = 'canal_ambiguo';
     error.statusCode = 422;
     throw error;
   }
-  if (existing.rows.length === 1) {
-    const existingId = existing.rows[0].id;
-    console.log(`[erpDbService] Agente ${pessoaId} já vinculado ao canal ${contratoId} — id: ${existingId}`);
-    return Number(existingId);
+  if (inspection.effectiveId) {
+    console.log(
+      `[erpDbService] Agente ${pessoaId} já vinculado ao canal ${contratoId} — id: ${inspection.effectiveId} (${inspection.matchKind})`
+    );
+    return inspection.effectiveId;
   }
 
   const result = await db.query(
@@ -500,8 +528,9 @@ export async function registerAgentInCanal(pessoaId, contratoId, grupoId) {
 }
 
 /**
- * Localiza, sem criar nem alterar registros, os vínculos de canal que pertencem
- * exatamente à Pessoa, canal e grupo informados.
+ * Localiza, sem criar nem alterar registros, os vínculos de canal da Pessoa e
+ * contrato informados. Um único registro legado com grupo antigo/nulo é válido:
+ * o contrato identifica o canal e o ID existente deve ser reaproveitado.
  *
  * O vínculo parte sempre de pessoas.id -> pessoas_contratos.pessoa_id. O ID de
  * usuarios.id identifica o login ERP e nunca deve ser usado nesta consulta.
@@ -512,21 +541,13 @@ export async function inspectAgentInCanal(pessoaId, contratoId, grupoId) {
   }
   const db = getPool();
   const result = await db.query(
-    `SELECT id FROM pessoas_contratos
+    `SELECT id, grupo_id FROM pessoas_contratos
       WHERE pessoa_id = $1
         AND contrato_id = $2
-        AND grupo_id IS NOT DISTINCT FROM $3
       ORDER BY id`,
-    [Number(pessoaId), Number(contratoId), grupoId ? Number(grupoId) : null]
+    [Number(pessoaId), Number(contratoId)]
   );
-  const ids = result.rows
-    .map((row) => Number(row.id))
-    .filter((id) => Number.isFinite(id) && id > 0);
-  return {
-    ids,
-    effectiveId: ids.length === 1 ? ids[0] : null,
-    ambiguous: ids.length > 1,
-  };
+  return selectAgentCanalInspection(result.rows, grupoId);
 }
 
 /**

@@ -5,10 +5,12 @@ import {
   buildAuthenticatedOrcamentoPayload,
   classifyAgentCanalAudit,
   classifyAgentErpLink,
+  classifyErpSyncError,
   hasManagedErpAgentField,
   persistResolvedAgentErpLink,
   sameCpf,
 } from './erpAgentLinking.js';
+import { selectAgentCanalInspection } from './erpDbService.js';
 
 const resolution = (overrides = {}) => ({
   status: 'ok',
@@ -124,6 +126,74 @@ test('vínculo de canal existente no ERP, mas não espelhado localmente, é repa
   assert.equal(result.effectiveErpAgenteVendaId, 54238947);
 });
 
+test('um único vínculo legado da mesma Pessoa e canal é reaproveitado mesmo com grupo antigo', () => {
+  assert.deepEqual(
+    selectAgentCanalInspection([{ id: 54238947, grupo_id: null }], 777),
+    {
+      ids: [54238947],
+      effectiveId: 54238947,
+      ambiguous: false,
+      matchKind: 'legacy',
+    }
+  );
+});
+
+test('vínculos duplicados da mesma Pessoa e canal permanecem ambíguos e bloqueados', () => {
+  assert.deepEqual(
+    selectAgentCanalInspection([
+      { id: 54238947, grupo_id: 777 },
+      { id: 54238948, grupo_id: null },
+    ], 777),
+    {
+      ids: [54238947, 54238948],
+      effectiveId: null,
+      ambiguous: true,
+      matchKind: null,
+    }
+  );
+});
+
+test('indisponibilidade do banco ERP é separada de vínculo não encontrado', () => {
+  const unavailable = classifyErpSyncError(
+    Object.assign(new Error('connect ETIMEDOUT'), { code: 'ETIMEDOUT' })
+  );
+  const notFound = classifyErpSyncError(
+    Object.assign(new Error('Pessoa não encontrada'), { code: 'pessoa_nao_encontrada' })
+  );
+
+  assert.deepEqual(unavailable, {
+    status: 'erp_indisponivel',
+    retryable: true,
+    erro: 'connect ETIMEDOUT',
+  });
+  assert.equal(notFound.status, 'pessoa_nao_encontrada');
+  assert.equal(notFound.retryable, false);
+});
+
+test('mensagens reais de timeout do pg são sempre tratadas como indisponibilidade operacional', () => {
+  for (const message of [
+    'timeout expired',
+    'timeout exceeded when trying to connect',
+    'Query read timeout',
+  ]) {
+    assert.deepEqual(classifyErpSyncError(new Error(message)), {
+      status: 'erp_indisponivel',
+      retryable: true,
+      erro: message,
+    });
+  }
+});
+
+test('falhas de configuração ou credencial do banco ERP não sugerem nova tentativa operacional', () => {
+  for (const code of ['28000', '28P01', '3D000']) {
+    const failure = classifyErpSyncError(
+      Object.assign(new Error('configuração inválida'), { code })
+    );
+    assert.equal(failure.status, code);
+    assert.equal(failure.retryable, false);
+  }
+});
+
 test('usuário recém-resolvido grava usuarios.id e pessoas_contratos.id em campos separados', async () => {
   const db = makeDb();
   const registerCalls = [];
@@ -150,6 +220,40 @@ test('usuário recém-resolvido grava usuarios.id e pessoas_contratos.id em camp
   assert.deepEqual(registerCalls, [[302000111, 77, 12]]);
   assert.ok(db.calls.some((c) => /SET erp_agent_id =/.test(c.sql) && c.params[0] === 297839054));
   assert.ok(db.calls.some((c) => /SET erp_agente_venda_id =/.test(c.sql) && c.params[0] === 900123));
+});
+
+test('vínculo ERP existente é apenas espelhado sem alterar o ID do Usuário', async () => {
+  const db = makeDb({
+    current: {
+      cpf: '123.456.789-09',
+      erp_agent_id: 53209845,
+      canal_venda_id: 77,
+      canal_venda_grupo_id: 12,
+    },
+  });
+  const result = await persistResolvedAgentErpLink({
+    agent: {
+      id: 'agent-jullia',
+      erp_agent_id: 53209845,
+      erp_agente_venda_id: null,
+      cpf: '123.456.789-09',
+      canal_venda_id: 77,
+      canal_venda_grupo_id: 12,
+    },
+    resolution: resolution({ usuarioId: 53209845, login: 'jullia.santos' }),
+    queryDb: db,
+    registerCanal: async () => 54238947,
+  });
+
+  assert.deepEqual(result, {
+    erpAgentId: 53209845,
+    erpAgenteVendaId: 54238947,
+    actions: ['canal'],
+  });
+  assert.equal(db.calls.some((call) => /SET erp_agent_id =/.test(call.sql)), false);
+  assert.ok(db.calls.some(
+    (call) => /SET erp_agente_venda_id =/.test(call.sql) && call.params[0] === 54238947
+  ));
 });
 
 test('conflito de unicidade não permite vincular o mesmo Usuário ERP a dois agentes', async () => {

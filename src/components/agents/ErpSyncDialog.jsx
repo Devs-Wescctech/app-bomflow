@@ -33,6 +33,7 @@ const STATUS_META = {
   canal_nao_espelhado:   { label: "Vínculo no ERP",         cls: "bg-amber-100 text-amber-800 border-amber-200" },
   canal_incorreto:       { label: "Canal incorreto",        cls: "bg-amber-100 text-amber-800 border-amber-200" },
   canal_ambiguo:         { label: "Canal ambíguo",          cls: "bg-red-100 text-red-700 border-red-200" },
+  erp_indisponivel:      { label: "ERP indisponível",       cls: "bg-amber-100 text-amber-800 border-amber-200" },
   sem_canal_configurado: { label: "Sem canal configurado",  cls: "bg-gray-100 text-gray-600 border-gray-200" },
   ja_vinculado:         { label: "Já vinculado",           cls: "bg-blue-100 text-blue-700 border-blue-200" },
   erro:                 { label: "Erro",                   cls: "bg-red-100 text-red-700 border-red-200" },
@@ -58,6 +59,7 @@ const RESULT_META = {
   vinculo_incorreto:   { label: "Vínculo incorreto",      cls: "bg-red-100 text-red-700 border-red-200" },
   id_pessoa_legado:    { label: "ID de Pessoa legado",    cls: "bg-red-100 text-red-700 border-red-200" },
   canal_ambiguo:       { label: "Canal ambíguo",          cls: "bg-red-100 text-red-700 border-red-200" },
+  erp_indisponivel:    { label: "ERP indisponível",       cls: "bg-amber-100 text-amber-800 border-amber-200" },
   erro:                { label: "Erro",                 cls: "bg-red-100 text-red-700 border-red-200" },
 };
 
@@ -68,6 +70,7 @@ const STATUS_CAUSE = {
   canal_nao_espelhado: "O vínculo já existe no ERP; falta apenas espelhar seu ID no Bom Flow.",
   canal_incorreto: "O vínculo efetivo aponta para um canal diferente do selecionado.",
   canal_ambiguo: "Há mais de um vínculo para a mesma Pessoa, canal e grupo no ERP; o caso exige revisão.",
+  erp_indisponivel: "A fonte de vínculos do ERP está indisponível; tente novamente quando a conexão for restabelecida.",
   sem_canal_configurado: "Não há canal selecionado no Bom Flow.",
   nome_divergente: "O nome localizado no ERP diverge do cadastro local.",
   id_pessoa_legado: "O ID salvo parece ser de uma Pessoa, não de um Usuário ERP; ele não será trocado automaticamente.",
