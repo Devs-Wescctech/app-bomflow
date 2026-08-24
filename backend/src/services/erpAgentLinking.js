@@ -22,6 +22,15 @@ function validationError(message) {
   return error;
 }
 
+export const MISSING_ERP_CANAL_MESSAGE =
+  'Falta o vínculo de canal de venda no ERP para seu agente. Peça a um administrador para sincronizá-lo em Configurações → Agentes.';
+
+export function createMissingErpCanalError() {
+  const error = validationError(MISSING_ERP_CANAL_MESSAGE);
+  error.code = 'canal_nao_confirmado';
+  return error;
+}
+
 const MANAGED_ERP_AGENT_FIELDS = new Set([
   'erpAgentId',
   'erp_agent_id',
@@ -438,12 +447,7 @@ export async function mirrorConfirmedAgentCanal({
     throw error;
   }
   if (!canal.confirmed || !canal.effectiveErpAgenteVendaId) {
-    const error = new Error(
-      'Falta o vínculo de canal de venda no ERP para seu agente. Peça a um administrador para sincronizá-lo em Configurações → Agentes.'
-    );
-    error.code = 'canal_nao_confirmado';
-    error.statusCode = 422;
-    throw error;
+    throw createMissingErpCanalError();
   }
 
   const currentErpAgenteVendaId = asPositiveNumber(current?.erp_agente_venda_id);

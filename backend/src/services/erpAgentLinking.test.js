@@ -7,6 +7,7 @@ import {
   classifyCanalSyncState,
   classifyAgentErpLink,
   classifyErpSyncError,
+  createMissingErpCanalError,
   hasManagedErpAgentField,
   mirrorConfirmedAgentCanal,
   persistResolvedAgentErpLink,
@@ -519,6 +520,16 @@ test('orçamento não cria vínculo de canal ausente durante a auto-reconciliaç
       && error.message === 'Falta o vínculo de canal de venda no ERP para seu agente. Peça a um administrador para sincronizá-lo em Configurações → Agentes.'
   );
   assert.equal(db.calls.some((call) => /SET erp_agente_venda_id/.test(call.sql)), false);
+});
+
+test('vínculo de canal ausente usa uma mensagem curta e orientada à sincronização', () => {
+  const error = createMissingErpCanalError();
+  assert.equal(error.code, 'canal_nao_confirmado');
+  assert.equal(error.statusCode, 422);
+  assert.equal(
+    error.message,
+    'Falta o vínculo de canal de venda no ERP para seu agente. Peça a um administrador para sincronizá-lo em Configurações → Agentes.'
+  );
 });
 
 test('conflito de unicidade não permite vincular o mesmo Usuário ERP a dois agentes', async () => {
