@@ -23,7 +23,7 @@ function validationError(message) {
 }
 
 export const MISSING_ERP_CANAL_MESSAGE =
-  'Falta o vínculo de canal de venda no ERP para seu agente. Peça a um administrador para sincronizá-lo em Configurações → Agentes.';
+  'Seu usuário ainda não possui vínculo com um canal de vendas no ERP. Solicite a correção em Configurações > Agentes.';
 
 export function createMissingErpCanalError() {
   const error = validationError(MISSING_ERP_CANAL_MESSAGE);
