@@ -609,7 +609,7 @@ export default function ErpOrcamentoForm() {
               {!erpAgenteVendaId && (
                 <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
                   <Info className="w-3 h-3" />
-                  Falta o vínculo de canal de venda no ERP para seu agente. Peça a um administrador para sincronizá-lo em Configurações → Agentes.
+                  Seu usuário ainda não possui vínculo com um canal de vendas no ERP. Solicite a correção em Configurações &gt; Agentes.
                 </p>
               )}
             </FieldRow>

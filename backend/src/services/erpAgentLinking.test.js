@@ -517,7 +517,7 @@ test('orçamento não cria vínculo de canal ausente durante a auto-reconciliaç
     }),
     (error) =>
       error.code === 'canal_nao_confirmado'
-      && error.message === 'Falta o vínculo de canal de venda no ERP para seu agente. Peça a um administrador para sincronizá-lo em Configurações → Agentes.'
+      && error.message === 'Seu usuário ainda não possui vínculo com um canal de vendas no ERP. Solicite a correção em Configurações > Agentes.'
   );
   assert.equal(db.calls.some((call) => /SET erp_agente_venda_id/.test(call.sql)), false);
 });
@@ -528,7 +528,7 @@ test('vínculo de canal ausente usa uma mensagem curta e orientada à sincroniza
   assert.equal(error.statusCode, 422);
   assert.equal(
     error.message,
-    'Falta o vínculo de canal de venda no ERP para seu agente. Peça a um administrador para sincronizá-lo em Configurações → Agentes.'
+    'Seu usuário ainda não possui vínculo com um canal de vendas no ERP. Solicite a correção em Configurações > Agentes.'
   );
 });
 
