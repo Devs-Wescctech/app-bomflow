@@ -30,9 +30,13 @@ const STATUS_META = {
   usuario_outro_cpf:     { label: "Usuário de outro CPF",   cls: "bg-red-100 text-red-700 border-red-200" },
   vinculo_incorreto:     { label: "Vínculo incorreto",      cls: "bg-amber-100 text-amber-800 border-amber-200" },
   canal_pendente:        { label: "Canal pendente",         cls: "bg-amber-100 text-amber-800 border-amber-200" },
+  canal_confirmado:      { label: "Canal confirmado",       cls: "bg-green-100 text-green-800 border-green-200" },
+  canal_confirmado_nao_espelhado: { label: "Canal confirmado · espelho pendente", cls: "bg-amber-100 text-amber-800 border-amber-200" },
+  canal_divergente:      { label: "Canal confirmado · ID local diverge", cls: "bg-amber-100 text-amber-800 border-amber-200" },
   canal_nao_espelhado:   { label: "Vínculo no ERP",         cls: "bg-amber-100 text-amber-800 border-amber-200" },
   canal_incorreto:       { label: "Canal incorreto",        cls: "bg-amber-100 text-amber-800 border-amber-200" },
   canal_ambiguo:         { label: "Canal ambíguo",          cls: "bg-red-100 text-red-700 border-red-200" },
+  nao_avaliado:          { label: "Canal não avaliado",     cls: "bg-gray-100 text-gray-600 border-gray-200" },
   erp_indisponivel:      { label: "ERP indisponível",       cls: "bg-amber-100 text-amber-800 border-amber-200" },
   sem_canal_configurado: { label: "Sem canal configurado",  cls: "bg-gray-100 text-gray-600 border-gray-200" },
   ja_vinculado:         { label: "Já vinculado",           cls: "bg-blue-100 text-blue-700 border-blue-200" },
@@ -43,6 +47,7 @@ const STATUS_META = {
 const RESULT_META = {
   ok:                  { label: "Vinculado",            cls: "bg-green-100 text-green-800 border-green-200" },
   vinculado_sem_canal: { label: "Usuário vinculado · Canal pendente", cls: "bg-amber-100 text-amber-800 border-amber-200" },
+  confirmado:          { label: "Usuário confirmado",    cls: "bg-green-100 text-green-800 border-green-200" },
   ja_vinculado:        { label: "Já vinculado",         cls: "bg-blue-100 text-blue-700 border-blue-200" },
   nome_divergente:     { label: "Nome diverge",         cls: "bg-amber-100 text-amber-800 border-amber-200" },
   sem_cpf:             { label: "Sem CPF",              cls: "bg-gray-100 text-gray-600 border-gray-200" },
@@ -64,9 +69,12 @@ const RESULT_META = {
 };
 
 const STATUS_CAUSE = {
-  ok: "Vínculo e canal estão conciliados.",
+  ok: "O Usuário ERP está pronto para ser sincronizado.",
   ja_vinculado: "O vínculo já existe no ERP.",
-  canal_pendente: "O canal selecionado permanece pendente: esta sincronização REST valida somente o Usuário ERP.",
+  canal_pendente: "O canal ainda não tem vínculo confirmado no ERP.",
+  canal_confirmado: "O canal foi confirmado por leitura ou escrita no ERP.",
+  canal_confirmado_nao_espelhado: "O vínculo existe no ERP e pode ser espelhado no Bom Flow.",
+  canal_divergente: "O ERP confirmou um ID de canal diferente do espelho local.",
   canal_nao_espelhado: "O vínculo já existe no ERP; falta apenas espelhar seu ID no Bom Flow.",
   canal_incorreto: "O vínculo efetivo aponta para um canal diferente do selecionado.",
   canal_ambiguo: "Há mais de um vínculo para a mesma Pessoa, canal e grupo no ERP; o caso exige revisão.",
@@ -169,12 +177,21 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
       const data = await commitSyncAgentesErp(payload);
       const res = data?.results || [];
       setResults(res);
-      const okN = res.filter((r) => r.status === "ok" || r.status === "ja_vinculado").length;
-      if (okN > 0) {
-        toast.success(`${okN} agente(s) vinculado(s) ao ERP.`);
+      const usuarioConfirmado = res.filter((r) =>
+        ["ok", "ja_vinculado", "vinculado_sem_canal"].includes(r.status)
+      );
+      const canalPendente = usuarioConfirmado.filter((r) => r.canalConfirmado !== true);
+      if (usuarioConfirmado.length > 0) {
         onDone?.();
+        if (canalPendente.length > 0) {
+          toast.warning(
+            `${usuarioConfirmado.length} Usuário(s) ERP sincronizado(s); ${canalPendente.length} canal(is) precisa(m) de atenção.`
+          );
+        } else {
+          toast.success(`${usuarioConfirmado.length} agente(s) com Usuário e Canal ERP sincronizados.`);
+        }
       } else {
-        toast.warning("Nenhum agente foi vinculado. Veja os detalhes.");
+        toast.warning("Nenhum Usuário ERP foi vinculado. Veja os detalhes.");
       }
       await carregarPreview(true);
     } catch (e) {
@@ -199,9 +216,9 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
             Sincronizar agentes com o ERP
           </DialogTitle>
           <DialogDescription>
-            Revalida os agentes pelo CPF pela API REST e sincroniza o ID do
-            <span className="font-medium"> Usuário ERP</span>. O vínculo do canal fica pendente
-            até ser validado por uma integração própria.
+            Revalida pelo CPF e sincroniza o <span className="font-medium">Usuário ERP</span> pela API REST.
+            Em seguida, consulta ou cria o <span className="font-medium">Canal ERP</span> de forma
+            idempotente. Uma indisponibilidade do canal não desfaz o Usuário ERP confirmado.
             Um ID de Usuário ERP já salvo nunca é substituído; divergências e ambiguidades
             ficam bloqueadas para investigação.
           </DialogDescription>
@@ -244,7 +261,7 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
                   <th className="p-2">CPF</th>
                   <th className="p-2">Canal no Bom Flow</th>
                   <th className="p-2">Vínculo efetivo no ERP</th>
-                  <th className="p-2">Status</th>
+                  <th className="p-2">Estados</th>
                   {results && <th className="p-2">Resultado</th>}
                 </tr>
               </thead>
@@ -295,20 +312,31 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
                         )}
                       </td>
                       <td className="p-2 align-top">
-                        {(i.erro || i.canalErro || STATUS_CAUSE[i.status]) ? (
-                          <div className="flex flex-col gap-0.5">
-                            <StatusBadge status={i.status} />
-                            <span className={`text-xs break-words max-w-[16rem] ${i.erro || i.canalErro ? "text-red-600" : "text-gray-600 dark:text-gray-300"}`}>Causa: {i.erro || i.canalErro || STATUS_CAUSE[i.status]}</span>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex flex-wrap gap-1">
+                            <StatusBadge status={i.usuarioStatus || i.status} />
+                            <StatusBadge status={i.canalStatus || "nao_avaliado"} />
                           </div>
-                        ) : (
-                          <StatusBadge status={i.status} />
-                        )}
+                          {(i.erro || STATUS_CAUSE[i.usuarioStatus || i.status]) && (
+                            <span className={`text-xs break-words max-w-[16rem] ${i.erro ? "text-red-600" : "text-gray-600 dark:text-gray-300"}`}>
+                              Usuário: {i.erro || STATUS_CAUSE[i.usuarioStatus || i.status]}
+                            </span>
+                          )}
+                          {(i.canalErro || STATUS_CAUSE[i.canalStatus]) && (
+                            <span className={`text-xs break-words max-w-[16rem] ${i.canalErro ? "text-red-600" : "text-gray-600 dark:text-gray-300"}`}>
+                              Canal: {i.canalErro || STATUS_CAUSE[i.canalStatus]}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       {results && (
                         <td className="p-2 align-top">
                           {r ? (
                             <div className="flex flex-col gap-0.5">
-                              <StatusBadge status={r.status} meta={RESULT_META} />
+                              <div className="flex flex-wrap gap-1">
+                                <StatusBadge status={r.usuarioStatus || r.status} meta={RESULT_META} />
+                                {r.canalStatus && <StatusBadge status={r.canalStatus} />}
+                              </div>
                               {r.canalErro && <span className="text-xs text-amber-600">canal: {r.canalErro}</span>}
                               {r.erro && <span className="text-xs text-red-600">{r.erro}</span>}
                             </div>
