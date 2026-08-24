@@ -184,6 +184,35 @@ test('mensagens reais de timeout do pg são sempre tratadas como indisponibilida
   }
 });
 
+test('erro sem mensagem recebe diagnóstico da etapa de auditoria do canal', () => {
+  const failure = classifyErpSyncError(
+    { code: 'ECONNREFUSED' },
+    { stage: 'auditoria_canal_erp' }
+  );
+
+  assert.deepEqual(failure, {
+    status: 'erp_indisponivel',
+    retryable: true,
+    erro: 'Não foi possível auditar o vínculo de canal no banco do ERP; o ERP não retornou detalhes para o diagnóstico.',
+    etapa: 'auditoria_canal_erp',
+  });
+});
+
+test('erro lançado como texto preserva o diagnóstico e a etapa de persistência', () => {
+  const failure = classifyErpSyncError(
+    'timeout ao abrir conexão',
+    { stage: 'persistencia_vinculo_erp' }
+  );
+
+  assert.equal(failure.status, 'erro');
+  assert.equal(failure.retryable, false);
+  assert.equal(failure.etapa, 'persistencia_vinculo_erp');
+  assert.equal(
+    failure.erro,
+    'Não foi possível gravar o vínculo de canal no banco do ERP: timeout ao abrir conexão'
+  );
+});
+
 test('falhas de configuração ou credencial do banco ERP não sugerem nova tentativa operacional', () => {
   for (const code of ['28000', '28P01', '3D000']) {
     const failure = classifyErpSyncError(

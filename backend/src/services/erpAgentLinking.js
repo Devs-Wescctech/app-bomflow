@@ -50,14 +50,38 @@ const ERP_UNAVAILABLE_CODES = new Set([
   '08P01',
 ]);
 
+const ERP_SYNC_STAGE_LABELS = {
+  consulta_identidade_erp: 'consultar a Pessoa e o Usuário no ERP',
+  validar_usuario_erp_salvo: 'validar o Usuário ERP já salvo',
+  auditoria_canal_erp: 'auditar o vínculo de canal no banco do ERP',
+  persistencia_vinculo_erp: 'gravar o vínculo de canal no banco do ERP',
+  sincronizacao_erp: 'sincronizar o agente com o ERP',
+};
+
+function diagnosticMessage(error) {
+  if (typeof error === 'string' && error.trim()) return error.trim();
+  if (!error || typeof error !== 'object') return '';
+
+  for (const value of [error.message, error.error, error.detail, error.reason]) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
 export function hasManagedErpAgentField(body = {}) {
   return Object.keys(body || {}).some((key) => MANAGED_ERP_AGENT_FIELDS.has(key));
 }
 
-export function classifyErpSyncError(error) {
+export function classifyErpSyncError(error, { stage = null } = {}) {
   const code = String(error?.code || '');
   const statusCode = Number(error?.statusCode || error?.status || 0);
-  const message = String(error?.message || 'Falha desconhecida ao consultar o ERP.');
+  const detail = diagnosticMessage(error);
+  const stageLabel = stage ? (ERP_SYNC_STAGE_LABELS[stage] || stage) : null;
+  const message = detail
+    ? `${stageLabel ? `Não foi possível ${stageLabel}: ` : ''}${detail}`
+    : (stageLabel
+      ? `Não foi possível ${stageLabel}; o ERP não retornou detalhes para o diagnóstico.`
+      : 'Falha desconhecida ao consultar o ERP.');
   const unavailable = (
     error?.isErpUpstream === true ||
     code === 'erp_indisponivel' ||
@@ -68,18 +92,22 @@ export function classifyErpSyncError(error) {
   );
 
   if (unavailable) {
-    return {
+    const result = {
       status: 'erp_indisponivel',
       retryable: true,
       erro: message,
     };
+    if (stage) result.etapa = stage;
+    return result;
   }
 
-  return {
+  const result = {
     status: code || 'erro',
     retryable: false,
     erro: message,
   };
+  if (stage) result.etapa = stage;
+  return result;
 }
 
 export function sameCpf(a, b) {

@@ -169,7 +169,7 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
       const data = await commitSyncAgentesErp(payload);
       const res = data?.results || [];
       setResults(res);
-      const okN = res.filter((r) => r.status === "ok" || r.status === "vinculado_sem_canal").length;
+      const okN = res.filter((r) => r.status === "ok" || r.status === "ja_vinculado").length;
       if (okN > 0) {
         toast.success(`${okN} agente(s) vinculado(s) ao ERP.`);
         onDone?.();
