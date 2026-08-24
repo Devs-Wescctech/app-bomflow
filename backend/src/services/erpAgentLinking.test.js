@@ -285,6 +285,37 @@ test('vínculo ERP existente é apenas espelhado sem alterar o ID do Usuário', 
   ));
 });
 
+test('sincronização REST do Usuário não consulta nem altera o vínculo de canal', async () => {
+  const db = makeDb();
+  let registerCalls = 0;
+
+  const result = await persistResolvedAgentErpLink({
+    agent: {
+      id: 'agent-rest-only',
+      erp_agent_id: null,
+      erp_agente_venda_id: 900123,
+      cpf: '123.456.789-09',
+      canal_venda_id: 77,
+      canal_venda_grupo_id: 12,
+    },
+    resolution: resolution(),
+    queryDb: db,
+    registerCanal: async () => {
+      registerCalls += 1;
+      return 800456;
+    },
+    syncCanal: false,
+  });
+
+  assert.deepEqual(result, {
+    erpAgentId: 297839054,
+    erpAgenteVendaId: 900123,
+    actions: ['vinculo'],
+  });
+  assert.equal(registerCalls, 0);
+  assert.equal(db.calls.some((call) => /SET erp_agente_venda_id/.test(call.sql)), false);
+});
+
 test('conflito de unicidade não permite vincular o mesmo Usuário ERP a dois agentes', async () => {
   const db = makeDb({ duplicate: { id: 'agent-2', name: 'Outro Agente' } });
 

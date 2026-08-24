@@ -42,7 +42,7 @@ const STATUS_META = {
 // Resultados do commit.
 const RESULT_META = {
   ok:                  { label: "Vinculado",            cls: "bg-green-100 text-green-800 border-green-200" },
-  vinculado_sem_canal: { label: "Vinculado (sem canal)", cls: "bg-amber-100 text-amber-800 border-amber-200" },
+  vinculado_sem_canal: { label: "Usuário vinculado · Canal pendente", cls: "bg-amber-100 text-amber-800 border-amber-200" },
   ja_vinculado:        { label: "Já vinculado",         cls: "bg-blue-100 text-blue-700 border-blue-200" },
   nome_divergente:     { label: "Nome diverge",         cls: "bg-amber-100 text-amber-800 border-amber-200" },
   sem_cpf:             { label: "Sem CPF",              cls: "bg-gray-100 text-gray-600 border-gray-200" },
@@ -66,7 +66,7 @@ const RESULT_META = {
 const STATUS_CAUSE = {
   ok: "Vínculo e canal estão conciliados.",
   ja_vinculado: "O vínculo já existe no ERP.",
-  canal_pendente: "O canal selecionado não possui vínculo efetivo no ERP.",
+  canal_pendente: "O canal selecionado permanece pendente: esta sincronização REST valida somente o Usuário ERP.",
   canal_nao_espelhado: "O vínculo já existe no ERP; falta apenas espelhar seu ID no Bom Flow.",
   canal_incorreto: "O vínculo efetivo aponta para um canal diferente do selecionado.",
   canal_ambiguo: "Há mais de um vínculo para a mesma Pessoa, canal e grupo no ERP; o caso exige revisão.",
@@ -199,8 +199,9 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
             Sincronizar agentes com o ERP
           </DialogTitle>
           <DialogDescription>
-            Revalida os agentes pelo CPF e separa o ID do
-            <span className="font-medium"> Usuário ERP</span> do ID do vínculo do canal.
+            Revalida os agentes pelo CPF pela API REST e sincroniza o ID do
+            <span className="font-medium"> Usuário ERP</span>. O vínculo do canal fica pendente
+            até ser validado por uma integração própria.
             Um ID de Usuário ERP já salvo nunca é substituído; divergências e ambiguidades
             ficam bloqueadas para investigação.
           </DialogDescription>

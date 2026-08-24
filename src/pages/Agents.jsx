@@ -222,7 +222,7 @@ function generateErpLogin(name) {
 const ERP_SYNC_STATUS_CAUSE = {
   ok: "Usuário ERP validado; o vínculo selecionado pode ser aplicado.",
   ja_vinculado: "Usuário e canal efetivo estão conciliados.",
-  canal_pendente: "O canal está selecionado no Bom Flow, mas ainda não existe vínculo efetivo no ERP.",
+  canal_pendente: "O canal está selecionado no Bom Flow, mas permanece pendente: a sincronização REST valida somente o Usuário ERP.",
   canal_nao_espelhado: "O vínculo já existe no ERP; falta apenas espelhar seu ID no Bom Flow.",
   canal_incorreto: "O vínculo efetivo aponta para outro canal ou grupo e pode ser reparado.",
   canal_ambiguo: "Há vínculos duplicados para a mesma Pessoa, canal e grupo no ERP; é necessária revisão.",
