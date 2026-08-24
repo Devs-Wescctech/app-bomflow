@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 
 import {
   buildAuthenticatedOrcamentoPayload,
+  classifyAgentCanalAudit,
   classifyAgentErpLink,
+  hasManagedErpAgentField,
   persistResolvedAgentErpLink,
+  sameCpf,
 } from './erpAgentLinking.js';
 
 const resolution = (overrides = {}) => ({
@@ -17,12 +20,26 @@ const resolution = (overrides = {}) => ({
   ...overrides,
 });
 
-function makeDb({ duplicate = null } = {}) {
+function makeDb({
+  duplicate = null,
+  current = {
+    cpf: '123.456.789-09',
+    erp_agent_id: 297839054,
+    canal_venda_id: 77,
+    canal_venda_grupo_id: 12,
+  },
+} = {}) {
   const calls = [];
   const db = async (sql, params) => {
     calls.push({ sql, params });
     if (/SELECT id, name FROM agents WHERE erp_agent_id/.test(sql)) {
       return { rows: duplicate ? [duplicate] : [] };
+    }
+    if (/SELECT cpf, erp_agent_id, canal_venda_id/.test(sql)) {
+      return {
+        rows: [current],
+        rowCount: 1,
+      };
     }
     return { rows: [], rowCount: 1 };
   };
@@ -39,13 +56,26 @@ test('usuário ERP existente e correspondente ao CPF permanece com usuarios.id e
   assert.deepEqual(result, { status: 'ja_vinculado', repairable: false });
 });
 
-test('id legado de pessoas é identificado como reparável, nunca como Usuário ERP válido', () => {
+test('id legado de pessoas é identificado e bloqueado, nunca corrigido silenciosamente', () => {
   const result = classifyAgentErpLink({
     agent: { erp_agent_id: 302000111 },
     resolution: resolution(),
   });
 
-  assert.deepEqual(result, { status: 'id_pessoa_legado', repairable: true });
+  assert.deepEqual(result, { status: 'id_pessoa_legado', repairable: false });
+});
+
+test('payloads diretos não podem informar nenhum dos IDs ERP gerenciados', () => {
+  assert.equal(hasManagedErpAgentField({ name: 'Agente', erpAgentId: 123 }), true);
+  assert.equal(hasManagedErpAgentField({ erp_agent_id: 123 }), true);
+  assert.equal(hasManagedErpAgentField({ erpAgenteVendaId: 456 }), true);
+  assert.equal(hasManagedErpAgentField({ erp_agente_venda_id: 456 }), true);
+  assert.equal(hasManagedErpAgentField({ name: 'Agente', canalVendaId: 77 }), false);
+});
+
+test('comparação de CPF ignora máscara, mas detecta troca de identidade', () => {
+  assert.equal(sameCpf('123.456.789-09', '12345678909'), true);
+  assert.equal(sameCpf('123.456.789-09', '987.654.321-00'), false);
 });
 
 test('múltiplos usuários para a mesma Pessoa ficam bloqueados para revisão', () => {
@@ -57,6 +87,43 @@ test('múltiplos usuários para a mesma Pessoa ficam bloqueados para revisão', 
   assert.deepEqual(result, { status: 'usuarios_ambiguos', repairable: false });
 });
 
+test('primeiro vínculo já mostra o canal efetivo existente no ERP mesmo com os dois espelhos locais vazios', () => {
+  const result = classifyAgentCanalAudit({
+    status: 'ok',
+    repairable: true,
+    currentErpAgenteVendaId: null,
+    inspection: {
+      ids: [54238947],
+      effectiveId: 54238947,
+      ambiguous: false,
+    },
+  });
+
+  assert.deepEqual(result, {
+    status: 'ok',
+    repairable: true,
+    effectiveErpAgenteVendaId: 54238947,
+    canalErro: null,
+  });
+});
+
+test('vínculo de canal existente no ERP, mas não espelhado localmente, é reparável', () => {
+  const result = classifyAgentCanalAudit({
+    status: 'ja_vinculado',
+    repairable: false,
+    currentErpAgenteVendaId: null,
+    inspection: {
+      ids: [54238947],
+      effectiveId: 54238947,
+      ambiguous: false,
+    },
+  });
+
+  assert.equal(result.status, 'canal_nao_espelhado');
+  assert.equal(result.repairable, true);
+  assert.equal(result.effectiveErpAgenteVendaId, 54238947);
+});
+
 test('usuário recém-resolvido grava usuarios.id e pessoas_contratos.id em campos separados', async () => {
   const db = makeDb();
   const registerCalls = [];
@@ -65,6 +132,7 @@ test('usuário recém-resolvido grava usuarios.id e pessoas_contratos.id em camp
       id: 'agent-1',
       erp_agent_id: null,
       erp_agente_venda_id: null,
+      cpf: '123.456.789-09',
       canal_venda_id: 77,
       canal_venda_grupo_id: 12,
     },
@@ -98,14 +166,107 @@ test('conflito de unicidade não permite vincular o mesmo Usuário ERP a dois ag
   );
 });
 
-test('vínculo de canal salvo é sempre revalidado e corrigido quando aponta para outro registro', async () => {
+test('ID de Usuário ERP já preenchido nunca é substituído por resolução divergente', async () => {
   const db = makeDb();
+  let registerCount = 0;
+
+  await assert.rejects(
+    () => persistResolvedAgentErpLink({
+      agent: {
+        id: 'agent-1',
+        erp_agent_id: 111111,
+        erp_agente_venda_id: null,
+        canal_venda_id: 77,
+      },
+      resolution: resolution(),
+      queryDb: db,
+      registerCanal: async () => {
+        registerCount += 1;
+        return 900123;
+      },
+    }),
+    (error) => error.code === 'usuario_id_divergente' && /imutável/i.test(error.message)
+  );
+
+  assert.equal(registerCount, 0);
+  assert.equal(db.calls.some((c) => /SET erp_agent_id =/.test(c.sql)), false);
+  assert.equal(db.calls.some((c) => /SET erp_agente_venda_id =/.test(c.sql)), false);
+});
+
+test('mudança concorrente de CPF bloqueia o primeiro vínculo antes de registrar o canal', async () => {
+  const calls = [];
+  const db = async (sql, params) => {
+    calls.push({ sql, params });
+    if (/SELECT id, name FROM agents WHERE erp_agent_id/.test(sql)) {
+      return { rows: [] };
+    }
+    if (/UPDATE agents[\s\S]+erp_agent_id =/.test(sql)) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (/SELECT cpf, erp_agent_id, canal_venda_id/.test(sql)) {
+      return {
+        rows: [{
+          cpf: '987.654.321-00',
+          erp_agent_id: null,
+          canal_venda_id: 77,
+          canal_venda_grupo_id: 12,
+        }],
+      };
+    }
+    return { rows: [], rowCount: 1 };
+  };
+  let registerCount = 0;
+
+  await assert.rejects(
+    () => persistResolvedAgentErpLink({
+      agent: {
+        id: 'agent-1',
+        cpf: '123.456.789-09',
+        erp_agent_id: null,
+        erp_agente_venda_id: null,
+        canal_venda_id: 77,
+        canal_venda_grupo_id: 12,
+      },
+      resolution: resolution(),
+      queryDb: db,
+      registerCanal: async () => {
+        registerCount += 1;
+        return 900123;
+      },
+    }),
+    (error) => error.code === 'agente_alterado_durante_sync'
+  );
+
+  assert.equal(registerCount, 0);
+  assert.ok(calls.some((c) => /cpf IS NOT DISTINCT FROM/.test(c.sql)));
+});
+
+test('classificação bloqueia divergência por CPF em vez de marcá-la como reparável', () => {
+  const result = classifyAgentErpLink({
+    agent: { erp_agent_id: 123456 },
+    resolution: resolution(),
+    storedUsuario: { id: 123456, pessoa: 'OUTRA_PESSOA' },
+  });
+
+  assert.deepEqual(result, { status: 'usuario_outro_cpf', repairable: false });
+});
+
+test('vínculo de canal salvo é sempre revalidado e corrigido quando aponta para outro registro', async () => {
+  const db = makeDb({
+    current: {
+      cpf: '123.456.789-09',
+      erp_agent_id: 297839054,
+      canal_venda_id: 88,
+      canal_venda_grupo_id: null,
+    },
+  });
   let registerCount = 0;
   const result = await persistResolvedAgentErpLink({
     agent: {
       id: 'agent-1',
       erp_agent_id: 297839054,
       erp_agente_venda_id: 800001,
+      cpf: '123.456.789-09',
       canal_venda_id: 88,
       canal_venda_grupo_id: null,
     },

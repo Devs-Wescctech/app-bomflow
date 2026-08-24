@@ -290,6 +290,7 @@ export default function ErpOrcamentoForm() {
   const { data: user } = useQuery({
     queryKey: ["currentUser"],
     queryFn: () => base44.auth.me(),
+    refetchOnMount: "always",
   });
 
   const { data: erpProdutos = [], isLoading: loadingProdutos } = useQuery({
@@ -608,7 +609,7 @@ export default function ErpOrcamentoForm() {
               {!erpAgenteVendaId && (
                 <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
                   <Info className="w-3 h-3" />
-                  Configure seu agente no ERP em Configurações → Agentes
+                  Falta o vínculo de canal de venda no ERP para seu agente. Peça a um administrador para sincronizá-lo em Configurações → Agentes.
                 </p>
               )}
             </FieldRow>

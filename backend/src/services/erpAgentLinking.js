@@ -3,15 +3,44 @@ function asPositiveNumber(value) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+function sameNullableNumber(a, b) {
+  return asPositiveNumber(a) === asPositiveNumber(b);
+}
+
+function sameAgentSnapshot(current, expected, erpAgentId) {
+  return (
+    String(current?.cpf ?? '') === String(expected?.cpf ?? '') &&
+    asPositiveNumber(current?.erp_agent_id) === asPositiveNumber(erpAgentId) &&
+    sameNullableNumber(current?.canal_venda_id, expected?.canal_venda_id) &&
+    sameNullableNumber(current?.canal_venda_grupo_id, expected?.canal_venda_grupo_id)
+  );
+}
+
 function validationError(message) {
   const error = new Error(message);
   error.statusCode = 422;
   return error;
 }
 
+const MANAGED_ERP_AGENT_FIELDS = new Set([
+  'erpAgentId',
+  'erp_agent_id',
+  'erpAgenteVendaId',
+  'erp_agente_venda_id',
+]);
+
+export function hasManagedErpAgentField(body = {}) {
+  return Object.keys(body || {}).some((key) => MANAGED_ERP_AGENT_FIELDS.has(key));
+}
+
+export function sameCpf(a, b) {
+  return String(a ?? '').replace(/\D/g, '') === String(b ?? '').replace(/\D/g, '');
+}
+
 /**
- * Classifica o vínculo salvo sem confiar no id vindo do Bom Flow.
- * A resolução por CPF é a fonte de verdade: CPF -> Pessoa -> Usuário ERP.
+ * Classifica o vínculo salvo sem permitir que a resolução por CPF substitua uma
+ * identidade já persistida. A cadeia CPF -> Pessoa -> Usuário ERP apenas valida
+ * o primeiro vínculo; divergências posteriores exigem investigação.
  */
 export function classifyAgentErpLink({ agent, resolution, storedUsuario = null }) {
   const storedId = asPositiveNumber(agent?.erp_agent_id);
@@ -31,18 +60,85 @@ export function classifyAgentErpLink({ agent, resolution, storedUsuario = null }
     return { status: 'ja_vinculado', repairable: false };
   }
   if (pessoaId && storedId === pessoaId) {
-    return { status: 'id_pessoa_legado', repairable: true };
+    return { status: 'id_pessoa_legado', repairable: false };
   }
   if (!storedUsuario) {
-    return { status: 'usuario_inexistente', repairable: true };
+    return { status: 'usuario_inexistente', repairable: false };
   }
   if (
     resolution?.pessoaCodigo &&
     String(storedUsuario.pessoa ?? '') !== String(resolution.pessoaCodigo)
   ) {
-    return { status: 'usuario_outro_cpf', repairable: true };
+    return { status: 'usuario_outro_cpf', repairable: false };
   }
-  return { status: 'vinculo_incorreto', repairable: true };
+  return { status: 'vinculo_incorreto', repairable: false };
+}
+
+/**
+ * Combina o estado da identidade com o vínculo efetivamente encontrado no ERP.
+ * A inspeção do canal também ocorre no primeiro vínculo, quando os dois espelhos
+ * locais ainda podem estar vazios.
+ */
+export function classifyAgentCanalAudit({
+  status,
+  repairable,
+  currentErpAgenteVendaId,
+  inspection,
+}) {
+  const effectiveErpAgenteVendaId = asPositiveNumber(inspection?.effectiveId);
+  const currentId = asPositiveNumber(currentErpAgenteVendaId);
+
+  if (!['ok', 'ja_vinculado'].includes(status)) {
+    return { status, repairable, effectiveErpAgenteVendaId, canalErro: null };
+  }
+  if (inspection?.ambiguous) {
+    return {
+      status: 'canal_ambiguo',
+      repairable: false,
+      effectiveErpAgenteVendaId: null,
+      canalErro: `Há ${inspection.ids?.length || 0} vínculos para esta Pessoa, canal e grupo no ERP.`,
+    };
+  }
+
+  // No primeiro vínculo, "ok" continua indicando que o Usuário ERP ainda será
+  // espelhado. O canal efetivo já é devolvido para a UI, sem ser tratado como ausente.
+  if (status === 'ok') {
+    if (currentId && currentId !== effectiveErpAgenteVendaId) {
+      return {
+        status: 'canal_incorreto',
+        repairable: true,
+        effectiveErpAgenteVendaId,
+        canalErro: null,
+      };
+    }
+    return { status, repairable, effectiveErpAgenteVendaId, canalErro: null };
+  }
+
+  if (!effectiveErpAgenteVendaId) {
+    return {
+      status: currentId ? 'canal_incorreto' : 'canal_pendente',
+      repairable: true,
+      effectiveErpAgenteVendaId: null,
+      canalErro: null,
+    };
+  }
+  if (!currentId) {
+    return {
+      status: 'canal_nao_espelhado',
+      repairable: true,
+      effectiveErpAgenteVendaId,
+      canalErro: null,
+    };
+  }
+  if (currentId !== effectiveErpAgenteVendaId) {
+    return {
+      status: 'canal_incorreto',
+      repairable: true,
+      effectiveErpAgenteVendaId,
+      canalErro: null,
+    };
+  }
+  return { status, repairable, effectiveErpAgenteVendaId, canalErro: null };
 }
 
 /**
@@ -65,7 +161,15 @@ export async function persistResolvedAgentErpLink({
   let erpAgenteVendaId = asPositiveNumber(agent.erp_agente_venda_id);
   const actions = [];
 
-  if (erpAgentId !== resolvedId) {
+  if (erpAgentId && erpAgentId !== resolvedId) {
+    const error = new Error(
+      `O ID de Usuário ERP já salvo (${erpAgentId}) diverge do usuário resolvido pelo CPF (${resolvedId}). O ID existente é imutável e o caso exige investigação.`
+    );
+    error.code = 'usuario_id_divergente';
+    throw error;
+  }
+
+  if (!erpAgentId) {
     const duplicate = (await queryDb(
       'SELECT id, name FROM agents WHERE erp_agent_id = $1 AND id <> $2 LIMIT 1',
       [resolvedId, agentId]
@@ -78,20 +182,67 @@ export async function persistResolvedAgentErpLink({
       throw error;
     }
 
-    await queryDb(
-      'UPDATE agents SET erp_agent_id = $1, updated_at = NOW() WHERE id = $2',
-      [resolvedId, agentId]
+    const linked = await queryDb(
+      `UPDATE agents
+          SET erp_agent_id = $1, updated_at = NOW()
+        WHERE id = $2
+          AND erp_agent_id IS NULL
+          AND cpf IS NOT DISTINCT FROM $3
+          AND canal_venda_id IS NOT DISTINCT FROM $4
+          AND canal_venda_grupo_id IS NOT DISTINCT FROM $5
+        RETURNING erp_agent_id`,
+      [
+        resolvedId,
+        agentId,
+        agent.cpf ?? null,
+        asPositiveNumber(agent.canal_venda_id),
+        asPositiveNumber(agent.canal_venda_grupo_id),
+      ]
     );
+    if (linked.rowCount === 0) {
+      const current = (await queryDb(
+        `SELECT cpf, erp_agent_id, canal_venda_id, canal_venda_grupo_id
+           FROM agents
+          WHERE id = $1`,
+        [agentId]
+      )).rows[0];
+      if (!sameAgentSnapshot(current, agent, resolvedId)) {
+        const error = new Error(
+          'O CPF ou o canal do agente mudou durante a sincronização. A operação foi interrompida sem sobrescrever o vínculo.'
+        );
+        error.code = 'agente_alterado_durante_sync';
+        throw error;
+      }
+    }
     erpAgentId = resolvedId;
-    actions.push(agent.erp_agent_id ? 'reparo_vinculo' : 'vinculo');
+    actions.push('vinculo');
   }
 
   const canalId = asPositiveNumber(agent.canal_venda_id);
   if (!canalId && erpAgenteVendaId) {
-    await queryDb(
-      'UPDATE agents SET erp_agente_venda_id = NULL, updated_at = NOW() WHERE id = $1',
-      [agentId]
+    const removed = await queryDb(
+      `UPDATE agents
+          SET erp_agente_venda_id = NULL, updated_at = NOW()
+        WHERE id = $1
+          AND erp_agent_id = $2
+          AND cpf IS NOT DISTINCT FROM $3
+          AND canal_venda_id IS NULL
+          AND canal_venda_grupo_id IS NOT DISTINCT FROM $4
+        RETURNING id`,
+      [
+        agentId,
+        resolvedId,
+        agent.cpf ?? null,
+        asPositiveNumber(agent.canal_venda_grupo_id),
+      ]
     );
+    if (removed.rowCount === 0) {
+      const error = new Error(
+        'O cadastro do agente mudou durante a sincronização. O vínculo do canal não foi removido.'
+      );
+      error.code = 'agente_alterado_durante_sync';
+      throw error;
+    }
     erpAgenteVendaId = null;
     actions.push('canal_removido');
   }
@@ -100,6 +251,20 @@ export async function persistResolvedAgentErpLink({
     if (!pessoaId) {
       const error = new Error('A Pessoa do ERP não foi localizada para registrar o canal de vendas.');
       error.code = 'pessoa_nao_encontrada';
+      throw error;
+    }
+
+    const current = (await queryDb(
+      `SELECT cpf, erp_agent_id, canal_venda_id, canal_venda_grupo_id
+         FROM agents
+        WHERE id = $1`,
+      [agentId]
+    )).rows[0];
+    if (!sameAgentSnapshot(current, agent, resolvedId)) {
+      const error = new Error(
+        'O CPF ou o canal do agente mudou durante a sincronização. Nenhum vínculo de canal foi gravado.'
+      );
+      error.code = 'agente_alterado_durante_sync';
       throw error;
     }
 
@@ -114,10 +279,31 @@ export async function persistResolvedAgentErpLink({
       throw error;
     }
     if (novoVendaId !== erpAgenteVendaId) {
-      await queryDb(
-        'UPDATE agents SET erp_agente_venda_id = $1, updated_at = NOW() WHERE id = $2',
-        [novoVendaId, agentId]
+      const linkedCanal = await queryDb(
+        `UPDATE agents
+            SET erp_agente_venda_id = $1, updated_at = NOW()
+          WHERE id = $2
+            AND erp_agent_id = $3
+            AND cpf IS NOT DISTINCT FROM $4
+            AND canal_venda_id = $5
+            AND canal_venda_grupo_id IS NOT DISTINCT FROM $6
+          RETURNING id`,
+        [
+          novoVendaId,
+          agentId,
+          resolvedId,
+          agent.cpf ?? null,
+          canalId,
+          asPositiveNumber(agent.canal_venda_grupo_id),
+        ]
       );
+      if (linkedCanal.rowCount === 0) {
+        const error = new Error(
+          'O CPF ou o canal do agente mudou durante a sincronização. O novo vínculo não foi associado ao cadastro local.'
+        );
+        error.code = 'agente_alterado_durante_sync';
+        throw error;
+      }
       actions.push('canal');
     }
     erpAgenteVendaId = novoVendaId;

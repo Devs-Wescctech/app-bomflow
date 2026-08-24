@@ -17,11 +17,15 @@ export class ErpUpstreamError extends Error {
 
 export async function fetchErpAllPages(baseUrl, authHeader, { label = 'ERP', extraParams = null, timeoutMs = 120000 } = {}) {
   const allData = [];
+  let offset = 0;
 
   for (let page = 0; page < MAX_PAGES; page++) {
     const params = new URLSearchParams(extraParams || undefined);
     params.set('limit', String(PAGE_SIZE));
-    params.set('offset', String(page * PAGE_SIZE));
+    // Alguns endpoints do ERP ignoram o limit solicitado e devolvem no máximo
+    // 100 linhas. O próximo offset precisa avançar pelo tamanho realmente
+    // recebido, não pelo limit pedido.
+    params.set('offset', String(offset));
 
     const url = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}${params.toString()}`;
 
@@ -43,6 +47,10 @@ export async function fetchErpAllPages(baseUrl, authHeader, { label = 'ERP', ext
     }
     clearTimeout(timeout);
 
+    if (response.status === 204) {
+      console.log(`[${label}] Paginação ERP completa: ${allData.length} registros em ${page + 1} página(s)`);
+      return allData;
+    }
     if (!response.ok) {
       throw new ErpUpstreamError(`[${label}] ERP retornou status ${response.status} na página ${page + 1}`, response.status);
     }
@@ -54,10 +62,11 @@ export async function fetchErpAllPages(baseUrl, authHeader, { label = 'ERP', ext
 
     allData.push(...pageData);
 
-    if (pageData.length < PAGE_SIZE) {
+    if (pageData.length === 0) {
       console.log(`[${label}] Paginação ERP completa: ${allData.length} registros em ${page + 1} página(s)`);
       return allData;
     }
+    offset += pageData.length;
   }
 
   console.warn(`[${label}] Limite de segurança MAX_PAGES (${MAX_PAGES}) atingido; retornando ${allData.length} registros`);

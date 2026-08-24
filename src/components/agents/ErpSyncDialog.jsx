@@ -30,6 +30,7 @@ const STATUS_META = {
   usuario_outro_cpf:     { label: "Usuário de outro CPF",   cls: "bg-red-100 text-red-700 border-red-200" },
   vinculo_incorreto:     { label: "Vínculo incorreto",      cls: "bg-amber-100 text-amber-800 border-amber-200" },
   canal_pendente:        { label: "Canal pendente",         cls: "bg-amber-100 text-amber-800 border-amber-200" },
+  canal_nao_espelhado:   { label: "Vínculo no ERP",         cls: "bg-amber-100 text-amber-800 border-amber-200" },
   canal_incorreto:       { label: "Canal incorreto",        cls: "bg-amber-100 text-amber-800 border-amber-200" },
   canal_ambiguo:         { label: "Canal ambíguo",          cls: "bg-red-100 text-red-700 border-red-200" },
   sem_canal_configurado: { label: "Sem canal configurado",  cls: "bg-gray-100 text-gray-600 border-gray-200" },
@@ -51,7 +52,36 @@ const RESULT_META = {
   usuarios_ambiguos:    { label: "Usuários ambíguos",   cls: "bg-red-100 text-red-700 border-red-200" },
   nao_encontrado:      { label: "Agente não encontrado", cls: "bg-red-100 text-red-700 border-red-200" },
   usuario_ja_vinculado:{ label: "Usuário já vinculado",  cls: "bg-red-100 text-red-700 border-red-200" },
+  usuario_id_divergente:{ label: "ID divergente",         cls: "bg-red-100 text-red-700 border-red-200" },
+  usuario_inexistente: { label: "Usuário inexistente",    cls: "bg-red-100 text-red-700 border-red-200" },
+  usuario_outro_cpf:   { label: "Usuário de outro CPF",   cls: "bg-red-100 text-red-700 border-red-200" },
+  vinculo_incorreto:   { label: "Vínculo incorreto",      cls: "bg-red-100 text-red-700 border-red-200" },
+  id_pessoa_legado:    { label: "ID de Pessoa legado",    cls: "bg-red-100 text-red-700 border-red-200" },
+  canal_ambiguo:       { label: "Canal ambíguo",          cls: "bg-red-100 text-red-700 border-red-200" },
   erro:                { label: "Erro",                 cls: "bg-red-100 text-red-700 border-red-200" },
+};
+
+const STATUS_CAUSE = {
+  ok: "Vínculo e canal estão conciliados.",
+  ja_vinculado: "O vínculo já existe no ERP.",
+  canal_pendente: "O canal selecionado não possui vínculo efetivo no ERP.",
+  canal_nao_espelhado: "O vínculo já existe no ERP; falta apenas espelhar seu ID no Bom Flow.",
+  canal_incorreto: "O vínculo efetivo aponta para um canal diferente do selecionado.",
+  canal_ambiguo: "Há mais de um vínculo para a mesma Pessoa, canal e grupo no ERP; o caso exige revisão.",
+  sem_canal_configurado: "Não há canal selecionado no Bom Flow.",
+  nome_divergente: "O nome localizado no ERP diverge do cadastro local.",
+  id_pessoa_legado: "O ID salvo parece ser de uma Pessoa, não de um Usuário ERP; ele não será trocado automaticamente.",
+  usuario_inexistente: "O ID de Usuário ERP salvo não foi localizado; ele permanece imutável até investigação.",
+  usuario_outro_cpf: "O ID salvo pertence a uma Pessoa diferente da resolvida pelo CPF; nenhuma alteração automática é permitida.",
+  vinculo_incorreto: "O ID salvo diverge do Usuário resolvido pelo CPF; nenhuma alteração automática é permitida.",
+  usuarios_ambiguos: "Mais de um Usuário ERP foi localizado para a Pessoa; é necessária revisão.",
+  pessoas_ambiguas: "Mais de uma Pessoa foi localizada para o CPF; é necessária revisão.",
+  usuario_nao_encontrado: "A Pessoa foi localizada, mas não possui um Usuário ERP inequívoco.",
+  pessoa_nao_encontrada: "Não foi possível localizar uma Pessoa inequívoca para o CPF no ERP.",
+  pessoa_sem_codigo: "A Pessoa foi localizada, mas o ERP não retornou seu código.",
+  sem_cpf: "O agente não possui CPF para validação.",
+  cpf_invalido: "O CPF do agente não possui 11 dígitos válidos para a consulta.",
+  erro: "A consulta ao ERP falhou; nenhum vínculo foi alterado.",
 };
 
 function StatusBadge({ status, meta }) {
@@ -68,9 +98,9 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
   const [committing, setCommitting] = useState(false);
   const [results, setResults] = useState(null);
 
-  const carregarPreview = useCallback(async () => {
+  const carregarPreview = useCallback(async (preservarResultados = false) => {
     setLoading(true);
-    setResults(null);
+    if (!preservarResultados) setResults(null);
     try {
       const data = await previewSyncAgentesErp();
       const its = data?.items || [];
@@ -95,6 +125,7 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
   }, [open, carregarPreview]);
 
   const toggle = (agentId) => {
+    if (!isGravavel(items.find((item) => item.agentId === agentId))) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(agentId)) next.delete(agentId); else next.add(agentId);
@@ -142,6 +173,7 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
       } else {
         toast.warning("Nenhum agente foi vinculado. Veja os detalhes.");
       }
+      await carregarPreview(true);
     } catch (e) {
       toast.error(e.message || "Falha ao gravar a sincronização.");
     } finally {
@@ -164,9 +196,10 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
             Sincronizar agentes com o ERP
           </DialogTitle>
           <DialogDescription>
-            Revalida os agentes pelo CPF, identifica vínculos legados e separa o ID do
+            Revalida os agentes pelo CPF e separa o ID do
             <span className="font-medium"> Usuário ERP</span> do ID do vínculo do canal.
-            Casos com múltiplos usuários ficam bloqueados para revisão manual.
+            Um ID de Usuário ERP já salvo nunca é substituído; divergências e ambiguidades
+            ficam bloqueadas para investigação.
           </DialogDescription>
         </DialogHeader>
 
@@ -174,7 +207,7 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
           <div className="text-sm text-gray-500">
             {loading
               ? "Carregando..."
-              : `${items.length} agente(s) • ${okCount} pronto(s) para vincular`}
+              : `${items.length} agente(s) auditado(s) • ${okCount} reparo(s) disponível(is)`}
           </div>
           <Button variant="outline" size="sm" onClick={carregarPreview} disabled={loading || committing}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
@@ -205,7 +238,8 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
                   </th>
                   <th className="p-2">Agente (Bom Flow)</th>
                   <th className="p-2">CPF</th>
-                  <th className="p-2">Encontrado no ERP</th>
+                  <th className="p-2">Canal no Bom Flow</th>
+                  <th className="p-2">Vínculo efetivo no ERP</th>
                   <th className="p-2">Status</th>
                   {results && <th className="p-2">Resultado</th>}
                 </tr>
@@ -227,11 +261,21 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
                       <td className="p-2 align-top font-medium text-gray-900 dark:text-gray-100">{i.agentName}</td>
                       <td className="p-2 align-top text-gray-600 dark:text-gray-300 whitespace-nowrap">{i.cpf || "—"}</td>
                       <td className="p-2 align-top">
-                        {i.nomeErp ? (
+                        <div className="flex flex-col">
+                          <span className="text-gray-900 dark:text-gray-100">{i.selectedCanalName || "Nenhum canal selecionado"}</span>
+                          <span className="text-xs text-gray-500">
+                            ID: {i.selectedCanalId ?? "—"} • Grupo: {i.selectedCanalGrupoId ?? "—"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="p-2 align-top">
+                        {i.nomeErp || i.effectiveErpAgenteVendaId || i.currentErpAgenteVendaId ? (
                           <div className="flex flex-col">
-                            <span className="text-gray-900 dark:text-gray-100">{i.nomeErp}</span>
+                            <span className="text-gray-900 dark:text-gray-100">{i.nomeErp || "Vínculo de canal ERP"}</span>
                             <span className="text-xs text-gray-500">
-                              Usuário ERP: {i.erpAgentId || "—"} • login: {i.login || "—"}
+                              Vínculo no ERP: {i.effectiveErpAgenteVendaId ?? "não encontrado"}
+                              {" • "}Espelho no Bom Flow: {i.currentErpAgenteVendaId ?? "—"}
+                              {" • "}Usuário ERP: {i.erpAgentId || "—"}
                               {i.currentErpAgentId && i.currentErpAgentId !== i.erpAgentId && (
                                 <span className="block text-amber-700">ID salvo hoje: {i.currentErpAgentId}</span>
                               )}
@@ -243,14 +287,14 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
                             </span>
                           </div>
                         ) : (
-                          <span className="text-gray-400">—</span>
+                            <span className="text-gray-400">Sem vínculo efetivo</span>
                         )}
                       </td>
                       <td className="p-2 align-top">
-                        {(i.erro || i.canalErro) ? (
+                        {(i.erro || i.canalErro || STATUS_CAUSE[i.status]) ? (
                           <div className="flex flex-col gap-0.5">
                             <StatusBadge status={i.status} />
-                            <span className="text-xs text-red-600 break-words max-w-[16rem]">{i.erro || i.canalErro}</span>
+                            <span className={`text-xs break-words max-w-[16rem] ${i.erro || i.canalErro ? "text-red-600" : "text-gray-600 dark:text-gray-300"}`}>Causa: {i.erro || i.canalErro || STATUS_CAUSE[i.status]}</span>
                           </div>
                         ) : (
                           <StatusBadge status={i.status} />

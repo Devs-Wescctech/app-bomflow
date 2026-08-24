@@ -11,7 +11,7 @@ import { canManageAgents, isSupervisorType } from "@/components/utils/permission
 import ErpSyncDialog from "@/components/agents/ErpSyncDialog";
 /* NOVO — integração ERP */
 import { getPessoaByErp } from "@/api/erpClient";
-import { buscarCanaisVenda, commitSyncAgentesErp } from "@/api/erpService";
+import { buscarCanaisVenda, previewSyncAgentesErp } from "@/api/erpService";
 import {
   Dialog,
   DialogContent,
@@ -218,6 +218,25 @@ function generateErpLogin(name) {
   return `user.${base}`;
 }
 
+const ERP_SYNC_STATUS_CAUSE = {
+  ok: "Usuário ERP validado; o vínculo selecionado pode ser aplicado.",
+  ja_vinculado: "Usuário e canal efetivo estão conciliados.",
+  canal_pendente: "O canal está selecionado no Bom Flow, mas ainda não existe vínculo efetivo no ERP.",
+  canal_nao_espelhado: "O vínculo já existe no ERP; falta apenas espelhar seu ID no Bom Flow.",
+  canal_incorreto: "O vínculo efetivo aponta para outro canal ou grupo e pode ser reparado.",
+  canal_ambiguo: "Há vínculos duplicados para a mesma Pessoa, canal e grupo no ERP; é necessária revisão.",
+  sem_canal_configurado: "Nenhum canal está selecionado no Bom Flow.",
+  id_pessoa_legado: "O ID salvo parece ser de Pessoa e não será substituído automaticamente.",
+  usuario_inexistente: "O ID de Usuário ERP salvo não foi localizado e permanece bloqueado para investigação.",
+  usuario_outro_cpf: "O ID salvo pertence a outro CPF e não pode ser alterado automaticamente.",
+  vinculo_incorreto: "O ID salvo diverge da resolução por CPF e não pode ser alterado automaticamente.",
+  usuarios_ambiguos: "Mais de um Usuário ERP foi localizado; é necessária revisão.",
+  pessoas_ambiguas: "Mais de uma Pessoa foi localizada para o CPF; é necessária revisão.",
+  usuario_nao_encontrado: "A Pessoa não possui um Usuário ERP inequívoco.",
+  pessoa_nao_encontrada: "A Pessoa do agente não foi localizada no ERP.",
+  erro: "Não foi possível validar o vínculo no ERP; nenhum ID foi alterado.",
+};
+
 export default function Agents() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("agents");
@@ -260,6 +279,8 @@ export default function Agents() {
   /* NOVO — estados de integração ERP */
   const [loadingErpPessoa, setLoadingErpPessoa] = useState(false);
   const [erpPessoaResult, setErpPessoaResult] = useState(null); // { nome_completo, pessoa } | { notFound: true } | null
+  const [erpSyncAudit, setErpSyncAudit] = useState(null);
+  const [loadingErpSyncAudit, setLoadingErpSyncAudit] = useState(false);
   // Controla se o usuário editou o Login ERP manualmente. Enquanto false, o
   // Login ERP é gerado automaticamente a partir do campo Nome Completo.
   const [erpLoginTouched, setErpLoginTouched] = useState(false);
@@ -387,32 +408,12 @@ export default function Agents() {
 
   const createAgentMutation = useMutation({
     mutationFn: ({ data }) => base44.entities.Agent.create(data),
-    onSuccess: async (novoAgente, variables) => {
-      try {
-        setCreatingStep('erp_usuario');
-        const resp = await commitSyncAgentesErp([{
-          agentId: novoAgente.id,
-          provision: true,
-          preferredLogin: variables?.preferredLogin || undefined,
-        }]);
-        const result = resp?.results?.[0];
-        if (result?.status === 'ok') {
-          toast.success('Agente criado, Usuário ERP validado e canal vinculado.');
-        } else if (result?.status === 'vinculado_sem_canal') {
-          toast.warning(`Agente criado e Usuário ERP validado, mas falta o canal: ${result.canalErro}`, { duration: 10000 });
-        } else if (result?.status === 'ja_vinculado') {
-          toast.success('Agente criado e vínculo ERP confirmado.');
-        } else {
-          toast.warning(`Agente criado no Bom Flow, mas o vínculo ERP requer revisão: ${result?.erro || result?.status || 'erro desconhecido'}`, { duration: 12000 });
-        }
-      } catch (erpError) {
-        toast.error('Agente criado no Bom Flow, mas não foi possível validar o vínculo ERP: ' + erpError.message, { duration: 12000 });
-      } finally {
-        setCreatingStep(null);
-        queryClient.invalidateQueries({ queryKey: ['agents'] });
-        setIsDialogOpen(false);
-        resetForm();
-      }
+    onSuccess: () => {
+      setCreatingStep(null);
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      setIsDialogOpen(false);
+      resetForm();
+      toast.success('Agente criado no Bom Flow. O ERP não foi alterado; use a sincronização manual para revisar os vínculos.');
     },
     onError: (error) => {
       setCreatingStep(null);
@@ -422,43 +423,14 @@ export default function Agents() {
 
   const updateAgentMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Agent.update(id, data),
-    /* MODIFICADO — Frente 2: garante o vínculo ERP (erp_agent_id + canal) na edição */
-    onSuccess: async (result, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['agents'] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['agents'] }),
+        queryClient.invalidateQueries({ queryKey: ['currentUser'] }),
+      ]);
       setIsDialogOpen(false);
       resetForm();
-      toast.success('Agente atualizado com sucesso!');
-
-      try {
-        const resp = await commitSyncAgentesErp([{
-          agentId: variables.id,
-          provision: true,
-          preferredLogin: variables?.preferredLogin || undefined,
-        }]);
-        const r = resp?.results?.[0];
-        if (r) {
-          const acts = r.actions || [];
-          if (r.status === 'ok') {
-            if ((acts.includes('vinculo') || acts.includes('reparo_vinculo')) && acts.includes('canal')) {
-              toast.success('Agente vinculado ao ERP e canal de vendas registrado.');
-            } else if (acts.includes('canal')) {
-              toast.success('Canal de vendas registrado no ERP.');
-            } else if (acts.includes('vinculo') || acts.includes('reparo_vinculo')) {
-              toast.success('Agente vinculado ao ERP.');
-            }
-          } else if (r.status === 'nome_divergente') {
-            toast.warning('O nome do agente diverge do cadastro no ERP. Use "Sincronizar com ERP" para revisar e confirmar o vínculo.', { duration: 10000 });
-          } else if (r.status === 'vinculado_sem_canal') {
-            toast.warning(`Agente vinculado, mas o canal de vendas no ERP falhou: ${r.canalErro || 'erro desconhecido'}`, { duration: 10000 });
-          } else if (r.status === 'pessoa_nao_encontrada' || r.status === 'usuario_nao_encontrado') {
-            toast.warning('Não foi encontrado um usuário no ERP para este CPF. Verifique o cadastro no ERP.', { duration: 8000 });
-          }
-          // 'ja_vinculado' e 'sem_cpf' → silencioso
-        }
-        queryClient.invalidateQueries({ queryKey: ['agents'] });
-      } catch (e) {
-        toast.warning('Não foi possível sincronizar o vínculo ERP automaticamente: ' + e.message, { duration: 8000 });
-      }
+      toast.success('Agente atualizado no Bom Flow. O ERP não foi alterado; use a sincronização manual para revisar os vínculos.');
     },
     onError: (error) => {
       toast.error('Erro ao atualizar agente: ' + error.message);
@@ -808,6 +780,15 @@ export default function Agents() {
     setShowTokenField(false);
     setChannelTokenChanged(false);
     setErpPessoaResult(null);
+    setErpSyncAudit(null);
+    setLoadingErpSyncAudit(true);
+    previewSyncAgentesErp([agent.id])
+      .then((data) => setErpSyncAudit(data?.items?.[0] || null))
+      .catch((error) => {
+        console.warn('[Agents] Não foi possível carregar a auditoria do vínculo ERP:', error.message);
+        setErpSyncAudit({ erro: 'Não foi possível consultar o vínculo efetivo no ERP.' });
+      })
+      .finally(() => setLoadingErpSyncAudit(false));
     if (agent.cpf) {
       setLoadingErpPessoa(true);
       try {
@@ -970,7 +951,7 @@ export default function Agents() {
         }
       } else {
         setErpPessoaResult({ notFound: true });
-        toast.info("CPF não cadastrado no ERP. Será criado automaticamente ao salvar o agente.");
+        toast.info("CPF não cadastrado no ERP. Salvar altera somente o Bom Flow; o cadastro no ERP exige uma ação manual.");
       }
     } catch (error) {
       toast.error("Erro ao consultar ERP: " + error.message);
@@ -979,8 +960,8 @@ export default function Agents() {
   };
 
   const handleSubmit = () => {
-    // Login é apenas uma preferência de provisionamento. Os dois IDs ERP são
-    // exclusivamente gerenciados pela sincronização server-side por CPF.
+    // Salvar o formulário altera somente o Bom Flow. Os dois IDs ERP são
+    // exclusivamente gerenciados pela sincronização manual server-side por CPF.
     const {
       erpLogin: _erpLogin,
       erpEmail: _erpEmail,
@@ -1006,13 +987,11 @@ export default function Agents() {
       updateAgentMutation.mutate({
         id: editingAgent.id,
         data: dataToSend,
-        preferredLogin: formData.erpLogin || undefined,
       });
     } else {
       setCreatingStep('agent');
       createAgentMutation.mutate({
         data: dataToSend,
-        preferredLogin: formData.erpLogin || undefined,
       });
     }
   };
@@ -2006,7 +1985,7 @@ export default function Agents() {
                     <p className="text-xs text-gray-500 mt-1">
                       {erpUsuarioSalvoValidado
                         ? "Login encontrado no cadastro do Usuário ERP correspondente ao CPF."
-                        : "Login usado somente se for necessário criar um novo Usuário ERP."}
+                        : "Campo informativo. Salvar o agente não cria nem altera Usuários no ERP."}
                     </p>
                   </div>
 
@@ -2078,7 +2057,7 @@ export default function Agents() {
                       <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg flex items-center gap-2">
                         <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
                         <p className="text-sm text-amber-800 dark:text-amber-300">
-                          CPF não encontrado no ERP. Uma conta será criada automaticamente ao salvar.
+                          CPF não encontrado no ERP. Salvar altera somente o Bom Flow; o cadastro no ERP deve ser tratado manualmente.
                         </p>
                       </div>
                     )}
@@ -2093,11 +2072,11 @@ export default function Agents() {
                       </Badge>
                     ) : formData.erpAgentId ? (
                       <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 whitespace-normal">
-                        ID salvo {formData.erpAgentId} ainda não validado como Usuário ERP; salve para ressincronizar
+                        ID de Usuário ERP salvo — {formData.erpAgentId}; divergências são bloqueadas e nunca substituem este ID
                       </Badge>
                     ) : erpPessoaResult?.usuarioErp?.login ? (
                       <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 whitespace-normal">
-                        Usuário ERP encontrado — ID {erpPessoaResult.usuarioErp.id} • {erpPessoaResult.usuarioErp.login}; salve para vincular
+                        Usuário ERP encontrado — ID {erpPessoaResult.usuarioErp.id} • {erpPessoaResult.usuarioErp.login}; a sincronização avaliará o vínculo sem substituir este usuário
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800">
@@ -2106,13 +2085,41 @@ export default function Agents() {
                     )}
                     {formData.erpAgenteVendaId ? (
                       <Badge variant="outline" className="text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30">
-                        Canal ERP salvo — ID {formData.erpAgenteVendaId}; revalidado ao salvar
+                        Canal ERP salvo — ID {formData.erpAgenteVendaId}; revalidado somente pela sincronização manual
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30">
                         Canal ERP ainda não vinculado
                       </Badge>
                     )}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-md border border-blue-200 dark:border-blue-900 bg-blue-50/60 dark:bg-blue-950/20 p-2">
+                      <p className="font-medium text-blue-900 dark:text-blue-200">Canal selecionado no Bom Flow</p>
+                      <p className="mt-1 text-blue-800 dark:text-blue-300">
+                        {formData.canalVenda || "Nenhum canal selecionado"}
+                      </p>
+                      <p className="text-blue-700/80 dark:text-blue-400">
+                        ID: {formData.canalVendaId || "—"} • Grupo: {formData.canalVendaGrupoId || "—"}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 p-2">
+                      <p className="font-medium text-gray-900 dark:text-gray-100">Vínculo efetivo no ERP</p>
+                      {loadingErpSyncAudit ? (
+                        <p className="mt-1 text-gray-500">Consultando vínculo...</p>
+                      ) : (
+                        <>
+                          <p className="mt-1 text-gray-700 dark:text-gray-300">
+                            ID no ERP: {erpSyncAudit?.effectiveErpAgenteVendaId ?? "não encontrado"}
+                            {" • "}Espelho no Bom Flow: {erpSyncAudit?.currentErpAgenteVendaId ?? "—"}
+                            {" • "}Status: {erpSyncAudit?.status || "não consultado"}
+                          </p>
+                          <p className="text-amber-700 dark:text-amber-300">
+                            {erpSyncAudit?.canalErro || erpSyncAudit?.erro || ERP_SYNC_STATUS_CAUSE[erpSyncAudit?.status] || "Aguardando validação do vínculo."}
+                          </p>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2696,10 +2703,7 @@ export default function Agents() {
           <SheetFooter className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
             {(() => {
               const CREATE_STEPS = [
-                { key: 'agent',       label: 'Criando agente no sistema...'          },
-                { key: 'erp_pessoa',  label: 'Registrando no ERP...'                 },
-                { key: 'erp_usuario', label: 'Criando acesso ao ERP...'              },
-                { key: 'erp_canal',   label: 'Vinculando ao canal de vendas ERP...'  },
+                { key: 'agent', label: 'Criando agente no Bom Flow...' },
               ];
               const isBusy = creatingStep !== null || updateAgentMutation.isPending;
               const stepIdx = CREATE_STEPS.findIndex(s => s.key === creatingStep);
@@ -3422,6 +3426,7 @@ export default function Agents() {
         onOpenChange={setIsErpSyncOpen}
         onDone={() => {
           queryClient.invalidateQueries({ queryKey: ['agents'] });
+          queryClient.invalidateQueries({ queryKey: ['currentUser'] });
         }}
       />
     </div>

@@ -1,11 +1,13 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { registerAgentInCanal, validateAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB, findPessoaIdByCpf, getErpLoginsByIds, getRelatorioOrcamentos, resolveAgentErpByCpf } from '../services/erpDbService.js';
+import { registerAgentInCanal, inspectAgentInCanal, validateAgentInCanal, addItemsToPedido, finalizeOrcamentoDB, getPlanosPagamento, applyFechamentoEPagamento, ensureContatosEnderecoDB, findPessoaIdByCpf, getErpLoginsByIds, getRelatorioOrcamentos, resolveAgentErpByCpf } from '../services/erpDbService.js';
 import {
   buildAuthenticatedOrcamentoPayload,
+  classifyAgentCanalAudit,
   classifyAgentErpLink,
   persistResolvedAgentErpLink,
 } from '../services/erpAgentLinking.js';
+import { acquireAgentMutationLock } from '../services/agentMutationLock.js';
 import { query } from '../config/database.js';
 import { fetchErpAllPages } from '../utils/erpPagination.js';
 
@@ -257,7 +259,10 @@ async function fetchUsuariosByPessoaCodigo(token, pessoaCodigo) {
     const uR = await fetch(`${ERP_BASE}/Usuarios?pessoa=${encodeURIComponent(pessoaCodigo)}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!uR.ok || uR.status === 204) return [];
+    if (uR.status === 204) return [];
+    if (!uR.ok) {
+      throw new Error(`ERP respondeu HTTP ${uR.status} ao consultar os Usuários.`);
+    }
     const uData = await uR.json().catch(() => ({}));
     const arr = uData?.results || uData?.data || (Array.isArray(uData) ? uData : []);
     const filtrados = (Array.isArray(arr) ? arr : []).filter(
@@ -273,8 +278,7 @@ async function fetchUsuariosByPessoaCodigo(token, pessoaCodigo) {
       return Number(a.id || 0) - Number(b.id || 0);
     });
   } catch (e) {
-    console.warn('[fetchUsuariosByPessoaCodigo] GET /Usuarios?pessoa= falhou:', e.message);
-    return [];
+    throw new Error(`Falha de acesso ao ERP ao consultar os Usuários: ${e.message}`);
   }
 }
 
@@ -282,16 +286,15 @@ async function fetchUsuarioById(token, usuarioId) {
   const wanted = Number(usuarioId);
   if (!wanted) return null;
   try {
-    const r = await fetch(`${ERP_BASE}/Usuarios?id=${encodeURIComponent(wanted)}`, {
-      headers: { Authorization: `Bearer ${token}` },
+    // O ERP ignora o filtro `id` em /Usuarios e devolve somente a primeira
+    // página por padrão. Paginar e refiltrar é obrigatório para IDs altos.
+    const usuarios = await fetchErpAllPages(`${ERP_BASE}/Usuarios`, `Bearer ${token}`, {
+      label: 'Usuários ERP',
+      extraParams: { id: String(wanted) },
     });
-    if (!r.ok || r.status === 204) return null;
-    const data = await r.json().catch(() => ({}));
-    const arr = data?.results || data?.data || (Array.isArray(data) ? data : []);
-    return (Array.isArray(arr) ? arr : []).find((u) => Number(u?.id) === wanted) || null;
+    return usuarios.find((u) => Number(u?.id) === wanted) || null;
   } catch (e) {
-    console.warn('[fetchUsuarioById] GET /Usuarios?id= falhou:', e.message);
-    return null;
+    throw new Error(`Falha de acesso ao ERP ao validar o Usuário salvo: ${e.message}`);
   }
 }
 
@@ -334,6 +337,9 @@ async function resolveAgentErpByCpfViaApi(token, cpf) {
     const pR = await fetch(`${ERP_BASE}/Pessoas?cpf=${encodeURIComponent(formatted)}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
+    if (pR.status !== 204 && !pR.ok) {
+      throw new Error(`ERP respondeu HTTP ${pR.status} ao consultar a Pessoa.`);
+    }
     if (pR.ok) {
       const pData = await pR.json().catch(() => ({}));
       const arr = pData?.results || pData?.data || (Array.isArray(pData) ? pData : []);
@@ -348,7 +354,7 @@ async function resolveAgentErpByCpfViaApi(token, cpf) {
       }
     }
   } catch (e) {
-    console.warn('[resolveAgentErpByCpfViaApi] GET /Pessoas falhou:', e.message);
+    throw new Error(`Falha de acesso ao ERP ao consultar a Pessoa: ${e.message}`);
   }
 
   // Fallback para API_CADASTRO_PESSOAS (clientes com contrato ativo)
@@ -357,6 +363,9 @@ async function resolveAgentErpByCpfViaApi(token, cpf) {
       const cR = await fetch(`${ERP_BASE}/API_CADASTRO_PESSOAS?cpf=${encodeURIComponent(formatted)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (cR.status !== 204 && !cR.ok) {
+        throw new Error(`ERP respondeu HTTP ${cR.status} na consulta complementar da Pessoa.`);
+      }
       if (cR.ok) {
         const cData = await cR.json().catch(() => ({}));
         const arr = cData?.results || cData?.data || (Array.isArray(cData) ? cData : []);
@@ -373,7 +382,7 @@ async function resolveAgentErpByCpfViaApi(token, cpf) {
         }
       }
     } catch (e) {
-      console.warn('[resolveAgentErpByCpfViaApi] GET /API_CADASTRO_PESSOAS falhou:', e.message);
+      throw new Error(`Falha de acesso ao ERP na consulta complementar da Pessoa: ${e.message}`);
     }
   }
 
@@ -627,7 +636,7 @@ function normalizeNameForMatch(s) {
 }
 
 // Colunas mínimas dos agentes usadas pela sincronização ERP.
-const SYNC_AGENT_COLS = 'id, name, cpf, erp_agent_id, erp_agente_venda_id, canal_venda_id, canal_venda_grupo_id, active';
+const SYNC_AGENT_COLS = 'id, name, cpf, erp_agent_id, erp_agente_venda_id, canal_venda, canal_venda_id, canal_venda_grupo_id, active';
 
 // POST /api/erp/sync-agentes/preview
 // Pré-visualização (NÃO grava nada). Revalida todos os agentes ativos para também
@@ -660,6 +669,9 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
         hasCanal: !!a.canal_venda_id,
         currentErpAgentId: a.erp_agent_id ? Number(a.erp_agent_id) : null,
         currentErpAgenteVendaId: a.erp_agente_venda_id ? Number(a.erp_agente_venda_id) : null,
+        selectedCanalName: a.canal_venda || null,
+        selectedCanalId: a.canal_venda_id ? Number(a.canal_venda_id) : null,
+        selectedCanalGrupoId: a.canal_venda_grupo_id ? Number(a.canal_venda_grupo_id) : null,
       };
 
       if (!a.cpf || !String(a.cpf).replace(/\D/g, '')) {
@@ -681,7 +693,21 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
         r.status === 'ok' &&
         Number(a.erp_agent_id) !== Number(r.usuarioId)
       ) {
-        storedUsuario = await fetchUsuarioById(token, a.erp_agent_id);
+        try {
+          storedUsuario = await fetchUsuarioById(token, a.erp_agent_id);
+        } catch (storedUserError) {
+          items.push({
+            ...base,
+            status: 'erro',
+            repairable: false,
+            erro: storedUserError.message,
+            erpAgentId: r.usuarioId,
+            pessoaInternalId: r.pessoaInternalId,
+            login: r.login,
+            nomeErp: r.nomeErp,
+          });
+          continue;
+        }
       }
       const classification = classifyAgentErpLink({
         agent: a,
@@ -695,23 +721,30 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
       let repairable = classification.repairable;
       if (status === 'ok' && !nameMatch) status = 'nome_divergente';
       let canalErro = null;
-      if (status === 'ja_vinculado' && a.canal_venda_id && !a.erp_agente_venda_id) {
-        status = 'canal_pendente';
-        repairable = true;
-      } else if (status === 'ja_vinculado' && a.canal_venda_id && a.erp_agente_venda_id) {
+      let effectiveErpAgenteVendaId = null;
+      if (
+        r.status === 'ok' &&
+        r.pessoaInternalId &&
+        a.canal_venda_id
+      ) {
         try {
-          const canalValido = await validateAgentInCanal(
+          const canalInspection = await inspectAgentInCanal(
             r.pessoaInternalId,
             a.canal_venda_id,
-            a.canal_venda_grupo_id,
-            a.erp_agente_venda_id
+            a.canal_venda_grupo_id
           );
-          if (!canalValido) {
-            status = 'canal_incorreto';
-            repairable = true;
-          }
+          const canalClassification = classifyAgentCanalAudit({
+            status,
+            repairable,
+            currentErpAgenteVendaId: a.erp_agente_venda_id,
+            inspection: canalInspection,
+          });
+          status = canalClassification.status;
+          repairable = canalClassification.repairable;
+          effectiveErpAgenteVendaId = canalClassification.effectiveErpAgenteVendaId;
+          canalErro = canalClassification.canalErro;
         } catch (canalValidationError) {
-          status = 'canal_ambiguo';
+          status = 'erro';
           repairable = false;
           canalErro = canalValidationError.message;
         }
@@ -729,6 +762,7 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
         nomeErp: r.nomeErp,
         nameMatch,
         usuariosEncontrados: r.usuariosEncontrados || [],
+        effectiveErpAgenteVendaId,
         canalErro,
       });
     }
@@ -761,8 +795,10 @@ router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (
       continue;
     }
 
+    let agentMutationLock = null;
     try {
-      const a = (await query(
+      agentMutationLock = await acquireAgentMutationLock(agentId);
+      const a = (await agentMutationLock.client.query(
         `SELECT ${SYNC_AGENT_COLS} FROM agents WHERE id = $1`,
         [agentId]
       )).rows[0];
@@ -774,7 +810,12 @@ router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (
         continue;
       }
 
-      const { resolution: r, provisionActions } = await resolveOrProvisionAgentErp(token, a, it);
+      const { resolution: r, provisionActions } = await resolveOrProvisionAgentErp(token, a, {
+        ...it,
+        // Primeiro vínculo pode provisionar. Uma identidade já salva jamais pode
+        // criar/trocar Usuário ERP como efeito colateral de uma troca de canal.
+        provision: !a.erp_agent_id && it.provision === true,
+      });
       if (r.status !== 'ok' || !r.usuarioId) {
         results.push({
           agentId,
@@ -784,11 +825,29 @@ router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (
         continue;
       }
 
+      if (a.erp_agent_id && Number(a.erp_agent_id) !== Number(r.usuarioId)) {
+        const storedUsuario = await fetchUsuarioById(token, a.erp_agent_id);
+        const blocked = classifyAgentErpLink({
+          agent: a,
+          resolution: r,
+          storedUsuario,
+        });
+        results.push({
+          agentId,
+          status: blocked.status,
+          erro: `O ID de Usuário ERP ${a.erp_agent_id} já salvo é imutável e diverge da resolução atual por CPF. Nenhum ID ou canal foi alterado.`,
+          erpAgentId: Number(a.erp_agent_id),
+          resolvedErpAgentId: Number(r.usuarioId),
+          login: r.login,
+        });
+        continue;
+      }
+
       try {
         const persisted = await persistResolvedAgentErpLink({
           agent: a,
           resolution: r,
-          queryDb: query,
+          queryDb: agentMutationLock.client.query.bind(agentMutationLock.client),
           registerCanal: registerAgentInCanal,
         });
         const actions = [...provisionActions, ...persisted.actions];
@@ -814,6 +873,12 @@ router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (
       }
     } catch (e) {
       results.push({ agentId, status: 'erro', erro: e.message });
+    } finally {
+      if (agentMutationLock) {
+        await agentMutationLock.release().catch((error) => {
+          console.error('[ERP /sync-agentes/commit] falha ao liberar lock do agente:', error.message);
+        });
+      }
     }
   }
 
