@@ -439,7 +439,7 @@ export async function mirrorConfirmedAgentCanal({
   }
   if (!canal.confirmed || !canal.effectiveErpAgenteVendaId) {
     const error = new Error(
-      'O ERP não possui um vínculo confirmado para o canal deste agente. O orçamento não cria canais automaticamente.'
+      'Falta o vínculo de canal de venda no ERP para seu agente. Peça a um administrador para sincronizá-lo em Configurações → Agentes.'
     );
     error.code = 'canal_nao_confirmado';
     error.statusCode = 422;
