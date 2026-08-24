@@ -514,7 +514,9 @@ test('orçamento não cria vínculo de canal ausente durante a auto-reconciliaç
         ambiguous: false,
       }),
     }),
-    (error) => error.code === 'canal_nao_confirmado'
+    (error) =>
+      error.code === 'canal_nao_confirmado'
+      && error.message === 'Falta o vínculo de canal de venda no ERP para seu agente. Peça a um administrador para sincronizá-lo em Configurações → Agentes.'
   );
   assert.equal(db.calls.some((call) => /SET erp_agente_venda_id/.test(call.sql)), false);
 });
