@@ -693,7 +693,7 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
       try {
         r = await resolveAgentErpByCpfViaApi(token, a.cpf);
       } catch (e) {
-        const failure = classifyErpSyncError(e);
+        const failure = classifyErpSyncError(e, { stage: 'consulta_identidade_erp' });
         items.push({ ...base, ...failure, repairable: false });
         continue;
       }
@@ -707,7 +707,7 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
         try {
           storedUsuario = await fetchUsuarioById(token, a.erp_agent_id);
         } catch (storedUserError) {
-          const failure = classifyErpSyncError(storedUserError);
+          const failure = classifyErpSyncError(storedUserError, { stage: 'validar_usuario_erp_salvo' });
           items.push({
             ...base,
             ...failure,
@@ -755,10 +755,11 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
           effectiveErpAgenteVendaId = canalClassification.effectiveErpAgenteVendaId;
           canalErro = canalClassification.canalErro;
         } catch (canalValidationError) {
-          const failure = classifyErpSyncError(canalValidationError);
+          const failure = classifyErpSyncError(canalValidationError, { stage: 'auditoria_canal_erp' });
           status = failure.status;
           repairable = false;
           canalErro = failure.erro;
+          effectiveErpAgenteVendaId = a.erp_agente_venda_id ? Number(a.erp_agente_venda_id) : null;
         }
       } else if (status === 'ja_vinculado' && !a.canal_venda_id) {
         status = 'sem_canal_configurado';
@@ -781,8 +782,14 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
 
     return res.json({ items });
   } catch (err) {
-    console.error('[ERP Proxy] POST /sync-agentes/preview error:', err.message);
-    return res.status(500).json({ error: err.message });
+    const failure = classifyErpSyncError(err, { stage: 'sincronizacao_erp' });
+    console.error('[ERP Proxy] POST /sync-agentes/preview error:', failure);
+    return res.status(500).json({
+      error: failure.erro,
+      code: failure.status,
+      etapa: failure.etapa,
+      retryable: failure.retryable,
+    });
   }
 });
 
@@ -876,7 +883,7 @@ router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (
           canalErro: semCanal ? 'Nenhum canal de vendas válido está vinculado ao agente.' : undefined,
         });
       } catch (persistErr) {
-        const failure = classifyErpSyncError(persistErr);
+        const failure = classifyErpSyncError(persistErr, { stage: 'persistencia_vinculo_erp' });
         results.push({
           agentId,
           ...failure,
@@ -884,7 +891,7 @@ router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (
         });
       }
     } catch (e) {
-      results.push({ agentId, ...classifyErpSyncError(e) });
+      results.push({ agentId, ...classifyErpSyncError(e, { stage: 'sincronizacao_erp' }) });
     } finally {
       if (agentMutationLock) {
         await agentMutationLock.release().catch((error) => {
