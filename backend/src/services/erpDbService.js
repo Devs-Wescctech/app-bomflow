@@ -464,9 +464,12 @@ export async function registerAgentInCanal(pessoaId, contratoId, grupoId) {
   );
 
   if (existing.rows.length > 1) {
-    throw new Error(
+    const error = new Error(
       `Há ${existing.rows.length} vínculos para esta Pessoa e canal no ERP. Revise os registros antes de escolher um agente_venda_id.`
     );
+    error.code = 'canal_ambiguo';
+    error.statusCode = 422;
+    throw error;
   }
   if (existing.rows.length === 1) {
     const existingId = existing.rows[0].id;
@@ -497,11 +500,16 @@ export async function registerAgentInCanal(pessoaId, contratoId, grupoId) {
 }
 
 /**
- * Confirma, sem criar nem alterar registros, se agents.erp_agente_venda_id
- * corresponde exatamente à Pessoa, canal e grupo selecionados.
+ * Localiza, sem criar nem alterar registros, os vínculos de canal que pertencem
+ * exatamente à Pessoa, canal e grupo informados.
+ *
+ * O vínculo parte sempre de pessoas.id -> pessoas_contratos.pessoa_id. O ID de
+ * usuarios.id identifica o login ERP e nunca deve ser usado nesta consulta.
  */
-export async function validateAgentInCanal(pessoaId, contratoId, grupoId, agenteVendaId) {
-  if (!pessoaId || !contratoId || !agenteVendaId) return false;
+export async function inspectAgentInCanal(pessoaId, contratoId, grupoId) {
+  if (!pessoaId || !contratoId) {
+    return { ids: [], effectiveId: null, ambiguous: false };
+  }
   const db = getPool();
   const result = await db.query(
     `SELECT id FROM pessoas_contratos
@@ -511,13 +519,33 @@ export async function validateAgentInCanal(pessoaId, contratoId, grupoId, agente
       ORDER BY id`,
     [Number(pessoaId), Number(contratoId), grupoId ? Number(grupoId) : null]
   );
+  const ids = result.rows
+    .map((row) => Number(row.id))
+    .filter((id) => Number.isFinite(id) && id > 0);
+  return {
+    ids,
+    effectiveId: ids.length === 1 ? ids[0] : null,
+    ambiguous: ids.length > 1,
+  };
+}
 
-  if (result.rows.length > 1) {
-    throw new Error(
-      `Há ${result.rows.length} vínculos para esta Pessoa, canal e grupo no ERP. Revise os registros antes de enviar o orçamento.`
+/**
+ * Confirma, sem criar nem alterar registros, se agents.erp_agente_venda_id
+ * corresponde exatamente à Pessoa, canal e grupo selecionados.
+ */
+export async function validateAgentInCanal(pessoaId, contratoId, grupoId, agenteVendaId) {
+  if (!pessoaId || !contratoId || !agenteVendaId) return false;
+  const inspection = await inspectAgentInCanal(pessoaId, contratoId, grupoId);
+
+  if (inspection.ambiguous) {
+    const error = new Error(
+      `Há ${inspection.ids.length} vínculos para esta Pessoa, canal e grupo no ERP. Revise os registros antes de enviar o orçamento.`
     );
+    error.code = 'canal_ambiguo';
+    error.statusCode = 422;
+    throw error;
   }
-  return result.rows.length === 1 && Number(result.rows[0].id) === Number(agenteVendaId);
+  return Number(inspection.effectiveId) === Number(agenteVendaId);
 }
 
 /**

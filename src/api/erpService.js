@@ -161,7 +161,7 @@ export async function previewSyncAgentesErp(agentIds) {
 
 // Grava o vínculo ERP dos agentes selecionados.
 // items: [{ agentId, provision?, preferredLogin? }]
-//   provision — cria Pessoa/Usuário ausente; usado somente na criação/edição
+// Esta chamada deve partir apenas de uma ação manual e explícita de sincronização.
 export async function commitSyncAgentesErp(items) {
   const response = await fetch('/api/erp/sync-agentes/commit', {
     method: 'POST',

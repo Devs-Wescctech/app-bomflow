@@ -4,6 +4,8 @@ import { createCrudRouter } from '../utils/crud.js';
 import { authMiddleware, optionalAuth, invalidateAgentActiveCache } from '../middleware/auth.js';
 import { loadAgentMiddleware, requireRole } from '../middleware/permissions.js';
 import { query, pool } from '../config/database.js';
+import { hasManagedErpAgentField, sameCpf } from '../services/erpAgentLinking.js';
+import { acquireAgentMutationLock } from '../services/agentMutationLock.js';
 import { 
   notifyLeadAssigned, 
   notifyLeadStageChanged, 
@@ -1004,15 +1006,6 @@ const SELF_EDITABLE_AGENT_FIELDS = new Set([
   'whatsapp_access_token', 'whatsapp_token_expires_at',
 ]);
 
-function hasManagedErpAgentField(body = {}) {
-  return [
-    'erpAgentId',
-    'erp_agent_id',
-    'erpAgenteVendaId',
-    'erp_agente_venda_id',
-  ].some((key) => Object.prototype.hasOwnProperty.call(body, key));
-}
-
 function rejectManagedErpAgentFields(req, res) {
   if (!hasManagedErpAgentField(req.body)) return false;
   res.status(400).json({
@@ -1073,6 +1066,7 @@ router.post('/agents', authMiddleware, requireAgentManager, async (req, res) => 
 });
 
 router.put('/agents/:id', authMiddleware, async (req, res) => {
+  let agentMutationLock = null;
   try {
     if (rejectManagedErpAgentFields(req, res)) return;
     const { id } = req.params;
@@ -1126,11 +1120,37 @@ router.put('/agents/:id', authMiddleware, async (req, res) => {
         return res.status(403).json({ message: 'Campos não permitidos para edição do próprio cadastro.' });
       }
     }
+
+    agentMutationLock = await acquireAgentMutationLock(id);
+
+    // Depois do primeiro vínculo, o CPF também precisa permanecer estável:
+    // alterá-lo faria o ID imutável apontar para outra identidade. Quando ainda
+    // não há vínculo, o UPDATE usa compare-and-set para não disputar com uma
+    // sincronização concorrente que esteja preenchendo erp_agent_id.
+    let cpfChangeRequiresUnlinkedAgent = false;
+    if (Object.prototype.hasOwnProperty.call(data, 'cpf')) {
+      const currentIdentity = await agentMutationLock.client.query(
+        'SELECT cpf, erp_agent_id FROM agents WHERE id = $1',
+        [id]
+      );
+      if (currentIdentity.rows.length === 0) {
+        return res.status(404).json({ message: 'Agent not found' });
+      }
+      const currentAgent = currentIdentity.rows[0];
+      if (!sameCpf(currentAgent.cpf, data.cpf)) {
+        if (currentAgent.erp_agent_id) {
+          return res.status(409).json({
+            message: 'O CPF não pode ser alterado depois do primeiro vínculo com o Usuário ERP. Revise a divergência antes de continuar.',
+          });
+        }
+        cpfChangeRequiresUnlinkedAgent = true;
+      }
+    }
     
     // Mudança de status (ativar/inativar) — só chega aqui com canManage.
     if (data.active !== undefined) {
       const nextActive = data.active === true || data.active === 'true';
-      const current = await query('SELECT active FROM agents WHERE id = $1', [id]);
+      const current = await agentMutationLock.client.query('SELECT active FROM agents WHERE id = $1', [id]);
       if (current.rows.length === 0) {
         return res.status(404).json({ message: 'Agent not found' });
       }
@@ -1153,11 +1173,17 @@ router.put('/agents/:id', authMiddleware, async (req, res) => {
     
     const setClause = keys.map((key, i) => `${key} = $${i + 1}`).join(', ');
     values.push(id);
-    const sql = `UPDATE agents SET ${setClause}, updated_at = NOW() WHERE id = $${values.length} RETURNING *`;
+    const identityGuard = cpfChangeRequiresUnlinkedAgent ? ' AND erp_agent_id IS NULL' : '';
+    const sql = `UPDATE agents SET ${setClause}, updated_at = NOW() WHERE id = $${values.length}${identityGuard} RETURNING *`;
     
-    const result = await query(sql, values);
+    const result = await agentMutationLock.client.query(sql, values);
     
     if (result.rows.length === 0) {
+      if (cpfChangeRequiresUnlinkedAgent) {
+        return res.status(409).json({
+          message: 'O Usuário ERP foi vinculado enquanto o CPF era alterado. A mudança de CPF foi cancelada para preservar a identidade.',
+        });
+      }
       return res.status(404).json({ message: 'Agent not found' });
     }
     
@@ -1170,6 +1196,12 @@ router.put('/agents/:id', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Error updating agent:', error);
     res.status(500).json({ message: error.message });
+  } finally {
+    if (agentMutationLock) {
+      await agentMutationLock.release().catch((error) => {
+        console.error('Error releasing agent mutation lock:', error.message);
+      });
+    }
   }
 });
 
