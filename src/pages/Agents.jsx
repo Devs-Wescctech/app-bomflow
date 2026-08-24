@@ -1,5 +1,5 @@
 import { extractApiError } from "@/utils/apiError";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,7 @@ import { canManageAgents, isSupervisorType } from "@/components/utils/permission
 import ErpSyncDialog from "@/components/agents/ErpSyncDialog";
 /* NOVO — integração ERP */
 import { getPessoaByErp } from "@/api/erpClient";
-import { buscarCanaisVenda, previewSyncAgentesErp } from "@/api/erpService";
+import { buscarCanaisVenda, commitSyncAgentesErp, previewSyncAgentesErp } from "@/api/erpService";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +42,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { saveAgentThenReconcile } from "@/utils/agentErpEditSync";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
@@ -234,6 +235,7 @@ const ERP_SYNC_STATUS_CAUSE = {
   pessoas_ambiguas: "Mais de uma Pessoa foi localizada para o CPF; é necessária revisão.",
   usuario_nao_encontrado: "A Pessoa não possui um Usuário ERP inequívoco.",
   pessoa_nao_encontrada: "A Pessoa do agente não foi localizada no ERP.",
+  erp_indisponivel: "A fonte de vínculos do ERP está indisponível. Os dados do Bom Flow foram preservados; tente novamente.",
   erro: "Não foi possível validar o vínculo no ERP; nenhum ID foi alterado.",
 };
 
@@ -281,6 +283,9 @@ export default function Agents() {
   const [erpPessoaResult, setErpPessoaResult] = useState(null); // { nome_completo, pessoa } | { notFound: true } | null
   const [erpSyncAudit, setErpSyncAudit] = useState(null);
   const [loadingErpSyncAudit, setLoadingErpSyncAudit] = useState(false);
+  const [editSaveState, setEditSaveState] = useState(null);
+  const activeEditAgentIdRef = useRef(null);
+  const editRequestGenerationRef = useRef(0);
   // Controla se o usuário editou o Login ERP manualmente. Enquanto false, o
   // Login ERP é gerado automaticamente a partir do campo Nome Completo.
   const [erpLoginTouched, setErpLoginTouched] = useState(false);
@@ -423,18 +428,6 @@ export default function Agents() {
 
   const updateAgentMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Agent.update(id, data),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['agents'] }),
-        queryClient.invalidateQueries({ queryKey: ['currentUser'] }),
-      ]);
-      setIsDialogOpen(false);
-      resetForm();
-      toast.success('Agente atualizado no Bom Flow. O ERP não foi alterado; use a sincronização manual para revisar os vínculos.');
-    },
-    onError: (error) => {
-      toast.error('Erro ao atualizar agente: ' + error.message);
-    },
   });
 
   const deleteAgentMutation = useMutation({
@@ -663,12 +656,17 @@ export default function Agents() {
       }
     });
     setEditingAgent(null);
+    activeEditAgentIdRef.current = null;
+    editRequestGenerationRef.current += 1;
     setChannelTokenInput("");
     setChannelTokenChanged(false);
     setShowTokenField(false);
     /* NOVO — reset estados ERP */
     setLoadingErpPessoa(false);
     setErpPessoaResult(null);
+    setLoadingErpSyncAudit(false);
+    setErpSyncAudit(null);
+    setEditSaveState(null);
   };
 
   const resetTeamForm = () => {
@@ -750,7 +748,11 @@ export default function Agents() {
   };
 
   const handleEdit = async (agent) => {
+    const editGeneration = editRequestGenerationRef.current + 1;
+    editRequestGenerationRef.current = editGeneration;
+    activeEditAgentIdRef.current = agent.id;
     setEditingAgent(agent);
+    setEditSaveState(null);
     setErpLoginTouched(true);
     setFormData({
       name: agent.name || "",
@@ -783,16 +785,43 @@ export default function Agents() {
     setErpSyncAudit(null);
     setLoadingErpSyncAudit(true);
     previewSyncAgentesErp([agent.id])
-      .then((data) => setErpSyncAudit(data?.items?.[0] || null))
+      .then((data) => {
+        if (
+          activeEditAgentIdRef.current === agent.id
+          && editRequestGenerationRef.current === editGeneration
+        ) {
+          setErpSyncAudit(data?.items?.[0] || null);
+        }
+      })
       .catch((error) => {
         console.warn('[Agents] Não foi possível carregar a auditoria do vínculo ERP:', error.message);
-        setErpSyncAudit({ erro: 'Não foi possível consultar o vínculo efetivo no ERP.' });
+        if (
+          activeEditAgentIdRef.current === agent.id
+          && editRequestGenerationRef.current === editGeneration
+        ) {
+          setErpSyncAudit({
+            status: 'erp_indisponivel',
+            retryable: true,
+            erro: 'A fonte de vínculos do ERP está indisponível no momento.',
+          });
+        }
       })
-      .finally(() => setLoadingErpSyncAudit(false));
+      .finally(() => {
+        if (
+          activeEditAgentIdRef.current === agent.id
+          && editRequestGenerationRef.current === editGeneration
+        ) {
+          setLoadingErpSyncAudit(false);
+        }
+      });
     if (agent.cpf) {
       setLoadingErpPessoa(true);
       try {
         const { pessoa, usuarioErp, usuariosAmbiguos } = await getPessoaByErp(agent.cpf, agent.erpAgentId);
+        if (
+          activeEditAgentIdRef.current !== agent.id
+          || editRequestGenerationRef.current !== editGeneration
+        ) return;
         if (pessoa) {
           setErpPessoaResult({
             ...pessoa,
@@ -808,7 +837,12 @@ export default function Agents() {
       } catch (error) {
         console.warn('[Agents] Não foi possível carregar o login ERP do agente:', error.message);
       } finally {
-        setLoadingErpPessoa(false);
+        if (
+          activeEditAgentIdRef.current === agent.id
+          && editRequestGenerationRef.current === editGeneration
+        ) {
+          setLoadingErpPessoa(false);
+        }
       }
     }
     if (agent.agentType === 'indicacoes_atendente') {
@@ -817,19 +851,171 @@ export default function Agents() {
         const resp = await fetch(`/api/agents/${agent.id}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
+        if (
+          activeEditAgentIdRef.current !== agent.id
+          || editRequestGenerationRef.current !== editGeneration
+        ) return;
         if (resp.ok) {
           const data = await resp.json();
+          if (
+            activeEditAgentIdRef.current !== agent.id
+            || editRequestGenerationRef.current !== editGeneration
+          ) return;
           setChannelTokenInput(data.whatsappChannelToken || "");
         } else {
           setChannelTokenInput("");
         }
       } catch {
-        setChannelTokenInput("");
+        if (
+          activeEditAgentIdRef.current === agent.id
+          && editRequestGenerationRef.current === editGeneration
+        ) {
+          setChannelTokenInput("");
+        }
       }
     } else {
-      setChannelTokenInput("");
+      if (
+        activeEditAgentIdRef.current === agent.id
+        && editRequestGenerationRef.current === editGeneration
+      ) {
+        setChannelTokenInput("");
+      }
     }
-    setIsDialogOpen(true);
+    if (
+      activeEditAgentIdRef.current === agent.id
+      && editRequestGenerationRef.current === editGeneration
+    ) {
+      setIsDialogOpen(true);
+    }
+  };
+
+  const refreshEditedAgentState = async (agentId) => {
+    const refreshGeneration = editRequestGenerationRef.current + 1;
+    editRequestGenerationRef.current = refreshGeneration;
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['agents'] }),
+      queryClient.invalidateQueries({ queryKey: ['currentUser'] }),
+    ]);
+
+    if (
+      activeEditAgentIdRef.current !== agentId
+      || editRequestGenerationRef.current !== refreshGeneration
+    ) return null;
+    setLoadingErpSyncAudit(true);
+    setErpSyncAudit(null);
+    try {
+      const data = await previewSyncAgentesErp([agentId]);
+      const audit = data?.items?.[0] || null;
+      if (
+        activeEditAgentIdRef.current === agentId
+        && editRequestGenerationRef.current === refreshGeneration
+      ) {
+        setErpSyncAudit(audit);
+        if (audit) {
+          setFormData((current) => ({
+            ...current,
+            erpAgentId: audit.currentErpAgentId != null
+              ? String(audit.currentErpAgentId)
+              : current.erpAgentId,
+            erpAgenteVendaId: audit.currentErpAgenteVendaId != null
+              ? String(audit.currentErpAgenteVendaId)
+              : "",
+          }));
+        }
+      }
+      return audit;
+    } catch (error) {
+      if (
+        activeEditAgentIdRef.current === agentId
+        && editRequestGenerationRef.current === refreshGeneration
+      ) {
+        setErpSyncAudit({
+          status: 'erp_indisponivel',
+          retryable: true,
+          erro: error.message || 'A fonte de vínculos do ERP está indisponível no momento.',
+        });
+      }
+      return null;
+    } finally {
+      if (
+        activeEditAgentIdRef.current === agentId
+        && editRequestGenerationRef.current === refreshGeneration
+      ) {
+        setLoadingErpSyncAudit(false);
+      }
+    }
+  };
+
+  const reconcileEditedAgent = async (agentId, { closeOnSuccess = true } = {}) => {
+    editRequestGenerationRef.current += 1;
+    setEditSaveState((current) => ({
+      ...(current || {}),
+      local: 'saved',
+      erp: 'syncing',
+      message: 'Cadastro salvo no Bom Flow. Reconciliando o canal no ERP...',
+    }));
+    setErpSyncAudit(null);
+    setLoadingErpSyncAudit(true);
+
+    try {
+      // A edição nunca provisiona nem informa IDs: o backend revalida por CPF e
+      // mantém o Usuário ERP salvo imutável antes de reconciliar somente o canal.
+      const data = await commitSyncAgentesErp([{ agentId }]);
+      const result = data?.results?.find((item) => item.agentId === agentId)
+        || data?.results?.[0]
+        || { status: 'erro', erro: 'O ERP não retornou o resultado da reconciliação.' };
+      const success = result.status === 'ok' || result.status === 'ja_vinculado';
+
+      await refreshEditedAgentState(agentId);
+      if (activeEditAgentIdRef.current !== agentId) return success;
+
+      if (!success) {
+        setErpSyncAudit((current) => ({ ...(current || {}), ...result }));
+        setEditSaveState({
+          local: 'saved',
+          erp: 'error',
+          retryable: result.retryable === true,
+          message: result.erro
+            || result.canalErro
+            || ERP_SYNC_STATUS_CAUSE[result.status]
+            || 'O vínculo ERP não pôde ser concluído.',
+        });
+        toast.warning('Agente salvo no Bom Flow, mas o vínculo ERP não foi concluído.');
+        return false;
+      }
+
+      setEditSaveState({
+        local: 'saved',
+        erp: 'success',
+        message: 'Cadastro e vínculo ERP sincronizados.',
+      });
+      toast.success('Agente atualizado e vínculo ERP sincronizado.');
+      if (closeOnSuccess) {
+        setIsDialogOpen(false);
+        resetForm();
+      }
+      return true;
+    } catch (error) {
+      await refreshEditedAgentState(agentId);
+      if (activeEditAgentIdRef.current === agentId) {
+        setEditSaveState({
+          local: 'saved',
+          erp: 'error',
+          retryable: true,
+          message: error.message || 'A fonte de vínculos do ERP está indisponível no momento.',
+        });
+        setErpSyncAudit((current) => ({
+          ...(current || {}),
+          status: 'erp_indisponivel',
+          retryable: true,
+          erro: error.message || 'A fonte de vínculos do ERP está indisponível no momento.',
+        }));
+        toast.warning('Agente salvo no Bom Flow, mas a fonte de vínculos do ERP está indisponível.');
+      }
+      return false;
+    } finally {
+      if (activeEditAgentIdRef.current === agentId) setLoadingErpSyncAudit(false);
+    }
   };
 
   const handleEditTeam = (team) => {
@@ -959,9 +1145,9 @@ export default function Agents() {
     setLoadingErpPessoa(false);
   };
 
-  const handleSubmit = () => {
-    // Salvar o formulário altera somente o Bom Flow. Os dois IDs ERP são
-    // exclusivamente gerenciados pela sincronização manual server-side por CPF.
+  const handleSubmit = async () => {
+    // Os IDs ERP não entram no payload local. Na edição de uma identidade já
+    // vinculada, o commit server-side é encadeado e aguardado depois do PUT.
     const {
       erpLogin: _erpLogin,
       erpEmail: _erpEmail,
@@ -978,16 +1164,52 @@ export default function Agents() {
     };
     
     if (editingAgent) {
+      const agentId = editingAgent.id;
+      const shouldReconcileErp = Boolean(formData.erpAgentId);
       if (!dataToSend.password) {
         delete dataToSend.password;
       }
       if (channelTokenChanged) {
         dataToSend.whatsappChannelToken = channelTokenInput || null;
       }
-      updateAgentMutation.mutate({
-        id: editingAgent.id,
-        data: dataToSend,
+      setEditSaveState({
+        local: 'saving',
+        erp: 'idle',
+        message: 'Salvando alterações no Bom Flow...',
       });
+      try {
+        const outcome = await saveAgentThenReconcile({
+          agentId,
+          data: dataToSend,
+          shouldReconcile: shouldReconcileErp,
+          updateAgent: ({ id, data }) => updateAgentMutation.mutateAsync({ id, data }),
+          afterLocalSave: async () => {
+            setEditSaveState({
+              local: 'saved',
+              erp: 'idle',
+              message: 'Alterações salvas no Bom Flow. Preparando a reconciliação do ERP...',
+            });
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ['agents'] }),
+              queryClient.invalidateQueries({ queryKey: ['currentUser'] }),
+            ]);
+          },
+          reconcileAgent: (id) => reconcileEditedAgent(id),
+        });
+
+        if (!outcome.reconciliationAttempted) {
+          toast.success('Agente atualizado no Bom Flow. Não há Usuário ERP validado para reconciliar.');
+          setIsDialogOpen(false);
+          resetForm();
+        }
+      } catch (error) {
+        setEditSaveState({
+          local: 'error',
+          erp: 'idle',
+          message: error.message || 'Não foi possível salvar o agente no Bom Flow.',
+        });
+        toast.error('Erro ao atualizar agente: ' + error.message);
+      }
     } else {
       setCreatingStep('agent');
       createAgentMutation.mutate({
@@ -1941,7 +2163,15 @@ export default function Agents() {
       </Dialog>
 
       {/* Sheet para Criar/Editar Agente */}
-      <Sheet open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Sheet
+        open={isDialogOpen}
+        onOpenChange={(open) => {
+          const busy = editSaveState?.local === 'saving' || editSaveState?.erp === 'syncing';
+          if (!open && busy) return;
+          setIsDialogOpen(open);
+          if (!open) resetForm();
+        }}
+      >
         <SheetContent side="right" className="w-full sm:max-w-xl md:max-w-2xl bg-white dark:bg-gray-900 p-0 flex flex-col">
           <SheetHeader className="px-6 py-5 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30">
             <div className="flex items-center gap-3">
@@ -2117,10 +2347,47 @@ export default function Agents() {
                           <p className="text-amber-700 dark:text-amber-300">
                             {erpSyncAudit?.canalErro || erpSyncAudit?.erro || ERP_SYNC_STATUS_CAUSE[erpSyncAudit?.status] || "Aguardando validação do vínculo."}
                           </p>
+                          {editingAgent && editSaveState?.erp === 'error' && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="mt-2 h-7 border-amber-300 text-amber-800"
+                              onClick={() => reconcileEditedAgent(editingAgent.id)}
+                              disabled={loadingErpSyncAudit}
+                            >
+                              {loadingErpSyncAudit
+                                ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                                : <Server className="w-3.5 h-3.5 mr-1.5" />}
+                              Tentar sincronizar novamente
+                            </Button>
+                          )}
                         </>
                       )}
                     </div>
                   </div>
+                  {editingAgent && editSaveState && (
+                    <Alert className={
+                      editSaveState.erp === 'error' || editSaveState.local === 'error'
+                        ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/30'
+                        : 'border-blue-200 bg-blue-50 dark:bg-blue-950/30'
+                    }>
+                      <AlertDescription className="text-xs">
+                        <strong>Bom Flow:</strong>{' '}
+                        {editSaveState.local === 'saved' ? 'alterações salvas' : editSaveState.local === 'error' ? 'falha ao salvar' : 'salvando'}
+                        {' • '}
+                        <strong>ERP:</strong>{' '}
+                        {editSaveState.erp === 'success'
+                          ? 'sincronizado'
+                          : editSaveState.erp === 'syncing'
+                            ? 'reconciliando vínculo'
+                            : editSaveState.erp === 'error'
+                              ? 'não sincronizado'
+                              : 'aguardando o salvamento local'}
+                        <span className="block mt-1">{editSaveState.message}</span>
+                      </AlertDescription>
+                    </Alert>
+                  )}
                 </div>
               </div>
 
@@ -2705,12 +2972,17 @@ export default function Agents() {
               const CREATE_STEPS = [
                 { key: 'agent', label: 'Criando agente no Bom Flow...' },
               ];
-              const isBusy = creatingStep !== null || updateAgentMutation.isPending;
+              const isBusy = creatingStep !== null
+                || updateAgentMutation.isPending
+                || editSaveState?.local === 'saving'
+                || editSaveState?.erp === 'syncing';
               const stepIdx = CREATE_STEPS.findIndex(s => s.key === creatingStep);
               const stepLabel = creatingStep
                 ? (CREATE_STEPS.find(s => s.key === creatingStep)?.label ?? 'Processando...')
                 : updateAgentMutation.isPending
                   ? 'Salvando alterações...'
+                  : editSaveState?.erp === 'syncing'
+                    ? 'Reconciliando vínculo no ERP...'
                   : 'Processando...';
 
               if (isBusy) {
@@ -2758,7 +3030,14 @@ export default function Agents() {
 
               return (
                 <div className="flex w-full gap-3">
-                  <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="flex-1">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsDialogOpen(false);
+                      resetForm();
+                    }}
+                    className="flex-1"
+                  >
                     Cancelar
                   </Button>
                   <Button

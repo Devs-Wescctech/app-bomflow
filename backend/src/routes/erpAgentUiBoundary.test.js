@@ -3,23 +3,24 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { saveAgentThenReconcile } from '../../../src/utils/agentErpEditSync.js';
 
 const workspaceRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../..'
 );
 
-test('criar ou editar agente não dispara sincronização ERP automaticamente', async () => {
+test('edição encadeia reconciliação sem provisionar ou permitir IDs ERP no payload local', async () => {
   const source = await readFile(
     path.join(workspaceRoot, 'src/pages/Agents.jsx'),
     'utf8'
   );
 
-  assert.doesNotMatch(source, /commitSyncAgentesErp/);
+  assert.match(source, /commitSyncAgentesErp\(\[\{ agentId \}\]\)/);
   assert.doesNotMatch(source, /provision:\s*true/);
   assert.match(
     source,
-    /O ERP não foi alterado; use a sincronização manual para revisar os vínculos/
+    /delete dataToSend\.password/
   );
 });
 
@@ -32,4 +33,69 @@ test('gravação ERP permanece disponível somente no diálogo manual', async ()
   assert.match(source, /commitSyncAgentesErp/);
   assert.match(source, /const gravar = async \(\) =>/);
   assert.match(source, /filter\(\(i\) => selected\.has\(i\.agentId\)/);
+});
+
+test('salvamento local termina antes da reconciliação e a atualização de consultas é aguardada', async () => {
+  const calls = [];
+  const result = await saveAgentThenReconcile({
+    agentId: 'agent-1',
+    data: { canalVendaId: 77 },
+    shouldReconcile: true,
+    updateAgent: async () => {
+      calls.push('local');
+      return { id: 'agent-1' };
+    },
+    afterLocalSave: async () => {
+      await Promise.resolve();
+      calls.push('refresh');
+    },
+    reconcileAgent: async () => {
+      calls.push('erp');
+      return true;
+    },
+  });
+
+  assert.deepEqual(calls, ['local', 'refresh', 'erp']);
+  assert.deepEqual(result, {
+    localSaved: true,
+    reconciliationAttempted: true,
+    erpSucceeded: true,
+  });
+});
+
+test('falha local interrompe a reconciliação sem criar ou alterar vínculo ERP', async () => {
+  let reconcileCount = 0;
+  await assert.rejects(
+    () => saveAgentThenReconcile({
+      agentId: 'agent-1',
+      data: {},
+      shouldReconcile: true,
+      updateAgent: async () => {
+        throw new Error('falha local');
+      },
+      afterLocalSave: async () => {},
+      reconcileAgent: async () => {
+        reconcileCount += 1;
+        return true;
+      },
+    }),
+    /falha local/
+  );
+  assert.equal(reconcileCount, 0);
+});
+
+test('respostas tardias da edição só atualizam o token e abrem a tela para a geração ativa', async () => {
+  const source = await readFile(
+    path.join(workspaceRoot, 'src/pages/Agents.jsx'),
+    'utf8'
+  );
+
+  assert.match(
+    source,
+    /const resp = await fetch\(`\/api\/agents\/\$\{agent\.id\}`[\s\S]+activeEditAgentIdRef\.current !== agent\.id[\s\S]+editRequestGenerationRef\.current !== editGeneration[\s\S]+const data = await resp\.json\(\)/
+  );
+  assert.match(
+    source,
+    /activeEditAgentIdRef\.current === agent\.id[\s\S]+editRequestGenerationRef\.current === editGeneration[\s\S]+setIsDialogOpen\(true\)/
+  );
 });

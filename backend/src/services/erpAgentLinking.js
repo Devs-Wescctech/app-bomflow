@@ -29,8 +29,57 @@ const MANAGED_ERP_AGENT_FIELDS = new Set([
   'erp_agente_venda_id',
 ]);
 
+const ERP_UNAVAILABLE_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  '57P01',
+  '57P02',
+  '57P03',
+  '53300',
+  '08000',
+  '08001',
+  '08003',
+  '08004',
+  '08006',
+  '08007',
+  '08P01',
+]);
+
 export function hasManagedErpAgentField(body = {}) {
   return Object.keys(body || {}).some((key) => MANAGED_ERP_AGENT_FIELDS.has(key));
+}
+
+export function classifyErpSyncError(error) {
+  const code = String(error?.code || '');
+  const statusCode = Number(error?.statusCode || error?.status || 0);
+  const message = String(error?.message || 'Falha desconhecida ao consultar o ERP.');
+  const unavailable = (
+    error?.isErpUpstream === true ||
+    code === 'erp_indisponivel' ||
+    ERP_UNAVAILABLE_CODES.has(code) ||
+    statusCode === 429 ||
+    statusCode >= 500 ||
+    /fetch failed|connection terminated|connection timeout|connect timeout|timeout (?:expired|exceeded)|query read timeout|socket hang up/i.test(message)
+  );
+
+  if (unavailable) {
+    return {
+      status: 'erp_indisponivel',
+      retryable: true,
+      erro: message,
+    };
+  }
+
+  return {
+    status: code || 'erro',
+    retryable: false,
+    erro: message,
+  };
 }
 
 export function sameCpf(a, b) {
