@@ -6,6 +6,7 @@ import {
   classifyCanalSyncState,
   classifyAgentErpLink,
   classifyErpSyncError,
+  createMissingErpCanalError,
   mirrorConfirmedAgentCanal,
   persistResolvedAgentErpLink,
   syncResolvedAgentCanal,
@@ -101,12 +102,24 @@ async function resolveAuthenticatedOrcamentoPayload(req, token, rawPayload) {
         syncCanal: false,
       });
       const userConfirmedAgent = { ...agent, erp_agent_id: persisted.erpAgentId };
-      const canal = await mirrorConfirmedAgentCanal({
-        agent: userConfirmedAgent,
-        resolution,
-        queryDb: agentMutationLock.client.query.bind(agentMutationLock.client),
-        inspectCanal: inspectAgentInCanal,
-      });
+      let canal;
+      try {
+        canal = await mirrorConfirmedAgentCanal({
+          agent: userConfirmedAgent,
+          resolution,
+          queryDb: agentMutationLock.client.query.bind(agentMutationLock.client),
+          inspectCanal: inspectAgentInCanal,
+        });
+      } catch (error) {
+        // Sem código local do canal, a leitura é apenas uma tentativa de
+        // recuperação automática. Se o banco nem está configurado, não exponha
+        // infraestrutura: o vendedor precisa da mesma orientação de vínculo
+        // ausente que receberia quando a leitura retornasse zero registros.
+        if (!Number(agent.erp_agente_venda_id) && error?.code === 'erp_db_config_missing') {
+          throw createMissingErpCanalError();
+        }
+        throw error;
+      }
       agent = {
         ...userConfirmedAgent,
         erp_agente_venda_id: canal.erpAgenteVendaId,

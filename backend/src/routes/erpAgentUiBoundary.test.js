@@ -118,6 +118,19 @@ test('orçamento informa canal ausente antes de qualquer auditoria no banco ERP'
   );
 });
 
+test('orçamento sem código de canal não expõe configuração ausente do banco ERP', async () => {
+  const source = await readFile(
+    path.join(workspaceRoot, 'backend/src/routes/erpProxy.js'),
+    'utf8'
+  );
+
+  assert.match(source, /createMissingErpCanalError/);
+  assert.match(
+    source,
+    /!Number\(agent\.erp_agente_venda_id\) && error\?\.code === 'erp_db_config_missing'/
+  );
+});
+
 test('salvamento local termina antes da reconciliação e a atualização de consultas é aguardada', async () => {
   const calls = [];
   const result = await saveAgentThenReconcile({
