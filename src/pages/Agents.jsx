@@ -2379,19 +2379,24 @@ export default function Agents() {
                           <p className="text-amber-700 dark:text-amber-300">
                             {erpSyncAudit?.canalErro || erpSyncAudit?.erro || ERP_SYNC_STATUS_CAUSE[erpSyncAudit?.canalStatus] || ERP_SYNC_STATUS_CAUSE[erpSyncAudit?.usuarioStatus || erpSyncAudit?.status] || "Aguardando validação do vínculo."}
                           </p>
-                          {editingAgent && editSaveState?.erp === 'error' && editSaveState?.retryable && (
+                          {editingAgent && (
+                            erpSyncAudit?.canalStatus === 'canal_confirmado_nao_espelhado'
+                            || (editSaveState?.erp === 'error' && editSaveState?.retryable)
+                          ) && (
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
                               className="mt-2 h-7 border-amber-300 text-amber-800"
-                              onClick={() => reconcileEditedAgent(editingAgent.id)}
+                              onClick={() => reconcileEditedAgent(editingAgent.id, { closeOnSuccess: false })}
                               disabled={loadingErpSyncAudit}
                             >
                               {loadingErpSyncAudit
                                 ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                                 : <Server className="w-3.5 h-3.5 mr-1.5" />}
-                              Tentar sincronizar novamente
+                              {erpSyncAudit?.canalStatus === 'canal_confirmado_nao_espelhado'
+                                ? 'Aplicar vínculo confirmado'
+                                : 'Tentar sincronizar novamente'}
                             </Button>
                           )}
                         </>

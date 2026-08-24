@@ -49,6 +49,20 @@ test('resultado parcial atualiza o Usuário ERP e mantém o problema do canal se
   assert.match(agentsSource, /editSaveState\?\.erp === 'error' && editSaveState\?\.retryable/);
 });
 
+test('canal confirmado no ERP sem espelho local oferece ação explícita para aplicá-lo', async () => {
+  const source = await readFile(
+    path.join(workspaceRoot, 'src/pages/Agents.jsx'),
+    'utf8'
+  );
+
+  assert.match(source, /erpSyncAudit\?\.canalStatus === 'canal_confirmado_nao_espelhado'/);
+  assert.match(source, /Aplicar vínculo confirmado/);
+  assert.match(
+    source,
+    /reconcileEditedAgent\(editingAgent\.id, \{ closeOnSuccess: false \}\)/
+  );
+});
+
 test('orçamento mantém o lock do agente até enviar o cabeçalho ao ERP', async () => {
   const source = await readFile(
     path.join(workspaceRoot, 'backend/src/routes/erpProxy.js'),
