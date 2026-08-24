@@ -239,6 +239,26 @@ const ERP_SYNC_STATUS_CAUSE = {
   erro: "Não foi possível validar o vínculo no ERP; nenhum ID foi alterado.",
 };
 
+function getErpSyncAuditMessage(audit) {
+  const usuarioStatus = audit?.usuarioStatus || audit?.status;
+  if (audit?.canalStatus === 'erp_indisponivel') {
+    if (['ok', 'ja_vinculado'].includes(usuarioStatus)) {
+      return 'Usuário ERP confirmado. O canal ERP permanece pendente de validação e será retomado quando a fonte de vínculos estiver disponível.';
+    }
+    return 'Não foi possível validar o canal ERP neste momento. Os dados locais foram preservados.';
+  }
+  return audit?.canalErro
+    || audit?.erro
+    || ERP_SYNC_STATUS_CAUSE[audit?.canalStatus]
+    || ERP_SYNC_STATUS_CAUSE[usuarioStatus]
+    || "Aguardando validação do vínculo.";
+}
+
+function getErpSyncAuditStatusLabel(status, kind) {
+  if (kind === 'canal' && status === 'erp_indisponivel') return 'pendente';
+  return status || "não consultado";
+}
+
 export default function Agents() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("agents");
@@ -2373,11 +2393,11 @@ export default function Agents() {
                           <p className="mt-1 text-gray-700 dark:text-gray-300">
                             ID no ERP: {erpSyncAudit?.effectiveErpAgenteVendaId ?? "não encontrado"}
                             {" • "}Espelho no Bom Flow: {erpSyncAudit?.currentErpAgenteVendaId ?? "—"}
-                            {" • "}Usuário: {erpSyncAudit?.usuarioStatus || erpSyncAudit?.status || "não consultado"}
-                            {" • "}Canal: {erpSyncAudit?.canalStatus || "não avaliado"}
+                            {" • "}Usuário: {getErpSyncAuditStatusLabel(erpSyncAudit?.usuarioStatus || erpSyncAudit?.status)}
+                            {" • "}Canal: {getErpSyncAuditStatusLabel(erpSyncAudit?.canalStatus, 'canal')}
                           </p>
                           <p className="text-amber-700 dark:text-amber-300">
-                            {erpSyncAudit?.canalErro || erpSyncAudit?.erro || ERP_SYNC_STATUS_CAUSE[erpSyncAudit?.canalStatus] || ERP_SYNC_STATUS_CAUSE[erpSyncAudit?.usuarioStatus || erpSyncAudit?.status] || "Aguardando validação do vínculo."}
+                            {getErpSyncAuditMessage(erpSyncAudit)}
                           </p>
                           {editingAgent && (
                             erpSyncAudit?.canalStatus === 'canal_confirmado_nao_espelhado'

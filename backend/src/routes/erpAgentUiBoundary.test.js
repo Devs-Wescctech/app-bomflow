@@ -49,6 +49,28 @@ test('resultado parcial atualiza o Usuário ERP e mantém o problema do canal se
   assert.match(agentsSource, /editSaveState\?\.erp === 'error' && editSaveState\?\.retryable/);
 });
 
+test('tela não expõe erro de configuração do banco quando Usuário ERP está confirmado', async () => {
+  const source = await readFile(
+    path.join(workspaceRoot, 'src/pages/Agents.jsx'),
+    'utf8'
+  );
+
+  assert.match(source, /function getErpSyncAuditMessage\(audit\)/);
+  assert.match(
+    source,
+    /audit\?\.canalStatus === 'erp_indisponivel'[\s\S]+?\['ok', 'ja_vinculado'\]\.includes\(usuarioStatus\)/
+  );
+  assert.match(source, /O canal ERP permanece pendente de validação/);
+  assert.match(
+    source,
+    /getErpSyncAuditStatusLabel\(erpSyncAudit\?\.canalStatus, 'canal'\)/
+  );
+  assert.doesNotMatch(
+    source,
+    /erpSyncAudit\?\.canalErro \|\| erpSyncAudit\?\.erro \|\| ERP_SYNC_STATUS_CAUSE/
+  );
+});
+
 test('canal confirmado no ERP sem espelho local oferece ação explícita para aplicá-lo', async () => {
   const source = await readFile(
     path.join(workspaceRoot, 'src/pages/Agents.jsx'),
