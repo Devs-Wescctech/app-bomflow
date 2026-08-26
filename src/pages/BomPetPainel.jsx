@@ -15,6 +15,10 @@ import {
   AlertTriangle, RefreshCw, Zap, PawPrint, MapPin
 } from "lucide-react";
 import { extractApiError } from "@/utils/apiError";
+import {
+  formatBomPetDateTime as formatDateTime,
+  formatBomPetTime,
+} from "@/utils/bomPetDate";
 
 const API_BASE = '/api';
 const AUTO_REFRESH_INTERVAL = 60000;
@@ -24,15 +28,6 @@ const ALERT_HOURS_NEW = 2;
 function getAuthHeaders() {
   const token = localStorage.getItem('accessToken');
   return token ? { 'Authorization': `Bearer ${token}` } : {};
-}
-
-function formatDateTime(dateStr) {
-  if (!dateStr) return '-';
-  const d = new Date(dateStr);
-  return d.toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  });
 }
 
 function getHoursAgo(dateStr) {
@@ -394,7 +389,7 @@ export default function BomPetPainel() {
         <div className="flex items-center gap-2">
           {lastRefresh && (
             <span className="text-[11px] text-gray-400 hidden sm:block">
-              Atualizado {lastRefresh.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+              Atualizado {formatBomPetTime(lastRefresh)}
             </span>
           )}
           <Button variant="outline" size="sm" onClick={() => fetchAtendimentos()} disabled={loading} className="gap-1.5">

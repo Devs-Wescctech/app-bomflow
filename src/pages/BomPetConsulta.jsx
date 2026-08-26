@@ -14,6 +14,11 @@ import {
   Receipt, MapPin, Stethoscope, Handshake
 } from "lucide-react";
 import { extractApiError } from "@/utils/apiError";
+import {
+  formatBomPetDate,
+  formatBomPetDateTime as formatDateTime,
+  getBomPetDateParts,
+} from "@/utils/bomPetDate";
 import termoTemplateImg from "@/assets/bompet-autorizacao-template.png";
 
 const API_BASE = '/api';
@@ -35,19 +40,8 @@ function stripHTML(str) {
   return str.replace(/<[^>]*>/g, '');
 }
 
-function formatDateTime(dateStr) {
-  if (!dateStr) return '-';
-  const d = new Date(dateStr);
-  return d.toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  });
-}
-
 function formatDate(dateStr) {
-  if (!dateStr) return '-';
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+  return formatBomPetDate(dateStr);
 }
 
 function formatMoney(v) {
@@ -337,12 +331,12 @@ export default function BomPetConsulta() {
     fill(at?.usuario, 37, 131.5, 90);                                         // Atendente Resp.
 
     // Data e Hora: partes centralizadas entre os traços pré-impressos (__/__/__  __:__)
-    const dt = new Date(at?.data_hora || at?.created_at || Date.now());
-    const dd = String(dt.getDate()).padStart(2, '0');
-    const mo = String(dt.getMonth() + 1).padStart(2, '0');
-    const yyyy = String(dt.getFullYear());
-    const hh = String(dt.getHours()).padStart(2, '0');
-    const mi = String(dt.getMinutes()).padStart(2, '0');
+    const dateParts = getBomPetDateParts(at?.data_hora || at?.created_at || Date.now());
+    const dd = dateParts?.day || '';
+    const mo = dateParts?.month || '';
+    const yyyy = dateParts?.year || '';
+    const hh = dateParts?.hour || '';
+    const mi = dateParts?.minute || '';
     const seg = (text, cx, y) => {
       doc.setFontSize(10);
       doc.text(text, cx, y, { align: 'center' });

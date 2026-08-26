@@ -8,6 +8,10 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import {
+  isValidBomPetDateOnly,
+  serializeBomPetRow,
+} from '../utils/bomPetDate.js';
 
 const router = Router();
 
@@ -326,7 +330,7 @@ router.get('/utilizacoes/:documento', authMiddleware, bomPetAuth, async (req, re
       scoped ? [docNorm, currentUsuario(req)] : [docNorm]
     );
     const count = listResult.rows.filter((r) => r.status_atendimento !== 'Cancelado').length;
-    res.json({ count, atendimentos: listResult.rows });
+    res.json({ count, atendimentos: listResult.rows.map(serializeBomPetRow) });
   } catch (error) {
     console.error('Error in bom-pet utilizacoes:', error);
     res.status(500).json({ message: error.message });
@@ -459,7 +463,7 @@ router.post('/atendimentos', authMiddleware, bomPetAuth, async (req, res) => {
       );
     }
 
-    res.status(201).json(atendimento);
+    res.status(201).json(serializeBomPetRow(atendimento));
   } catch (error) {
     console.error('Error in bom-pet create atendimento:', error);
     res.status(500).json({ message: error.message });
@@ -514,7 +518,10 @@ router.get('/atendimentos/:id(\\d+)', authMiddleware, bomPetAuth, async (req, re
       'SELECT * FROM bom_pet_imagens WHERE atendimento_id = $1 ORDER BY created_at ASC',
       [id]
     );
-    res.json({ ...atendimento, imagens: imagensResult.rows });
+    res.json({
+      ...serializeBomPetRow(atendimento),
+      imagens: imagensResult.rows.map(serializeBomPetRow),
+    });
   } catch (error) {
     console.error('Error fetching bom-pet atendimento detail:', error);
     res.status(500).json({ message: error.message });
@@ -557,12 +564,18 @@ router.get('/atendimentos', authMiddleware, bomPetAuth, async (req, res) => {
       params.push(`%${pet}%`);
     }
     if (data_inicio) {
-      sql += ` AND data_hora >= $${paramIndex++}`;
+      if (!isValidBomPetDateOnly(data_inicio)) {
+        return res.status(400).json({ message: 'data_inicio inválida. Use o formato YYYY-MM-DD.' });
+      }
+      sql += ` AND data_hora >= ($${paramIndex++}::date AT TIME ZONE 'America/Sao_Paulo')`;
       params.push(data_inicio);
     }
     if (data_fim) {
-      sql += ` AND data_hora <= $${paramIndex++}`;
-      params.push(data_fim + ' 23:59:59');
+      if (!isValidBomPetDateOnly(data_fim)) {
+        return res.status(400).json({ message: 'data_fim inválida. Use o formato YYYY-MM-DD.' });
+      }
+      sql += ` AND data_hora < (($${paramIndex++}::date + INTERVAL '1 day') AT TIME ZONE 'America/Sao_Paulo')`;
+      params.push(data_fim);
     }
     if (atendente && isBomPetSupervisor(req)) {
       sql += ` AND usuario ILIKE $${paramIndex++}`;
@@ -572,7 +585,7 @@ router.get('/atendimentos', authMiddleware, bomPetAuth, async (req, res) => {
     sql += ` ORDER BY CASE WHEN status_atendimento = 'Pendente' THEN 0 ELSE 1 END, data_hora DESC LIMIT 500`;
 
     const result = await query(sql, params);
-    res.json(result.rows);
+    res.json(result.rows.map(serializeBomPetRow));
   } catch (error) {
     console.error('Error in bom-pet list atendimentos:', error);
     res.status(500).json({ message: error.message });
@@ -611,7 +624,7 @@ router.post('/atendimentos/:id/imagens', authMiddleware, bomPetAuth, (req, res, 
       );
       inserted.push(result.rows[0]);
     }
-    res.status(201).json(inserted);
+    res.status(201).json(inserted.map(serializeBomPetRow));
   } catch (error) {
     console.error('Error uploading bom-pet images:', error);
     res.status(500).json({ message: error.message });
@@ -695,7 +708,7 @@ router.put('/atendimentos/:id', authMiddleware, bomPetAuth, async (req, res) => 
       );
     }
 
-    res.json(result.rows[0]);
+    res.json(serializeBomPetRow(result.rows[0]));
   } catch (error) {
     console.error('Error updating bom-pet atendimento:', error);
     res.status(500).json({ message: error.message });
@@ -723,7 +736,7 @@ router.patch('/atendimentos/:id/termo', authMiddleware, bomPetAuth, async (req, 
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Atendimento não encontrado.' });
     }
-    res.json(result.rows[0]);
+    res.json(serializeBomPetRow(result.rows[0]));
   } catch (error) {
     console.error('Error saving bom-pet termo:', error);
     res.status(500).json({ message: error.message });
@@ -770,7 +783,7 @@ router.get('/atendimentos/:id/historico', authMiddleware, bomPetAuth, async (req
       `SELECT * FROM bom_pet_historico_alteracoes WHERE atendimento_id = $1 ORDER BY data_hora DESC`,
       [id]
     );
-    res.json(result.rows);
+    res.json(result.rows.map(serializeBomPetRow));
   } catch (error) {
     console.error('Error fetching bom-pet historico:', error);
     res.status(500).json({ message: error.message });
