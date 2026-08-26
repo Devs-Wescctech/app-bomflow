@@ -11,6 +11,10 @@ import {
   Calendar, ChevronDown, ChevronUp, FileSpreadsheet, FileText, ShieldAlert
 } from "lucide-react";
 import { extractApiError } from "@/utils/apiError";
+import {
+  formatBomPetDateForFile,
+  formatBomPetDateTime as formatDateTime,
+} from "@/utils/bomPetDate";
 
 const API_BASE = '/api';
 
@@ -25,18 +29,8 @@ function getAuthHeaders() {
   return token ? { 'Authorization': `Bearer ${token}` } : {};
 }
 
-function formatDateTime(dateStr) {
-  if (!dateStr) return '-';
-  const d = new Date(dateStr);
-  return d.toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  });
-}
-
 function formatDateForFile() {
-  const d = new Date();
-  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  return formatBomPetDateForFile();
 }
 
 function StatusBadge({ status }) {
@@ -200,7 +194,7 @@ export default function BomPetRelatorio() {
 
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
-      doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 25);
+      doc.text(`Gerado em: ${formatDateTime(new Date())}`, 14, 25);
       doc.text(`Total de registros: ${atendimentos.length}`, 14, 30);
 
       const headers = [['Data', 'Protocolo', 'Cliente', 'Documento', 'Pet', 'Local Remoção', 'Clínica', 'Parceiro', 'Status', 'Atendente']];

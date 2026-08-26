@@ -1811,10 +1811,10 @@ CREATE TABLE IF NOT EXISTS bom_pet_atendimentos (
   parceiro_nome TEXT,
   telefone_contato VARCHAR(20),
   observacoes TEXT,
-  data_hora TIMESTAMP DEFAULT NOW(),
+  data_hora TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
   usuario VARCHAR(255) NOT NULL,
   status_atendimento VARCHAR(50) NOT NULL DEFAULT 'Pendente',
-  data_hora_inicio_tratamento TIMESTAMP,
+  data_hora_inicio_tratamento TIMESTAMPTZ,
   usuario_responsavel_tratamento VARCHAR(255),
   observacoes_tratamento TEXT,
   pet_falecido_marcado BOOLEAN NOT NULL DEFAULT FALSE,
@@ -1822,7 +1822,7 @@ CREATE TABLE IF NOT EXISTS bom_pet_atendimentos (
   termo_rua TEXT,
   termo_valores_combinados TEXT,
   termo_descricao_produto TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS bom_pet_imagens (
@@ -1833,7 +1833,7 @@ CREATE TABLE IF NOT EXISTS bom_pet_imagens (
   mimetype VARCHAR(100) NOT NULL,
   size INTEGER NOT NULL,
   url VARCHAR(500) NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS bom_pet_historico_alteracoes (
@@ -1842,7 +1842,7 @@ CREATE TABLE IF NOT EXISTS bom_pet_historico_alteracoes (
   status_anterior VARCHAR(50),
   status_novo VARCHAR(50),
   usuario VARCHAR(255) NOT NULL,
-  data_hora TIMESTAMP DEFAULT NOW(),
+  data_hora TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
   observacao TEXT
 );
 
@@ -1854,8 +1854,51 @@ CREATE TABLE IF NOT EXISTS bom_pet_pets_falecidos (
   documento_cliente VARCHAR(20),
   atendimento_id INTEGER REFERENCES bom_pet_atendimentos(id) ON DELETE SET NULL,
   usuario VARCHAR(255) NOT NULL,
-  data_hora TIMESTAMP DEFAULT NOW()
+  data_hora TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Os campos Bom Pet foram criados originalmente como timestamp sem fuso.
+-- Os valores antigos representam o relógio UTC da sessão do banco; converta-os
+-- uma única vez para preservar o instante. Colunas já convertidas são ignoradas.
+DO $$
+DECLARE
+  temporal_column RECORD;
+BEGIN
+  FOR temporal_column IN
+    SELECT * FROM (VALUES
+      ('bom_pet_atendimentos', 'data_hora'),
+      ('bom_pet_atendimentos', 'data_hora_inicio_tratamento'),
+      ('bom_pet_atendimentos', 'created_at'),
+      ('bom_pet_imagens', 'created_at'),
+      ('bom_pet_historico_alteracoes', 'data_hora'),
+      ('bom_pet_pets_falecidos', 'data_hora')
+    ) AS columns(table_name, column_name)
+  LOOP
+    IF EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = temporal_column.table_name
+        AND column_name = temporal_column.column_name
+        AND data_type = 'timestamp without time zone'
+    ) THEN
+      EXECUTE format(
+        'ALTER TABLE %I ALTER COLUMN %I DROP DEFAULT',
+        temporal_column.table_name, temporal_column.column_name
+      );
+      EXECUTE format(
+        'ALTER TABLE %I ALTER COLUMN %I TYPE TIMESTAMPTZ USING %I AT TIME ZONE ''UTC''',
+        temporal_column.table_name, temporal_column.column_name, temporal_column.column_name
+      );
+      IF temporal_column.column_name IN ('data_hora', 'created_at') THEN
+        EXECUTE format(
+          'ALTER TABLE %I ALTER COLUMN %I SET DEFAULT CURRENT_TIMESTAMP',
+          temporal_column.table_name, temporal_column.column_name
+        );
+      END IF;
+    END IF;
+  END LOOP;
+END $$;
 
 -- =====================
 -- AUTOMAÇÕES PF: parada por resposta e cooldown de 30 dias
