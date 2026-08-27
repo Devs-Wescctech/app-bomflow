@@ -47,3 +47,27 @@ reconciliação em seguida apenas espelha o vínculo existente; indisponibilidad
 uma divergência do ERP não desfaz o salvamento local. A sincronização manual
 continua sendo o único fluxo que pode criar o vínculo de canal quando ele ainda
 não existe.
+
+## Checklist operacional
+
+O container que executa o backend precisa receber, pelo gerenciador de variáveis
+do Portainer, as cinco chaves `ERP_DB_HOST`, `ERP_DB_PORT`, `ERP_DB_NAME`,
+`ERP_DB_USER` e `ERP_DB_PASSWORD`. Seus valores não devem ser incluídos em
+código, commits, logs ou respostas HTTP.
+
+Após alterar qualquer configuração ou código do backend:
+
+1. reiniciar o workflow/container do Backend API Server;
+2. confirmar no log apenas o resultado do diagnóstico, nunca os valores das
+   variáveis;
+3. executar uma leitura segura equivalente a `SELECT 1` e verificar que a
+   relação `pessoas_contratos` existe;
+4. validar um agente controlado no modal administrativo, primeiro com um
+   vínculo existente e depois com um caso sem vínculo.
+
+O canal só está confirmado quando a leitura posterior retorna exatamente um
+`pessoas_contratos.id` para a Pessoa ERP e o canal selecionado. Repetir a
+sincronização deve reutilizar esse ID. Se a configuração, credencial ou rede
+falhar, o resultado esperado é Usuário ERP preservado, canal pendente,
+`retryable` apenas para falhas transitórias e diagnóstico detalhado restrito
+aos logs operacionais.

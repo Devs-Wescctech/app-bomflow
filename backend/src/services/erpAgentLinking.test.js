@@ -14,7 +14,10 @@ import {
   sameCpf,
   syncResolvedAgentCanal,
 } from './erpAgentLinking.js';
-import { selectAgentCanalInspection } from './erpDbService.js';
+import {
+  registerAgentInCanalWithDb,
+  selectAgentCanalInspection,
+} from './erpDbService.js';
 
 const resolution = (overrides = {}) => ({
   status: 'ok',
@@ -157,6 +160,61 @@ test('vínculos duplicados da mesma Pessoa e canal permanecem ambíguos e bloque
   );
 });
 
+test('registros concorrentes do mesmo canal reutilizam um único pessoas_contratos.id', async () => {
+  const rows = [];
+  const waiters = [];
+  let locked = false;
+  let insertCount = 0;
+
+  const releaseLock = () => {
+    locked = false;
+    waiters.shift()?.();
+  };
+  const acquireLock = async () => {
+    if (locked) await new Promise((resolve) => waiters.push(resolve));
+    locked = true;
+  };
+  const db = {
+    async connect() {
+      let ownsLock = false;
+      return {
+        async query(sql, params = []) {
+          if (/pg_advisory_xact_lock/.test(sql)) {
+            await acquireLock();
+            ownsLock = true;
+            return { rows: [{ pg_advisory_xact_lock: null }] };
+          }
+          if (/SELECT id, grupo_id FROM pessoas_contratos/.test(sql)) {
+            return { rows: rows.map((row) => ({ ...row })) };
+          }
+          if (/INSERT INTO pessoas_contratos/.test(sql)) {
+            insertCount += 1;
+            const row = { id: 54238947, grupo_id: params[2] };
+            rows.push(row);
+            return { rows: [{ id: row.id }], rowCount: 1 };
+          }
+          if (/COMMIT|ROLLBACK/.test(sql) && ownsLock) {
+            ownsLock = false;
+            releaseLock();
+          }
+          return { rows: [], rowCount: 0 };
+        },
+        release() {},
+      };
+    },
+  };
+
+  const [first, second] = await Promise.all([
+    registerAgentInCanalWithDb(db, 302000111, 77, 12),
+    registerAgentInCanalWithDb(db, 302000111, 77, 12),
+  ]);
+
+  assert.equal(first, 54238947);
+  assert.equal(second, 54238947);
+  assert.equal(insertCount, 1);
+  assert.equal(rows.length, 1);
+});
+
 test('estado do canal só fica confirmado depois de uma leitura inequívoca no ERP', () => {
   assert.deepEqual(
     classifyCanalSyncState({
@@ -260,6 +318,58 @@ test('falhas de configuração ou credencial do banco ERP não sugerem nova tent
     assert.equal(failure.status, code);
     assert.equal(failure.retryable, false);
   }
+});
+
+test('erro de banco embrulhado preserva credencial/configuração como falha permanente', () => {
+  for (const code of ['erp_db_config_missing', '28P01', '3D000']) {
+    const failure = classifyErpSyncError(
+      Object.assign(new Error('diagnóstico interno'), {
+        code,
+        statusCode: 503,
+        isErpUpstream: true,
+        isErpDbError: true,
+      }),
+      { stage: 'persistencia_vinculo_erp' }
+    );
+    assert.equal(failure.status, code);
+    assert.equal(failure.retryable, false);
+    assert.equal(failure.etapa, 'persistencia_vinculo_erp');
+  }
+});
+
+test('erro de banco não relacionado à rede não é promovido artificialmente a indisponibilidade', () => {
+  const failure = classifyErpSyncError(
+    Object.assign(new Error('violação de integridade'), {
+      code: '23505',
+      statusCode: 503,
+      isErpUpstream: true,
+      isErpDbError: true,
+    }),
+    { stage: 'persistencia_vinculo_erp' }
+  );
+
+  assert.deepEqual(failure, {
+    status: '23505',
+    retryable: false,
+    erro: 'Não foi possível gravar o vínculo de canal no banco do ERP: violação de integridade',
+    etapa: 'persistencia_vinculo_erp',
+  });
+});
+
+test('timeout de banco embrulhado permanece transitório e retomável', () => {
+  const failure = classifyErpSyncError(
+    Object.assign(new Error('connect ETIMEDOUT'), {
+      code: 'ETIMEDOUT',
+      statusCode: 503,
+      isErpUpstream: true,
+      isErpDbError: true,
+    }),
+    { stage: 'auditoria_canal_erp' }
+  );
+
+  assert.equal(failure.status, 'erp_indisponivel');
+  assert.equal(failure.retryable, true);
+  assert.equal(failure.etapa, 'auditoria_canal_erp');
 });
 
 test('usuário recém-resolvido grava usuarios.id e pessoas_contratos.id em campos separados', async () => {

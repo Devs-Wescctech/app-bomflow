@@ -71,6 +71,19 @@ test('tela não expõe erro de configuração do banco quando Usuário ERP está
   );
 });
 
+test('rotas de sincronização mantêm detalhes do PostgreSQL somente nos logs', async () => {
+  const source = await readFile(
+    path.join(workspaceRoot, 'backend/src/routes/erpProxy.js'),
+    'utf8'
+  );
+
+  assert.match(source, /function channelFailureMessage\(failure\)/);
+  assert.match(source, /Os dados locais foram preservados/);
+  assert.match(source, /diagnostico: failure\.erro/);
+  assert.match(source, /canalErro = channelFailureMessage\(failure\)/);
+  assert.doesNotMatch(source, /canalErro = failure\.erro/);
+});
+
 test('canal confirmado no ERP sem espelho local oferece ação explícita para aplicá-lo', async () => {
   const source = await readFile(
     path.join(workspaceRoot, 'src/pages/Agents.jsx'),
@@ -118,17 +131,23 @@ test('orçamento informa canal ausente antes de qualquer auditoria no banco ERP'
   );
 });
 
-test('orçamento sem código de canal não expõe configuração ausente do banco ERP', async () => {
+test('orçamento e pré-proposta não expõem diagnóstico do banco ao validar o canal', async () => {
   const source = await readFile(
     path.join(workspaceRoot, 'backend/src/routes/erpProxy.js'),
     'utf8'
   );
 
-  assert.match(source, /createMissingErpCanalError/);
+  assert.match(source, /function createSafeChannelInfrastructureError\(error, \{ agentId, stage \}\)/);
+  assert.match(source, /safeError\.code = 'canal_validacao_indisponivel'/);
+  assert.match(source, /diagnostico: failure\.erro/);
+  assert.match(source, /body\.retryable = error\.retryable === true/);
+  assert.match(source, /POST \/orcamento error:[\s\S]+?json\(httpErrorBody\(err\)\)/);
+  assert.match(source, /POST \/pre-proposta error:[\s\S]+?json\(httpErrorBody\(err\)\)/);
   assert.match(
     source,
-    /!Number\(agent\.erp_agente_venda_id\) && error\?\.code === 'erp_db_config_missing'/
+    /catch \(error\) \{[\s\S]+?isErpChannelInfrastructureError\(error\)[\s\S]+?createSafeChannelInfrastructureError/
   );
+  assert.doesNotMatch(source, /throw error;[\s\S]+?error\?\.message.*ERP_DB_HOST/);
 });
 
 test('salvamento local termina antes da reconciliação e a atualização de consultas é aguardada', async () => {
