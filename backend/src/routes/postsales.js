@@ -3,7 +3,12 @@ import { authMiddleware } from '../middleware/auth.js';
 import { query } from '../config/database.js';
 import { createNotification } from '../services/notificationService.js';
 import { addBusinessDays, brtDateStr } from '../services/businessDaysService.js';
-import { cancelOrcamentoDB } from '../services/erpDbService.js';
+import {
+  cancelOrcamentoDB,
+  getProdutosByPedidoIds,
+  getOrcamentoDetalhe,
+} from '../services/erpDbService.js';
+import { classifyPostsalesDetail } from '../utils/postsalesDetail.js';
 
 const router = express.Router();
 
@@ -693,6 +698,80 @@ router.get('/monitor', authMiddleware, async (req, res) => {
   } catch (e) {
     console.error('[postsales] GET /monitor error:', e.message);
     return res.status(500).json({ error: 'Falha ao carregar o monitor do Pós-Vendas.' });
+  }
+});
+
+// GET /:id/detalhe — dados vivos do ERP + documentos de uma verificação.
+// O id da verificação é obrigatório no caminho: não expõe uma consulta genérica
+// por pedido e mantém o escopo exatamente na fila do Pós-Vendas.
+router.get('/:id/detalhe', authMiddleware, async (req, res) => {
+  try {
+    const { eligible } = await resolvePostsalesAuditor(req);
+    if (!eligible) {
+      return res.status(403).json({ error: 'Acesso restrito à equipe de Pós-Vendas.' });
+    }
+
+    const verificacao = await getVerificacao(req.params.id);
+    if (!verificacao) return res.status(404).json({ error: 'Verificação não encontrada.' });
+
+    const pedidoId = Number(verificacao.erp_pedido_id);
+    if (!Number.isSafeInteger(pedidoId) || pedidoId <= 0) {
+      return res.status(422).json({ error: 'A verificação não possui um orçamento ERP válido.' });
+    }
+
+    // Documentos são locais e continuam disponíveis mesmo quando o ERP estiver
+    // temporariamente indisponível. Assim o auditor vê o motivo real da falha e
+    // pode tentar novamente sem perder o retrato local.
+    const docsRes = await query(
+      `SELECT id, tipo, original_name, mime_type, size_bytes, created_at
+         FROM orcamento_documentos
+        WHERE erp_pedido_id = $1
+        ORDER BY created_at`,
+      [pedidoId]
+    );
+    const documentos = docsRes.rows.map((d) => ({
+      id: d.id,
+      tipo: d.tipo,
+      original_name: d.original_name,
+      mime_type: d.mime_type,
+      size_bytes: d.size_bytes != null ? Number(d.size_bytes) : null,
+      created_at: d.created_at,
+    }));
+
+    let produto = null;
+    try {
+      const produtos = await getProdutosByPedidoIds([pedidoId]);
+      produto = produtos[pedidoId] || null;
+    } catch (e) {
+      // O detalhe contém os produtos e é a fonte principal; esta consulta é
+      // apenas compatibilidade com o resumo usado no modal do Pré-Vendas.
+      console.error('[postsales] lookup de produto falhou (não crítico):', e.message);
+    }
+
+    let detalhe = null;
+    let detailStatus = 'empty';
+    let detailError = null;
+    try {
+      detalhe = await getOrcamentoDetalhe(pedidoId);
+      detailStatus = classifyPostsalesDetail(detalhe);
+    } catch (e) {
+      detailStatus = classifyPostsalesDetail(null, e);
+      detailError = 'Não foi possível consultar os dados do orçamento no ERP. Tente novamente.';
+      console.error('[postsales] lookup de detalhe falhou:', e.message);
+    }
+
+    return res.json({
+      erp_pedido_id: pedidoId,
+      item: shapeItem(verificacao, req.user.id),
+      produto,
+      detalhe,
+      documentos,
+      detail_status: detailStatus,
+      detail_error: detailError,
+    });
+  } catch (e) {
+    console.error('[postsales] GET /detalhe error:', e.message);
+    return res.status(500).json({ error: 'Falha ao carregar os dados do orçamento no Pós-Vendas.' });
   }
 });
 

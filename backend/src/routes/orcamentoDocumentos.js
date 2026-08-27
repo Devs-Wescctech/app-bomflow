@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { authMiddleware } from '../middleware/auth.js';
 import { query, pool } from '../config/database.js';
 import { getProdutosByPedidoIds, getOrcamentoDetalhe } from '../services/erpDbService.js';
+import { isPostsalesAuditorIdentity } from '../utils/postsalesDetail.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -82,6 +83,37 @@ async function canManage(req, erpPedidoId) {
   const orc = await getOrcamento(erpPedidoId);
   if (!orc) return false;
   return !!orc.agent_id && orc.agent_id === req.user?.id;
+}
+
+// Leitura de documentos pelo Pós-Vendas: exige simultaneamente elegibilidade
+// do auditor e vínculo do pedido a uma verificação existente. Não libera o
+// endpoint genérico de documentos para qualquer usuário do módulo.
+async function canViewPostsalesDocs(req, erpPedidoId) {
+  const linked = await query(
+    `SELECT 1 FROM postsales_verificacoes
+      WHERE erp_pedido_id = $1
+      LIMIT 1`,
+    [Number(erpPedidoId)]
+  );
+  if (!linked.rows[0]) return false;
+
+  const role = (req.user?.role || '').toLowerCase();
+  if (isPostsalesAuditorIdentity({ role })) return true;
+  if (!req.user?.id) return false;
+
+  const r = await query(
+    `SELECT a.agent_type, t.modules
+       FROM agents a
+       LEFT JOIN agent_types t ON t.key = a.agent_type
+      WHERE a.id = $1`,
+    [req.user.id]
+  );
+  const row = r.rows[0] || {};
+  return isPostsalesAuditorIdentity({
+    role,
+    agentType: row.agent_type,
+    modules: row.modules,
+  });
 }
 
 // Elegibilidade ESPECÍFICA do Relatório Consolidado de Orçamentos (mais restrita que
@@ -330,7 +362,9 @@ router.get('/:id/download', authMiddleware, async (req, res) => {
     const r = await query('SELECT * FROM orcamento_documentos WHERE id = $1', [req.params.id]);
     const doc = r.rows[0];
     if (!doc) return res.status(404).json({ message: 'Documento não encontrado' });
-    if (!(await canManage(req, doc.erp_pedido_id))) return res.status(403).json({ message: 'Sem permissão' });
+    if (!(await canManage(req, doc.erp_pedido_id) || await canViewPostsalesDocs(req, doc.erp_pedido_id))) {
+      return res.status(403).json({ message: 'Sem permissão' });
+    }
 
     const fullPath = path.join(DOCS_DIR, doc.stored_name);
     if (!fs.existsSync(fullPath)) return res.status(404).json({ message: 'Arquivo não encontrado no servidor' });

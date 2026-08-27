@@ -3,10 +3,12 @@ import { useToast } from "@/components/ui/use-toast";
 import {
   ClipboardCheck, Loader2, CheckCircle2, Undo2, Snowflake, XCircle,
   Lock, Unlock, History, User as UserIcon, X, AlertTriangle, ShieldQuestion,
+  UserRound, Calendar, Phone, Mail, MapPin, Package, CreditCard, FileText,
+  Eye, ShoppingBag, Users,
 } from "lucide-react";
 import {
-  API_BASE, authHeaders, formatYmd, StatusBadge, PrazoBadge, TrilhaModal,
-  Hero, ClienteCell, STATUS_META,
+  API_BASE, authHeaders, formatYmd, formatCpf, StatusBadge, PrazoBadge, TrilhaModal,
+  Hero, ClienteCell,
 } from "@/components/postsales/shared";
 import { extractApiError } from "@/utils/apiError";
 
@@ -22,6 +24,224 @@ const TABS = [
   { key: "todos", label: "Todas" },
 ];
 
+const DOC_LABELS = {
+  documento_identidade: "Documento (CPF/RG)",
+  comprovante_residencia: "Comprovante de residência",
+  taxa_adesao: "Taxa de adesão",
+  copia_contrato: "Cópia do contrato",
+};
+
+function formatDateOnly(value) {
+  if (!value) return "Não informado";
+  const raw = String(value);
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? raw : date.toLocaleDateString("pt-BR");
+}
+
+function formatMoney(value) {
+  if (value == null || value === "") return "Não informado";
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? number.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+    : "Não informado";
+}
+
+function formatAddress(address) {
+  if (!address) return "Não informado";
+  const line1 = [address.logradouro, address.numero].filter(Boolean).join(", ");
+  const complement = address.complemento ? ` (${address.complemento})` : "";
+  const line2 = [address.bairro, address.cidade].filter(Boolean).join(" · ");
+  const cep = address.cep ? `CEP ${address.cep}` : "";
+  return [line1 + complement, line2, cep].filter(Boolean).join(" — ") || "Não informado";
+}
+
+function DetailField({ icon: Icon, label, value }) {
+  return (
+    <div className="flex items-start gap-2.5 rounded-xl border border-slate-100 bg-white p-2.5 dark:border-gray-800 dark:bg-gray-900">
+      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 dark:bg-gray-800 dark:text-slate-400">
+        <Icon className="h-3.5 w-3.5" />
+      </span>
+      <div className="min-w-0">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</div>
+        <div className="mt-0.5 break-words text-[12.5px] font-medium text-slate-700 dark:text-slate-200">
+          {value || "Não informado"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailSectionTitle({ children, count }) {
+  return (
+    <div className="mb-2 mt-4 flex items-center justify-between border-b border-slate-200 pb-1.5 dark:border-gray-800">
+      <h3 className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">{children}</h3>
+      {count != null && <span className="text-[11px] text-slate-400">{count} {count === 1 ? "item" : "itens"}</span>}
+    </div>
+  );
+}
+
+function PostSalesDetail({ item, state, onRetry, onViewDocument, viewingId }) {
+  const detalhe = state.detalhe;
+  const pessoas = Array.isArray(detalhe?.pessoas) ? detalhe.pessoas : [];
+  const titular = pessoas.find((p) => p.is_titular) || null;
+  const beneficiarios = pessoas.filter((p) => !p.is_titular);
+  const produtos = Array.isArray(detalhe?.produtos) ? detalhe.produtos : [];
+  const total = produtos.reduce((sum, p) => {
+    const value = Number(p.valor_total);
+    return Number.isFinite(value) ? sum + value : sum;
+  }, 0);
+
+  return (
+    <div className="rounded-2xl border border-violet-100 bg-violet-50/40 p-3.5 dark:border-violet-900/50 dark:bg-violet-950/10">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300">
+          <FileText className="h-3.5 w-3.5" /> Dados do orçamento
+        </div>
+        {state.status !== "loading" && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded-lg px-2 py-1 text-[11px] font-semibold text-violet-700 hover:bg-violet-100 dark:text-violet-300 dark:hover:bg-violet-950/50"
+          >
+            Tentar novamente
+          </button>
+        )}
+      </div>
+
+      {state.status === "loading" && (
+        <div className="flex items-center justify-center gap-2 py-8 text-[12.5px] text-slate-500 dark:text-slate-400">
+          <Loader2 className="h-4 w-4 animate-spin" /> Consultando dados atualizados no ERP…
+        </div>
+      )}
+
+      {state.status === "error" && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[12.5px] text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <div className="font-semibold">Não foi possível carregar os dados do ERP</div>
+            <div className="mt-0.5">{state.error || "A consulta falhou. Tente novamente."}</div>
+          </div>
+        </div>
+      )}
+
+      {state.status === "empty" && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[12.5px] text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <div className="font-semibold">O ERP não retornou dados deste orçamento</div>
+            <div className="mt-0.5">Confira o número do pedido e tente consultar novamente.</div>
+          </div>
+        </div>
+      )}
+
+      {state.status === "ok" && (
+        <>
+          <DetailSectionTitle>Titular / contratante</DetailSectionTitle>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <DetailField icon={UserRound} label="Nome" value={titular?.nome || item.cliente_nome} />
+            <DetailField
+              icon={CreditCard}
+              label="CPF"
+              value={(titular?.cpf || item.cliente_cpf) ? formatCpf(titular?.cpf || item.cliente_cpf) : null}
+            />
+            <DetailField icon={Calendar} label="Nascimento" value={formatDateOnly(titular?.data_nascimento)} />
+            <DetailField icon={Phone} label="Telefone" value={titular?.telefone} />
+            <DetailField icon={Mail} label="E-mail" value={titular?.email || detalhe?.email} />
+            <DetailField icon={MapPin} label="Endereço" value={formatAddress(titular?.endereco || detalhe?.endereco)} />
+          </div>
+
+          <DetailSectionTitle>Venda</DetailSectionTitle>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <DetailField icon={Package} label="Produto(s)" value={produtos.map((p) => p.descricao).filter(Boolean).join(" + ")} />
+            <DetailField icon={CreditCard} label="Plano de pagamento" value={detalhe?.plano_pagamento} />
+            <DetailField icon={CreditCard} label="Valor total dos itens" value={produtos.length ? formatMoney(total) : null} />
+            {state.produto && <DetailField icon={ShoppingBag} label="Resumo do ERP" value={state.produto} />}
+          </div>
+
+          {produtos.length > 0 && (
+            <>
+              <DetailSectionTitle count={produtos.length}>Produtos adquiridos</DetailSectionTitle>
+              <div className="space-y-2">
+                {produtos.map((produto, index) => (
+                  <div key={`${produto.descricao || "produto"}-${index}`} className="flex items-start gap-2.5 rounded-xl border border-slate-100 bg-white p-2.5 dark:border-gray-800 dark:bg-gray-900">
+                    <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400">
+                      <ShoppingBag className="h-3.5 w-3.5" />
+                    </span>
+                    <div className="min-w-0 text-[12px] text-slate-500 dark:text-slate-400">
+                      <div className="font-semibold text-slate-700 dark:text-slate-200">{produto.descricao || "Produto sem descrição"}</div>
+                      <div className="mt-0.5">
+                        {produto.quantidade != null ? `Quantidade: ${produto.quantidade}` : "Quantidade não informada"}
+                        {produto.preco != null ? ` · Unitário: ${formatMoney(produto.preco)}` : ""}
+                        {produto.valor_total != null ? ` · Total: ${formatMoney(produto.valor_total)}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          <DetailSectionTitle count={beneficiarios.length}>Beneficiários / inscritos</DetailSectionTitle>
+          {beneficiarios.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-white py-4 text-center text-[12px] text-slate-400 dark:border-gray-800 dark:bg-gray-900">
+              Nenhum beneficiário ou inscrito retornado pelo ERP.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {beneficiarios.map((pessoa, index) => (
+                <div key={`${pessoa.nome || "beneficiario"}-${index}`} className="flex items-start gap-2.5 rounded-xl border border-slate-100 bg-white p-2.5 dark:border-gray-800 dark:bg-gray-900">
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400">
+                    <Users className="h-3.5 w-3.5" />
+                  </span>
+                  <div className="min-w-0 text-[12px] text-slate-500 dark:text-slate-400">
+                    <div className="font-semibold text-slate-700 dark:text-slate-200">{pessoa.nome || "Nome não informado"}</div>
+                    <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                      {pessoa.cpf && <span>CPF: {formatCpf(pessoa.cpf)}</span>}
+                      {pessoa.parentesco && <span>Parentesco: {pessoa.parentesco}</span>}
+                      {pessoa.data_nascimento && <span>Nasc.: {formatDateOnly(pessoa.data_nascimento)}</span>}
+                    </div>
+                    {pessoa.produtos?.length > 0 && <div className="mt-0.5 truncate">{pessoa.produtos.join(" · ")}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      <DetailSectionTitle count={state.documentos.length}>Documentos disponíveis</DetailSectionTitle>
+      {state.documentos.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-200 bg-white py-4 text-center text-[12px] text-slate-400 dark:border-gray-800 dark:bg-gray-900">
+          Nenhum documento anexado a este orçamento.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {state.documentos.map((documento) => (
+            <div key={documento.id} className="flex items-center gap-2.5 rounded-xl border border-slate-100 bg-white p-2.5 dark:border-gray-800 dark:bg-gray-900">
+              <FileText className="h-4 w-4 shrink-0 text-violet-500" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[12.5px] font-semibold text-slate-700 dark:text-slate-200">{DOC_LABELS[documento.tipo] || documento.tipo}</div>
+                <div className="truncate text-[11px] text-slate-400" title={documento.original_name || ""}>{documento.original_name || "Arquivo sem nome"}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onViewDocument(documento)}
+                disabled={viewingId === documento.id}
+                className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-violet-600 px-2.5 py-1.5 text-[11.5px] font-semibold text-white hover:bg-violet-700 disabled:opacity-60"
+              >
+                {viewingId === documento.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
+                Visualizar
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Modal de ação sobre uma verificação: concluir, devolver (5 motivos + prazo 3 dias),
 // congelar (reavaliação reprovada) e decisão final de cancelamento no ERP.
 function AcaoModal({ item, motivos, onClose, onChanged }) {
@@ -31,12 +251,72 @@ function AcaoModal({ item, motivos, onClose, onChanged }) {
   const [obs, setObs] = useState("");
   const [cancelMotivo, setCancelMotivo] = useState("");
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [viewingId, setViewingId] = useState(null);
+  const [detailState, setDetailState] = useState({
+    status: "loading",
+    detalhe: null,
+    produto: null,
+    documentos: [],
+    error: null,
+  });
+
+  const loadDetail = useCallback(async () => {
+    setDetailState({
+      status: "loading",
+      detalhe: null,
+      produto: null,
+      documentos: [],
+      error: null,
+    });
+    try {
+      const res = await fetch(`${API_BASE}/postsales/${item.id}/detalhe`, { headers: authHeaders() });
+      if (!res.ok) {
+        throw new Error(await extractApiError(res, "Falha ao carregar os dados do orçamento."));
+      }
+      const data = await res.json().catch(() => ({}));
+      setDetailState({
+        status: data.detail_status || (data.detalhe ? "ok" : "empty"),
+        detalhe: data.detalhe || null,
+        produto: data.produto || null,
+        documentos: Array.isArray(data.documentos) ? data.documentos : [],
+        error: data.detail_error || null,
+      });
+    } catch (e) {
+      setDetailState({
+        status: "error",
+        detalhe: null,
+        produto: null,
+        documentos: [],
+        error: e.message,
+      });
+    }
+  }, [item.id]);
 
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  useEffect(() => { loadDetail(); }, [loadDetail]);
+
+  const handleViewDocument = async (documento) => {
+    setViewingId(documento.id);
+    try {
+      const res = await fetch(`${API_BASE}/orcamento-documentos/${documento.id}/download`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao abrir o documento."));
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, "_blank", "noopener");
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    } catch (e) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    } finally {
+      setViewingId(null);
+    }
+  };
 
   const call = async (path, body, okMsg) => {
     setBusy(path);
@@ -60,6 +340,12 @@ function AcaoModal({ item, motivos, onClose, onChanged }) {
   const mine = item.lock_mine;
   const emVerif = item.status === "em_verificacao";
   const decisaoFinal = item.status === "aguardando_cancelamento";
+  const titular = Array.isArray(detailState.detalhe?.pessoas)
+    ? detailState.detalhe.pessoas.find((p) => p.is_titular)
+    : null;
+  const displayName = titular?.nome
+    || item.cliente_nome
+    || (detailState.status === "loading" ? "Consultando cliente…" : "Nome não informado");
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
@@ -72,7 +358,7 @@ function AcaoModal({ item, motivos, onClose, onChanged }) {
             </span>
             <div>
               <h2 className="text-[16px] font-bold leading-tight">Pós-Vendas · Orçamento Nº {item.erp_numero || item.erp_pedido_id}</h2>
-              <p className="text-[12px] text-violet-100/90">{item.cliente_nome || "Cliente"} · {item.modulo_nome}</p>
+              <p className="text-[12px] text-violet-100/90">{displayName} · {item.modulo_nome}</p>
             </div>
           </div>
           <button onClick={onClose} aria-label="Fechar" className="flex h-8 w-8 items-center justify-center rounded-lg text-white/80 hover:bg-white/15 hover:text-white">
@@ -110,6 +396,14 @@ function AcaoModal({ item, motivos, onClose, onChanged }) {
               <b>Cancelamento:</b> {item.cancelamento_info}
             </div>
           )}
+
+          <PostSalesDetail
+            item={item}
+            state={detailState}
+            onRetry={loadDetail}
+            onViewDocument={handleViewDocument}
+            viewingId={viewingId}
+          />
 
           {/* Assumir / liberar trava */}
           {["fila", "resolvida"].includes(item.status) && (
