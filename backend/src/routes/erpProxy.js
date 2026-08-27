@@ -6,7 +6,6 @@ import {
   classifyCanalSyncState,
   classifyAgentErpLink,
   classifyErpSyncError,
-  createMissingErpCanalError,
   mirrorConfirmedAgentCanal,
   persistResolvedAgentErpLink,
   syncResolvedAgentCanal,
@@ -41,6 +40,60 @@ function erpUnavailableError(context, cause) {
   error.retryable = true;
   error.cause = cause;
   return error;
+}
+
+const ERP_CHANNEL_NON_RETRYABLE_CODES = new Set([
+  'erp_db_config_missing',
+  '28P01',
+  '28P02',
+  '28000',
+  '3D000',
+  '3D001',
+  '3D002',
+]);
+
+function channelFailureMessage(failure) {
+  if (
+    failure?.status === 'erp_indisponivel'
+    || failure?.retryable === true
+    || ERP_CHANNEL_NON_RETRYABLE_CODES.has(failure?.status)
+  ) {
+    return 'Não foi possível confirmar o canal ERP neste momento. Os dados locais foram preservados e a validação poderá ser retomada após o restabelecimento da integração.';
+  }
+  return failure?.erro || 'Não foi possível confirmar o vínculo de canal no ERP.';
+}
+
+function isErpChannelInfrastructureError(error) {
+  return (
+    error?.isErpDbError === true
+    || error?.code === 'erp_db_config_missing'
+  );
+}
+
+function createSafeChannelInfrastructureError(error, { agentId, stage }) {
+  const failure = classifyErpSyncError(error, { stage });
+  console.error('[ERP] falha de infraestrutura ao confirmar canal:', {
+    agentId,
+    status: failure.status,
+    retryable: failure.retryable,
+    etapa: failure.etapa,
+    diagnostico: failure.erro,
+  });
+  const safeError = new Error(channelFailureMessage(failure));
+  safeError.code = 'canal_validacao_indisponivel';
+  safeError.statusCode = 503;
+  safeError.retryable = failure.retryable;
+  safeError.cause = error;
+  return safeError;
+}
+
+function httpErrorBody(error) {
+  const body = { error: error.message };
+  if (error?.code === 'canal_validacao_indisponivel') {
+    body.code = error.code;
+    body.retryable = error.retryable === true;
+  }
+  return body;
 }
 
 // A identidade ERP do orçamento é sempre obtida do agente autenticado e validada
@@ -112,12 +165,11 @@ async function resolveAuthenticatedOrcamentoPayload(req, token, rawPayload) {
           inspectCanal: inspectAgentInCanal,
         });
       } catch (error) {
-        // Sem código local do canal, a leitura é apenas uma tentativa de
-        // recuperação automática. Se o banco nem está configurado, não exponha
-        // infraestrutura: o vendedor precisa da mesma orientação de vínculo
-        // ausente que receberia quando a leitura retornasse zero registros.
-        if (!Number(agent.erp_agente_venda_id) && error?.code === 'erp_db_config_missing') {
-          throw createMissingErpCanalError();
+        if (isErpChannelInfrastructureError(error)) {
+          throw createSafeChannelInfrastructureError(error, {
+            agentId: agent.id,
+            stage: 'auditoria_canal_erp',
+          });
         }
         throw error;
       }
@@ -131,12 +183,23 @@ async function resolveAuthenticatedOrcamentoPayload(req, token, rawPayload) {
     }
 
     const authenticatedPayload = buildAuthenticatedOrcamentoPayload(rawPayload, agent, resolution);
-    const canalValido = await validateAgentInCanal(
-      resolution.pessoaInternalId,
-      agent.canal_venda_id,
-      agent.canal_venda_grupo_id,
-      agent.erp_agente_venda_id
-    );
+    let canalValido;
+    try {
+      canalValido = await validateAgentInCanal(
+        resolution.pessoaInternalId,
+        agent.canal_venda_id,
+        agent.canal_venda_grupo_id,
+        agent.erp_agente_venda_id
+      );
+    } catch (error) {
+      if (isErpChannelInfrastructureError(error)) {
+        throw createSafeChannelInfrastructureError(error, {
+          agentId: agent.id,
+          stage: 'auditoria_canal_erp',
+        });
+      }
+      throw error;
+    }
     if (!canalValido) {
       const error = new Error(
         'O vínculo do seu canal de vendas não corresponde à Pessoa/canal/grupo configurados no ERP. Solicite uma nova sincronização em Configurações > Agentes.'
@@ -828,13 +891,20 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
             });
           } catch (canalValidationError) {
             const failure = classifyErpSyncError(canalValidationError, { stage: 'auditoria_canal_erp' });
+            console.error('[ERP /sync-agentes/preview] falha na auditoria do canal:', {
+              agentId: a.id,
+              status: failure.status,
+              retryable: failure.retryable,
+              etapa: failure.etapa,
+              diagnostico: failure.erro,
+            });
             canal = {
               status: failure.status,
               repairable: failure.retryable === true,
               confirmed: false,
               effectiveErpAgenteVendaId: null,
             };
-            canalErro = failure.erro;
+            canalErro = channelFailureMessage(failure);
           }
         }
         repairable = repairable || canal.repairable;
@@ -980,8 +1050,15 @@ router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (
             actions.push(...canal.actions);
           } catch (canalSyncError) {
             const failure = classifyErpSyncError(canalSyncError, { stage: 'persistencia_vinculo_erp' });
+            console.error('[ERP /sync-agentes/commit] falha na persistência do canal:', {
+              agentId,
+              status: failure.status,
+              retryable: failure.retryable,
+              etapa: failure.etapa,
+              diagnostico: failure.erro,
+            });
             canalStatus = failure.status;
-            canalErro = failure.erro;
+            canalErro = channelFailureMessage(failure);
             // A identidade já foi confirmada e persistida acima. Propagamos
             // apenas a retomabilidade da etapa secundária do canal.
             canalRetryable = failure.retryable;
@@ -1377,7 +1454,7 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
     return res.json({ ...data, numeroPedido, erpId: pedidoInternalId, dbInserted: dbResult, fechamento: fechamentoResult });
   } catch (err) {
     console.error('[ERP Proxy] POST /orcamento error:', err.message);
-    return res.status(err.isErpUpstream ? 502 : (err.statusCode || 500)).json({ error: err.message });
+    return res.status(err.statusCode || 500).json(httpErrorBody(err));
   }
 });
 
@@ -1428,7 +1505,7 @@ router.post('/pre-proposta', authMiddleware, async (req, res) => {
     return res.json(data);
   } catch (err) {
     console.error('[ERP Proxy] POST /pre-proposta error:', err.message);
-    return res.status(err.statusCode || 500).json({ error: err.message });
+    return res.status(err.statusCode || 500).json(httpErrorBody(err));
   }
 });
 

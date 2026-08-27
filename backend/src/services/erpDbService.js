@@ -100,7 +100,7 @@ function getPool() {
 }
 
 function wrapErpDbError(context, error) {
-  if (error?.code === 'canal_ambiguo') return error;
+  if (error?.code === 'canal_ambiguo' || error?.isErpDbError === true) return error;
 
   const nestedMessages = Array.isArray(error?.errors)
     ? error.errors.map((item) => item?.message || item?.code).filter(Boolean).join('; ')
@@ -112,6 +112,7 @@ function wrapErpDbError(context, error) {
   wrapped.code = error?.code || 'erp_db_indisponivel';
   wrapped.statusCode = error?.statusCode || 503;
   wrapped.isErpUpstream = true;
+  wrapped.isErpDbError = true;
   wrapped.cause = error;
   return wrapped;
 }
@@ -520,57 +521,81 @@ export function selectAgentCanalInspection(rows, grupoId) {
   };
 }
 
+export async function registerAgentInCanalWithDb(db, pessoaId, contratoId, grupoId) {
+  let client;
+  try {
+    client = await db.connect();
+    await queryErpDb(client, 'BEGIN', [], 'Falha ao iniciar vínculo de canal no banco ERP');
+
+    // Serializa o mesmo par Pessoa × contrato em todos os processos conectados
+    // ao ERP. O lock é liberado automaticamente no COMMIT/ROLLBACK.
+    await queryErpDb(
+      client,
+      'SELECT pg_advisory_xact_lock(hashtext($1::text), hashtext($2::text))',
+      [pessoaId, contratoId],
+      'Falha ao bloquear vínculo de canal no banco ERP'
+    );
+
+    const existing = await queryErpDb(
+      client,
+      `SELECT id, grupo_id FROM pessoas_contratos
+       WHERE pessoa_id = $1
+         AND contrato_id = $2
+       ORDER BY id`,
+      [pessoaId, contratoId],
+      'Falha ao consultar vínculos de canal no banco ERP'
+    );
+    const inspection = selectAgentCanalInspection(existing.rows, grupoId);
+
+    if (inspection.ambiguous) {
+      const error = new Error(
+        `Há ${inspection.ids.length} vínculos para esta Pessoa e canal no ERP. Revise os registros antes de escolher um agente_venda_id.`
+      );
+      error.code = 'canal_ambiguo';
+      error.statusCode = 422;
+      throw error;
+    }
+    if (inspection.effectiveId) {
+      await queryErpDb(client, 'COMMIT', [], 'Falha ao concluir consulta do vínculo de canal no banco ERP');
+      console.log(
+        `[erpDbService] Agente ${pessoaId} já vinculado ao canal ${contratoId} — id: ${inspection.effectiveId} (${inspection.matchKind})`
+      );
+      return inspection.effectiveId;
+    }
+
+    const result = await queryErpDb(
+      client,
+      `INSERT INTO pessoas_contratos (
+         id, contrato_id, pessoa_id, titular, data_inicio, data_termino,
+         valor, observacoes, fator, margem_consignavel, pessoa_relacionada_id,
+         relacionamento_id, tipo_vinculo_id, percentual_coparticipacao,
+         cartao_id, numero_sorte_capitalizacao, numero_titulo_capitalizacao,
+         beneficiarios, nome_embossing, grupo_id, ativo
+       ) VALUES (
+         nextval('pk_sequence'), $1, $2, 'N', NOW(), null,
+         0.0, null, null, null, null,
+         null, 2094514, null,
+         null, null, null,
+         null, null, $3, 'S'
+       ) RETURNING id`,
+      [contratoId, pessoaId, grupoId || null],
+      'Falha ao gravar vínculo de canal no banco ERP'
+    );
+
+    await queryErpDb(client, 'COMMIT', [], 'Falha ao concluir vínculo de canal no banco ERP');
+    const newId = Number(result.rows[0].id);
+    console.log(`[erpDbService] Agente ${pessoaId} registrado no canal ${contratoId} — agente_venda_id: ${newId}`);
+    return newId;
+  } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    throw wrapErpDbError('Falha ao registrar vínculo de canal no banco ERP', error);
+  } finally {
+    client?.release();
+  }
+}
+
 export async function registerAgentInCanal(pessoaId, contratoId, grupoId) {
-  const db = getPool();
-
-  const existing = await queryErpDb(
-    db,
-    `SELECT id, grupo_id FROM pessoas_contratos
-     WHERE pessoa_id = $1
-       AND contrato_id = $2
-     ORDER BY id`,
-    [pessoaId, contratoId],
-    'Falha ao consultar vínculos de canal no banco ERP'
-  );
-  const inspection = selectAgentCanalInspection(existing.rows, grupoId);
-
-  if (inspection.ambiguous) {
-    const error = new Error(
-      `Há ${inspection.ids.length} vínculos para esta Pessoa e canal no ERP. Revise os registros antes de escolher um agente_venda_id.`
-    );
-    error.code = 'canal_ambiguo';
-    error.statusCode = 422;
-    throw error;
-  }
-  if (inspection.effectiveId) {
-    console.log(
-      `[erpDbService] Agente ${pessoaId} já vinculado ao canal ${contratoId} — id: ${inspection.effectiveId} (${inspection.matchKind})`
-    );
-    return inspection.effectiveId;
-  }
-
-  const result = await queryErpDb(
-    db,
-    `INSERT INTO pessoas_contratos (
-       id, contrato_id, pessoa_id, titular, data_inicio, data_termino,
-       valor, observacoes, fator, margem_consignavel, pessoa_relacionada_id,
-       relacionamento_id, tipo_vinculo_id, percentual_coparticipacao,
-       cartao_id, numero_sorte_capitalizacao, numero_titulo_capitalizacao,
-       beneficiarios, nome_embossing, grupo_id, ativo
-     ) VALUES (
-       nextval('pk_sequence'), $1, $2, 'N', NOW(), null,
-       0.0, null, null, null, null,
-       null, 2094514, null,
-       null, null, null,
-       null, null, $3, 'S'
-     ) RETURNING id`,
-    [contratoId, pessoaId, grupoId || null],
-    'Falha ao gravar vínculo de canal no banco ERP'
-  );
-
-  const newId = Number(result.rows[0].id);
-  console.log(`[erpDbService] Agente ${pessoaId} registrado no canal ${contratoId} — agente_venda_id: ${newId}`);
-  return newId;
+  return registerAgentInCanalWithDb(getPool(), pessoaId, contratoId, grupoId);
 }
 
 /**

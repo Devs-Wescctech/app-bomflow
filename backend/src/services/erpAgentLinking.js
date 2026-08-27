@@ -59,6 +59,19 @@ const ERP_UNAVAILABLE_CODES = new Set([
   '08P01',
 ]);
 
+// Configuração e autenticação exigem correção operacional; repetir a mesma
+// chamada não resolve. O código fica disponível nos logs, nunca como detalhe
+// de infraestrutura apresentado ao usuário.
+const ERP_NON_RETRYABLE_CODES = new Set([
+  'erp_db_config_missing',
+  '28P01',
+  '28P02',
+  '28000',
+  '3D000',
+  '3D001',
+  '3D002',
+]);
+
 const ERP_SYNC_STAGE_LABELS = {
   consulta_identidade_erp: 'consultar a Pessoa e o Usuário no ERP',
   validar_usuario_erp_salvo: 'validar o Usuário ERP já salvo',
@@ -91,16 +104,18 @@ export function classifyErpSyncError(error, { stage = null } = {}) {
     : (stageLabel
       ? `Não foi possível ${stageLabel}; o ERP não retornou detalhes para o diagnóstico.`
       : 'Falha desconhecida ao consultar o ERP.');
+  const nonRetryable = ERP_NON_RETRYABLE_CODES.has(code);
+  const isErpDbError = error?.isErpDbError === true;
   const unavailable = (
-    error?.isErpUpstream === true ||
+    (!isErpDbError && error?.isErpUpstream === true) ||
     code === 'erp_indisponivel' ||
     ERP_UNAVAILABLE_CODES.has(code) ||
     statusCode === 429 ||
-    statusCode >= 500 ||
+    (!isErpDbError && statusCode >= 500) ||
     /fetch failed|connection terminated|connection timeout|connect timeout|timeout (?:expired|exceeded)|query read timeout|socket hang up/i.test(message)
   );
 
-  if (unavailable) {
+  if (unavailable && !nonRetryable) {
     const result = {
       status: 'erp_indisponivel',
       retryable: true,
