@@ -362,6 +362,11 @@ export async function getOrcamentoDetalhe(pedidoId) {
       break;
     }
   }
+  // Orçamentos legados podem não ter pessoa_id em nenhuma linha. Nesses casos,
+  // o primeiro inscrito ainda é o melhor retrato disponível do contratante.
+  if (titularRowId == null && pessoasRes.rows[0]) {
+    titularRowId = Number(pessoasRes.rows[0].pessoa_row_id);
+  }
 
   // Cabeçalho do pedido: e-mail de contato, endereço do contratante e plano de pagamento.
   // A API REST do ERP ignora esses campos; eles são gravados via DB no fechamento, então

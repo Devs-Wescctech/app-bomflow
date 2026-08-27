@@ -14,6 +14,7 @@ import { acquireAgentMutationLock } from '../services/agentMutationLock.js';
 import { query } from '../config/database.js';
 import { fetchErpAllPages } from '../utils/erpPagination.js';
 import { assessCatalogSelection } from '../utils/erpCatalogValidation.js';
+import { selectTrackedClientName } from '../utils/postsalesDetail.js';
 
 const router = express.Router();
 
@@ -1456,7 +1457,7 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       erpPedidoId: pedidoInternalId,
       erpNumero: numeroPedido,
       modulo: moduloOrcamento,
-      clienteNome: headerPayload.nome_contratante || headerPayload.contratante_nome || null,
+      clienteNome: selectTrackedClientName(headerPayload),
       clienteCpf: headerPayload.cpf || headerPayload.contratante_cpf || null,
       valor: data?.valor_total ?? null,
       leadId: req.body?.lead_id || null,
@@ -1506,7 +1507,7 @@ router.post('/pre-proposta', authMiddleware, async (req, res) => {
         erpPedidoId: data?.id ?? null,
         erpNumero: data?.pedido ?? data?.numero ?? null,
         modulo: moduloOrcamento,
-        clienteNome: payload.nome_contratante || payload.contratante_nome || null,
+        clienteNome: selectTrackedClientName(payload),
         clienteCpf: payload.cpf || payload.contratante_cpf || null,
         valor: data?.valor_total ?? null,
         leadId: req.body?.lead_id || null,
