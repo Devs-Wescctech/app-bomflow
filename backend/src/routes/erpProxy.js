@@ -14,6 +14,7 @@ import {
 import { acquireAgentMutationLock } from '../services/agentMutationLock.js';
 import { query } from '../config/database.js';
 import { fetchErpAllPages } from '../utils/erpPagination.js';
+import { assessCatalogSelection } from '../utils/erpCatalogValidation.js';
 
 const router = express.Router();
 
@@ -1170,11 +1171,12 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       usua_papeis,
       modulo: moduloOrcamento,
       lead_id: _leadId,
+      contrato_id: contratoId,
       ...headerPayloadFromClient
     } = payload;
 
     // Normaliza os itens: cada item = um produto com seus beneficiários (até 15 por item).
-    const itens = Array.isArray(itensRaw)
+    let itens = Array.isArray(itensRaw)
       ? itensRaw.map((it) => ({
           produtoId: Number(it.produtoId),
           preco: Number(it.preco) || 0,
@@ -1206,6 +1208,29 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
     if (!planoPagamentoIdNum || Number.isNaN(planoPagamentoIdNum)) {
       return res.status(400).json({ error: 'Plano de pagamento obrigatório: selecione um plano antes de enviar o orçamento.' });
     }
+
+    // A API do ERP é a fonte do catálogo elegível. Faz uma leitura fresca antes
+    // do cabeçalho e exige igualdade exata de contrato + título + produto,
+    // evitando que "BOM PASTOR" aceite itens de "BOM PASTOR - DIGITAL".
+    const catalogRows = await fetchErpAllPages(
+      `${ERP_BASE}/API_MV_API_PRODUTOS`,
+      `Bearer ${token}`,
+      { label: 'ERP validação de catálogo' }
+    );
+    const catalogValidation = assessCatalogSelection({
+      contractId: contratoId,
+      title: headerPayloadFromClient.titulo_contrato,
+      items: itens,
+      rows: catalogRows,
+    });
+    if (!catalogValidation.ok) {
+      return res.status(409).json({
+        error: catalogValidation.error,
+        code: catalogValidation.code,
+        details: catalogValidation.details,
+      });
+    }
+    itens = catalogValidation.items;
 
     // Só depois das validações locais resolve a identidade ERP do agente autenticado.
     // Sobrescreve os campos de autoria enviados pelo navegador e bloqueia antes do POST
@@ -1352,7 +1377,7 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
     return res.json({ ...data, numeroPedido, erpId: pedidoInternalId, dbInserted: dbResult, fechamento: fechamentoResult });
   } catch (err) {
     console.error('[ERP Proxy] POST /orcamento error:', err.message);
-    return res.status(err.statusCode || 500).json({ error: err.message });
+    return res.status(err.isErpUpstream ? 502 : (err.statusCode || 500)).json({ error: err.message });
   }
 });
 
