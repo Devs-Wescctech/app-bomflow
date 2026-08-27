@@ -410,13 +410,25 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     [planosPagamento, form.plano_pagamento_id]
   );
 
-  const produtosFiltrados = useMemo(() => {
-    if (!form.titulo_contrato) return [];
-    return erpProdutos.filter((p) => {
-      const titulo = (p.titulo_contrato || p.descricao || "").toLowerCase();
-      return titulo.includes(form.titulo_contrato.toLowerCase());
-    });
+  const contratoIdSelecionado = useMemo(() => {
+    if (!form.titulo_contrato) return "";
+    const ids = [...new Set(
+      erpProdutos
+        .filter((p) => String(p.titulo_contrato || "").trim() === form.titulo_contrato.trim())
+        .map((p) => Number(p.contrato_id))
+        .filter((id) => Number.isSafeInteger(id) && id > 0)
+    )];
+    return ids.length === 1 ? ids[0] : "";
   }, [erpProdutos, form.titulo_contrato]);
+
+  const produtosFiltrados = useMemo(() => {
+    if (!form.titulo_contrato || !contratoIdSelecionado) return [];
+    return erpProdutos.filter(
+      (p) =>
+        String(p.titulo_contrato || "").trim() === form.titulo_contrato.trim() &&
+        Number(p.contrato_id) === Number(contratoIdSelecionado)
+    );
+  }, [erpProdutos, form.titulo_contrato, contratoIdSelecionado]);
 
   // BOM AUTO: produto de veículo presente no título selecionado.
   const produtoVeiculo = useMemo(
@@ -962,6 +974,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       un_bairro: form.un_bairro || undefined,
       un_cidade: form.un_cidade || undefined,
       titulo_contrato: form.titulo_contrato || undefined,
+      contrato_id: contratoIdSelecionado || undefined,
       itens: itens.length ? itens : undefined,
       plano_pagamento: planoSelecionado?.plano_pagamento || form.plano_pagamento || undefined,
       numero_parcelas: planoSelecionado?.numero_parcelas != null ? Number(planoSelecionado.numero_parcelas) : undefined,
@@ -974,7 +987,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       lead_id: leadId || undefined,
     };
     return Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
-  }, [form, itensSel, produtosFiltrados, erpProdutos, planoSelecionado, beneficiarios, modulo]);
+  }, [form, itensSel, produtosFiltrados, erpProdutos, planoSelecionado, beneficiarios, modulo, contratoIdSelecionado]);
 
   const submitMutation = useMutation({
     mutationFn: async () => {
