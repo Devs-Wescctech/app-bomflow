@@ -744,7 +744,7 @@ router.get('/pessoa', authMiddleware, requireManageAgents, async (req, res) => {
     });
   } catch (err) {
     console.error('[ERP Proxy] GET /pessoa error:', err.message);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Falha ao consultar a Pessoa no ERP.' });
   }
 });
 
@@ -784,14 +784,16 @@ function normalizeNameForMatch(s) {
 const SYNC_AGENT_COLS = 'id, name, cpf, erp_agent_id, erp_agente_venda_id, canal_venda, canal_venda_id, canal_venda_grupo_id, active';
 
 // POST /api/erp/sync-agentes/preview
-// Pré-visualização (NÃO grava nada). Revalida todos os agentes ativos para também
-// identificar ids legados de Pessoa, usuários inexistentes e usuários de outro CPF.
+// Pré-visualização (NÃO grava nada). Por padrão audita apenas agentes ativos que
+// ainda não têm os dois vínculos locais; scope=all permite auditoria completa para
+// identificar IDs legados de Pessoa, usuários inexistentes e usuários de outro CPF.
 router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async (req, res) => {
   const token = getToken(res);
   if (!token) return;
 
   try {
-    const { agentIds } = req.body || {};
+    const { agentIds, scope = 'pending' } = req.body || {};
+    const previewScope = scope === 'all' ? 'all' : 'pending';
 
     let rows;
     if (Array.isArray(agentIds) && agentIds.length) {
@@ -801,7 +803,16 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
       )).rows;
     } else {
       rows = (await query(
-        `SELECT ${SYNC_AGENT_COLS} FROM agents WHERE active = true ORDER BY name`
+        `SELECT ${SYNC_AGENT_COLS}
+         FROM agents
+         WHERE active = true
+           AND (
+             $1 = 'all'
+             OR erp_agent_id IS NULL
+             OR erp_agente_venda_id IS NULL
+           )
+         ORDER BY name`,
+        [previewScope]
       )).rows;
     }
 
@@ -930,7 +941,7 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
       });
     }
 
-    return res.json({ items });
+    return res.json({ items, scope: previewScope });
   } catch (err) {
     const failure = classifyErpSyncError(err, { stage: 'sincronizacao_erp' });
     console.error('[ERP Proxy] POST /sync-agentes/preview error:', failure);

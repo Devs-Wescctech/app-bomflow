@@ -239,6 +239,8 @@ const ERP_SYNC_STATUS_CAUSE = {
   erro: "Não foi possível validar o vínculo no ERP; nenhum ID foi alterado.",
 };
 
+const ERP_SEARCH_FAILURE_MESSAGE = "Falha na pesquisa no ERP. Tente novamente em instantes.";
+
 function getErpSyncAuditMessage(audit) {
   const usuarioStatus = audit?.usuarioStatus || audit?.status;
   if (audit?.canalStatus === 'erp_indisponivel') {
@@ -247,11 +249,14 @@ function getErpSyncAuditMessage(audit) {
     }
     return 'Não foi possível validar o canal ERP neste momento. Os dados locais foram preservados.';
   }
-  return audit?.canalErro
-    || audit?.erro
-    || ERP_SYNC_STATUS_CAUSE[audit?.canalStatus]
+  return ERP_SYNC_STATUS_CAUSE[audit?.canalStatus]
     || ERP_SYNC_STATUS_CAUSE[usuarioStatus]
-    || "Aguardando validação do vínculo.";
+    || ERP_SEARCH_FAILURE_MESSAGE;
+}
+
+function getErpPessoaSearchMessage(error) {
+  if ([204, 404].includes(Number(error?.status))) return "Pessoa não encontrada no ERP.";
+  return ERP_SEARCH_FAILURE_MESSAGE;
 }
 
 function getErpSyncAuditStatusLabel(status, kind) {
@@ -822,7 +827,7 @@ export default function Agents() {
           setErpSyncAudit({
             status: 'erp_indisponivel',
             retryable: true,
-            erro: 'A fonte de vínculos do ERP está indisponível no momento.',
+            erro: ERP_SYNC_STATUS_CAUSE.erp_indisponivel,
           });
         }
       })
@@ -856,6 +861,12 @@ export default function Agents() {
         }
       } catch (error) {
         console.warn('[Agents] Não foi possível carregar o login ERP do agente:', error.message);
+        if (
+          activeEditAgentIdRef.current === agent.id
+          && editRequestGenerationRef.current === editGeneration
+        ) {
+          setErpPessoaResult({ searchFailed: true });
+        }
       } finally {
         if (
           activeEditAgentIdRef.current === agent.id
@@ -952,7 +963,7 @@ export default function Agents() {
         setErpSyncAudit({
           status: 'erp_indisponivel',
           retryable: true,
-          erro: error.message || 'A fonte de vínculos do ERP está indisponível no momento.',
+            erro: ERP_SYNC_STATUS_CAUSE.erp_indisponivel,
         });
       }
       return null;
@@ -1001,10 +1012,7 @@ export default function Agents() {
           local: 'saved',
           erp: 'error',
           retryable: result.retryable === true,
-          message: result.erro
-            || result.canalErro
-            || ERP_SYNC_STATUS_CAUSE[result.status]
-            || 'O vínculo ERP não pôde ser concluído.',
+          message: getErpSyncAuditMessage(result),
         });
         toast.warning('Agente salvo no Bom Flow, mas o vínculo ERP não foi concluído.');
         return false;
@@ -1017,7 +1025,7 @@ export default function Agents() {
           erp: 'error',
           retryable: false,
           message: `Usuário ERP sincronizado. O canal ERP exige revisão: ${
-            result.canalErro || ERP_SYNC_STATUS_CAUSE[result.canalStatus] || 'o ERP não confirmou o vínculo.'
+            ERP_SYNC_STATUS_CAUSE[result.canalStatus] || 'o ERP não confirmou o vínculo.'
           }`,
         });
         toast.warning('Usuário ERP sincronizado, mas o canal ERP exige revisão antes de continuar.');
@@ -1047,19 +1055,20 @@ export default function Agents() {
       }
       return true;
     } catch (error) {
+      console.warn('[Agents] Falha ao reconciliar vínculo ERP:', error.message);
       await refreshEditedAgentState(agentId);
       if (activeEditAgentIdRef.current === agentId) {
         setEditSaveState({
           local: 'saved',
           erp: 'error',
           retryable: true,
-          message: error.message || 'A fonte de vínculos do ERP está indisponível no momento.',
+          message: ERP_SYNC_STATUS_CAUSE.erp_indisponivel,
         });
         setErpSyncAudit((current) => ({
           ...(current || {}),
           status: 'erp_indisponivel',
           retryable: true,
-          erro: error.message || 'A fonte de vínculos do ERP está indisponível no momento.',
+            erro: ERP_SYNC_STATUS_CAUSE.erp_indisponivel,
         }));
         toast.warning('Agente salvo no Bom Flow, mas a fonte de vínculos do ERP está indisponível.');
       }
@@ -1188,10 +1197,17 @@ export default function Agents() {
         }
       } else {
         setErpPessoaResult({ notFound: true });
-        toast.info("CPF não cadastrado no ERP. Salvar altera somente o Bom Flow; o cadastro no ERP exige uma ação manual.");
+        toast.info("Pessoa não encontrada no ERP. Salvar altera somente o Bom Flow; o cadastro no ERP exige uma ação manual.");
       }
     } catch (error) {
-      toast.error("Erro ao consultar ERP: " + error.message);
+      console.warn('[Agents] Falha ao pesquisar Pessoa no ERP:', error.message);
+      const message = getErpPessoaSearchMessage(error);
+      setErpPessoaResult(
+        [204, 404].includes(Number(error?.status))
+          ? { notFound: true }
+          : { searchFailed: true }
+      );
+      toast.error(message);
     }
     setLoadingErpPessoa(false);
   };
@@ -2338,7 +2354,15 @@ export default function Agents() {
                       <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg flex items-center gap-2">
                         <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
                         <p className="text-sm text-amber-800 dark:text-amber-300">
-                          CPF não encontrado no ERP. Salvar altera somente o Bom Flow; o cadastro no ERP deve ser tratado manualmente.
+                          Pessoa não encontrada no ERP. Salvar altera somente o Bom Flow; o cadastro no ERP deve ser tratado manualmente.
+                        </p>
+                      </div>
+                    )}
+                    {erpPessoaResult?.searchFailed && (
+                      <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <p className="text-sm text-amber-800 dark:text-amber-300">
+                          Falha na pesquisa. Não foi possível consultar o ERP neste momento. Tente novamente.
                         </p>
                       </div>
                     )}

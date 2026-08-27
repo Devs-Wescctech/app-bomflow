@@ -143,12 +143,14 @@ export async function buscarHistoricoIndicacoes(cpf) {
 }
 
 // Pré-visualiza a sincronização ERP dos agentes (não grava nada).
-// agentIds opcional; sem ele o backend revalida todos os agentes ativos.
-export async function previewSyncAgentesErp(agentIds) {
+// agentIds opcional; sem ele o backend usa o escopo informado para auditar agentes ativos.
+// scope: "pending" (padrão) consulta quem ainda não tem os dois vínculos locais;
+// "all" permite a auditoria completa em busca de divergências.
+export async function previewSyncAgentesErp(agentIds, { scope = 'pending' } = {}) {
   const response = await fetch('/api/erp/sync-agentes/preview', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-    body: JSON.stringify({ agentIds: agentIds || null }),
+    body: JSON.stringify({ agentIds: agentIds || null, scope }),
   });
   if (!response.ok) {
     const error = new Error(await extractApiError(response, 'Erro ao pré-visualizar a sincronização ERP'));

@@ -10,7 +10,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, RefreshCw, Server, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2, RefreshCw, Server, CheckCircle2, AlertTriangle, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { previewSyncAgentesErp, commitSyncAgentesErp } from "@/api/erpService";
 
@@ -70,6 +72,7 @@ const RESULT_META = {
 
 const STATUS_CAUSE = {
   ok: "O Usuário ERP está pronto para ser sincronizado.",
+  vinculado_sem_canal: "O Usuário ERP foi sincronizado; o canal continua pendente.",
   ja_vinculado: "O vínculo já existe no ERP.",
   canal_pendente: "O canal ainda não tem vínculo confirmado no ERP.",
   canal_confirmado: "O canal foi confirmado por leitura ou escrita no ERP.",
@@ -102,18 +105,40 @@ function StatusBadge({ status, meta }) {
 
 const isGravavel = (item) => item?.repairable === true;
 
+function isFullySynced(item) {
+  const usuarioStatus = item?.usuarioStatus || item?.status;
+  return usuarioStatus === "ja_vinculado" && item?.canalStatus === "canal_confirmado";
+}
+
+function itemMatchesStatus(item, filter) {
+  if (filter === "repairable") return isGravavel(item);
+  if (filter === "synced") return isFullySynced(item);
+  if (filter === "review") return !isGravavel(item) && !isFullySynced(item);
+  return true;
+}
+
+function getSafeStatusMessage(status, kind = "usuario") {
+  if (STATUS_CAUSE[status]) return STATUS_CAUSE[status];
+  return kind === "canal"
+    ? "Não foi possível confirmar o canal ERP neste momento. Tente novamente mais tarde."
+    : "Falha na pesquisa no ERP. Tente novamente mais tarde.";
+}
+
 export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(() => new Set());
   const [committing, setCommitting] = useState(false);
   const [results, setResults] = useState(null);
+  const [auditScope, setAuditScope] = useState("pending");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const carregarPreview = useCallback(async (preservarResultados = false) => {
     setLoading(true);
     if (!preservarResultados) setResults(null);
     try {
-      const data = await previewSyncAgentesErp();
+      const data = await previewSyncAgentesErp(null, { scope: auditScope });
       const its = data?.items || [];
       setItems(its);
       setSelected(new Set(
@@ -128,11 +153,18 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [auditScope]);
 
   useEffect(() => {
     if (open) carregarPreview();
-    if (!open) { setItems([]); setResults(null); setSelected(new Set()); }
+    if (!open) {
+      setItems([]);
+      setResults(null);
+      setSelected(new Set());
+      setSearch("");
+      setStatusFilter("all");
+      setAuditScope("pending");
+    }
   }, [open, carregarPreview]);
 
   const toggle = (agentId) => {
@@ -144,26 +176,50 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
     });
   };
 
-  const gravaveis = useMemo(() => items.filter(isGravavel), [items]);
-  const okCount = useMemo(() => items.filter(isGravavel).length, [items]);
+  const filteredItems = useMemo(() => {
+    const normalizedSearch = search.trim().toLocaleLowerCase("pt-BR");
+    const cpfSearch = normalizedSearch.replace(/\D/g, "");
+    return items.filter((item) => {
+      const searchMatches = !normalizedSearch
+        || String(item.agentName || "").toLocaleLowerCase("pt-BR").includes(normalizedSearch)
+        || (cpfSearch && String(item.cpf || "").replace(/\D/g, "").includes(cpfSearch));
+      return searchMatches && itemMatchesStatus(item, statusFilter);
+    });
+  }, [items, search, statusFilter]);
+  const gravaveis = useMemo(() => filteredItems.filter(isGravavel), [filteredItems]);
+  const okCount = gravaveis.length;
+  const visibleRepairableIds = useMemo(
+    () => gravaveis
+      .filter((item) => item.status !== "nome_divergente")
+      .map((item) => item.agentId),
+    [gravaveis]
+  );
+
+  useEffect(() => {
+    const visibleIds = new Set(visibleRepairableIds);
+    setSelected((previous) => {
+      const next = new Set([...previous].filter((id) => visibleIds.has(id)));
+      return next.size === previous.size ? previous : next;
+    });
+  }, [visibleRepairableIds]);
+
   const divergentesSelecionados = useMemo(
-    () => items.filter((i) => i.status === "nome_divergente" && selected.has(i.agentId)).length,
-    [items, selected]
+    () => filteredItems.filter((i) => i.status === "nome_divergente" && selected.has(i.agentId)).length,
+    [filteredItems, selected]
   );
 
   const toggleTodosOk = () => {
-    const okIds = items.filter((i) => isGravavel(i) && i.status !== "nome_divergente").map((i) => i.agentId);
-    const allSelected = okIds.every((id) => selected.has(id));
+    const allSelected = visibleRepairableIds.every((id) => selected.has(id));
     setSelected((prev) => {
       const next = new Set(prev);
-      if (allSelected) okIds.forEach((id) => next.delete(id));
-      else okIds.forEach((id) => next.add(id));
+      if (allSelected) visibleRepairableIds.forEach((id) => next.delete(id));
+      else visibleRepairableIds.forEach((id) => next.add(id));
       return next;
     });
   };
 
   const gravar = async () => {
-    const payload = items
+    const payload = filteredItems
       .filter((i) => selected.has(i.agentId) && isGravavel(i))
       .map((i) => ({ agentId: i.agentId }));
 
@@ -228,12 +284,56 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
           <div className="text-sm text-gray-500">
             {loading
               ? "Carregando..."
-              : `${items.length} agente(s) auditado(s) • ${okCount} reparo(s) disponível(is)`}
+              : `${filteredItems.length} de ${items.length} agente(s) visível(eis) • ${okCount} reparo(s) disponível(is)`}
           </div>
           <Button variant="outline" size="sm" onClick={carregarPreview} disabled={loading || committing}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Atualizar
           </Button>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[190px_minmax(0,1fr)_190px_auto]">
+          <Select value={auditScope} onValueChange={setAuditScope} disabled={loading || committing}>
+            <SelectTrigger className="h-9 text-sm">
+              <SelectValue placeholder="Escopo da auditoria" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pending">Somente pendentes locais</SelectItem>
+              <SelectItem value="all">Todos os agentes ativos</SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar por nome ou CPF"
+              className="h-9 pl-8 text-sm"
+              disabled={loading}
+            />
+          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter} disabled={loading}>
+            <SelectTrigger className="h-9 text-sm">
+              <SelectValue placeholder="Estado" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os estados</SelectItem>
+              <SelectItem value="repairable">Pendentes e corrigíveis</SelectItem>
+              <SelectItem value="synced">Já sincronizados</SelectItem>
+              <SelectItem value="review">Exigem revisão</SelectItem>
+            </SelectContent>
+          </Select>
+          {(search || statusFilter !== "all") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { setSearch(""); setStatusFilter("all"); }}
+              className="h-9 px-2 text-gray-500 hover:text-gray-900"
+            >
+              <X className="mr-1 h-4 w-4" />
+              Limpar
+            </Button>
+          )}
         </div>
 
         <div className="flex-1 overflow-auto border rounded-lg">
@@ -244,7 +344,14 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
           ) : items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-gray-500">
               <CheckCircle2 className="w-8 h-8 text-green-500 mb-2" />
-              Nenhum agente pendente de vínculo com o ERP.
+              {auditScope === "pending"
+                ? "Nenhum agente pendente de vínculo com o ERP."
+                : "Nenhum agente ativo disponível para auditoria."}
+            </div>
+          ) : filteredItems.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-gray-500">
+              <Search className="w-8 h-8 mb-2" />
+              Nenhum agente corresponde aos filtros escolhidos.
             </div>
           ) : (
             <table className="w-full text-sm">
@@ -252,7 +359,7 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
                 <tr className="text-left text-gray-500">
                   <th className="p-2 w-10">
                     <Checkbox
-                       checked={okCount > 0 && items.filter((i) => isGravavel(i) && i.status !== "nome_divergente").every((i) => selected.has(i.agentId))}
+                        checked={visibleRepairableIds.length > 0 && visibleRepairableIds.every((id) => selected.has(id))}
                       onCheckedChange={toggleTodosOk}
                       aria-label="Selecionar todos prontos"
                     />
@@ -266,7 +373,7 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
                 </tr>
               </thead>
               <tbody>
-                {items.map((i) => {
+                {filteredItems.map((i) => {
                   const gravavel = isGravavel(i);
                   const r = resultMap.get(i.agentId);
                   return (
@@ -317,14 +424,14 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
                             <StatusBadge status={i.usuarioStatus || i.status} />
                             <StatusBadge status={i.canalStatus || "nao_avaliado"} />
                           </div>
-                          {(i.erro || STATUS_CAUSE[i.usuarioStatus || i.status]) && (
-                            <span className={`text-xs break-words max-w-[16rem] ${i.erro ? "text-red-600" : "text-gray-600 dark:text-gray-300"}`}>
-                              Usuário: {i.erro || STATUS_CAUSE[i.usuarioStatus || i.status]}
+                          {(i.usuarioStatus || i.status) && (
+                            <span className="text-xs break-words max-w-[16rem] text-gray-600 dark:text-gray-300">
+                              Usuário: {getSafeStatusMessage(i.usuarioStatus || i.status)}
                             </span>
                           )}
-                          {(i.canalErro || STATUS_CAUSE[i.canalStatus]) && (
-                            <span className={`text-xs break-words max-w-[16rem] ${i.canalErro ? "text-red-600" : "text-gray-600 dark:text-gray-300"}`}>
-                              Canal: {i.canalErro || STATUS_CAUSE[i.canalStatus]}
+                          {i.canalStatus && (
+                            <span className="text-xs break-words max-w-[16rem] text-gray-600 dark:text-gray-300">
+                              Canal: {getSafeStatusMessage(i.canalStatus, "canal")}
                             </span>
                           )}
                         </div>
@@ -337,8 +444,16 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
                                 <StatusBadge status={r.usuarioStatus || r.status} meta={RESULT_META} />
                                 {r.canalStatus && <StatusBadge status={r.canalStatus} />}
                               </div>
-                              {r.canalErro && <span className="text-xs text-amber-600">canal: {r.canalErro}</span>}
-                              {r.erro && <span className="text-xs text-red-600">{r.erro}</span>}
+                              {(r.usuarioStatus || r.status) && (
+                                <span className="text-xs text-gray-600">
+                                  Usuário: {getSafeStatusMessage(r.usuarioStatus || r.status)}
+                                </span>
+                              )}
+                              {r.canalStatus && (
+                                <span className="text-xs text-gray-600">
+                                  Canal: {getSafeStatusMessage(r.canalStatus, "canal")}
+                                </span>
+                              )}
                             </div>
                           ) : (
                             <span className="text-gray-300">—</span>
