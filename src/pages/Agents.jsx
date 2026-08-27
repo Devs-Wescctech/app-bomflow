@@ -2399,6 +2399,11 @@ export default function Agents() {
                           <p className="text-amber-700 dark:text-amber-300">
                             {getErpSyncAuditMessage(erpSyncAudit)}
                           </p>
+                          {erpSyncAudit?.canalDiagnostico && (
+                            <p className="mt-1 break-words font-mono text-[11px] text-gray-600 dark:text-gray-300">
+                              Diagnóstico técnico (temporário): {erpSyncAudit.canalDiagnostico}
+                            </p>
+                          )}
                           {editingAgent && (
                             erpSyncAudit?.canalStatus === 'canal_confirmado_nao_espelhado'
                             || (editSaveState?.erp === 'error' && editSaveState?.retryable)

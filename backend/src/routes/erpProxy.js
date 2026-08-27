@@ -63,6 +63,20 @@ function channelFailureMessage(failure) {
   return failure?.erro || 'Não foi possível confirmar o vínculo de canal no ERP.';
 }
 
+// Diagnóstico temporário para investigar a conectividade do ERP na tela de
+// Agentes. Mantém a mensagem amigável separada e remove credenciais caso algum
+// driver inclua uma URL de conexão no erro.
+function temporaryChannelDiagnostic(failure) {
+  const code = String(failure?.status || '').trim();
+  const detail = String(failure?.erro || '')
+    .trim()
+    .replace(/((?:postgres(?:ql)?|mysql):\/\/)[^\s@]+@/gi, '$1[credencial ocultada]@')
+    .replace(/((?:password|senha|token|authorization)\s*[:=]\s*)[^\s,;]+/gi, '$1[ocultado]')
+    .slice(0, 360);
+  if (!code && !detail) return null;
+  return [code && `código ${code}`, detail].filter(Boolean).join(' — ');
+}
+
 function isErpChannelInfrastructureError(error) {
   return (
     error?.isErpDbError === true
@@ -874,6 +888,7 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
         effectiveErpAgenteVendaId: null,
       };
       let canalErro = null;
+      let canalDiagnostico = null;
       if (r.status === 'ok' && ['ok', 'ja_vinculado', 'nome_divergente'].includes(usuarioStatus)) {
         if (!a.canal_venda_id) {
           canal = classifyCanalSyncState({ hasCanal: false });
@@ -905,6 +920,7 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
               effectiveErpAgenteVendaId: null,
             };
             canalErro = channelFailureMessage(failure);
+            canalDiagnostico = temporaryChannelDiagnostic(failure);
           }
         }
         repairable = repairable || canal.repairable;
@@ -927,6 +943,7 @@ router.post('/sync-agentes/preview', authMiddleware, requireManageAgents, async 
         usuariosEncontrados: r.usuariosEncontrados || [],
         effectiveErpAgenteVendaId: canal.effectiveErpAgenteVendaId,
         canalErro,
+        canalDiagnostico,
       });
     }
 
@@ -1026,6 +1043,7 @@ router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (
         let canalStatus = 'sem_canal_configurado';
         let canalConfirmado = false;
         let canalErro;
+        let canalDiagnostico;
         let canalRetryable = false;
         let erpAgenteVendaId = persisted.erpAgenteVendaId;
 
@@ -1059,6 +1077,7 @@ router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (
             });
             canalStatus = failure.status;
             canalErro = channelFailureMessage(failure);
+            canalDiagnostico = temporaryChannelDiagnostic(failure);
             // A identidade já foi confirmada e persistida acima. Propagamos
             // apenas a retomabilidade da etapa secundária do canal.
             canalRetryable = failure.retryable;
@@ -1082,6 +1101,7 @@ router.post('/sync-agentes/commit', authMiddleware, requireManageAgents, async (
           canalErro: canalPendente
             ? (canalErro || 'Usuário ERP sincronizado pela API REST. O canal continua pendente até confirmação no ERP.')
             : undefined,
+          canalDiagnostico: canalPendente ? canalDiagnostico : undefined,
         });
       } catch (persistErr) {
         const failure = classifyErpSyncError(persistErr, { stage: 'persistencia_vinculo_erp' });

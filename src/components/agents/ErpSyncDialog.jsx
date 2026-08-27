@@ -338,6 +338,11 @@ export default function ErpSyncDialog({ open, onOpenChange, onDone }) {
                                 {r.canalStatus && <StatusBadge status={r.canalStatus} />}
                               </div>
                               {r.canalErro && <span className="text-xs text-amber-600">canal: {r.canalErro}</span>}
+                              {r.canalDiagnostico && (
+                                <span className="break-words font-mono text-[11px] text-gray-600 dark:text-gray-300">
+                                  diagnóstico técnico (temporário): {r.canalDiagnostico}
+                                </span>
+                              )}
                               {r.erro && <span className="text-xs text-red-600">{r.erro}</span>}
                             </div>
                           ) : (
