@@ -71,7 +71,7 @@ test('tela não expõe erro de configuração do banco quando Usuário ERP está
   );
 });
 
-test('rotas de sincronização expõem diagnóstico temporário sem credenciais', async () => {
+test('rotas de sincronização mantêm detalhes do PostgreSQL somente nos logs', async () => {
   const source = await readFile(
     path.join(workspaceRoot, 'backend/src/routes/erpProxy.js'),
     'utf8'
@@ -81,10 +81,8 @@ test('rotas de sincronização expõem diagnóstico temporário sem credenciais'
   assert.match(source, /Os dados locais foram preservados/);
   assert.match(source, /diagnostico: failure\.erro/);
   assert.match(source, /canalErro = channelFailureMessage\(failure\)/);
-  assert.match(source, /function temporaryChannelDiagnostic\(failure\)/);
-  assert.match(source, /canalDiagnostico = temporaryChannelDiagnostic\(failure\)/);
-  assert.match(source, /credencial ocultada/);
-  assert.match(source, /\.slice\(0, 360\)/);
+  assert.doesNotMatch(source, /canalErro = failure\.erro/);
+  assert.doesNotMatch(source, /canalDiagnostico/);
 });
 
 test('canal confirmado no ERP sem espelho local oferece ação explícita para aplicá-lo', async () => {
