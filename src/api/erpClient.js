@@ -28,8 +28,15 @@ export async function getPessoaByErp(cpf, expectedUsuarioId = null) {
   const res = await fetch(`/api/erp/pessoa?${params.toString()}`, {
     headers: authHeaders()
   });
-  if (!res.ok) throw new Error(await extractApiError(res, 'Erro ao buscar pessoa no ERP.'));
-  const data = await res.json();
+  if (res.status === 204) {
+    return { pessoa: null, usuarioErp: null, usuariosAmbiguos: [] };
+  }
+  if (!res.ok) {
+    const error = new Error(await extractApiError(res, 'Erro ao buscar pessoa no ERP.'));
+    error.status = res.status;
+    throw error;
+  }
+  const data = await res.json().catch(() => ({}));
   return {
     pessoa: data?.pessoa ?? null,
     usuarioErp: data?.usuarioErp ?? null,

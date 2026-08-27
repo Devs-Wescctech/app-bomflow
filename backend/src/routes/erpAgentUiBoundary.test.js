@@ -85,6 +85,40 @@ test('rotas de sincronização mantêm detalhes do PostgreSQL somente nos logs',
   assert.doesNotMatch(source, /canalDiagnostico/);
 });
 
+test('prévia ERP começa pelos vínculos locais pendentes e permite auditoria completa', async () => {
+  const [routeSource, dialogSource, serviceSource] = await Promise.all([
+    readFile(path.join(workspaceRoot, 'backend/src/routes/erpProxy.js'), 'utf8'),
+    readFile(path.join(workspaceRoot, 'src/components/agents/ErpSyncDialog.jsx'), 'utf8'),
+    readFile(path.join(workspaceRoot, 'src/api/erpService.js'), 'utf8'),
+  ]);
+
+  assert.match(routeSource, /const \{ agentIds, scope = 'pending' \} = req\.body \|\| \{\}/);
+  assert.match(routeSource, /previewScope = scope === 'all' \? 'all' : 'pending'/);
+  assert.match(routeSource, /erp_agent_id IS NULL[\s\S]+?erp_agente_venda_id IS NULL/);
+  assert.match(dialogSource, /const \[auditScope, setAuditScope\] = useState\("pending"\)/);
+  assert.match(dialogSource, /Somente pendentes locais/);
+  assert.match(dialogSource, /Todos os agentes ativos/);
+  assert.match(dialogSource, /Buscar por nome ou CPF/);
+  assert.match(dialogSource, /Pendentes e corrigíveis/);
+  assert.match(serviceSource, /scope = 'pending'/);
+});
+
+test('consulta de Pessoa mostra mensagens seguras, sem repassar códigos HTTP ao usuário', async () => {
+  const [agentsSource, clientSource, routeSource] = await Promise.all([
+    readFile(path.join(workspaceRoot, 'src/pages/Agents.jsx'), 'utf8'),
+    readFile(path.join(workspaceRoot, 'src/api/erpClient.js'), 'utf8'),
+    readFile(path.join(workspaceRoot, 'backend/src/routes/erpProxy.js'), 'utf8'),
+  ]);
+
+  assert.match(agentsSource, /const ERP_SEARCH_FAILURE_MESSAGE = "Falha na pesquisa no ERP\. Tente novamente em instantes\."/);
+  assert.match(agentsSource, /Pessoa não encontrada no ERP\./);
+  assert.match(agentsSource, /toast\.error\(message\)/);
+  assert.doesNotMatch(agentsSource, /toast\.error\("Erro ao consultar ERP: " \+ error\.message\)/);
+  assert.match(clientSource, /error\.status = res\.status/);
+  assert.match(clientSource, /if \(res\.status === 204\)/);
+  assert.match(routeSource, /Falha ao consultar a Pessoa no ERP\./);
+});
+
 test('canal confirmado no ERP sem espelho local oferece ação explícita para aplicá-lo', async () => {
   const source = await readFile(
     path.join(workspaceRoot, 'src/pages/Agents.jsx'),
