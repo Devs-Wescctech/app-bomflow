@@ -4,6 +4,7 @@ import { query } from '../config/database.js';
 import { createNotification } from '../services/notificationService.js';
 import { addBusinessDays, brtDateStr, preloadHolidays } from '../services/businessDaysService.js';
 import { validateDateRange } from '../utils/postsalesFilters.js';
+import { enrichPostsalesClientIdentities } from '../services/postsalesClientService.js';
 
 const router = express.Router();
 
@@ -487,7 +488,10 @@ router.get('/pos-vendas', authMiddleware, async (req, res) => {
       params
     );
 
-    const items = result.rows.map((r) => ({
+    const enrichedRows = await enrichPostsalesClientIdentities(result.rows, {
+      context: 'GET /presales-ajustes/pos-vendas',
+    });
+    const items = enrichedRows.map((r) => ({
       ...r,
       modulo_nome: MODULO_LABELS[
         { sales: 'vendas_pf', sales_pj: 'vendas_pj', sales_upsell: 'upsell', referral: 'indicacoes' }[r.modulo]

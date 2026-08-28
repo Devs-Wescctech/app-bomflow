@@ -490,6 +490,46 @@ export async function getOrcamentoDetalhe(pedidoId) {
 }
 
 /**
+ * Lê em lote a identidade do titular dos pedidos para preencher cards de fila.
+ * Prioriza a primeira pessoa vinculada a uma Pessoa global do ERP e, em pedidos
+ * legados sem esse vínculo, usa o primeiro inscrito disponível.
+ *
+ * @param {number[]} pedidoIds
+ * @returns {Promise<Record<number, { cliente_nome: string|null, cliente_cpf: string|null }>>}
+ */
+export async function getPedidoClientIdentities(pedidoIds) {
+  const ids = [...new Set(
+    (Array.isArray(pedidoIds) ? pedidoIds : [])
+      .map(Number)
+      .filter((id) => Number.isSafeInteger(id) && id > 0)
+  )];
+  if (ids.length === 0) return {};
+
+  const db = getPool();
+  const result = await db.query(
+    `SELECT DISTINCT ON (pp.pedido_id)
+            pp.pedido_id,
+            NULLIF(TRIM(pp.nome_pessoa), '') AS cliente_nome,
+            NULLIF(TRIM(pp.cpf), '') AS cliente_cpf
+       FROM pedidos_pessoas pp
+      WHERE pp.pedido_id = ANY($1::bigint[])
+      ORDER BY pp.pedido_id,
+               CASE WHEN pp.pessoa_id IS NOT NULL THEN 0 ELSE 1 END,
+               pp.id`,
+    [ids]
+  );
+
+  const identities = {};
+  for (const row of result.rows) {
+    identities[Number(row.pedido_id)] = {
+      cliente_nome: row.cliente_nome || null,
+      cliente_cpf: row.cliente_cpf || null,
+    };
+  }
+  return identities;
+}
+
+/**
  * Registra um agente no canal de vendas do ERP inserindo um registro
  * em pessoas_contratos. Se o par (pessoa_id, contrato_id) já existir,
  * retorna o id existente sem criar duplicata.
