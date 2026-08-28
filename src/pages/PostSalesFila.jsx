@@ -184,7 +184,7 @@ export default function PostSalesFila() {
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Nº, CPF ou cliente"
+                placeholder="Nº, CPF, cliente ou vendedor"
                 className="h-9 border-slate-200 pl-9 pr-9 dark:border-gray-800"
               />
               {hasSearch && (
