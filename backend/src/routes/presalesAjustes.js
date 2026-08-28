@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { query } from '../config/database.js';
 import { createNotification } from '../services/notificationService.js';
 import { addBusinessDays, brtDateStr, preloadHolidays } from '../services/businessDaysService.js';
+import { validateDateRange } from '../utils/postsalesFilters.js';
 
 const router = express.Router();
 
@@ -458,14 +459,32 @@ router.get('/pos-vendas', authMiddleware, async (req, res) => {
     const { eligible } = await resolveAuditor(req);
     if (!eligible) return res.status(403).json({ error: 'Acesso restrito à auditoria da Fila Pré Vendas.' });
 
+    const startDate = req.query.start_date ? String(req.query.start_date) : null;
+    const endDate = req.query.end_date ? String(req.query.end_date) : null;
+    const dateError = validateDateRange(startDate, endDate);
+    if (dateError) return res.status(400).json({ error: dateError });
+
+    const params = [];
+    const conditions = ["pa.status = 'concluida'", "pa.resultado = 'aprovado'"];
+    if (startDate) {
+      params.push(startDate);
+      conditions.push(`COALESCE(pa.concluida_at, bo.created_at) >= $${params.length}::date`);
+    }
+    if (endDate) {
+      params.push(endDate);
+      conditions.push(`COALESCE(pa.concluida_at, bo.created_at) < ($${params.length}::date + interval '1 day')`);
+    }
+
     const result = await query(
       `SELECT pa.erp_pedido_id, pa.auditor_nome, pa.auditor_email, pa.concluida_at AS aprovado_at,
               bo.erp_numero, bo.modulo, bo.agent_name AS vendedor_nome,
-              bo.cliente_nome, bo.cliente_cpf, bo.valor_criacao, bo.created_at AS orcamento_criado_at
+              bo.cliente_nome, bo.cliente_cpf, bo.valor_criacao, bo.created_at AS orcamento_criado_at,
+              COALESCE(pa.concluida_at, bo.created_at) AS data_fila
          FROM presales_auditorias pa
          LEFT JOIN bomflow_orcamentos bo ON bo.erp_pedido_id = pa.erp_pedido_id
-        WHERE pa.status = 'concluida' AND pa.resultado = 'aprovado'
-        ORDER BY pa.concluida_at DESC`
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY COALESCE(pa.concluida_at, bo.created_at) DESC`,
+      params
     );
 
     const items = result.rows.map((r) => ({

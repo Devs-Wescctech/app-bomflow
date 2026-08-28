@@ -1,16 +1,20 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useToast } from "@/components/ui/use-toast";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import {
   ClipboardCheck, Loader2, CheckCircle2, Undo2, Snowflake, XCircle,
   Lock, Unlock, History, User as UserIcon, X, AlertTriangle, ShieldQuestion,
   UserRound, Calendar, Phone, Mail, MapPin, Package, CreditCard, FileText,
-  Eye, ShoppingBag, Users,
+  Eye, ShoppingBag, Users, Search,
 } from "lucide-react";
 import {
   API_BASE, authHeaders, formatYmd, formatCpf, StatusBadge, PrazoBadge, TrilhaModal,
   Hero, ClienteCell,
 } from "@/components/postsales/shared";
 import { extractApiError } from "@/utils/apiError";
+import { matchesPostSalesSearch } from "@/utils/postsalesSearch";
 
 const TABS = [
   { key: "fila", label: "Fila" },
@@ -23,6 +27,21 @@ const TABS = [
   { key: "cancelada", label: "Canceladas" },
   { key: "todos", label: "Todas" },
 ];
+
+function todayISO() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function monthStartISO() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function isValidDateRange(startDate, endDate) {
+  if (startDate && endDate && startDate > endDate) return false;
+  return true;
+}
 
 const DOC_LABELS = {
   documento_identidade: "Documento (CPF/RG)",
@@ -521,35 +540,65 @@ function AcaoModal({ item, motivos, onClose, onChanged }) {
 
 export default function PosVendasFila() {
   const { toast } = useToast();
+  const [initialFilters] = useState(() => ({
+    startDate: monthStartISO(),
+    endDate: todayISO(),
+  }));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("fila");
+  const [startDate, setStartDate] = useState(initialFilters.startDate);
+  const [endDate, setEndDate] = useState(initialFilters.endDate);
+  const [appliedDates, setAppliedDates] = useState(initialFilters);
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
   const [trilhaDe, setTrilhaDe] = useState(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ startDate: requestedStartDate, endDate: requestedEndDate } = {}) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/postsales/fila?status=todos`, { headers: authHeaders() });
+      const params = new URLSearchParams({ status: "todos" });
+      if (requestedStartDate) params.set("start_date", requestedStartDate);
+      if (requestedEndDate) params.set("end_date", requestedEndDate);
+      const res = await fetch(`${API_BASE}/postsales/fila?${params}`, { headers: authHeaders() });
       if (!res.ok) throw new Error(await extractApiError(res, "Falha ao carregar a fila."));
       const json = await res.json().catch(() => ({}));
       setData(json);
+      return true;
     } catch (e) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });
       setData(null);
+      return false;
     } finally {
       setLoading(false);
     }
   }, [toast]);
 
-  useEffect(() => { load(); }, [load]);
+  const refresh = useCallback(() => load(appliedDates), [appliedDates, load]);
 
-  const items = data?.items || [];
+  useEffect(() => { load(initialFilters); }, [initialFilters, load]);
+
+  const handleApply = async () => {
+    if (!isValidDateRange(startDate, endDate)) {
+      toast({
+        title: "Período inválido",
+        description: "A data inicial não pode ser posterior à data final.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const nextDates = { startDate, endDate };
+    const loaded = await load(nextDates);
+    if (loaded) setAppliedDates(nextDates);
+  };
+
+  const items = useMemo(() => data?.items || [], [data]);
   const counts = data?.counts || {};
-  const filtered = useMemo(
-    () => (tab === "todos" ? items : items.filter((i) => i.status === tab)),
-    [items, tab]
-  );
+  const filtered = useMemo(() => {
+    const byTab = tab === "todos" ? items : items.filter((item) => item.status === tab);
+    return byTab.filter((item) => matchesPostSalesSearch(item, search));
+  }, [items, search, tab]);
+  const hasSearch = Boolean(search.trim());
 
   return (
     <div className="min-h-screen -m-3 bg-gradient-to-b from-slate-50 to-white p-4 dark:from-gray-950 dark:to-gray-950 md:-m-6 md:p-6">
@@ -558,26 +607,89 @@ export default function PosVendasFila() {
           icon={ClipboardCheck}
           title="Fila Pós-Vendas"
           subtitle="Verifique os orçamentos aprovados no Pré-venda: conclua, devolva ao coordenador ou registre a decisão final."
-          onRefresh={load}
+          onRefresh={refresh}
           loading={loading}
         />
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          {TABS.map((t) => {
-            const active = tab === t.key;
-            return (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${active ? "bg-violet-600 text-white shadow-sm" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-gray-900 dark:text-slate-400 dark:ring-gray-800"}`}
-              >
-                {t.label}
-                <span className={`rounded-full px-1.5 text-[11px] tabular-nums ${active ? "bg-white/20" : "bg-slate-100 dark:bg-gray-800"}`}>
-                  {counts[t.key] ?? 0}
-                </span>
-              </button>
-            );
-          })}
+        <div className="flex flex-wrap items-end gap-2.5 rounded-2xl bg-white/80 px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70 backdrop-blur dark:bg-gray-900/80 dark:ring-gray-800">
+          <div className="space-y-1.5">
+            <Label className="flex items-center gap-1 text-[10.5px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              <Calendar className="h-3 w-3 text-violet-500" /> De
+            </Label>
+            <Input
+              type="date"
+              value={startDate}
+              onChange={(event) => setStartDate(event.target.value)}
+              className="h-9 w-[150px] border-slate-200 dark:border-gray-800"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="flex items-center gap-1 text-[10.5px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              <Calendar className="h-3 w-3 text-violet-500" /> Até
+            </Label>
+            <Input
+              type="date"
+              value={endDate}
+              onChange={(event) => setEndDate(event.target.value)}
+              className="h-9 w-[150px] border-slate-200 dark:border-gray-800"
+            />
+          </div>
+          <div className="min-w-[200px] flex-1 space-y-1.5">
+            <Label className="text-[10.5px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              Busca rápida
+            </Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Nº, CPF ou cliente"
+                className="h-9 border-slate-200 pl-9 pr-9 dark:border-gray-800"
+              />
+              {hasSearch && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  aria-label="Limpar busca rápida"
+                  className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-gray-800 dark:hover:text-slate-200"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+          <Button
+            onClick={handleApply}
+            disabled={loading}
+            size="sm"
+            className="h-9 bg-[linear-gradient(135deg,#7C3AED,#9333EA)] text-white shadow-sm transition-all duration-200 hover:brightness-110"
+          >
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+            Aplicar
+          </Button>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {TABS.map((t) => {
+              const active = tab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${active ? "bg-violet-600 text-white shadow-sm" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-gray-900 dark:text-slate-400 dark:ring-gray-800"}`}
+                >
+                  {t.label}
+                  <span className={`rounded-full px-1.5 text-[11px] tabular-nums ${active ? "bg-white/20" : "bg-slate-100 dark:bg-gray-800"}`}>
+                    {counts[t.key] ?? 0}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <span className="shrink-0 text-[11.5px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
+            {filtered.length} {filtered.length === 1 ? "registro" : "registros"} na lista
+          </span>
         </div>
 
         {loading ? (
@@ -587,7 +699,22 @@ export default function PosVendasFila() {
         ) : filtered.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-16 text-center dark:border-gray-800 dark:bg-gray-900">
             <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-emerald-400" />
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Nada por aqui.</p>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+              {items.length === 0
+                ? "Nenhum registro no período selecionado."
+                : hasSearch
+                  ? `Nenhum resultado para “${search.trim()}”.`
+                  : "Nenhum registro nesta etapa no período selecionado."}
+            </p>
+            {hasSearch && items.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="mt-2 text-xs font-semibold text-violet-600 hover:text-violet-700 dark:text-violet-400"
+              >
+                Limpar busca
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -655,7 +782,7 @@ export default function PosVendasFila() {
           item={selected}
           motivos={data?.motivos}
           onClose={() => setSelected(null)}
-          onChanged={load}
+          onChanged={refresh}
         />
       )}
       {trilhaDe && <TrilhaModal item={trilhaDe} onClose={() => setTrilhaDe(null)} />}

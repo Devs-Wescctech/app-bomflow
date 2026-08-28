@@ -9,6 +9,7 @@ import {
   getOrcamentoDetalhe,
 } from '../services/erpDbService.js';
 import { classifyPostsalesDetail } from '../utils/postsalesDetail.js';
+import { validateDateRange } from '../utils/postsalesFilters.js';
 
 const router = express.Router();
 
@@ -208,18 +209,48 @@ router.get('/fila', authMiddleware, async (req, res) => {
     const { eligible } = await resolvePostsalesAuditor(req);
     if (!eligible) return res.status(403).json({ error: 'Acesso restrito à equipe de Pós-Vendas.' });
 
+    const startDate = req.query.start_date ? String(req.query.start_date) : null;
+    const endDate = req.query.end_date ? String(req.query.end_date) : null;
+    const dateError = validateDateRange(startDate, endDate);
+    if (dateError) return res.status(400).json({ error: dateError });
+
     await ingestAprovados();
 
     const status = req.query.status;
+    const dateParams = [];
+    const dateConditions = [];
+    if (startDate) {
+      dateParams.push(startDate);
+      dateConditions.push(`COALESCE(pa.concluida_at, v.created_at) >= $${dateParams.length}::date`);
+    }
+    if (endDate) {
+      dateParams.push(endDate);
+      dateConditions.push(`COALESCE(pa.concluida_at, v.created_at) < ($${dateParams.length}::date + interval '1 day')`);
+    }
+    const dateWhere = dateConditions.length ? `WHERE ${dateConditions.join(' AND ')}` : '';
+
     const params = [];
-    let where = '';
+    const conditions = [];
     if (status && status !== 'todos' && STATUS_LIST.includes(status)) {
       params.push(status);
-      where = `WHERE status = $${params.length}`;
+      conditions.push(`v.status = $${params.length}`);
     }
+    if (startDate) {
+      params.push(startDate);
+      conditions.push(`COALESCE(pa.concluida_at, v.created_at) >= $${params.length}::date`);
+    }
+    if (endDate) {
+      params.push(endDate);
+      conditions.push(`COALESCE(pa.concluida_at, v.created_at) < ($${params.length}::date + interval '1 day')`);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const r = await query(
-      `SELECT * FROM postsales_verificacoes ${where}
-        ORDER BY CASE status
+      `SELECT v.*, pa.concluida_at AS aprovado_at,
+              COALESCE(pa.concluida_at, v.created_at) AS data_fila
+         FROM postsales_verificacoes v
+         LEFT JOIN presales_auditorias pa ON pa.erp_pedido_id = v.erp_pedido_id
+        ${where}
+        ORDER BY CASE v.status
                    WHEN 'aguardando_cancelamento' THEN 0
                    WHEN 'resolvida' THEN 1
                    WHEN 'fila' THEN 2
@@ -227,10 +258,17 @@ router.get('/fila', authMiddleware, async (req, res) => {
                    WHEN 'devolvida' THEN 4
                    WHEN 'congelada' THEN 5
                    ELSE 6 END,
-                 created_at ASC`,
+                 v.created_at ASC`,
       params
     );
-    const cr = await query(`SELECT status, COUNT(*)::int AS n FROM postsales_verificacoes GROUP BY status`);
+    const cr = await query(
+      `SELECT v.status, COUNT(*)::int AS n
+         FROM postsales_verificacoes v
+         LEFT JOIN presales_auditorias pa ON pa.erp_pedido_id = v.erp_pedido_id
+        ${dateWhere}
+        GROUP BY v.status`,
+      dateParams
+    );
     const counts = { todos: 0 };
     for (const s of STATUS_LIST) counts[s] = 0;
     for (const row of cr.rows) { counts[row.status] = row.n; counts.todos += row.n; }
