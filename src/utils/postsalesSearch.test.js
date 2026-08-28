@@ -4,6 +4,7 @@ import { matchesPostSalesSearch, normalizeSearchText } from "./postsalesSearch.j
 
 const item = {
   cliente_nome: "João D'Ávila",
+  vendedor_nome: "Ângela Gonçalves",
   cliente_cpf: "123.456.789-01",
   erp_numero: "2026-0042",
   erp_pedido_id: 987654,
@@ -13,6 +14,12 @@ test("normaliza caixa e acentuação da busca", () => {
   assert.equal(normalizeSearchText("  JOÃO D'ÁVILA  "), "joao d'avila");
   assert.equal(matchesPostSalesSearch(item, "joao d'avila"), true);
   assert.equal(matchesPostSalesSearch(item, "D'ÁVILA"), true);
+});
+
+test("encontra vendedor por nome parcial ignorando caixa e acentuação", () => {
+  assert.equal(matchesPostSalesSearch(item, "angela"), true);
+  assert.equal(matchesPostSalesSearch(item, "GONÇ"), true);
+  assert.equal(matchesPostSalesSearch(item, "goncalves"), true);
 });
 
 test("encontra CPF com ou sem pontuação", () => {

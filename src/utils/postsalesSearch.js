@@ -10,7 +10,7 @@ export function matchesPostSalesSearch(item, value) {
   const term = normalizeSearchText(value);
   if (!term) return true;
 
-  const textFields = [item.cliente_nome, item.erp_numero, item.erp_pedido_id]
+  const textFields = [item.cliente_nome, item.vendedor_nome, item.erp_numero, item.erp_pedido_id]
     .map(normalizeSearchText);
   if (textFields.some((field) => field.includes(term))) return true;
 
