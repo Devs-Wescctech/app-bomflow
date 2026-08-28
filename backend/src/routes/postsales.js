@@ -8,6 +8,7 @@ import {
   getProdutosByPedidoIds,
   getOrcamentoDetalhe,
 } from '../services/erpDbService.js';
+import { enrichPostsalesClientIdentities } from '../services/postsalesClientService.js';
 import { classifyPostsalesDetail } from '../utils/postsalesDetail.js';
 import { validateDateRange } from '../utils/postsalesFilters.js';
 
@@ -273,8 +274,12 @@ router.get('/fila', authMiddleware, async (req, res) => {
     for (const s of STATUS_LIST) counts[s] = 0;
     for (const row of cr.rows) { counts[row.status] = row.n; counts.todos += row.n; }
 
+    const enrichedRows = await enrichPostsalesClientIdentities(r.rows, {
+      context: 'GET /postsales/fila',
+    });
+
     return res.json({
-      items: r.rows.map((row) => shapeItem(row, req.user.id)),
+      items: enrichedRows.map((row) => shapeItem(row, req.user.id)),
       counts,
       motivos: POSTSALES_MOTIVOS,
       prazo_dias: DEVOLUCAO_PRAZO_DIAS,
