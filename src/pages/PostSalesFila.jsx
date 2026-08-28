@@ -1,11 +1,14 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import {
-  Search, RefreshCw, Loader2, Inbox, CheckCircle2, User as UserIcon,
-  ShieldCheck, Layers, Calendar, ArrowRight, ClipboardCheck,
+  Search, RefreshCw, Loader2, Inbox, CheckCircle2, User as UserIcon, X,
+  ShieldCheck, Calendar, ArrowRight, ClipboardCheck,
 } from "lucide-react";
 import { extractApiError } from "@/utils/apiError";
+import { matchesPostSalesSearch } from "@/utils/postsalesSearch";
 
 const API_BASE = "/api";
 
@@ -37,53 +40,83 @@ const MODULO_BADGE = {
   referral: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300",
 };
 
+function todayISO() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function monthStartISO() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
 // Fila de ENTRADA do Pós-Vendas: orçamentos aprovados na auditoria do pré-venda
 // (registro local — o ERP não é alterado). Ponto de partida da fase 2 do módulo
 // (retorno ao coordenador, congelamento, cancelamento etc.).
 export default function PostSalesFila() {
   const { toast } = useToast();
+  const [initialFilters] = useState(() => ({
+    startDate: monthStartISO(),
+    endDate: todayISO(),
+  }));
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
+  const [startDate, setStartDate] = useState(initialFilters.startDate);
+  const [endDate, setEndDate] = useState(initialFilters.endDate);
+  const [appliedDates, setAppliedDates] = useState(initialFilters);
   const [search, setSearch] = useState("");
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  const load = async () => {
+  const load = useCallback(async ({ startDate: requestedStartDate, endDate: requestedEndDate } = {}) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/presales-ajustes/pos-vendas`, { headers: getAuthHeaders() });
+      const params = new URLSearchParams();
+      if (requestedStartDate) params.set("start_date", requestedStartDate);
+      if (requestedEndDate) params.set("end_date", requestedEndDate);
+      const query = params.toString();
+      const res = await fetch(`${API_BASE}/presales-ajustes/pos-vendas${query ? `?${query}` : ""}`, { headers: getAuthHeaders() });
       if (res.status === 403) {
         setItems([]);
         toast({ title: "Acesso restrito", description: "Você não tem permissão para esta fila.", variant: "destructive" });
-        return;
+        return false;
       }
       if (!res.ok) throw new Error(await extractApiError(res, "Falha ao carregar a fila do Pós-Vendas."));
       const data = await res.json();
       setItems(Array.isArray(data.items) ? data.items : []);
       setLastUpdated(new Date());
+      return true;
     } catch (e) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });
+      setItems([]);
+      return false;
     } finally {
       setLoading(false);
     }
+  }, [toast]);
+
+  const refresh = useCallback(() => load(appliedDates), [appliedDates, load]);
+
+  useEffect(() => { load(initialFilters); }, [initialFilters, load]);
+
+  const handleApply = async () => {
+    if (startDate && endDate && startDate > endDate) {
+      toast({
+        title: "Período inválido",
+        description: "A data inicial não pode ser posterior à data final.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const nextDates = { startDate, endDate };
+    const loaded = await load(nextDates);
+    if (loaded) setAppliedDates(nextDates);
   };
 
-  useEffect(() => { load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, []);
-
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return items;
-    const tDigits = term.replace(/\D/g, "");
-    return items.filter((o) => {
-      const cpf = String(o.cliente_cpf || "").replace(/\D/g, "");
-      return (
-        String(o.erp_numero || o.erp_pedido_id || "").toLowerCase().includes(term) ||
-        String(o.cliente_nome || "").toLowerCase().includes(term) ||
-        String(o.vendedor_nome || "").toLowerCase().includes(term) ||
-        String(o.auditor_nome || "").toLowerCase().includes(term) ||
-        (tDigits && cpf.includes(tDigits))
-      );
-    });
-  }, [items, search]);
+  const filtered = useMemo(
+    () => items.filter((item) => matchesPostSalesSearch(item, search)),
+    [items, search]
+  );
+  const hasSearch = Boolean(search.trim());
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-gray-950 dark:to-gray-950 -m-3 md:-m-6 p-4 md:p-6">
@@ -103,12 +136,12 @@ export default function PostSalesFila() {
               </div>
               <p className="mt-2.5 text-[14px] md:text-[15px] font-medium text-white/80">
                 {items.length === 0
-                  ? "Nenhum orçamento aprovado aguardando o pós-venda"
+                  ? "Nenhum orçamento aprovado no período selecionado"
                   : `${items.length} ${items.length === 1 ? "orçamento aprovado no pré-venda" : "orçamentos aprovados no pré-venda"} — entrada da fase de pós-venda`}
               </p>
             </div>
             <button
-              onClick={load}
+              onClick={refresh}
               disabled={loading}
               title="Atualizar"
               className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-white ring-1 ring-white/20 transition-colors hover:bg-white/20 disabled:opacity-60"
@@ -118,19 +151,66 @@ export default function PostSalesFila() {
           </div>
         </div>
 
-        {/* Busca */}
-        <div className="flex items-center gap-3 rounded-2xl bg-white/80 backdrop-blur ring-1 ring-slate-200/70 px-4 py-3 dark:bg-gray-900/80 dark:ring-gray-800">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        {/* Filtros — mesma composição da Fila Pré-Vendas e da fila operacional. */}
+        <div className="flex flex-wrap items-end gap-2.5 rounded-2xl bg-white/80 px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70 backdrop-blur dark:bg-gray-900/80 dark:ring-gray-800">
+          <div className="space-y-1.5">
+            <Label className="flex items-center gap-1 text-[10.5px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              <Calendar className="h-3 w-3 text-violet-500" /> De
+            </Label>
             <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Nº, CPF, cliente, vendedor ou auditor"
-              className="h-9 pl-9 border-slate-200 dark:border-gray-800"
+              type="date"
+              value={startDate}
+              onChange={(event) => setStartDate(event.target.value)}
+              className="h-9 w-[150px] border-slate-200 dark:border-gray-800"
             />
           </div>
-          <span className="hidden sm:inline text-[11.5px] text-slate-400 dark:text-slate-500 tabular-nums shrink-0">
-            {filtered.length} na fila{lastUpdated ? ` · atualizado ${lastUpdated.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : ""}
+          <div className="space-y-1.5">
+            <Label className="flex items-center gap-1 text-[10.5px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              <Calendar className="h-3 w-3 text-violet-500" /> Até
+            </Label>
+            <Input
+              type="date"
+              value={endDate}
+              onChange={(event) => setEndDate(event.target.value)}
+              className="h-9 w-[150px] border-slate-200 dark:border-gray-800"
+            />
+          </div>
+          <div className="min-w-[200px] flex-1 space-y-1.5">
+            <Label className="text-[10.5px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              Busca rápida
+            </Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Nº, CPF ou cliente"
+                className="h-9 border-slate-200 pl-9 pr-9 dark:border-gray-800"
+              />
+              {hasSearch && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  aria-label="Limpar busca rápida"
+                  className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-gray-800 dark:hover:text-slate-200"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+          <Button
+            onClick={handleApply}
+            disabled={loading}
+            size="sm"
+            className="h-9 bg-[linear-gradient(135deg,#7C3AED,#9333EA)] text-white shadow-sm transition-all duration-200 hover:brightness-110"
+          >
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+            Aplicar
+          </Button>
+          <span className="w-full text-[11.5px] text-slate-400 dark:text-slate-500 tabular-nums sm:w-auto sm:pb-0.5">
+            {filtered.length} {filtered.length === 1 ? "registro" : "registros"} na fila
+            {lastUpdated ? ` · atualizado ${lastUpdated.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : ""}
           </span>
         </div>
 
@@ -138,15 +218,28 @@ export default function PostSalesFila() {
         <div className="flex flex-col gap-2">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-24 text-slate-400">
-              <Loader2 className="w-7 h-7 animate-spin mb-3" />
+              <Loader2 className="mb-3 h-7 w-7 animate-spin" />
               Carregando fila pós-vendas…
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl bg-white ring-1 ring-slate-200/70 py-24 text-slate-400 dark:bg-gray-900 dark:ring-gray-800">
+            <div className="flex flex-col items-center justify-center rounded-2xl bg-white py-24 text-slate-400 ring-1 ring-slate-200/70 dark:bg-gray-900 dark:ring-gray-800">
               <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 dark:bg-gray-800">
-                <Inbox className="w-6 h-6 opacity-50" />
+                <Inbox className="h-6 w-6 opacity-50" />
               </div>
-              Nenhum orçamento aprovado no pré-venda até o momento.
+              <p>
+                {items.length === 0
+                  ? "Nenhum orçamento aprovado no período selecionado."
+                  : `Nenhum resultado para “${search.trim()}”.`}
+              </p>
+              {hasSearch && items.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="mt-2 text-xs font-semibold text-violet-600 hover:text-violet-700 dark:text-violet-400"
+                >
+                  Limpar busca
+                </button>
+              )}
             </div>
           ) : filtered.map((o) => (
             <div
