@@ -1,12 +1,16 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
-import { createPageUrl } from "@/utils";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useToast } from "@/components/ui/use-toast";
+import OrcamentoDocumentos from "@/components/orcamento/OrcamentoDocumentos";
+import PostsalesCorrectionModal from "@/components/postsales/PostsalesCorrectionModal";
 import {
-  ClipboardCheck, Loader2, Clock, CheckCircle2, RefreshCw,
+  ClipboardCheck, Loader2, Clock, CheckCircle2, PencilLine, RefreshCw,
   User as UserIcon, Layers, Hash, Send, AlertTriangle, ExternalLink,
 } from "lucide-react";
 import { extractApiError } from "@/utils/apiError";
+import {
+  presalesAdjustmentOpenMode,
+  presalesAdjustmentType,
+} from "@/utils/presalesAdjustmentNavigation";
 
 const API_BASE = "/api";
 
@@ -37,17 +41,25 @@ const TABS = [
   { key: "todos", label: "Todos" },
 ];
 
-function AjusteCard({ ajuste, onMarked }) {
+function AjusteCard({ ajuste, onMarked, onOpenBudget, onOpenCorrection }) {
   const { toast } = useToast();
-  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [comentario, setComentario] = useState("");
   const [saving, setSaving] = useState(false);
   const [opening, setOpening] = useState(false);
   const done = ajuste.status === "ajustado";
+  const opensCompleteEditor = presalesAdjustmentOpenMode(ajuste) === "erp-correction";
 
-  const handleOpenLead = async () => {
+  const handleOpenAdjustment = async () => {
     if (opening) return;
+    if (presalesAdjustmentOpenMode(ajuste) === "erp-correction") {
+      onOpenCorrection({
+        ...ajuste,
+        motivo_devolucao_nome: "Cadastro completo da venda",
+        devolucao_obs: ajuste.texto,
+      });
+      return;
+    }
     setOpening(true);
     try {
       const res = await fetch(`${API_BASE}/presales-ajustes/${ajuste.id}/lead`, {
@@ -55,12 +67,32 @@ function AjusteCard({ ajuste, onMarked }) {
       });
       if (!res.ok) throw new Error(await extractApiError(res, "Não foi possível abrir o lead do cliente."));
       const data = await res.json().catch(() => ({}));
-      navigate(createPageUrl(data.page, { id: data.lead_id }));
+      onOpenBudget({
+        ajuste,
+        leadId: data.lead_id,
+        modulo: data.modulo,
+      });
+      setOpening(false);
     } catch (e) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });
       setOpening(false);
     }
   };
+
+  const cardInteractionProps = opensCompleteEditor
+    ? {}
+    : {
+        role: "button",
+        tabIndex: 0,
+        onClick: handleOpenAdjustment,
+        onKeyDown: (e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleOpenAdjustment();
+          }
+        },
+      };
 
   const handleMark = async () => {
     setSaving(true);
@@ -85,24 +117,20 @@ function AjusteCard({ ajuste, onMarked }) {
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={handleOpenLead}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          handleOpenLead();
-        }
-      }}
-      title="Abrir o lead do cliente"
-      className={`group relative cursor-pointer rounded-2xl border bg-white p-4 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-violet-300 dark:bg-gray-900 ${
+      {...cardInteractionProps}
+      id={`ajuste-${ajuste.id}`}
+      title={!opensCompleteEditor ? "Abrir o orçamento que precisa de ajuste" : undefined}
+      className={`group relative rounded-2xl border bg-white p-4 shadow-sm dark:bg-gray-900 ${
+        !opensCompleteEditor ? "cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-violet-300" : ""
+      } ${
         done ? "border-emerald-200 dark:border-emerald-900/60" : "border-amber-200 dark:border-amber-900/60"
       } ${opening ? "opacity-70" : ""}`}
     >
-      <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 dark:text-slate-600">
-        {opening ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
-      </div>
+      {!opensCompleteEditor && (
+        <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 dark:text-slate-600">
+          {opening ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+        </div>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -134,12 +162,33 @@ function AjusteCard({ ajuste, onMarked }) {
           <AlertTriangle className="h-3.5 w-3.5 text-amber-500" /> O que precisa ser ajustado
         </div>
         <p className="whitespace-pre-wrap text-[13.5px] text-slate-700 dark:text-slate-200">{ajuste.texto}</p>
+         <span className="mt-2 inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[10.5px] font-semibold text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">
+            {presalesAdjustmentType(ajuste) === "endereco" ? "Corrigir no endereço do orçamento" : "Corrigir no cadastro completo"}
+         </span>
         {ajuste.auditor_nome && (
           <div className="mt-2 inline-flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500">
             <UserIcon className="h-3.5 w-3.5" /> Solicitado por {ajuste.auditor_nome}
           </div>
         )}
       </div>
+
+      {!done && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-teal-100 bg-teal-50/45 px-3 py-2.5 dark:border-teal-900/50 dark:bg-teal-950/15" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-2 text-[12px] text-teal-800 dark:text-teal-200">
+            <PencilLine className="h-4 w-4 shrink-0" />
+            <span>{opensCompleteEditor ? "Revise todos os dados antes de confirmar o ajuste." : "Abra o orçamento para tratar este retorno."}</span>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); handleOpenAdjustment(); }}
+            disabled={opening}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-[12px] font-semibold text-slate-600 transition-colors hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:pointer-events-none disabled:opacity-55 dark:bg-gray-800 dark:text-slate-300 dark:hover:bg-gray-700"
+          >
+            {opening ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PencilLine className="h-3.5 w-3.5" />}
+            {opensCompleteEditor ? "Editar cadastro completo" : "Abrir orçamento"}
+          </button>
+        </div>
+      )}
 
       {done ? (
         ajuste.vendedor_comentario && (
@@ -195,6 +244,10 @@ export default function PreSalesAjustes() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("pendente");
+  const [budgetContext, setBudgetContext] = useState(null);
+  const [correctionItem, setCorrectionItem] = useState(null);
+  const targetAjusteId = new URLSearchParams(window.location.search).get("ajuste_id");
+  const autoOpenedRef = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -212,6 +265,24 @@ export default function PreSalesAjustes() {
   }, [toast]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!targetAjusteId || items.length === 0) return;
+    if (tab !== "todos") {
+      setTab("todos");
+      return;
+    }
+    if (autoOpenedRef.current === targetAjusteId) return;
+    autoOpenedRef.current = targetAjusteId;
+    setTimeout(() => {
+      const card = document.getElementById(`ajuste-${targetAjusteId}`);
+      card?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      card?.click();
+    }, 0);
+  }, [items, tab, targetAjusteId]);
 
   const counts = useMemo(() => ({
     pendente: items.filter((i) => i.status === "pendente").length,
@@ -294,9 +365,36 @@ export default function PreSalesAjustes() {
         ) : (
           <div className="flex flex-col gap-3">
             {filtered.map((a) => (
-              <AjusteCard key={a.id} ajuste={a} onMarked={load} />
+              <AjusteCard
+                key={a.id}
+                ajuste={a}
+                onMarked={load}
+                onOpenBudget={setBudgetContext}
+                onOpenCorrection={setCorrectionItem}
+              />
             ))}
           </div>
+        )}
+
+        {budgetContext && (
+          <OrcamentoDocumentos
+            modulo={budgetContext.modulo}
+            cpf={budgetContext.ajuste.cliente_cpf}
+            leadId={budgetContext.leadId}
+            canManage
+            ajusteId={budgetContext.ajuste.id}
+            initialSelectedId={budgetContext.ajuste.erp_pedido_id}
+            hideList
+            onModalClose={() => setBudgetContext(null)}
+          />
+        )}
+        {correctionItem && (
+          <PostsalesCorrectionModal
+            item={correctionItem}
+            correctionPath={`${API_BASE}/presales-ajustes/${encodeURIComponent(correctionItem.id)}/correcao`}
+            onClose={() => setCorrectionItem(null)}
+            onSaved={load}
+          />
         )}
       </div>
     </div>

@@ -1,12 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import {
-  Undo2, Loader2, CheckCircle2, History, User as UserIcon,
+  Undo2, Loader2, CheckCircle2, History, User as UserIcon, PencilLine,
 } from "lucide-react";
 import {
   API_BASE, authHeaders, StatusBadge, PrazoBadge, TrilhaModal, Hero, ClienteCell,
 } from "@/components/postsales/shared";
 import { extractApiError } from "@/utils/apiError";
+import {
+  POSTSALES_REFRESH_EVENT,
+} from "@/utils/postsalesNavigation";
+import PostsalesCorrectionModal from "@/components/postsales/PostsalesCorrectionModal";
 
 // Coordenador/supervisor: devoluções do Pós-Vendas para a sua equipe, com motivo e
 // prazo de 3 dias úteis. "Marcar como resolvida" devolve o orçamento ao auditor reavaliar.
@@ -15,6 +19,7 @@ export default function PosVendasDevolucoes() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [resolving, setResolving] = useState(null);
+  const [correctionItem, setCorrectionItem] = useState(null);
   const [obs, setObs] = useState({});
   const [trilhaDe, setTrilhaDe] = useState(null);
 
@@ -44,6 +49,14 @@ export default function PosVendasDevolucoes() {
       });
       if (!res.ok) throw new Error(await extractApiError(res, "Falha ao marcar como resolvida."));
       const json = await res.json().catch(() => ({}));
+      if (json.item) {
+        setItems((current) => current.map((entry) => (
+          entry.id === json.item.id ? json.item : entry
+        )));
+        window.dispatchEvent(new CustomEvent(POSTSALES_REFRESH_EVENT, {
+          detail: { status: "resolvida", itemId: String(json.item.id) },
+        }));
+      }
       toast({ title: "Pendência resolvida", description: "O auditor do Pós-Vendas foi notificado para reavaliar." });
       await load();
     } catch (e) {
@@ -109,6 +122,14 @@ export default function PosVendasDevolucoes() {
                       )}
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCorrectionItem(it)}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-[12px] font-semibold text-slate-600 transition-colors hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-300 dark:bg-gray-800 dark:text-slate-300 dark:hover:bg-gray-700"
+                      >
+                        <PencilLine className="h-3.5 w-3.5" />
+                        Tratar ajuste no orçamento
+                      </button>
                       <input
                         value={obs[it.id] || ""}
                         onChange={(e) => setObs((p) => ({ ...p, [it.id]: e.target.value }))}
@@ -118,7 +139,7 @@ export default function PosVendasDevolucoes() {
                       <button
                         onClick={() => resolver(it)}
                         disabled={resolving === it.id}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
+                        className="action-pill-primary h-10 px-4 text-[12.5px]"
                       >
                         {resolving === it.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                         Marcar como resolvida
@@ -171,6 +192,13 @@ export default function PosVendasDevolucoes() {
         )}
       </div>
       {trilhaDe && <TrilhaModal item={trilhaDe} onClose={() => setTrilhaDe(null)} />}
+      {correctionItem && (
+        <PostsalesCorrectionModal
+          item={correctionItem}
+          onClose={() => setCorrectionItem(null)}
+          onSaved={load}
+        />
+      )}
     </div>
   );
 }

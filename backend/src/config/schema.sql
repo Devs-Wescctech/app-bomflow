@@ -602,6 +602,9 @@ CREATE TABLE IF NOT EXISTS notifications (
     read_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW()
 );
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS entity_type VARCHAR(100);
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS entity_id UUID;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'normal';
 
 CREATE TABLE IF NOT EXISTS notification_preferences (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
