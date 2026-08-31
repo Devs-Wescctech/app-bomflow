@@ -9,7 +9,7 @@ import {
 import { extractApiError } from "@/utils/apiError";
 
 // Coordenador/supervisor: devoluções do Pós-Vendas para a sua equipe, com motivo e
-// prazo de 3 dias. "Marcar como resolvida" devolve o orçamento ao auditor reavaliar.
+// prazo de 3 dias úteis. "Marcar como resolvida" devolve o orçamento ao auditor reavaliar.
 export default function PosVendasDevolucoes() {
   const { toast } = useToast();
   const [items, setItems] = useState([]);
@@ -62,7 +62,7 @@ export default function PosVendasDevolucoes() {
         <Hero
           icon={Undo2}
           title="Devoluções do Pós-Vendas"
-          subtitle="Pendências devolvidas pelo Pós-Vendas para a sua equipe — resolva dentro do prazo de 3 dias."
+          subtitle="Pendências devolvidas pelo Pós-Vendas para a sua equipe — resolva dentro do prazo de 3 dias úteis."
           onRefresh={load}
           loading={loading}
         />
