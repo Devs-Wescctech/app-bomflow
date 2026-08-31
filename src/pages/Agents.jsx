@@ -182,6 +182,7 @@ const MENU_MODULES = [
       { id: "BomPetConsulta", title: "Consulta Cliente" },
       { id: "BomPetPainel", title: "Painel Operacional" },
       { id: "BomPetRelatorio", title: "Relatório de Utilizações" },
+      { id: "BomPetParceiros", title: "Cadastro Parceiros" },
     ]
   },
   {

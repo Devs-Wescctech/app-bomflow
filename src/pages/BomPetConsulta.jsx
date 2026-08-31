@@ -85,6 +85,9 @@ export default function BomPetConsulta() {
   const [remocaoLocal, setRemocaoLocal] = useState('');
   const [remocaoEndereco, setRemocaoEndereco] = useState('');
   const [clinicaNome, setClinicaNome] = useState('');
+  const [parceiros, setParceiros] = useState([]);
+  const [loadingParceiros, setLoadingParceiros] = useState(false);
+  const [selectedParceiroId, setSelectedParceiroId] = useState('');
   const [parceiroNome, setParceiroNome] = useState('');
   const [telefoneContato, setTelefoneContato] = useState('');
   const [observacoes, setObservacoes] = useState('');
@@ -107,8 +110,27 @@ export default function BomPetConsulta() {
     fetchUser();
   }, []);
 
+  useEffect(() => {
+    async function fetchParceiros() {
+      setLoadingParceiros(true);
+      try {
+        const res = await fetch(`${API_BASE}/bom-pet/parceiros/ativos`, {
+          headers: { ...getAuthHeaders() },
+        });
+        if (!res.ok) throw new Error(await extractApiError(res, 'Não foi possível carregar os parceiros.'));
+        setParceiros(await res.json());
+      } catch (err) {
+        toast({ title: "Erro", description: err.message, variant: "destructive" });
+      } finally {
+        setLoadingParceiros(false);
+      }
+    }
+    fetchParceiros();
+  }, [toast]);
+
   const pets = clientData?.pets || [];
   const petsAtivos = pets.filter(p => p.status !== 'Falecido');
+  const selectedParceiro = parceiros.find(p => String(p.id) === String(selectedParceiroId));
   const isInadimplente = (clientData?.situacao_financeira || '').toUpperCase().includes('INADIMPLENTE');
   const bloqueadoPorInadimplencia = isInadimplente && !comprovanteRecebido;
 
@@ -116,7 +138,8 @@ export default function BomPetConsulta() {
     setClientData(null); setUtilizacoes(null); setParcelas(null);
     setComprovanteRecebido(false); setComprovanteObs('');
     setShowForm(false); setSelectedPet('');
-    setRemocaoLocal(''); setRemocaoEndereco(''); setClinicaNome(''); setParceiroNome('');
+    setRemocaoLocal(''); setRemocaoEndereco(''); setClinicaNome('');
+    setParceiroNome(''); setSelectedParceiroId('');
     setTelefoneContato(''); setObservacoes('');
     setAtendimentoFinalizado(null);
     setTermoLocal(''); setTermoRua(''); setTermoValoresCombinados(''); setTermoDescricaoProduto('');
@@ -208,6 +231,10 @@ export default function BomPetConsulta() {
       toast({ title: "Erro", description: "Selecione o pet.", variant: "destructive" });
       return;
     }
+    if (!selectedParceiroId) {
+      toast({ title: "Erro", description: "Selecione um parceiro de cremação.", variant: "destructive" });
+      return;
+    }
     // Pets do mesmo plano compartilham o contrato_id; a chave única é contrato_id + nome.
     const pet = pets.find(p => `${p.contrato_id}::${p.nome}` === selectedPet);
     if (!pet) {
@@ -250,7 +277,8 @@ export default function BomPetConsulta() {
           remocao_local: stripHTML(remocaoLocal),
           remocao_endereco: stripHTML(remocaoEndereco),
           clinica_nome: stripHTML(clinicaNome),
-          parceiro_nome: stripHTML(parceiroNome),
+           parceiro_id: selectedParceiroId,
+           parceiro_nome: stripHTML(selectedParceiro?.nome || parceiroNome),
           telefone_contato: telefoneDigits,
           observacoes: stripHTML(observacoes),
         }),
@@ -401,7 +429,7 @@ export default function BomPetConsulta() {
     if (!at) return '';
     const tel = at.telefone_contato
       ? at.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : '';
-    return `Autorização de Cremação — Bom Pet\nProtocolo: ${at.protocolo}\n\nTitular: ${at.nome_cliente}\nCPF: ${at.documento_cliente}\nTelefone de Contato: ${tel}\nPet: ${at.pet_descricao || at.pet_nome}\nLocal da Remoção: ${at.remocao_local || '-'}\nEndereço da Remoção: ${at.remocao_endereco || '-'}\nClínica Veterinária: ${at.clinica_nome || '-'}\nParceiro: ${at.parceiro_nome || '-'}\nData da solicitação: ${formatDateTime(at.data_hora || at.created_at)}${at.observacoes ? `\nObservações: ${at.observacoes}` : ''}`;
+    return `Autorização de Cremação — Bom Pet\nProtocolo: ${at.protocolo}\n\nTitular: ${at.nome_cliente}\nCPF: ${at.documento_cliente}\nTelefone de Contato: ${tel}\nPet: ${at.pet_descricao || at.pet_nome}\nLocal da Remoção: ${at.remocao_local || '-'}\nEndereço da Remoção: ${at.remocao_endereco || '-'}\nClínica Veterinária: ${at.clinica_nome || '-'}\nData da solicitação: ${formatDateTime(at.data_hora || at.created_at)}${at.observacoes ? `\nObservações: ${at.observacoes}` : ''}`;
   }
 
   return (
@@ -796,8 +824,37 @@ export default function BomPetConsulta() {
                   <Input value={clinicaNome} onChange={(e) => setClinicaNome(e.target.value)} placeholder="Nome da clínica (se aplicável)" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="flex items-center gap-1.5"><Handshake className="w-4 h-4 text-teal-500" />Parceiro Operacional / Direcionamento</Label>
-                  <Input value={parceiroNome} onChange={(e) => setParceiroNome(e.target.value)} placeholder="Parceiro responsável pela cremação" />
+                  <Label className="flex items-center gap-1.5"><Handshake className="w-4 h-4 text-teal-500" />Parceiro de Cremação *</Label>
+                  <Select
+                    value={selectedParceiroId}
+                    onValueChange={(value) => {
+                      setSelectedParceiroId(value);
+                      setParceiroNome(parceiros.find(p => String(p.id) === value)?.nome || '');
+                    }}
+                    disabled={loadingParceiros}
+                  >
+                    <SelectTrigger className="border-teal-200 dark:border-teal-800">
+                      <SelectValue placeholder={loadingParceiros ? "Carregando parceiros..." : "Selecione o parceiro"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {parceiros.map((parceiro) => (
+                        <SelectItem key={parceiro.id} value={String(parceiro.id)}>
+                          {parceiro.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center justify-between rounded-md border border-teal-100 bg-teal-50/60 px-3 py-2 dark:border-teal-900 dark:bg-teal-950/30">
+                    <span className="text-xs text-muted-foreground">Valor atual do serviço</span>
+                    <span className="font-semibold text-teal-700 dark:text-teal-300">
+                      {selectedParceiro ? formatMoney(selectedParceiro.valor_servico) : '—'}
+                    </span>
+                  </div>
+                  {!loadingParceiros && parceiros.length === 0 && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      Não há parceiros ativos cadastrados.
+                    </p>
+                  )}
                 </div>
               </div>
 

@@ -332,6 +332,7 @@ const menuModules = [
       { title: "Consulta Cliente", url: createPageUrl("BomPetConsulta"), icon: Search },
       { title: "Painel Operacional", url: createPageUrl("BomPetPainel"), icon: ClipboardList },
       { title: "Relatório de Utilizações", url: createPageUrl("BomPetRelatorio"), icon: FileBarChart },
+      { title: "Cadastro Parceiros", url: createPageUrl("BomPetParceiros"), icon: Building2, adminOnly: true },
     ]
   },
   {

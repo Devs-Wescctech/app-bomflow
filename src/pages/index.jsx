@@ -201,6 +201,7 @@ import BomAutoRelatorio from "./BomAutoRelatorio";
 import BomPetConsulta from "./BomPetConsulta";
 import BomPetPainel from "./BomPetPainel";
 import BomPetRelatorio from "./BomPetRelatorio";
+import BomPetParceiros from "./BomPetParceiros";
 import AppsHub from "./AppsHub";
 import ApiDocumentation from "./ApiDocumentation";
 import AdminApiKeys from "./AdminApiKeys";
@@ -442,6 +443,7 @@ const PAGES = {
     BomPetConsulta: BomPetConsulta,
     BomPetPainel: BomPetPainel,
     BomPetRelatorio: BomPetRelatorio,
+    BomPetParceiros: BomPetParceiros,
     AppsHub: AppsHub,
     ApiDocumentation: ApiDocumentation,
     AdminApiKeys: AdminApiKeys,
@@ -713,6 +715,7 @@ function PagesContent() {
                 <Route path="/BomPetConsulta" element={<BomPetConsulta />} />
                 <Route path="/BomPetPainel" element={<BomPetPainel />} />
                 <Route path="/BomPetRelatorio" element={<BomPetRelatorio />} />
+                <Route path="/BomPetParceiros" element={<BomPetParceiros />} />
                 
                 <Route path="/SystemsApiDocs" element={<SystemsApiDocs />} />
 

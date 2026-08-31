@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,14 @@ function getAuthHeaders() {
 
 function formatDateForFile() {
   return formatBomPetDateForFile();
+}
+
+function formatPartnerValue(value) {
+  if (value === null || value === undefined || value === '') return '-';
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue)
+    ? numericValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    : '-';
 }
 
 function StatusBadge({ status }) {
@@ -79,7 +88,7 @@ export default function BomPetRelatorio() {
         } else {
           setAuthorized(false);
         }
-      } catch (e) {
+      } catch {
         setAuthorized(false);
       }
     }
@@ -97,7 +106,7 @@ export default function BomPetRelatorio() {
         const data = await res.json();
         setAtendentes(Array.isArray(data) ? data : []);
       }
-    } catch (e) { /* silencioso */ }
+    } catch { /* silencioso */ }
   }
 
   async function fetchRelatorio() {
@@ -145,6 +154,7 @@ export default function BomPetRelatorio() {
       'Local da Remoção': at.remocao_local || '-',
       'Clínica': at.clinica_nome || '-',
       'Parceiro': at.parceiro_nome || '-',
+      'Valor do Serviço': formatPartnerValue(at.parceiro_valor),
       'Status': at.status_atendimento || '-',
       'Atendente': at.usuario || '-',
     }));
@@ -161,7 +171,7 @@ export default function BomPetRelatorio() {
       const ws = XLSX.utils.json_to_sheet(getExportData());
       ws['!cols'] = [
         { wch: 20 }, { wch: 14 }, { wch: 30 }, { wch: 18 }, { wch: 25 },
-        { wch: 25 }, { wch: 25 }, { wch: 25 }, { wch: 14 }, { wch: 30 },
+        { wch: 25 }, { wch: 25 }, { wch: 25 }, { wch: 16 }, { wch: 14 }, { wch: 30 },
       ];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Relatório');
@@ -197,7 +207,7 @@ export default function BomPetRelatorio() {
       doc.text(`Gerado em: ${formatDateTime(new Date())}`, 14, 25);
       doc.text(`Total de registros: ${atendimentos.length}`, 14, 30);
 
-      const headers = [['Data', 'Protocolo', 'Cliente', 'Documento', 'Pet', 'Local Remoção', 'Clínica', 'Parceiro', 'Status', 'Atendente']];
+      const headers = [['Data', 'Protocolo', 'Cliente', 'Documento', 'Pet', 'Local Remoção', 'Clínica', 'Parceiro', 'Valor Serviço', 'Status', 'Atendente']];
       const tableData = atendimentos.map(at => [
         formatDateTime(at.data_hora || at.created_at),
         at.protocolo || '-',
@@ -207,6 +217,7 @@ export default function BomPetRelatorio() {
         at.remocao_local || '-',
         at.clinica_nome || '-',
         at.parceiro_nome || '-',
+        formatPartnerValue(at.parceiro_valor),
         at.status_atendimento || '-',
         at.usuario || '-',
       ]);
@@ -385,7 +396,7 @@ export default function BomPetRelatorio() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 dark:bg-gray-800/50">
-                    {['Data Atendimento', 'Protocolo', 'Cliente', 'Documento', 'Pet', 'Local Remoção', 'Clínica', 'Parceiro', 'Status', 'Atendente'].map(h => (
+                    {['Data Atendimento', 'Protocolo', 'Cliente', 'Documento', 'Pet', 'Local Remoção', 'Clínica', 'Parceiro', 'Valor Serviço', 'Status', 'Atendente'].map(h => (
                       <th key={h} className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -401,6 +412,7 @@ export default function BomPetRelatorio() {
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-[180px] truncate" title={at.remocao_local || '-'}>{at.remocao_local || '-'}</td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-[160px] truncate" title={at.clinica_nome || '-'}>{at.clinica_nome || '-'}</td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-[160px] truncate" title={at.parceiro_nome || '-'}>{at.parceiro_nome || '-'}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{formatPartnerValue(at.parceiro_valor)}</td>
                       <td className="px-4 py-3 whitespace-nowrap"><StatusBadge status={at.status_atendimento} /></td>
                       <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{at.usuario || '-'}</td>
                     </tr>
@@ -417,7 +429,7 @@ export default function BomPetRelatorio() {
           <CardContent className="py-12 text-center">
             <FileBarChart className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
             <p className="text-gray-500 dark:text-gray-400 text-sm">
-              Utilize os filtros acima e clique em "Buscar" para gerar o relatório.
+              Utilize os filtros acima e clique em &quot;Buscar&quot; para gerar o relatório.
             </p>
           </CardContent>
         </Card>

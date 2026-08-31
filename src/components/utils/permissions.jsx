@@ -430,6 +430,9 @@ export function filterMenuItems(agent, menuItems, user = null) {
         // Módulo exibido só pela exceção de auditoria → esconde os demais itens.
         if (!moduleAccessible) return false;
 
+        // adminOnly nunca pode ser liberado por allowedSubmenus ou outras flags.
+        if (subItem.adminOnly && !isAdmin) return false;
+
         // alwaysVisible: visível a qualquer agente com acesso ao módulo,
         // ignorando restrições de submenu (allowedSubmenus) do tipo de agente.
         if (subItem.alwaysVisible) return true;

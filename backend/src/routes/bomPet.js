@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { query } from '../config/database.js';
+import { query, withTransaction } from '../config/database.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { fetchErpAllPages, ErpUpstreamError } from '../utils/erpPagination.js';
 import { canAccessAtendimento } from '../utils/bomPetAuthz.js';
@@ -12,6 +12,13 @@ import {
   isValidBomPetDateOnly,
   serializeBomPetRow,
 } from '../utils/bomPetDate.js';
+import {
+  BOM_PET_PARTNER_STATUSES,
+  canManageBomPetPartners,
+  partnerValueChanged,
+  snapshotActivePartner,
+  validatePartnerPayload,
+} from '../utils/bomPetPartnerRules.js';
 
 const router = Router();
 
@@ -114,6 +121,240 @@ function requireSupervisor(req, res, next) {
   }
   next();
 }
+
+function isBomPetAdmin(req) {
+  return canManageBomPetPartners({
+    userRole: req.user?.role,
+    agentType: req.bomPetAgent?.agent_type,
+  });
+}
+
+function requireBomPetAdmin(req, res, next) {
+  if (!isBomPetAdmin(req)) {
+    return res.status(403).json({ message: 'Acesso restrito a administradores.' });
+  }
+  next();
+}
+
+function partnerError(message, statusCode = 400) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function serializePartner(row) {
+  if (!row) return row;
+  return {
+    ...row,
+    valor_servico: row.valor_servico === null || row.valor_servico === undefined
+      ? null : Number(row.valor_servico),
+  };
+}
+
+function serializePartnerHistory(row) {
+  return serializePartner(row);
+}
+
+// ── Parceiros Bom Pet ─────────────────────────────────────────────────────
+// A lista mínima de parceiros ativos é usada no registro de cremação por
+// qualquer perfil autorizado no módulo. Os demais endpoints são administrativos.
+router.get('/parceiros/ativos', authMiddleware, bomPetAuth, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT id, nome, valor_servico
+         FROM bom_pet_parceiros
+        WHERE status = 'Ativo'
+        ORDER BY nome ASC`
+    );
+    res.json(result.rows.map(serializePartner));
+  } catch (error) {
+    console.error('Error fetching active Bom Pet partners:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/parceiros', authMiddleware, bomPetAuth, requireBomPetAdmin, async (req, res) => {
+  try {
+    const { status = 'todos', busca = '' } = req.query;
+    if (status !== 'todos' && !BOM_PET_PARTNER_STATUSES.includes(status)) {
+      return res.status(400).json({ message: 'Filtro de status inválido.' });
+    }
+    const params = [];
+    const conditions = [];
+    if (status !== 'todos') {
+      params.push(status);
+      conditions.push(`status = $${params.length}`);
+    }
+    if (String(busca).trim()) {
+      params.push(`%${String(busca).trim()}%`);
+      conditions.push(`(nome ILIKE $${params.length} OR email ILIKE $${params.length})`);
+    }
+    const result = await query(
+      `SELECT id, nome, valor_servico, data_cadastro, email, telefone, status,
+              data_exclusao, created_at, updated_at
+         FROM bom_pet_parceiros
+        ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+        ORDER BY CASE WHEN status = 'Ativo' THEN 0 ELSE 1 END, nome ASC`,
+      params
+    );
+    res.json(result.rows.map(serializePartner));
+  } catch (error) {
+    console.error('Error listing Bom Pet partners:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/parceiros/:id(\\d+)', authMiddleware, bomPetAuth, requireBomPetAdmin, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT id, nome, valor_servico, data_cadastro, email, telefone, status,
+              data_exclusao, created_at, updated_at
+         FROM bom_pet_parceiros
+        WHERE id = $1`,
+      [req.params.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Parceiro não encontrado.' });
+    }
+    const history = await query(
+      `SELECT id, parceiro_id, valor_servico, vigencia_inicio, vigencia_fim, created_at
+         FROM bom_pet_parceiros_historico
+        WHERE parceiro_id = $1
+        ORDER BY vigencia_inicio DESC, id DESC`,
+      [req.params.id]
+    );
+    res.json({
+      ...serializePartner(result.rows[0]),
+      historico: history.rows.map(serializePartnerHistory),
+    });
+  } catch (error) {
+    console.error('Error fetching Bom Pet partner:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/parceiros', authMiddleware, bomPetAuth, requireBomPetAdmin, async (req, res) => {
+  try {
+    const { errors, normalized } = validatePartnerPayload(req.body);
+    if (errors.length > 0) return res.status(400).json({ message: errors.join(' ') });
+    if (req.body.status && req.body.status !== 'Ativo') {
+      return res.status(400).json({ message: 'Novos parceiros devem nascer Ativos.' });
+    }
+    if (req.body.data_exclusao) {
+      return res.status(400).json({ message: 'Um novo parceiro ativo não pode ter data de exclusão.' });
+    }
+
+    const partner = await withTransaction(async (client) => {
+      const inserted = await client.query(
+        `INSERT INTO bom_pet_parceiros
+          (nome, valor_servico, data_cadastro, email, telefone, status, data_exclusao)
+         VALUES ($1, $2, $3, $4, $5, 'Ativo', NULL)
+         RETURNING *`,
+        [
+          normalized.nome, normalized.valor_servico, normalized.data_cadastro,
+          normalized.email ?? null, normalized.telefone ?? null,
+        ]
+      );
+      const row = inserted.rows[0];
+      await client.query(
+        `INSERT INTO bom_pet_parceiros_historico
+          (parceiro_id, valor_servico, vigencia_inicio)
+         VALUES ($1, $2, $3::date::timestamp AT TIME ZONE 'America/Sao_Paulo')`,
+        [row.id, normalized.valor_servico, normalized.data_cadastro]
+      );
+      return row;
+    });
+    res.status(201).json(serializePartner(partner));
+  } catch (error) {
+    console.error('Error creating Bom Pet partner:', error);
+    res.status(error.statusCode || 500).json({ message: error.message });
+  }
+});
+
+router.put('/parceiros/:id(\\d+)', authMiddleware, bomPetAuth, requireBomPetAdmin, async (req, res) => {
+  try {
+    const { errors, normalized } = validatePartnerPayload(req.body, { partial: true });
+    if (errors.length > 0) return res.status(400).json({ message: errors.join(' ') });
+
+    const result = await withTransaction(async (client) => {
+      const currentResult = await client.query(
+        'SELECT * FROM bom_pet_parceiros WHERE id = $1 FOR UPDATE',
+        [req.params.id]
+      );
+      if (currentResult.rows.length === 0) throw partnerError('Parceiro não encontrado.', 404);
+      const current = currentResult.rows[0];
+      const currentRegistrationDate = current.data_cadastro instanceof Date
+        ? current.data_cadastro.toISOString().slice(0, 10)
+        : String(current.data_cadastro).slice(0, 10);
+      if (normalized.data_cadastro && normalized.data_cadastro !== currentRegistrationDate) {
+        throw partnerError('A data de cadastro não pode ser alterada após a criação.');
+      }
+      const currentHistory = await client.query(
+        `SELECT COUNT(*)::int AS count
+           FROM bom_pet_parceiros_historico
+          WHERE parceiro_id = $1 AND vigencia_fim IS NULL`,
+        [req.params.id]
+      );
+      if (currentHistory.rows[0]?.count !== 1) {
+        throw partnerError('Histórico de vigência inconsistente para este parceiro.', 409);
+      }
+      const next = {
+        nome: normalized.nome ?? current.nome,
+        valor_servico: normalized.valor_servico ?? Number(current.valor_servico),
+        data_cadastro: currentRegistrationDate,
+        email: Object.prototype.hasOwnProperty.call(normalized, 'email') ? normalized.email : current.email,
+        telefone: Object.prototype.hasOwnProperty.call(normalized, 'telefone') ? normalized.telefone : current.telefone,
+        status: normalized.status ?? current.status,
+        data_exclusao: Object.prototype.hasOwnProperty.call(normalized, 'data_exclusao')
+          ? normalized.data_exclusao : current.data_exclusao,
+      };
+
+      if (next.status === 'Inativo' && !next.data_exclusao) {
+        throw partnerError('Informe a data de exclusão para inativar o parceiro.');
+      }
+      if (next.status === 'Ativo') next.data_exclusao = null;
+      if (next.status === 'Inativo' && next.data_exclusao < next.data_cadastro) {
+        throw partnerError('A data de exclusão não pode ser anterior à data de cadastro.');
+      }
+
+      const updated = await client.query(
+        `UPDATE bom_pet_parceiros
+            SET nome = $1, valor_servico = $2, data_cadastro = $3, email = $4,
+                telefone = $5, status = $6, data_exclusao = $7, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $8
+          RETURNING *`,
+        [
+          next.nome, next.valor_servico, next.data_cadastro, next.email,
+          next.telefone, next.status, next.data_exclusao, req.params.id,
+        ]
+      );
+
+      if (partnerValueChanged(current.valor_servico, next.valor_servico)) {
+        const changedAt = new Date();
+        const closed = await client.query(
+          `UPDATE bom_pet_parceiros_historico
+              SET vigencia_fim = $2
+            WHERE parceiro_id = $1 AND vigencia_fim IS NULL`,
+          [req.params.id, changedAt]
+        );
+        if (closed.rowCount !== 1) {
+          throw partnerError('Histórico de vigência inconsistente para este parceiro.', 409);
+        }
+        await client.query(
+          `INSERT INTO bom_pet_parceiros_historico
+            (parceiro_id, valor_servico, vigencia_inicio)
+           VALUES ($1, $2, $3)`,
+          [req.params.id, next.valor_servico, changedAt]
+        );
+      }
+      return updated.rows[0];
+    });
+    res.json(serializePartner(result));
+  } catch (error) {
+    console.error('Error updating Bom Pet partner:', error);
+    res.status(error.statusCode || 500).json({ message: error.message });
+  }
+});
 
 const ERP_BASE = 'http://erp.wescctech.com.br:8080/BP_MULTI/api';
 const erpToken = () => process.env.ERP_AUTH_TOKEN || '';
@@ -320,7 +561,7 @@ router.get('/utilizacoes/:documento', authMiddleware, bomPetAuth, async (req, re
     const scoped = !isBomPetSupervisor(req);
     const listResult = await query(
       `SELECT id, protocolo, status_atendimento, usuario, data_hora, pet_nome, pet_descricao,
-              remocao_local, remocao_endereco, clinica_nome, parceiro_nome,
+               remocao_local, remocao_endereco, clinica_nome, parceiro_nome, parceiro_valor,
               telefone_contato, contratos_servicos, nome_cliente, documento_cliente, observacoes,
               termo_local, termo_rua, termo_valores_combinados, termo_descricao_produto
        FROM bom_pet_atendimentos
@@ -350,7 +591,7 @@ router.post('/atendimentos', authMiddleware, bomPetAuth, async (req, res) => {
       documento_cliente, nome_cliente, pet_nome, pet_descricao, pet_contrato_id,
       contratos_servicos, situacao_financeira,
       comprovante_pagamento_recebido, comprovante_pagamento_obs,
-      remocao_local, remocao_endereco, clinica_nome, parceiro_nome,
+      remocao_local, remocao_endereco, clinica_nome, parceiro_id,
       telefone_contato, observacoes,
     } = req.body;
 
@@ -359,6 +600,9 @@ router.post('/atendimentos', authMiddleware, bomPetAuth, async (req, res) => {
 
     if (!documento_cliente || !pet_contrato_id) {
       return res.status(400).json({ message: 'Campos obrigatórios: documento_cliente, pet_contrato_id' });
+    }
+    if (!/^\d+$/.test(String(parceiro_id || '')) || Number(parceiro_id) <= 0) {
+      return res.status(400).json({ message: 'Selecione um parceiro ativo.' });
     }
 
     // ── Validação SERVER-SIDE contra o ERP (não confiar no body) ─────────
@@ -417,40 +661,57 @@ router.post('/atendimentos', authMiddleware, bomPetAuth, async (req, res) => {
 
     const sanitizedTelefone = telefone_contato ? String(telefone_contato).replace(/\D/g, '').slice(0, 15) : null;
 
-    // Geração de protocolo segura contra concorrência: advisory lock transacional.
-    const result = await query(
-      `WITH lock AS (SELECT pg_advisory_xact_lock(hashtext('bom_pet_protocolo'))),
-      next_seq AS (
-        SELECT COALESCE(MAX(
-          CASE WHEN protocolo LIKE 'BP' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || '%'
-          THEN CAST(RIGHT(protocolo, 4) AS INTEGER) ELSE 0 END
-        ), 0) + 1 AS seq
-        FROM bom_pet_atendimentos, lock
-      )
-      INSERT INTO bom_pet_atendimentos
-       (protocolo, documento_cliente, nome_cliente, pet_nome, pet_descricao, pet_contrato_id,
-        contratos_servicos, situacao_financeira, comprovante_pagamento_recebido, comprovante_pagamento_obs,
-        remocao_local, remocao_endereco, clinica_nome, parceiro_nome, telefone_contato,
-        observacoes, usuario, status_atendimento)
-       VALUES (
-         'BP' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || LPAD((SELECT seq FROM next_seq)::text, 4, '0'),
-         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'Pendente'
-       )
-       RETURNING *`,
-      [
-        cpfFormatted,
-        erpRows[0].contratante || '',
-        (petRow.texto_original_veiculo || '').split(' - ')[0].trim(),
-        petRow.texto_original_veiculo || null,
-        petRow.contrato_id,
-        [...new Set(erpRows.map((r) => r.contrato_servicos).filter(Boolean))].join(', ') || null,
-        sitFin,
-        comprovanteFlag, comprovanteObs,
-        stripHtml(remocao_local), stripHtml(remocao_endereco),
-        stripHtml(clinica_nome), stripHtml(parceiro_nome),
-        sanitizedTelefone, stripHtml(observacoes), usuario,
-      ]
-    );
+    // A leitura do parceiro e o INSERT ficam na mesma transação. O lock impede
+    // que uma inativação concorrente altere a fotografia entre as duas operações.
+    const result = await withTransaction(async (client) => {
+      const partnerResult = await client.query(
+        `SELECT id, nome, valor_servico, status
+           FROM bom_pet_parceiros
+          WHERE id = $1
+          FOR UPDATE`,
+        [parceiro_id]
+      );
+      const partner = snapshotActivePartner(partnerResult.rows[0]);
+      if (!partner) {
+        throw partnerError('O parceiro selecionado não existe ou foi inativado. Selecione um parceiro ativo.');
+      }
+
+      const inserted = await client.query(
+        `WITH lock AS (SELECT pg_advisory_xact_lock(hashtext('bom_pet_protocolo'))),
+        next_seq AS (
+          SELECT COALESCE(MAX(
+            CASE WHEN protocolo LIKE 'BP' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || '%'
+            THEN CAST(RIGHT(protocolo, 4) AS INTEGER) ELSE 0 END
+          ), 0) + 1 AS seq
+          FROM bom_pet_atendimentos, lock
+        )
+        INSERT INTO bom_pet_atendimentos
+         (protocolo, documento_cliente, nome_cliente, pet_nome, pet_descricao, pet_contrato_id,
+          contratos_servicos, situacao_financeira, comprovante_pagamento_recebido, comprovante_pagamento_obs,
+          remocao_local, remocao_endereco, clinica_nome, parceiro_nome, parceiro_id, parceiro_valor,
+          telefone_contato, observacoes, usuario, status_atendimento)
+        VALUES (
+          'BP' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || LPAD((SELECT seq FROM next_seq)::text, 4, '0'),
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+          $14, $15, $16, $17, $18, 'Pendente'
+        )
+        RETURNING *`,
+        [
+          cpfFormatted,
+          erpRows[0].contratante || '',
+          (petRow.texto_original_veiculo || '').split(' - ')[0].trim(),
+          petRow.texto_original_veiculo || null,
+          petRow.contrato_id,
+          [...new Set(erpRows.map((r) => r.contrato_servicos).filter(Boolean))].join(', ') || null,
+          sitFin,
+          comprovanteFlag, comprovanteObs,
+          stripHtml(remocao_local), stripHtml(remocao_endereco),
+          stripHtml(clinica_nome), partner.parceiro_nome, partner.parceiro_id, partner.parceiro_valor,
+          sanitizedTelefone, stripHtml(observacoes), usuario,
+        ]
+      );
+      return inserted;
+    });
 
     const atendimento = result.rows[0];
 
@@ -466,7 +727,7 @@ router.post('/atendimentos', authMiddleware, bomPetAuth, async (req, res) => {
     res.status(201).json(serializeBomPetRow(atendimento));
   } catch (error) {
     console.error('Error in bom-pet create atendimento:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message });
   }
 });
 

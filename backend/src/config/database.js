@@ -39,3 +39,18 @@ export async function query(text, params) {
   console.log('Executed query', { text: text.substring(0, 50), duration, rows: res.rowCount });
   return res;
 }
+
+export async function withTransaction(callback) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
