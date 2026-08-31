@@ -15,13 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { extractApiError } from "@/utils/apiError";
-
-const DOC_TIPOS = [
-  { tipo: "documento_identidade", label: "Documento (CPF/RG)" },
-  { tipo: "comprovante_residencia", label: "Comprovante de residência" },
-  { tipo: "taxa_adesao", label: "Taxa de adesão" },
-  { tipo: "copia_contrato", label: "Cópia do contrato" },
-];
+import { DOC_TIPOS, getRequiredDocTipos, isDocumentUploadAllowed } from "@/utils/orcamentoDocumentos";
 
 const ACCEPT = ".pdf,.jpg,.jpeg,.png";
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -38,7 +32,9 @@ function formatBytes(bytes) {
 }
 
 const docFor = (orc, tipo) => (orc.documentos || []).find((d) => d.tipo === tipo) || null;
-const loadedCount = (orc) => DOC_TIPOS.filter(({ tipo }) => docFor(orc, tipo)).length;
+const loadedCount = (orc) => getRequiredDocTipos(orc.adesao_zero)
+  .filter(({ tipo }) => docFor(orc, tipo)).length;
+const totalCount = (orc) => getRequiredDocTipos(orc.adesao_zero).length;
 
 const MOTION_CSS = `
 @keyframes od-enter {
@@ -109,6 +105,7 @@ function AdesaoChip({ value }) {
 
 function OrcamentoRow({ orc, index, onOpen }) {
   const loaded = loadedCount(orc);
+  const total = totalCount(orc);
   const numero = orc.erp_numero || orc.erp_pedido_id;
   const dataCriacao = orc.created_at
     ? new Date(orc.created_at).toLocaleDateString("pt-BR")
@@ -145,7 +142,7 @@ function OrcamentoRow({ orc, index, onOpen }) {
       </div>
 
       <AdesaoChip value={orc.adesao_zero} />
-      <DocCounter loaded={loaded} total={DOC_TIPOS.length} />
+       <DocCounter loaded={loaded} total={total} />
 
       <ChevronRight className="h-5 w-5 shrink-0 text-gray-300 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-violet-400 dark:text-gray-600" />
     </button>
@@ -183,7 +180,7 @@ function SegToggle({ value, disabled, onChange }) {
   );
 }
 
-function DocSlot({ label, doc, canManage, uploading, deleting, onView, onUpload, onDelete }) {
+function DocSlot({ label, doc, canManage, canUpload = true, uploading, deleting, onView, onUpload, onDelete }) {
   if (doc) {
     return (
       <div className="rounded-xl border border-gray-100 bg-white p-4 ring-1 ring-transparent transition-all duration-200 hover:ring-emerald-100 dark:border-gray-700 dark:bg-gray-900 dark:hover:ring-emerald-900">
@@ -204,16 +201,18 @@ function DocSlot({ label, doc, canManage, uploading, deleting, onView, onUpload,
           </button>
           {canManage && (
             <div className="flex items-center gap-1">
-              <button
-                type="button"
-                title="Reenviar"
-                aria-label="Reenviar documento"
-                disabled={uploading}
-                onClick={onUpload}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors duration-200 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-60 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-              >
-                {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-              </button>
+              {canUpload && (
+                <button
+                  type="button"
+                  title="Reenviar"
+                  aria-label="Reenviar documento"
+                  disabled={uploading}
+                  onClick={onUpload}
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors duration-200 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-60 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+                >
+                  {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                </button>
+              )}
               <button
                 type="button"
                 title="Excluir"
@@ -236,7 +235,7 @@ function DocSlot({ label, doc, canManage, uploading, deleting, onView, onUpload,
         <FileText className="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
         <span className="text-[13px] font-semibold text-gray-500 dark:text-gray-400">{label}</span>
       </div>
-      {canManage ? (
+      {canManage && canUpload ? (
         <button
           type="button"
           disabled={uploading}
@@ -247,7 +246,9 @@ function DocSlot({ label, doc, canManage, uploading, deleting, onView, onUpload,
           Enviar arquivo
         </button>
       ) : (
-        <p className="mt-3 text-[12px] text-gray-400 dark:text-gray-500">Nenhum arquivo enviado</p>
+        <p className="mt-3 text-[12px] text-gray-400 dark:text-gray-500">
+          {canUpload ? "Nenhum arquivo enviado" : "Não aplicável com Adesão Zero"}
+        </p>
       )}
     </div>
   );
@@ -261,7 +262,7 @@ function OrcamentoModal({ orc, canManage, busyKey, fileInputs, onClose, onView, 
   }, [onClose]);
 
   const loaded = loadedCount(orc);
-  const total = DOC_TIPOS.length;
+  const total = totalCount(orc);
   const pct = Math.round((loaded / total) * 100);
   const complete = loaded === total;
   const numero = orc.erp_numero || orc.erp_pedido_id;
@@ -318,7 +319,7 @@ function OrcamentoModal({ orc, canManage, busyKey, fileInputs, onClose, onView, 
                 {loaded} de {total} documentos
               </span>
               <span className={`font-semibold ${complete ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
-                {complete ? "Completo" : `${pct}%`}
+                {pct}%
               </span>
             </div>
             <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
@@ -364,6 +365,7 @@ function OrcamentoModal({ orc, canManage, busyKey, fileInputs, onClose, onView, 
                     label={label}
                     doc={doc}
                     canManage={canManage}
+                    canUpload={isDocumentUploadAllowed(tipo, orc.adesao_zero)}
                     uploading={busyKey === inputKey}
                     deleting={doc && busyKey === `del:${doc.id}`}
                     onView={() => onView(doc)}
@@ -470,6 +472,10 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
 
   async function handleUpload(orc, tipo, file) {
     if (!file) return;
+    if (!isDocumentUploadAllowed(tipo, orc.adesao_zero)) {
+      toast.error("A taxa de adesão não pode ser anexada quando Adesão Zero está marcada como Sim.");
+      return;
+    }
     if (file.size > MAX_BYTES) {
       toast.error("Arquivo muito grande (máximo 15 MB).");
       return;

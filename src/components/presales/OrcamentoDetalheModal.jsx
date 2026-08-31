@@ -8,6 +8,7 @@ import {
   Lock, ShieldQuestion,
 } from "lucide-react";
 import { extractApiError } from "@/utils/apiError";
+import { DOC_TIPOS, getRequiredDocTipos } from "@/utils/orcamentoDocumentos";
 
 const API_BASE = "/api";
 
@@ -16,15 +17,11 @@ function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-const DOC_TIPO_LABEL = {
-  documento_identidade: "Documento (CPF/RG)",
-  comprovante_residencia: "Comprovante de residência",
-  taxa_adesao: "Taxa de adesão",
-  copia_contrato: "Cópia do contrato",
-};
+const DOC_TIPO_LABEL = Object.fromEntries(DOC_TIPOS.map(({ tipo, label }) => [tipo, label]));
 
-// Documentos exigidos para a auditoria considerar o orçamento completo.
-const REQUIRED_DOCS = ["documento_identidade", "comprovante_residencia", "taxa_adesao", "copia_contrato"];
+function hasValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
 
 function formatBytes(bytes) {
   if (bytes == null) return "";
@@ -182,10 +179,11 @@ function ChecklistItem({ ok, label }) {
 
 export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalLabel, initialLock = null, onLockChange, onApproved, onClose }) {
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [documentos, setDocumentos] = useState([]);
   const [produto, setProduto] = useState(null);
   const [detalhe, setDetalhe] = useState(null);
+  const [rastreio, setRastreio] = useState({ nome: null, cpf: null });
   const [viewingId, setViewingId] = useState(null);
   const [ajustes, setAjustes] = useState([]);
   const [ajusteTexto, setAjusteTexto] = useState("");
@@ -198,6 +196,8 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
   const [lockLoading, setLockLoading] = useState(true);
   const [claiming, setClaiming] = useState(false);
   const [concluding, setConcluding] = useState(false);
+  const [adesaoZero, setAdesaoZero] = useState(orcamento?.adesao_zero);
+  const [approvalError, setApprovalError] = useState("");
 
   const pedidoId = orcamento?.erp_id;
 
@@ -216,6 +216,11 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
       setDocumentos(Array.isArray(data.documentos) ? data.documentos : []);
       setProduto(data.produto || null);
       setDetalhe(data.detalhe || null);
+      setRastreio({
+        nome: data.cliente_nome || null,
+        cpf: data.cliente_cpf || null,
+      });
+      if (typeof data.adesao_zero === "boolean") setAdesaoZero(data.adesao_zero);
     } catch (e) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });
       setDocumentos([]);
@@ -295,6 +300,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
       "Ele será encaminhado à fila do Pós-Vendas. Nada será alterado no ERP."
     )) return;
     setConcluding(true);
+    setApprovalError("");
     try {
       const res = await fetch(`${API_BASE}/presales-ajustes/aprovacoes/${pedidoId}`, {
         method: "POST",
@@ -307,13 +313,18 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
         toast({ title: "Não foi possível aprovar", description: data.error, variant: "destructive" });
         return;
       }
-      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao aprovar o orçamento."));
+      if (!res.ok) {
+        const error = new Error(await extractApiError(res, "Falha ao aprovar o orçamento."));
+        setApprovalError(error.message);
+        throw error;
+      }
       setLock(null);
       onLockChange?.(pedidoId, null);
       onApproved?.(pedidoId, data.aprovacao || null);
       toast({ title: "Orçamento aprovado", description: "Encaminhado à fila do Pós-Vendas. Nenhuma alteração foi feita no ERP." });
       onClose();
     } catch (e) {
+      setApprovalError(e.message || "Não foi possível aprovar o orçamento.");
       toast({ title: "Erro", description: e.message, variant: "destructive" });
     } finally {
       setConcluding(false);
@@ -405,22 +416,30 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
 
   // ----- Checklist / resultado da auditoria -----
   const attachedTipos = new Set(documentos.map((d) => d.tipo));
-  const cpfOk = !!(titular?.cpf || orcamento.cpf_titular);
-  const nomeOk = !!(titular?.nome || orcamento.nome_titular);
+  const cpfOk = hasValue(titular?.cpf || rastreio.cpf);
+  const nomeOk = hasValue(titular?.nome || rastreio.nome);
   const produtoOk = produtos.length > 0;
-  const telOk = !!titular?.telefone;
-  const emailOk = !!(titular?.email || detalhe?.email);
+  const telOk = hasValue(titular?.telefone);
+  const emailOk = hasValue(titular?.email || detalhe?.email);
   const end = titular?.endereco || detalhe?.endereco || null;
-  const enderecoOk = !!(end && end.cep && end.logradouro && end.numero && end.bairro && end.cidade);
-  const planoOk = !!detalhe?.plano_pagamento;
+  const enderecoOk = !!(end && [
+    end.cep,
+    end.logradouro,
+    end.numero,
+    end.bairro,
+    end.cidade,
+  ].every(hasValue));
+  const planoOk = hasValue(detalhe?.plano_pagamento);
   const docIdOk = attachedTipos.has("documento_identidade");
   const compResOk = attachedTipos.has("comprovante_residencia");
   const taxaAdesaoOk = attachedTipos.has("taxa_adesao");
   const copiaContratoOk = attachedTipos.has("copia_contrato");
+  const requiredDocTipos = getRequiredDocTipos(adesaoZero).map(({ tipo }) => tipo);
+  const taxaAdesaoApplicable = requiredDocTipos.includes("taxa_adesao");
 
   // Valida os campos de preenchimento obrigatório do formulário (CPF, Nome, Telefone,
-  // E-mail, Endereço, Plano de pagamento e Produto) e os 4 documentos que o vendedor
-  // precisa anexar. Itens apenas recomendados (data de nascimento, veículo) ficam de fora.
+  // E-mail, Endereço, Plano de pagamento e Produto) e os documentos aplicáveis. Itens
+  // apenas recomendados (data de nascimento, veículo) ficam de fora.
   // "Título do contrato" (canal de vendas) foi removido do checklist a pedido do usuário.
   const checklist = [
     { label: "CPF informado", ok: cpfOk, level: "critico" },
@@ -432,7 +451,9 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
     { label: "Produto selecionado", ok: produtoOk, level: "critico" },
     { label: "Documento (CPF/RG) anexado", ok: docIdOk, level: "doc" },
     { label: "Comprovante de residência anexado", ok: compResOk, level: "doc" },
-    { label: "Taxa de adesão anexada", ok: taxaAdesaoOk, level: "doc" },
+    ...(taxaAdesaoApplicable
+      ? [{ label: "Taxa de adesão anexada", ok: taxaAdesaoOk, level: "doc" }]
+      : []),
     { label: "Cópia do contrato anexada", ok: copiaContratoOk, level: "doc" },
   ];
 
@@ -448,7 +469,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
   const rmeta = result ? RESULT_META[result] : null;
   const pct = totalCheck ? Math.round((doneCheck / totalCheck) * 100) : 0;
 
-  const missingRequired = REQUIRED_DOCS.filter((t) => !attachedTipos.has(t));
+  const missingRequired = requiredDocTipos.filter((t) => !attachedTipos.has(t));
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
@@ -485,6 +506,13 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
+          {approvalError && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-[12.5px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+              <div className="font-semibold">A aprovação foi recusada pelo servidor.</div>
+              <div className="mt-1">{approvalError}</div>
+            </div>
+          )}
+
           {/* TRAVA DE AUDITORIA */}
           {!lockLoading && lockedByOther && (
             <div className="mb-4 flex items-start gap-3 rounded-2xl border border-slate-300 bg-slate-100 p-3.5 dark:border-gray-700 dark:bg-gray-800/60">
@@ -582,8 +610,8 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
           {/* DADOS DO CLIENTE */}
           <SectionTitle>Dados do cliente</SectionTitle>
           <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
-            <InfoRow icon={User} label="Nome" value={titular?.nome || orcamento.nome_titular} />
-            <InfoRow icon={CreditCard} label="CPF" value={formatCpf(titular?.cpf || orcamento.cpf_titular)} />
+            <InfoRow icon={User} label="Nome" value={titular?.nome || rastreio.nome} />
+            <InfoRow icon={CreditCard} label="CPF" value={formatCpf(titular?.cpf || rastreio.cpf)} />
             <InfoRow icon={Calendar} label="Nascimento" value={formatDateOnly(titular?.data_nascimento)} />
             <InfoRow icon={User} label="Sexo" value={titular ? (SEXO_LABEL[titular.sexo] || titular.sexo) : null} />
             <InfoRow icon={Phone} label="Telefone" value={titular?.telefone} />
@@ -710,7 +738,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
           ) : (
             <div className="space-y-2.5">
               {documentos.map((doc) => {
-                const isRequired = REQUIRED_DOCS.includes(doc.tipo);
+                const isRequired = requiredDocTipos.includes(doc.tipo);
                 return (
                   <div
                     key={doc.id}
@@ -903,8 +931,8 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
                     type="button"
                     onClick={handleAprovar}
                     disabled={concluding || loading || result !== "pronto"}
-                    title={result !== "pronto" && !loading
-                      ? "Aprovação bloqueada: conclua o checklist obrigatório (dados do orçamento e os 4 documentos)."
+                      title={result !== "pronto" && !loading
+                       ? "Aprovação bloqueada: conclua o checklist obrigatório (dados do orçamento e os documentos aplicáveis)."
                       : "Aprovar e encaminhar ao Pós-Vendas (não altera o ERP)"}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm shadow-emerald-500/30 transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
