@@ -8,6 +8,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { query, pool } from '../config/database.js';
 import { getProdutosByPedidoIds, getOrcamentoDetalhe } from '../services/erpDbService.js';
 import { isPostsalesAuditorIdentity } from '../utils/postsalesDetail.js';
+import { isDocumentUploadAllowed } from '../utils/orcamentoDocumentos.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -271,6 +272,8 @@ router.get('/by-pedido/:erpPedidoId', authMiddleware, async (req, res) => {
     res.json({
       erp_pedido_id: pedidoId,
       adesao_zero: orc ? orc.adesao_zero : null,
+      cliente_nome: orc ? orc.cliente_nome : null,
+      cliente_cpf: orc ? orc.cliente_cpf : null,
       produto,
       detalhe,
       documentos,
@@ -308,6 +311,11 @@ router.post('/', authMiddleware, (req, res) => {
         return res.status(403).json({ message: 'Sem permissão para gerenciar documentos deste orçamento' });
       }
       const modulo = orc.modulo;
+      if (!isDocumentUploadAllowed(tipo, orc.adesao_zero)) {
+        return res.status(422).json({
+          message: 'A taxa de adesão não pode ser anexada quando Adesão Zero está marcada como Sim.',
+        });
+      }
 
       const ext = MIME_EXT[req.file.mimetype];
       const storedName = `${uuidv4()}${ext}`;
@@ -321,6 +329,19 @@ router.post('/', authMiddleware, (req, res) => {
       let prevStoredNames = [];
       try {
         await client.query('BEGIN');
+        const decision = await client.query(
+          `SELECT adesao_zero FROM bomflow_orcamentos
+            WHERE erp_pedido_id = $1
+            FOR UPDATE`,
+          [pedidoId]
+        );
+        if (!isDocumentUploadAllowed(tipo, decision.rows[0]?.adesao_zero)) {
+          const uploadError = new Error(
+            'A taxa de adesão não pode ser anexada quando Adesão Zero está marcada como Sim.'
+          );
+          uploadError.statusCode = 422;
+          throw uploadError;
+        }
         const prev = await client.query(
           'SELECT id, stored_name FROM orcamento_documentos WHERE erp_pedido_id = $1 AND tipo = $2 FOR UPDATE',
           [pedidoId, tipo]
@@ -351,7 +372,7 @@ router.post('/', authMiddleware, (req, res) => {
       res.json({ success: true, documento: ins.rows[0] });
     } catch (e) {
       console.error('[OrcamentoDocs] POST error:', e.message);
-      res.status(500).json({ message: e.message });
+      res.status(e.statusCode || 500).json({ message: e.message });
     }
   });
 });
@@ -380,18 +401,40 @@ router.get('/:id/download', authMiddleware, async (req, res) => {
 
 // DELETE /api/orcamento-documentos/:id
 router.delete('/:id', authMiddleware, async (req, res) => {
+  let client = null;
   try {
     const r = await query('SELECT * FROM orcamento_documentos WHERE id = $1', [req.params.id]);
     const doc = r.rows[0];
     if (!doc) return res.status(404).json({ message: 'Documento não encontrado' });
     if (!(await canManage(req, doc.erp_pedido_id))) return res.status(403).json({ message: 'Sem permissão' });
 
-    try { fs.unlinkSync(path.join(DOCS_DIR, doc.stored_name)); } catch { /* arquivo já ausente */ }
-    await query('DELETE FROM orcamento_documentos WHERE id = $1', [doc.id]);
+    client = await pool.connect();
+    await client.query('BEGIN');
+    // A aprovação bloqueia esta mesma linha do orçamento; assim a remoção não
+    // pode apagar o arquivo enquanto ele está sendo validado como obrigatório.
+    await client.query(
+      `SELECT erp_pedido_id FROM bomflow_orcamentos
+        WHERE erp_pedido_id = $1
+        FOR UPDATE`,
+      [doc.erp_pedido_id]
+    );
+    const deleted = await client.query(
+      'DELETE FROM orcamento_documentos WHERE id = $1 RETURNING stored_name',
+      [doc.id]
+    );
+    await client.query('COMMIT');
+
+    const storedName = deleted.rows[0]?.stored_name;
+    if (storedName) {
+      try { fs.unlinkSync(path.join(DOCS_DIR, storedName)); } catch { /* arquivo já ausente */ }
+    }
     res.json({ success: true });
   } catch (e) {
+    if (client) await client.query('ROLLBACK').catch(() => {});
     console.error('[OrcamentoDocs] delete error:', e.message);
     res.status(500).json({ message: e.message });
+  } finally {
+    client?.release();
   }
 });
 

@@ -1836,14 +1836,18 @@ router.get('/relatorio-orcamentos/consolidado', authMiddleware, async (req, res)
 
     // Rastreio CRM: todos os pedidos dos 4 módulos de vendas.
     const crmRes = await query(
-      `SELECT erp_pedido_id, modulo, agent_name FROM bomflow_orcamentos WHERE modulo = ANY($1)`,
+      `SELECT erp_pedido_id, modulo, agent_name, adesao_zero FROM bomflow_orcamentos WHERE modulo = ANY($1)`,
       [VALID_MODULOS]
     );
     if (crmRes.rows.length === 0) return res.json({ items: [] });
 
     let pedidoIds = crmRes.rows.map(r => Number(r.erp_pedido_id));
     const metaById = new Map(
-      crmRes.rows.map(r => [Number(r.erp_pedido_id), { modulo: r.modulo, agent_name: r.agent_name }])
+      crmRes.rows.map(r => [Number(r.erp_pedido_id), {
+        modulo: r.modulo,
+        agent_name: r.agent_name,
+        adesao_zero: r.adesao_zero,
+      }])
     );
 
     // Orçamentos já APROVADOS no pré-venda saem da fila (a aprovação é local — a
@@ -1897,6 +1901,7 @@ router.get('/relatorio-orcamentos/consolidado', authMiddleware, async (req, res)
       return {
         ...row,
         modulo: meta.modulo || null,
+         adesao_zero: meta.adesao_zero,
         modulo_nome: MODULO_LABELS[meta.modulo] || meta.modulo || '-',
         ...(realName ? { nome_vendedor: realName, login_vendedor: realName } : {}),
         ajuste_status: aj?.status || null,
