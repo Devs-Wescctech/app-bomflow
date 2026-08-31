@@ -4,6 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
@@ -11,10 +12,11 @@ import {
 import {
   Search, RefreshCw, Calendar, ShieldCheck, Clock, CheckCircle2,
   Loader2, AlertTriangle, XCircle, ThumbsUp, PencilLine, Ban, Eye,
-  Inbox, User as UserIcon, Layers, ArrowRight, MoreVertical, Lock,
+  Inbox, User as UserIcon, Layers, Store, ArrowRight, MoreVertical, Lock,
 } from "lucide-react";
 import OrcamentoDetalheModal from "@/components/presales/OrcamentoDetalheModal";
 import { extractApiError } from "@/utils/apiError";
+import { filterPreSalesQueue, findTopPending } from "@/utils/preSalesQueueFilters";
 
 const API_BASE = '/api';
 
@@ -185,6 +187,8 @@ export default function PreSalesOrcamentoRelatorio() {
   const [startDate, setStartDate] = useState(monthStartISO());
   const [endDate, setEndDate] = useState(todayISO());
   const [tab, setTab] = useState('todas');
+  const [canalFilter, setCanalFilter] = useState('todos');
+  const [canaisStatus, setCanaisStatus] = useState('loading');
   const [search, setSearch] = useState(() => {
     try {
       return new URLSearchParams(window.location.search).get('q') || '';
@@ -212,11 +216,26 @@ export default function PreSalesOrcamentoRelatorio() {
   const loadCanais = async () => {
     try {
       const res = await fetch(`${API_BASE}/erp/canais-venda`, { headers: getAuthHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        setCanais(Array.isArray(data) ? data : (data.items || []));
-      }
-    } catch { /* canal é apenas enriquecimento visual */ }
+      if (!res.ok) throw new Error(await extractApiError(res, 'Catálogo de canais indisponível.'));
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (Array.isArray(data.items) ? data.items : []);
+      const sorted = [...list]
+        .filter((canal) => canal?.id != null)
+        .sort((a, b) => String(a.titulo_contrato || a.id).localeCompare(
+          String(b.titulo_contrato || b.id),
+          'pt-BR',
+          { sensitivity: 'base' },
+        ));
+      setCanais(sorted);
+      setCanaisStatus('ready');
+    } catch (error) {
+      setCanais([]);
+      setCanaisStatus('unavailable');
+      toast({
+        title: 'Catálogo de canais indisponível',
+        description: error.message || 'A fila continua disponível. O filtro “Sem canal” permanece utilizável; canais específicos voltarão quando o catálogo for restabelecido.',
+      });
+    }
   };
 
   const loadReport = async () => {
@@ -226,6 +245,7 @@ export default function PreSalesOrcamentoRelatorio() {
       if (startDate) params.set('start_date', startDate);
       if (endDate) params.set('end_date', endDate);
       params.set('situacao', 'I');
+      if (canalFilter !== 'todos') params.set('canal_id', canalFilter);
       params.set('limit', '1000');
 
       const res = await fetch(`${API_BASE}/erp/relatorio-orcamentos/consolidado?${params}`, { headers: getAuthHeaders() });
@@ -335,24 +355,12 @@ export default function PreSalesOrcamentoRelatorio() {
   }, [enriched, currentUser]);
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    let list = enriched;
-    if (term) {
-      const tDigits = term.replace(/\D/g, '');
-      list = list.filter(o => {
-        const cpf = String(o.cpf_titular || '').replace(/\D/g, '');
-        return (
-          String(o.numero_orcamento || '').toLowerCase().includes(term) ||
-          String(o.nome_titular || '').toLowerCase().includes(term) ||
-          String(o.nome_vendedor || '').toLowerCase().includes(term) ||
-          (tDigits && cpf.includes(tDigits))
-        );
-      });
-    }
-    if (tab === 'meus') list = list.filter(isMine);
-    else if (tab !== 'todas') list = list.filter(o => o._priority === tab);
-
-    return [...list].sort(sortByUrgency);
+    return filterPreSalesQueue(enriched, {
+      search,
+      tab,
+      isMine,
+      sortItems: (list) => list.sort(sortByUrgency),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enriched, search, tab, currentUser]);
 
@@ -367,10 +375,11 @@ export default function PreSalesOrcamentoRelatorio() {
 
   // Item mais urgente da fila — alvo do CTA "Auditar Agora".
   const topPending = useMemo(() => {
-    const pend = enriched.filter(o => PENDING_SITUACOES.has(o.situacao));
-    if (!pend.length) return null;
-    return [...pend].sort(sortByUrgency)[0];
-  }, [enriched]);
+    return findTopPending(filtered, {
+      isPending: (item) => PENDING_SITUACOES.has(item.situacao),
+      sortItems: (list) => list.sort(sortByUrgency),
+    });
+  }, [filtered]);
 
   const heroMessage = stats.criticos > 0
     ? `${stats.criticos} ${stats.criticos === 1 ? 'orçamento aguardando decisão prioritária' : 'orçamentos aguardando decisão prioritária'}`
@@ -461,6 +470,30 @@ export default function PreSalesOrcamentoRelatorio() {
               <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Nº, CPF, cliente ou vendedor" className="h-9 pl-9 border-slate-200 dark:border-gray-800" />
             </div>
           </div>
+          <div className="w-[190px] min-w-0 max-w-[190px] flex-none space-y-1.5">
+            <Label className="text-[10.5px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1">
+              <Store className="w-3 h-3 text-violet-500" /> Canal de vendas
+            </Label>
+            <Select value={canalFilter} onValueChange={setCanalFilter}>
+              <SelectTrigger className="h-9 w-full min-w-0 max-w-full border-slate-200 text-[11px] dark:border-gray-800">
+                <SelectValue className="min-w-0 truncate text-[11px]" placeholder="Todos os canais" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os canais</SelectItem>
+                <SelectItem value="sem_canal">Sem canal</SelectItem>
+                {canais.map((canal) => (
+                  <SelectItem key={canal.id} value={String(canal.id)}>
+                    {canal.titulo_contrato || String(canal.id)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {canaisStatus === 'unavailable' && (
+              <p className="max-w-[230px] text-[10.5px] leading-tight text-amber-600 dark:text-amber-400">
+                Catálogo indisponível. “Sem canal” e “Todos” continuam disponíveis; canais específicos voltarão após a reconexão.
+              </p>
+            )}
+          </div>
           <Button onClick={loadReport} disabled={loading} size="sm" className="h-9 bg-[linear-gradient(135deg,#7C3AED,#9333EA)] text-white shadow-sm transition-all duration-200 hover:brightness-110">
             {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
             Aplicar
@@ -518,7 +551,9 @@ export default function PreSalesOrcamentoRelatorio() {
           ) : filtered.map((o, i) => {
             const pm = PRIORITY_META[o._priority] || PRIORITY_META.novo;
             const pending = PENDING_SITUACOES.has(o.situacao);
-            const canal = o.canal_id ? (canaisMap[o.canal_id] || String(o.canal_id)) : null;
+            const canal = o.canal_id != null && String(o.canal_id) !== ''
+              ? (canaisMap[o.canal_id] || String(o.canal_id))
+              : 'Sem canal';
             const lock = locks[o.erp_id];
             return (
               <div
@@ -576,11 +611,9 @@ export default function PreSalesOrcamentoRelatorio() {
                     <span className="inline-flex items-center gap-1" title="Vendedor">
                       <UserIcon className="w-3.5 h-3.5" /> <span className="truncate max-w-[150px]">{o.nome_vendedor || '-'}</span>
                     </span>
-                    {canal && (
-                      <span className="hidden lg:inline-flex items-center gap-1" title="Canal">
-                        <Layers className="w-3.5 h-3.5" /> <span className="truncate max-w-[150px]">{canal}</span>
-                      </span>
-                    )}
+                    <span className="hidden lg:inline-flex items-center gap-1" title="Canal">
+                      <Layers className="w-3.5 h-3.5" /> <span className="truncate max-w-[150px]">{canal}</span>
+                    </span>
                     <Chip className={MODULO_BADGE[o.modulo] || 'bg-slate-100 text-slate-500'}>{o.modulo_nome || '-'}</Chip>
                   </div>
 
@@ -643,7 +676,9 @@ export default function PreSalesOrcamentoRelatorio() {
         <OrcamentoDetalheModal
           orcamento={selected}
           situacaoBadge={<SituacaoChip situacao={selected.situacao} />}
-          canalLabel={selected.canal_id ? (canaisMap[selected.canal_id] || String(selected.canal_id)) : '-'}
+          canalLabel={selected.canal_id != null && String(selected.canal_id) !== ''
+            ? (canaisMap[selected.canal_id] || String(selected.canal_id))
+            : 'Sem canal'}
           initialLock={locks[selected.erp_id] || null}
           onLockChange={handleLockChange}
           onApproved={handleApproved}
