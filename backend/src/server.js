@@ -20,7 +20,10 @@ import apiKeyRoutes from './routes/apiKeys.js';
 import externalRoutes from './routes/external.js';
 import orcamentoDocumentosRoutes from './routes/orcamentoDocumentos.js';
 import presalesAjustesRoutes from './routes/presalesAjustes.js';
-import postsalesRoutes, { runPostsalesCongelarVencidas } from './routes/postsales.js';
+import postsalesRoutes, {
+  runPostsalesCongelarVencidas,
+  runPostsalesReconciliarResolvidas,
+} from './routes/postsales.js';
 import leadImportsRoutes from './routes/leadImports.js';
 import erpAuditLogsRoutes from './routes/erpAuditLogs.js';
 import { installErpFetchAudit, erpOriginMiddleware, withErpOrigin, cleanupErpRequestLogs } from './services/erpAuditService.js';
@@ -223,6 +226,17 @@ async function runBootSmokeCheck() {
 initDatabase()
   .then(async () => {
     console.log('Database schema initialized successfully');
+
+    try {
+      const reconciliation = await runPostsalesReconciliarResolvidas();
+      console.log(
+        `[PosVendas ReconciliarResolvidas] Inicialização concluída. verificadas=${reconciliation.checked} ` +
+        `reconciliadas=${reconciliation.reconciled} ambíguas=${reconciliation.ambiguous.length} ` +
+        `sem_evidência=${reconciliation.pending_without_evidence} erros=${reconciliation.errors}`
+      );
+    } catch (error) {
+      console.error('[PosVendas ReconciliarResolvidas] Erro na inicialização:', error.message);
+    }
     
     const AUTOMATION_INTERVAL = 60 * 60 * 1000;
     
@@ -342,6 +356,20 @@ initDatabase()
         console.error('[PreSales AutoCancel] Erro na verificação automática:', error.message);
       }
       // Pós-Vendas: congela devoluções com prazo (3 dias úteis) vencido sem resolução.
+      // A reconciliação vem antes para não congelar uma devolução que já tenha
+      // evidência inequívoca de resolução na trilha.
+      console.log('[PosVendas ReconciliarResolvidas] Iniciando reconciliação histórica...');
+      try {
+        const reconciliation = await runPostsalesReconciliarResolvidas();
+        console.log(
+          `[PosVendas ReconciliarResolvidas] Concluído. verificadas=${reconciliation.checked} ` +
+          `reconciliadas=${reconciliation.reconciled} ambíguas=${reconciliation.ambiguous.length} ` +
+          `sem_evidência=${reconciliation.pending_without_evidence} erros=${reconciliation.errors}`
+        );
+      } catch (error) {
+        console.error('[PosVendas ReconciliarResolvidas] Erro na reconciliação:', error.message);
+      }
+
       console.log('[PosVendas CongelarVencidas] Iniciando verificação diária de devoluções vencidas...');
       try {
         const p = await runPostsalesCongelarVencidas();

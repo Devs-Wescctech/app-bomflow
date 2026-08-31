@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { useToast } from "@/components/ui/use-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +16,10 @@ import {
 } from "@/components/postsales/shared";
 import { extractApiError } from "@/utils/apiError";
 import { matchesPostSalesSearch } from "@/utils/postsalesSearch";
+import {
+  POSTSALES_REFRESH_EVENT,
+  parsePostsalesQueueTarget,
+} from "@/utils/postsalesNavigation";
 
 const TABS = [
   { key: "fila", label: "Fila" },
@@ -263,7 +268,7 @@ function PostSalesDetail({ item, state, onRetry, onViewDocument, viewingId }) {
 
 // Modal de ação sobre uma verificação: concluir, devolver (motivos + prazo 3 dias úteis),
 // congelar (reavaliação reprovada) e decisão final de cancelamento no ERP.
-function AcaoModal({ item, motivos, onClose, onChanged }) {
+function AcaoModal({ item, motivos, onClose, onChanged, onItemChanged }) {
   const { toast } = useToast();
   const [busy, setBusy] = useState(null);
   const [motivo, setMotivo] = useState("");
@@ -295,6 +300,7 @@ function AcaoModal({ item, motivos, onClose, onChanged }) {
         throw new Error(await extractApiError(res, "Falha ao carregar os dados do orçamento."));
       }
       const data = await res.json().catch(() => ({}));
+      if (data.item) onItemChanged(data.item);
       setDetailState({
         status: data.detail_status || (data.detalhe ? "ok" : "empty"),
         detalhe: data.detalhe || null,
@@ -311,7 +317,7 @@ function AcaoModal({ item, motivos, onClose, onChanged }) {
         error: e.message,
       });
     }
-  }, [item.id]);
+  }, [item.id, onItemChanged]);
 
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
@@ -345,14 +351,18 @@ function AcaoModal({ item, motivos, onClose, onChanged }) {
       const res = await fetch(`${API_BASE}/postsales/${item.id}/${path}`, {
         method: "POST", headers: authHeaders(), body: body ? JSON.stringify(body) : undefined,
       });
-      if (!res.ok) throw new Error(await extractApiError(res, "Falha na operação."));
       const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (json.item) onItemChanged(json.item);
+        throw new Error(json.error || "Falha na operação.");
+      }
+      if (json.item) onItemChanged(json.item);
       toast({ title: okMsg });
-      onChanged();
+      await onChanged();
       onClose();
     } catch (e) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });
-      onChanged();
+      await onChanged();
     } finally {
       setBusy(null);
     }
@@ -550,6 +560,11 @@ function AcaoModal({ item, motivos, onClose, onChanged }) {
 
 export default function PosVendasFila() {
   const { toast } = useToast();
+  const location = useLocation();
+  const handledLocationKey = useRef(null);
+  const latestLoadId = useRef(0);
+  const loadingRef = useRef(false);
+  const pinnedTargetId = useRef(null);
   const [initialFilters] = useState(() => ({
     startDate: monthStartISO(),
     endDate: todayISO(),
@@ -563,9 +578,17 @@ export default function PosVendasFila() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
   const [trilhaDe, setTrilhaDe] = useState(null);
+  const [focusedItemId, setFocusedItemId] = useState(null);
 
-  const load = useCallback(async ({ startDate: requestedStartDate, endDate: requestedEndDate } = {}) => {
-    setLoading(true);
+  const load = useCallback(async (
+    { startDate: requestedStartDate, endDate: requestedEndDate } = {},
+    { silent = false, targetItemId = null } = {}
+  ) => {
+    const loadId = ++latestLoadId.current;
+    if (targetItemId) pinnedTargetId.current = String(targetItemId);
+    const effectiveTargetId = targetItemId || pinnedTargetId.current;
+    loadingRef.current = true;
+    if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams({ status: "todos" });
       if (requestedStartDate) params.set("start_date", requestedStartDate);
@@ -573,20 +596,109 @@ export default function PosVendasFila() {
       const res = await fetch(`${API_BASE}/postsales/fila?${params}`, { headers: authHeaders() });
       if (!res.ok) throw new Error(await extractApiError(res, "Falha ao carregar a fila."));
       const json = await res.json().catch(() => ({}));
+      const nextItems = Array.isArray(json.items) ? json.items : [];
+      let targetItem = effectiveTargetId
+        ? nextItems.find((item) => String(item.id) === String(effectiveTargetId)) || null
+        : null;
+      if (effectiveTargetId && !targetItem) {
+        const stateResponse = await fetch(`${API_BASE}/postsales/${effectiveTargetId}/state`, {
+          headers: authHeaders(),
+        });
+        if (stateResponse.ok) {
+          const stateJson = await stateResponse.json().catch(() => ({}));
+          targetItem = stateJson.item || null;
+        }
+      }
+      if (loadId !== latestLoadId.current) return null;
       setData(json);
-      return true;
+      setSelected((current) => {
+        if (effectiveTargetId) {
+          return targetItem;
+        }
+        if (!current) return current;
+        return nextItems.find((item) => String(item.id) === String(current.id)) || null;
+      });
+      if (effectiveTargetId) setFocusedItemId(String(effectiveTargetId));
+      return json;
     } catch (e) {
-      toast({ title: "Erro", description: e.message, variant: "destructive" });
-      setData(null);
-      return false;
+      if (loadId !== latestLoadId.current) return null;
+      if (!silent) {
+        toast({ title: "Erro", description: e.message, variant: "destructive" });
+        setData(null);
+      }
+      return null;
     } finally {
-      setLoading(false);
+      if (loadId === latestLoadId.current) {
+        loadingRef.current = false;
+        setLoading(false);
+      }
     }
   }, [toast]);
 
   const refresh = useCallback(() => load(appliedDates), [appliedDates, load]);
+  const closeSelected = useCallback(() => {
+    pinnedTargetId.current = null;
+    setFocusedItemId(null);
+    setSelected(null);
+  }, []);
+  const openSelected = useCallback((item) => {
+    pinnedTargetId.current = String(item.id);
+    setFocusedItemId(String(item.id));
+    setSelected(item);
+  }, []);
+  const handleItemChanged = useCallback((item) => {
+    setSelected(item);
+    setData((current) => {
+      if (!current || !Array.isArray(current.items)) return current;
+      return {
+        ...current,
+        items: current.items.map((entry) => entry.id === item.id ? item : entry),
+      };
+    });
+  }, []);
 
-  useEffect(() => { load(initialFilters); }, [initialFilters, load]);
+  useEffect(() => {
+    if (handledLocationKey.current === location.key) return;
+    const firstLoad = handledLocationKey.current === null;
+    handledLocationKey.current = location.key;
+    const target = parsePostsalesQueueTarget(location.search);
+    const stateTarget = location.state?.postsalesRefresh;
+    const targetItemId = stateTarget?.itemId || target.itemId;
+    if (stateTarget?.status === "resolvida" || target.isReevaluation) setTab("resolvida");
+    load(firstLoad ? initialFilters : appliedDates, {
+      silent: !firstLoad,
+      targetItemId,
+    });
+  }, [appliedDates, initialFilters, load, location.key, location.search, location.state]);
+
+  useEffect(() => {
+    const refreshSilently = (targetItemId = null) => {
+      if (loadingRef.current && !targetItemId) return Promise.resolve(null);
+      return load(appliedDates, { silent: true, targetItemId });
+    };
+    const onFocus = () => refreshSilently();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refreshSilently();
+    };
+    const onPostsalesRefresh = (event) => {
+      const detail = event.detail || {};
+      if (detail.status === "resolvida") setTab("resolvida");
+      refreshSilently(detail.itemId || null);
+    };
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") refreshSilently();
+    }, 30000);
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener(POSTSALES_REFRESH_EVENT, onPostsalesRefresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener(POSTSALES_REFRESH_EVENT, onPostsalesRefresh);
+    };
+  }, [appliedDates, load]);
 
   const handleApply = async () => {
     if (!isValidDateRange(startDate, endDate)) {
@@ -742,7 +854,12 @@ export default function PosVendasFila() {
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-gray-800/70">
                   {filtered.map((it) => (
-                    <tr key={it.id} className="align-top hover:bg-slate-50/60 dark:hover:bg-gray-800/30">
+                    <tr
+                      key={it.id}
+                      className={`align-top hover:bg-slate-50/60 dark:hover:bg-gray-800/30 ${
+                        String(it.id) === focusedItemId ? "bg-violet-50 ring-2 ring-inset ring-violet-400 dark:bg-violet-950/20" : ""
+                      }`}
+                    >
                       <td className="px-3 py-3"><ClienteCell item={it} /></td>
                       <td className="px-3 py-3">
                         <div className="inline-flex items-center gap-1 text-slate-700 dark:text-slate-200">
@@ -764,7 +881,7 @@ export default function PosVendasFila() {
                       <td className="px-3 py-3">
                         <div className="flex flex-wrap gap-1.5">
                           <button
-                            onClick={() => setSelected(it)}
+                            onClick={() => openSelected(it)}
                             className="rounded-lg bg-violet-600 px-2.5 py-1.5 text-[11.5px] font-semibold text-white hover:bg-violet-700"
                           >
                             Abrir
@@ -791,8 +908,9 @@ export default function PosVendasFila() {
         <AcaoModal
           item={selected}
           motivos={data?.motivos}
-          onClose={() => setSelected(null)}
+          onClose={closeSelected}
           onChanged={refresh}
+          onItemChanged={handleItemChanged}
         />
       )}
       {trilhaDe && <TrilhaModal item={trilhaDe} onClose={() => setTrilhaDe(null)} />}

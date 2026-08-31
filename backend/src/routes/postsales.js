@@ -1,10 +1,11 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { query } from '../config/database.js';
+import { pool, query } from '../config/database.js';
 import { createNotification } from '../services/notificationService.js';
 import { addBusinessDays, brtDateStr } from '../services/businessDaysService.js';
 import {
   cancelOrcamentoDB,
+  getErpPool,
   getProdutosByPedidoIds,
   getOrcamentoDetalhe,
 } from '../services/erpDbService.js';
@@ -19,10 +20,23 @@ import {
   validatePostsalesReturn,
 } from '../utils/postsalesReasons.js';
 export { POSTSALES_MOTIVOS };
+import {
+  POSTSALES_STATUS_LIST,
+  buildPostsalesCounts,
+  runPostsalesReconcileResolved,
+  transitionReturnedToResolved,
+} from '../services/postsalesReevaluationService.js';
+import {
+  applyPostsalesContactCorrection,
+  applyPostsalesCompleteCorrection,
+  getPostsalesCorrectionContext,
+  postsalesCorrectionType,
+  withPostsalesCorrectionLock,
+} from '../services/postsalesCorrectionService.js';
 
 const router = express.Router();
 
-// ============================================================================
+// ----------------------------------------------------------------------------
 // Módulo Pós-Vendas — fluxograma "Pré e Pós venda - Bom Flow".
 // A fila é alimentada pelos orçamentos APROVADOS na auditoria do Pré-venda
 // (presales_auditorias.status='concluida' AND resultado='aprovado').
@@ -35,7 +49,7 @@ const router = express.Router();
 //   aguardando_cancelamento → Pré-venda NÃO liberou; aguarda decisão final do auditor
 //   concluida               → pós-venda concluído com sucesso
 //   cancelada               → decisão final registrada; pedido cancelado DE FATO no ERP
-// ============================================================================
+// ----------------------------------------------------------------------------
 
 // Prazo do coordenador para resolver a devolução (dias ÚTEIS) — fixo nesta fase.
 const DEVOLUCAO_PRAZO_DIAS = 3;
@@ -50,11 +64,6 @@ const MODULO_LABELS = {
   sales_upsell: 'Upsell',
   referral: 'Indicações',
 };
-
-const STATUS_LIST = [
-  'fila', 'em_verificacao', 'devolvida', 'resolvida',
-  'congelada', 'aguardando_cancelamento', 'concluida', 'cancelada',
-];
 
 async function loadAgentRow(req) {
   const r = await query(
@@ -231,7 +240,7 @@ router.get('/fila', authMiddleware, async (req, res) => {
 
     const params = [];
     const conditions = [];
-    if (status && status !== 'todos' && STATUS_LIST.includes(status)) {
+    if (status && status !== 'todos' && POSTSALES_STATUS_LIST.includes(status)) {
       params.push(status);
       conditions.push(`v.status = $${params.length}`);
     }
@@ -269,9 +278,7 @@ router.get('/fila', authMiddleware, async (req, res) => {
         GROUP BY v.status`,
       dateParams
     );
-    const counts = { todos: 0 };
-    for (const s of STATUS_LIST) counts[s] = 0;
-    for (const row of cr.rows) { counts[row.status] = row.n; counts.todos += row.n; }
+    const counts = buildPostsalesCounts(cr.rows);
 
     const enrichedRows = await enrichPostsalesClientIdentities(r.rows, {
       context: 'GET /postsales/fila',
@@ -287,6 +294,21 @@ router.get('/fila', authMiddleware, async (req, res) => {
   } catch (e) {
     console.error('[postsales] GET /fila error:', e.message);
     return res.status(500).json({ error: 'Falha ao carregar a fila do Pós-Vendas.' });
+  }
+});
+
+// Estado autoritativo de um item, usado ao abrir uma notificação mesmo quando o
+// orçamento está fora do período atualmente filtrado na fila.
+router.get('/:id/state', authMiddleware, async (req, res) => {
+  try {
+    const { eligible } = await resolvePostsalesAuditor(req);
+    if (!eligible) return res.status(403).json({ error: 'Acesso restrito à equipe de Pós-Vendas.' });
+    const item = await getVerificacao(req.params.id);
+    if (!item) return res.status(404).json({ error: 'Verificação não encontrada.' });
+    return res.json({ item: shapeItem(item, req.user.id) });
+  } catch (e) {
+    console.error('[postsales] GET /state error:', e.message);
+    return res.status(500).json({ error: 'Falha ao carregar o estado da verificação.' });
   }
 });
 
@@ -477,51 +499,150 @@ router.get('/devolucoes', authMiddleware, async (req, res) => {
   }
 });
 
+async function loadCoordinatorVerification(req, id) {
+  const { eligible, isAdmin, agent } = await resolveCoordenador(req);
+  if (!eligible) {
+    const error = new Error('Acesso restrito a coordenadores/supervisores.');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const verificacao = await getVerificacao(id);
+  if (!verificacao) {
+    const error = new Error('Verificação não encontrada.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!isAdmin) {
+    const seller = await query(`SELECT team_id FROM agents WHERE id = $1`, [verificacao.vendedor_id]);
+    if (!seller.rows[0] || String(seller.rows[0].team_id) !== String(agent?.team_id)) {
+      const error = new Error('Esta devolução não pertence à sua equipe.');
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+  return {
+    verificacao,
+    agent: agent || {
+      id: req.user.id,
+      name: req.user.full_name || 'Admin',
+      email: req.user.email,
+    },
+  };
+}
+
+// GET /:id/correcao — contexto vivo do campo devolvido no pedido ERP.
+router.get('/:id/correcao', authMiddleware, async (req, res) => {
+  try {
+    const { verificacao } = await loadCoordinatorVerification(req, req.params.id);
+    const context = await getPostsalesCorrectionContext(
+      getErpPool(),
+      Number(verificacao.erp_pedido_id),
+      verificacao.motivo_devolucao
+    );
+    const history = await query(
+      `SELECT id, tipo, status, actor_nome, created_at, applied_at, error_message
+         FROM postsales_correcoes WHERE verificacao_id = $1 ORDER BY created_at DESC LIMIT 20`,
+      [verificacao.id]
+    ).catch(() => ({ rows: [] }));
+    return res.json({
+      erp_pedido_id: Number(verificacao.erp_pedido_id),
+      motivo: verificacao.motivo_devolucao,
+      motivo_nome: POSTSALES_MOTIVOS[verificacao.motivo_devolucao] || verificacao.motivo_devolucao,
+      observacao: verificacao.devolucao_obs || null,
+      ...context,
+      historico_correcoes: history.rows,
+    });
+  } catch (e) {
+    console.error('[postsales] GET /:id/correcao error:', e.message);
+    return res.status(e.statusCode || 500).json({
+      error: e.statusCode ? e.message : 'Falha ao carregar o ajuste do orçamento.',
+    });
+  }
+});
+
+// PATCH /:id/correcao — altera somente o campo do pedido compatível com o motivo.
+router.patch('/:id/correcao', authMiddleware, async (req, res) => {
+  try {
+    const result = await withPostsalesCorrectionLock(pool, req.params.id, async () => {
+      // Recarrega dentro da trava compartilhada com /resolver: autorização,
+      // equipe e estado não podem ficar obsoletos durante a escrita externa.
+      const { verificacao, agent } = await loadCoordinatorVerification(req, req.params.id);
+      if (verificacao.status !== 'devolvida') {
+        const error = new Error('Esta devolução já mudou de estado. Atualize a fila antes de editar.');
+        error.statusCode = 409;
+        throw error;
+      }
+      return applyPostsalesCompleteCorrection({
+        localQuery: query,
+        erpDb: getErpPool(),
+        verification: verificacao,
+        actor: agent,
+        input: req.body || {},
+      });
+    });
+
+    return res.json({
+      tipo: result.tipo,
+      valor: result.valor,
+      alterado: result.changed,
+      ja_aplicado: result.alreadyApplied,
+      editor: result.editor,
+    });
+  } catch (e) {
+    console.error('[postsales] PATCH /:id/correcao error:', e.message);
+    return res.status(e.statusCode || 500).json({
+      error: e.statusCode ? e.message : 'Falha ao atualizar o orçamento no ERP.',
+      fields: e.fields || undefined,
+    });
+  }
+});
+
 // POST /:id/resolver — coordenador marca a pendência como resolvida; volta ao auditor
 // do Pós-Vendas para reavaliação (status 'resolvida' mantém o auditor original).
 router.post('/:id/resolver', authMiddleware, async (req, res) => {
   try {
-    const { eligible, isAdmin, agent } = await resolveCoordenador(req);
-    if (!eligible) return res.status(403).json({ error: 'Acesso restrito a coordenadores/supervisores.' });
-
-    const cur = await getVerificacao(req.params.id);
-    if (!cur) return res.status(404).json({ error: 'Verificação não encontrada.' });
-    if (cur.status !== 'devolvida') return res.status(409).json({ error: 'Apenas devoluções pendentes podem ser marcadas como resolvidas.' });
-
-    if (!isAdmin) {
-      const tr = await query(`SELECT team_id FROM agents WHERE id = $1`, [cur.vendedor_id]);
-      if (!tr.rows[0] || String(tr.rows[0].team_id) !== String(agent?.team_id)) {
-        return res.status(403).json({ error: 'Esta devolução não pertence à sua equipe.' });
-      }
-    }
-
     const obs = String(req.body?.observacao || '').trim().slice(0, 1000) || null;
-    const r = await query(
-      `UPDATE postsales_verificacoes
-          SET status = 'resolvida', resolvida_at = NOW(), resolvida_por_id = $2,
-              resolvida_por_nome = $3, resolucao_obs = $4, updated_at = NOW()
-        WHERE id = $1 AND status = 'devolvida'
-        RETURNING *`,
-      [req.params.id, agent?.id || null, agent?.name || 'Admin', obs]
-    );
-    if (!r.rows[0]) return res.status(409).json({ error: 'A devolução já foi tratada.' });
-    const v = r.rows[0];
-    await addEvento(v.id, v.erp_pedido_id, 'resolvida',
-      `Pendência marcada como resolvida por ${agent?.name || 'Admin'}.${obs ? ` Obs.: ${obs}` : ''}`, agent);
+    const v = await withPostsalesCorrectionLock(pool, req.params.id, async () => {
+      const { verificacao, agent } = await loadCoordinatorVerification(req, req.params.id);
+      if (verificacao.status !== 'devolvida') {
+        const error = new Error('Apenas devoluções pendentes podem ser marcadas como resolvidas.');
+        error.statusCode = 409;
+        throw error;
+      }
 
-    // Notifica o auditor do Pós-Vendas para reavaliar.
-    if (v.auditor_email) {
-      await createNotification({
-        userEmail: v.auditor_email, type: 'postsales_resolucao',
-        title: 'Devolução resolvida — reavaliar orçamento',
-        message: `A pendência do orçamento Nº ${numeroDe(v)}${v.cliente_nome ? ` (${v.cliente_nome})` : ''} foi marcada como resolvida por ${agent?.name || 'Admin'}. Reavalie no Pós-Vendas.`,
-        link: '/PosVendasFila', entityType: 'postsales_verificacao', entityId: v.id, priority: 'high',
-      });
-    }
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const updated = await transitionReturnedToResolved({
+          client,
+          id: req.params.id,
+          actor: agent,
+          observation: obs,
+        });
+        if (!updated) {
+          await client.query('ROLLBACK');
+          const error = new Error('A devolução já foi tratada.');
+          error.statusCode = 409;
+          throw error;
+        }
+        await client.query('COMMIT');
+        return updated;
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally {
+        client.release();
+      }
+    });
+
     return res.json({ item: shapeItem(v, req.user.id) });
   } catch (e) {
     console.error('[postsales] resolver error:', e.message);
-    return res.status(500).json({ error: 'Falha ao marcar como resolvida.' });
+    return res.status(e.statusCode || 500).json({
+      error: e.statusCode ? e.message : 'Falha ao marcar como resolvida.',
+    });
   }
 });
 
@@ -539,12 +660,16 @@ router.post('/:id/congelar', authMiddleware, async (req, res) => {
       params.push(agent.id);
       ownerCond = ` AND (auditor_id = $3 OR auditor_id IS NULL)`;
     }
-    const r = await query(
-      `UPDATE postsales_verificacoes
-          SET status = 'congelada', congelada_at = NOW(), congelamento_motivo = $2, updated_at = NOW()
-        WHERE id = $1 AND status IN ('em_verificacao','devolvida','resolvida')${ownerCond}
-        RETURNING *`,
-      params
+    const r = await withPostsalesCorrectionLock(
+      pool,
+      req.params.id,
+      () => query(
+        `UPDATE postsales_verificacoes
+            SET status = 'congelada', congelada_at = NOW(), congelamento_motivo = $2, updated_at = NOW()
+          WHERE id = $1 AND status IN ('em_verificacao','devolvida','resolvida')${ownerCond}
+          RETURNING *`,
+        params
+      )
     );
     if (!r.rows[0]) return res.status(409).json({ error: 'Não foi possível congelar: verifique o estado atual e se você é o auditor responsável.' });
     const v = r.rows[0];
@@ -731,9 +856,12 @@ router.get('/monitor', authMiddleware, async (req, res) => {
     await ingestAprovados();
 
     const r = await query(`SELECT * FROM postsales_verificacoes ORDER BY updated_at DESC`);
-    const counts = { todos: r.rows.length };
-    for (const s of STATUS_LIST) counts[s] = 0;
-    for (const row of r.rows) counts[row.status] = (counts[row.status] || 0) + 1;
+    const counts = buildPostsalesCounts(
+      POSTSALES_STATUS_LIST.map((status) => ({
+        status,
+        n: r.rows.filter((row) => row.status === status).length,
+      }))
+    );
 
     return res.json({
       items: r.rows.map((row) => shapeItem(row, req.user.id)),
@@ -831,7 +959,29 @@ router.get('/:id/eventos', authMiddleware, async (req, res) => {
 
     const r = await query(
       `SELECT id, tipo, detalhe, actor_nome, created_at
-         FROM postsales_eventos WHERE verificacao_id = $1
+         FROM (
+           SELECT id::text AS id, tipo, detalhe, actor_nome, created_at
+             FROM postsales_eventos
+            WHERE verificacao_id = $1
+           UNION ALL
+           SELECT id::text AS id,
+                  'correcao_erp_' || tipo AS tipo,
+                  CASE tipo
+                    WHEN 'telefone' THEN
+                      'Telefone do pedido corrigido de ' ||
+                      COALESCE(NULLIF(dados_anteriores->>'valor', ''), 'não informado') ||
+                      ' para ' || COALESCE(dados_novos->>'valor', 'não informado') || '.'
+                    WHEN 'email' THEN
+                      'E-mail do pedido corrigido de ' ||
+                      COALESCE(NULLIF(dados_anteriores->>'valor', ''), 'não informado') ||
+                      ' para ' || COALESCE(dados_novos->>'valor', 'não informado') || '.'
+                    ELSE 'Dados do pedido corrigidos no ERP.'
+                  END AS detalhe,
+                  actor_nome,
+                  COALESCE(applied_at, created_at) AS created_at
+             FROM postsales_correcoes
+            WHERE verificacao_id = $1 AND status = 'aplicada'
+         ) trilha
         ORDER BY created_at ASC, id ASC`,
       [req.params.id]
     );
@@ -855,13 +1005,17 @@ export async function runPostsalesCongelarVencidas() {
   result.checked = r.rows.length;
   for (const v of r.rows) {
     try {
-      const u = await query(
-        `UPDATE postsales_verificacoes
-            SET status = 'congelada', congelada_at = NOW(),
-                congelamento_motivo = $2, updated_at = NOW()
-          WHERE id = $1 AND status = 'devolvida'
-          RETURNING id`,
-        [v.id, `Prazo de ${DEVOLUCAO_PRAZO_DIAS} dias vencido em ${v.prazo_ymd} sem resolução do coordenador.`]
+      const u = await withPostsalesCorrectionLock(
+        pool,
+        v.id,
+        () => query(
+          `UPDATE postsales_verificacoes
+              SET status = 'congelada', congelada_at = NOW(),
+                  congelamento_motivo = $2, updated_at = NOW()
+            WHERE id = $1 AND status = 'devolvida'
+            RETURNING id`,
+          [v.id, `Prazo de ${DEVOLUCAO_PRAZO_DIAS} dias vencido em ${v.prazo_ymd} sem resolução do coordenador.`]
+        )
       );
       if (!u.rows[0]) continue;
       result.frozen++;
@@ -891,6 +1045,15 @@ export async function runPostsalesCongelarVencidas() {
   return result;
 }
 
+// Reconcilia somente devoluções cuja trilha comprova uma única resolução posterior
+// à devolução mais recente. Casos sem evidência ou ambíguos permanecem intocados.
+export async function runPostsalesReconciliarResolvidas() {
+  return runPostsalesReconcileResolved({
+    queryFn: query,
+    withVerificationLock: (id, work) => withPostsalesCorrectionLock(pool, id, work),
+  });
+}
+
 // POST /jobs/congelar-vencidas/run — disparo manual (admin ou equipe Pós-Vendas).
 router.post('/jobs/congelar-vencidas/run', authMiddleware, async (req, res) => {
   try {
@@ -901,6 +1064,18 @@ router.post('/jobs/congelar-vencidas/run', authMiddleware, async (req, res) => {
   } catch (e) {
     console.error('[postsales] job congelar-vencidas error:', e.message);
     return res.status(500).json({ error: 'Falha ao executar o congelamento de vencidas.' });
+  }
+});
+
+router.post('/jobs/reconciliar-resolvidas/run', authMiddleware, async (req, res) => {
+  try {
+    const { eligible } = await resolvePostsalesAuditor(req);
+    if (!eligible) return res.status(403).json({ error: 'Acesso restrito à equipe de Pós-Vendas.' });
+    const result = await runPostsalesReconciliarResolvidas();
+    return res.json({ success: true, result });
+  } catch (e) {
+    console.error('[postsales] job reconciliar-resolvidas error:', e.message);
+    return res.status(500).json({ error: 'Falha ao reconciliar as devoluções resolvidas.' });
   }
 });
 

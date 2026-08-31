@@ -87,6 +87,7 @@ const MENU_MODULES = [
       { id: "SalesRoutes", title: "Rota Inteligente" },
       { id: "SalesReports", title: "Relatórios" },
       { id: "SalesOrcamentoRelatorio", title: "Rel. de Orçamentos" },
+      { id: "PosVendasDevolucoes", title: "Devoluções Pós-Vendas" },
       { id: "LeadAutomations", title: "Automações" },
       { id: "AutomationLogs", title: "Logs de Automações" },
       { id: "SalesTasks", title: "Tarefas" },

@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useNavigate } from "react-router-dom";
@@ -16,6 +16,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import {
+  POSTSALES_REFRESH_EVENT,
+  postsalesRefreshDetail,
+} from "@/utils/postsalesNavigation";
 
 const notificationIcons = {
   sla_warning: { icon: AlertCircle, color: "text-orange-600 dark:text-orange-400", bg: "bg-orange-100 dark:bg-orange-950" },
@@ -34,6 +38,7 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const lastResolutionSignal = useRef(null);
 
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
@@ -79,12 +84,32 @@ export default function NotificationBell() {
   const unreadNotifications = notifications.filter(n => !n.read);
   const readNotifications = notifications.filter(n => n.read);
 
+  useEffect(() => {
+    const latestResolution = notifications.find((notification) => (
+      !notification.read && notification.type === "postsales_resolucao"
+    ));
+    const detail = postsalesRefreshDetail(latestResolution);
+    const fingerprint = latestResolution
+      ? `${latestResolution.id}:${latestResolution.created_at || ""}`
+      : null;
+    if (detail && fingerprint !== lastResolutionSignal.current) {
+      lastResolutionSignal.current = fingerprint;
+      window.dispatchEvent(new CustomEvent(POSTSALES_REFRESH_EVENT, { detail }));
+    }
+  }, [notifications]);
+
   const handleNotificationClick = (notification) => {
     if (!notification.read) {
       markAsReadMutation.mutate(notification.id);
     }
     if (notification.link) {
-      navigate(notification.link);
+      const detail = postsalesRefreshDetail(notification);
+      if (detail) {
+        window.dispatchEvent(new CustomEvent(POSTSALES_REFRESH_EVENT, { detail }));
+      }
+      navigate(notification.link, {
+        state: detail ? { postsalesRefresh: { ...detail, nonce: Date.now() } } : undefined,
+      });
       setOpen(false);
     }
   };

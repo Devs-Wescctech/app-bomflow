@@ -7,6 +7,24 @@ import { validateDateRange } from '../utils/postsalesFilters.js';
 import { enrichPostsalesClientIdentities } from '../services/postsalesClientService.js';
 import { getOrcamentoDetalhe } from '../services/erpDbService.js';
 import { getApprovalPending } from '../utils/orcamentoDocumentos.js';
+import { getErpPool } from '../services/erpDbService.js';
+import {
+  applyPresalesAddressCorrection,
+  assertAddressAdjustmentType,
+  assertPendingPresalesAdjustment,
+  assertSellerOwnsPresalesAdjustment,
+  buildPresalesAdjustmentLink,
+  getPresalesBudgetAddress,
+  listPresalesCities,
+  normalizePresalesAdjustmentType,
+  presalesAddressesEqual,
+  requirePresalesAdjustmentType,
+  withPresalesAdjustmentLock,
+} from '../services/presalesAdjustmentAddressService.js';
+import {
+  applyPostsalesCompleteCorrection,
+  getPostsalesCorrectionContext,
+} from '../services/postsalesCorrectionService.js';
 
 const router = express.Router();
 
@@ -107,6 +125,7 @@ router.post('/', authMiddleware, async (req, res) => {
     const texto = String(req.body?.texto || '').trim();
     if (!erpPedidoId) return res.status(400).json({ error: 'erp_pedido_id é obrigatório.' });
     if (!texto) return res.status(400).json({ error: 'Descreva o que precisa ser ajustado.' });
+    const tipoAjuste = requirePresalesAdjustmentType(req.body?.tipo_ajuste);
 
     // Vínculo do orçamento com o vendedor real do Bom Flow.
     const orcRes = await query(
@@ -146,12 +165,14 @@ router.post('/', authMiddleware, async (req, res) => {
     const insertRes = await query(
       `INSERT INTO presales_ajustes
          (erp_pedido_id, erp_numero, modulo, vendedor_id, vendedor_nome,
-          cliente_nome, cliente_cpf, texto, status, auditor_id, auditor_nome, auditor_email)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pendente',$9,$10,$11)
+          cliente_nome, cliente_cpf, texto, status, auditor_id, auditor_nome, auditor_email,
+          tipo_ajuste)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pendente',$9,$10,$11,$12)
        RETURNING *`,
       [
         orc.erp_pedido_id, orc.erp_numero, orc.modulo, orc.agent_id, orc.agent_name,
         orc.cliente_nome, orc.cliente_cpf, texto, agent.id, agent.name, agent.email,
+        tipoAjuste,
       ]
     );
     const ajuste = insertRes.rows[0];
@@ -167,7 +188,7 @@ router.post('/', authMiddleware, async (req, res) => {
           type: 'presales_ajuste',
           title: 'Ajuste solicitado pela auditoria',
           message: `A auditoria solicitou ajustes no orçamento Nº ${numero}${orc.cliente_nome ? ` (${orc.cliente_nome})` : ''}: "${texto.substring(0, 120)}${texto.length > 120 ? '…' : ''}"`,
-          link: '/PreSalesAjustes',
+          link: buildPresalesAdjustmentLink(ajuste.id, orc.erp_pedido_id),
           entityType: 'presales_ajuste',
           entityId: ajuste.id,
           priority: 'high',
@@ -183,7 +204,7 @@ router.post('/', authMiddleware, async (req, res) => {
         type: 'presales_ajuste',
         title: 'Ajuste solicitado pela auditoria',
         message: `A auditoria solicitou ajustes no orçamento Nº ${numero}${orc.agent_name ? ` de ${orc.agent_name}` : ''}: "${texto.substring(0, 120)}${texto.length > 120 ? '…' : ''}"`,
-        link: '/PreSalesAjustes',
+        link: buildPresalesAdjustmentLink(ajuste.id, orc.erp_pedido_id),
         entityType: 'presales_ajuste',
         entityId: ajuste.id,
         priority: 'normal',
@@ -193,7 +214,10 @@ router.post('/', authMiddleware, async (req, res) => {
     return res.json({ ajuste });
   } catch (e) {
     console.error('[presales-ajustes] POST error:', e.message);
-    return res.status(500).json({ error: 'Falha ao registrar o pedido de ajuste.' });
+    return res.status(e.statusCode || 500).json({
+      error: e.statusCode ? e.message : 'Falha ao registrar o pedido de ajuste.',
+      fields: e.fields || undefined,
+    });
   }
 });
 
@@ -721,7 +745,12 @@ router.get('/mine', authMiddleware, async (req, res) => {
       ...r,
       modulo_nome: MODULO_LABELS[r.modulo] || r.modulo || '-',
     }));
-    return res.json({ items });
+    return res.json({
+      items: items.map((item) => ({
+        ...item,
+        tipo_ajuste: normalizePresalesAdjustmentType(item.tipo_ajuste, item.texto),
+      })),
+    });
   } catch (e) {
     console.error('[presales-ajustes] GET /mine error:', e.message);
     return res.status(500).json({ error: 'Falha ao carregar seus ajustes.' });
@@ -741,10 +770,204 @@ router.get('/by-pedido/:pedidoId', authMiddleware, async (req, res) => {
       `SELECT * FROM presales_ajustes WHERE erp_pedido_id = $1 ORDER BY created_at DESC`,
       [pedidoId]
     );
-    return res.json({ items: result.rows });
+    return res.json({
+      items: result.rows.map((item) => ({
+        ...item,
+        tipo_ajuste: normalizePresalesAdjustmentType(item.tipo_ajuste, item.texto),
+      })),
+    });
   } catch (e) {
     console.error('[presales-ajustes] GET /by-pedido error:', e.message);
     return res.status(500).json({ error: 'Falha ao carregar os ajustes do orçamento.' });
+  }
+});
+
+async function loadSellerAdjustment(id, userId) {
+  const result = await query(`SELECT * FROM presales_ajustes WHERE id = $1`, [id]);
+  return assertSellerOwnsPresalesAdjustment(result.rows[0], userId);
+}
+
+router.get('/cidades', authMiddleware, async (req, res) => {
+  try {
+    const items = await listPresalesCities(getErpPool(), req.query.search, req.query.limit);
+    return res.json({ items });
+  } catch (error) {
+    console.error('[presales-ajustes] GET /cidades error:', error.message);
+    return res.status(500).json({ error: 'Falha ao consultar as cidades do ERP.' });
+  }
+});
+
+// GET /:id/context — contexto autoritativo do ajuste e endereço atual do pedido no ERP.
+router.get('/:id/context', authMiddleware, async (req, res) => {
+  try {
+    const ajuste = await loadSellerAdjustment(req.params.id, req.user.id);
+    const tipoAjuste = normalizePresalesAdjustmentType(ajuste.tipo_ajuste, ajuste.texto);
+    const erp = tipoAjuste === 'endereco'
+      ? await getPresalesBudgetAddress(getErpPool(), Number(ajuste.erp_pedido_id))
+      : { address: null };
+    const relatedResult = await query(
+      `SELECT id, texto, status, auditor_nome, vendedor_comentario, tipo_ajuste,
+              created_at, ajustado_at
+         FROM presales_ajustes
+        WHERE erp_pedido_id = $1 AND vendedor_id = $2
+        ORDER BY created_at ASC`,
+      [ajuste.erp_pedido_id, req.user.id]
+    );
+    const related = relatedResult.rows.map((item) => ({
+      ...item,
+      tipo_ajuste: normalizePresalesAdjustmentType(item.tipo_ajuste, item.texto),
+    }));
+
+    if (erp.address) {
+      const pending = await query(
+        `SELECT id, dados_novos
+           FROM presales_ajuste_correcoes
+          WHERE ajuste_id = $1 AND tipo = 'endereco' AND status = 'pendente'
+          ORDER BY created_at DESC`,
+        [ajuste.id]
+      );
+      for (const row of pending.rows) {
+        const intended = row.dados_novos || {};
+        const sameAddress = presalesAddressesEqual(intended, erp.address);
+        if (sameAddress) {
+          await query(
+            `UPDATE presales_ajuste_correcoes
+                SET status = 'aplicada', applied_at = COALESCE(applied_at, NOW()),
+                    reconciled_at = NOW()
+              WHERE id = $1 AND status = 'pendente'`,
+            [row.id]
+          );
+        }
+      }
+    }
+
+    return res.json({
+      ajuste: {
+        id: ajuste.id,
+        erp_pedido_id: Number(ajuste.erp_pedido_id),
+        erp_numero: ajuste.erp_numero,
+        texto: ajuste.texto,
+        status: ajuste.status,
+        tipo_ajuste: tipoAjuste,
+      },
+      ajustes: related,
+      endereco: erp.address,
+    });
+  } catch (error) {
+    console.error('[presales-ajustes] GET /:id/context error:', error.message);
+    return res.status(error.statusCode || 500).json({
+      error: error.statusCode ? error.message : 'Falha ao carregar os dados atuais do orçamento.',
+    });
+  }
+});
+
+// PATCH /:id/endereco — corrige somente o endereço do pedido vinculado ao ajuste.
+router.patch('/:id/endereco', authMiddleware, async (req, res) => {
+  try {
+    const ajuste = await loadSellerAdjustment(req.params.id, req.user.id);
+    if (ajuste.status !== 'pendente') {
+      return res.status(409).json({ error: 'Este ajuste não está mais pendente.' });
+    }
+    assertAddressAdjustmentType(ajuste);
+    const result = await withPresalesAdjustmentLock(pool, ajuste.id, () =>
+      applyPresalesAddressCorrection({
+        localQuery: query,
+        erpDb: getErpPool(),
+        ajuste,
+        vendedorId: req.user.id,
+        input: req.body || {},
+      }));
+    if (result.auditPending) {
+      console.error(
+        '[presales-ajustes] endereço aplicado no ERP; trilha será reconciliada:',
+        result.auditError?.message
+      );
+    }
+    return res.status(result.auditPending ? 202 : 200).json({
+      endereco: result.address,
+      reconciliacao_pendente: result.auditPending,
+      reconciliado: result.reconciled,
+      ja_aplicado: result.alreadyApplied,
+    });
+  } catch (error) {
+    console.error('[presales-ajustes] PATCH /:id/endereco error:', error.message);
+    return res.status(error.statusCode || 500).json({
+      error: error.statusCode ? error.message : 'Falha ao atualizar o endereço do orçamento no ERP.',
+      fields: error.fields || undefined,
+    });
+  }
+});
+
+// GET /:id/correcao — abre o pedido ERP exato para ajustes de cadastro completo.
+router.get('/:id/correcao', authMiddleware, async (req, res) => {
+  try {
+    const ajuste = await loadSellerAdjustment(req.params.id, req.user.id);
+    assertPendingPresalesAdjustment(ajuste);
+    const tipoAjuste = normalizePresalesAdjustmentType(ajuste.tipo_ajuste, ajuste.texto);
+    if (tipoAjuste !== 'cadastro') {
+      return res.status(422).json({
+        error: 'Este ajuste deve ser tratado no endereço do orçamento.',
+      });
+    }
+    const context = await getPostsalesCorrectionContext(
+      getErpPool(),
+      Number(ajuste.erp_pedido_id),
+      null
+    );
+    return res.json({
+      erp_pedido_id: Number(ajuste.erp_pedido_id),
+      motivo_nome: 'Cadastro completo da venda',
+      observacao: ajuste.texto,
+      ...context,
+    });
+  } catch (error) {
+    console.error('[presales-ajustes] GET /:id/correcao error:', error.message);
+    return res.status(error.statusCode || 500).json({
+      error: error.statusCode ? error.message : 'Falha ao carregar o pedido no ERP.',
+    });
+  }
+});
+
+// PATCH /:id/correcao — grava o editor completo somente no pedido ERP do ajuste.
+router.patch('/:id/correcao', authMiddleware, async (req, res) => {
+  try {
+    const result = await withPresalesAdjustmentLock(pool, req.params.id, async () => {
+      const ajuste = await loadSellerAdjustment(req.params.id, req.user.id);
+      assertPendingPresalesAdjustment(ajuste);
+      const tipoAjuste = normalizePresalesAdjustmentType(ajuste.tipo_ajuste, ajuste.texto);
+      if (tipoAjuste !== 'cadastro') {
+        const error = new Error('Este ajuste deve ser tratado no endereço do orçamento.');
+        error.statusCode = 422;
+        throw error;
+      }
+      return applyPostsalesCompleteCorrection({
+        localQuery: query,
+        erpDb: getErpPool(),
+        verification: {
+          id: ajuste.id,
+          erp_pedido_id: Number(ajuste.erp_pedido_id),
+          motivo_devolucao: null,
+        },
+        actor: {
+          id: req.user.id,
+          name: req.user.full_name || req.user.email || 'Vendedor',
+        },
+        input: req.body || {},
+        auditKind: 'presales',
+      });
+    });
+    return res.json({
+      tipo: result.tipo,
+      alterado: result.changed,
+      ja_aplicado: result.alreadyApplied,
+      editor: result.editor,
+    });
+  } catch (error) {
+    console.error('[presales-ajustes] PATCH /:id/correcao error:', error.message);
+    return res.status(error.statusCode || 500).json({
+      error: error.statusCode ? error.message : 'Falha ao atualizar o pedido no ERP.',
+      fields: error.fields || undefined,
+    });
   }
 });
 
@@ -757,7 +980,7 @@ router.get('/:id/lead', authMiddleware, async (req, res) => {
     if (!ajuste) return res.status(404).json({ error: 'Ajuste não encontrado.' });
     // Apenas o vendedor dono abre o lead da própria venda para fazer os ajustes.
     // O auditor não precisa acessar os dados do lead.
-    if (ajuste.vendedor_id !== req.user.id) {
+    if (String(ajuste.vendedor_id) !== String(req.user.id)) {
       return res.status(403).json({ error: 'Você só pode abrir os leads das suas próprias vendas.' });
     }
     // 1) Vínculo direto e confiável: bomflow_orcamentos.lead_id. Orçamentos criados
@@ -788,35 +1011,28 @@ router.get('/:id/lead', authMiddleware, async (req, res) => {
     if (!cpfDigits) {
       return res.status(404).json({ error: 'Orçamento sem documento do cliente para localizar o lead.' });
     }
-    // Tenta primeiro na tabela do módulo do orçamento; se não achar,
-    // percorre os demais módulos em ordem de prioridade (fallback).
-    const ALL_MODULOS = ['sales', 'sales_upsell', 'referral', 'sales_pj'];
-    const searchOrder = [
-      ajuste.modulo,
-      ...ALL_MODULOS.filter((m) => m !== ajuste.modulo),
-    ];
-
-    let found = null;
-    for (const mod of searchOrder) {
-      const m = MODULO_LEAD_MAP[mod];
-      if (!m) continue;
-      const r = await query(
-        `SELECT id FROM ${m.table}
-          WHERE regexp_replace(COALESCE(${m.cpfCol}, ''), '[^0-9]', '', 'g') = $1
-          ORDER BY created_at DESC
-          LIMIT 1`,
-        [cpfDigits]
-      );
-      if (r.rows[0]) {
-        found = { page: m.page, lead_id: r.rows[0].id, modulo: mod };
-        break;
-      }
-    }
-
-    if (!found) {
+    // Compatibilidade para registros antigos sem lead_id: procura apenas no módulo
+    // original e só navega quando o documento identifica um único cadastro.
+    const candidates = await query(
+      `SELECT id FROM ${map.table}
+        WHERE regexp_replace(COALESCE(${map.cpfCol}, ''), '[^0-9]', '', 'g') = $1
+        ORDER BY created_at DESC
+        LIMIT 2`,
+      [cpfDigits]
+    );
+    if (candidates.rows.length === 0) {
       return res.status(404).json({ error: 'Lead do cliente não encontrado.' });
     }
-    return res.json(found);
+    if (candidates.rows.length > 1) {
+      return res.status(409).json({
+        error: 'Há mais de um cadastro deste cliente. Abra a venda pela fila de origem para evitar editar o cadastro errado.',
+      });
+    }
+    return res.json({
+      page: map.page,
+      lead_id: candidates.rows[0].id,
+      modulo: ajuste.modulo,
+    });
   } catch (e) {
     console.error('[presales-ajustes] GET /:id/lead error:', e.message);
     return res.status(500).json({ error: 'Falha ao localizar o lead do cliente.' });
@@ -832,7 +1048,7 @@ router.post('/:id/ajustado', authMiddleware, async (req, res) => {
     const ajusteRes = await query(`SELECT * FROM presales_ajustes WHERE id = $1`, [id]);
     const ajuste = ajusteRes.rows[0];
     if (!ajuste) return res.status(404).json({ error: 'Ajuste não encontrado.' });
-    if (ajuste.vendedor_id !== req.user.id) {
+    if (String(ajuste.vendedor_id) !== String(req.user.id)) {
       return res.status(403).json({ error: 'Você só pode atualizar os ajustes das suas próprias vendas.' });
     }
     if (ajuste.status === 'ajustado') {

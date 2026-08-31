@@ -9,6 +9,16 @@ import {
 } from "lucide-react";
 import { extractApiError } from "@/utils/apiError";
 import { DOC_TIPOS, getRequiredDocTipos } from "@/utils/orcamentoDocumentos";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const API_BASE = "/api";
 
@@ -187,6 +197,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
   const [viewingId, setViewingId] = useState(null);
   const [ajustes, setAjustes] = useState([]);
   const [ajusteTexto, setAjusteTexto] = useState("");
+  const [tipoAjuste, setTipoAjuste] = useState("");
   const [savingAjuste, setSavingAjuste] = useState(false);
   const ajusteRef = useRef(null);
 
@@ -196,6 +207,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
   const [lockLoading, setLockLoading] = useState(true);
   const [claiming, setClaiming] = useState(false);
   const [concluding, setConcluding] = useState(false);
+  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
   const [adesaoZero, setAdesaoZero] = useState(orcamento?.adesao_zero);
   const [approvalError, setApprovalError] = useState("");
 
@@ -294,11 +306,6 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
   // O orçamento sai da Fila Pré-Vendas e entra na fila do Pós-Vendas; a trava é
   // liberada automaticamente pelo backend.
   const handleAprovar = async () => {
-    const numeroConf = orcamento?.numero_orcamento || pedidoId;
-    if (!window.confirm(
-      `Aprovar o orçamento Nº ${numeroConf} no pré-venda?\n\n` +
-      "Ele será encaminhado à fila do Pós-Vendas. Nada será alterado no ERP."
-    )) return;
     setConcluding(true);
     setApprovalError("");
     try {
@@ -328,6 +335,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
       toast({ title: "Erro", description: e.message, variant: "destructive" });
     } finally {
       setConcluding(false);
+      setApprovalDialogOpen(false);
     }
   };
 
@@ -338,17 +346,22 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
       ajusteRef.current?.focus();
       return;
     }
+    if (!tipoAjuste) {
+      toast({ title: "Classifique o ajuste", description: "Escolha onde o vendedor deve corrigir este pedido.", variant: "destructive" });
+      return;
+    }
     setSavingAjuste(true);
     try {
       const res = await fetch(`${API_BASE}/presales-ajustes`, {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ erp_pedido_id: pedidoId, texto }),
+        body: JSON.stringify({ erp_pedido_id: pedidoId, texto, tipo_ajuste: tipoAjuste }),
       });
       if (!res.ok) throw new Error(await extractApiError(res, "Falha ao solicitar o ajuste."));
       const data = await res.json().catch(() => ({}));
       toast({ title: "Ajuste solicitado", description: "O vendedor e o supervisor foram notificados." });
       setAjusteTexto("");
+      setTipoAjuste("");
       loadAjustes();
     } catch (e) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });
@@ -819,6 +832,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
               <div className="mb-3 space-y-2">
                 {ajustes.map((a) => {
                   const done = a.status === "ajustado";
+                  const legacyType = a.tipo_ajuste || (/endere[cç]o|cep|cidade|munic[ií]pio|uf|logradouro|bairro|complemento|resid[eê]ncia|rua|avenida|n[úu]mero\s+(?:do\s+endere[cç]o|da\s+(?:casa|resid[eê]ncia))/i.test(a.texto || "") ? "endereco" : "cadastro");
                   return (
                     <div
                       key={a.id}
@@ -840,6 +854,9 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
                         </span>
                       </div>
                       <p className="whitespace-pre-wrap text-[13px] text-slate-700 dark:text-slate-200">{a.texto}</p>
+                      <span className="mt-2 inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[10.5px] font-semibold text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">
+                        {legacyType === "endereco" ? "Endereço do orçamento" : "Cadastro completo da venda"}
+                      </span>
                       {done && a.vendedor_comentario && (
                         <p className="mt-1.5 border-t border-slate-100 pt-1.5 text-[12px] text-emerald-700 dark:border-gray-800 dark:text-emerald-300">
                           <span className="font-semibold">Resposta do vendedor:</span> {a.vendedor_comentario}
@@ -854,6 +871,27 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
             <label className="mb-1.5 block text-[12px] font-medium text-slate-600 dark:text-slate-300">
               Descreva o que precisa ser ajustado
             </label>
+            <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {[
+                { value: "endereco", label: "Endereço do orçamento", hint: "CEP, cidade, logradouro ou bairro" },
+                { value: "cadastro", label: "Cadastro completo da venda", hint: "Dados do cliente, documentos ou venda" },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  disabled={!canAct}
+                  onClick={() => setTipoAjuste(option.value)}
+                  className={`rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                    tipoAjuste === option.value
+                      ? "border-amber-500 bg-amber-100/70 text-amber-900 ring-2 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-amber-300 dark:border-gray-700 dark:bg-gray-900 dark:text-slate-300"
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  <span className="block text-[12.5px] font-semibold">{option.label}</span>
+                  <span className="mt-0.5 block text-[11px] text-slate-400 dark:text-slate-500">{option.hint}</span>
+                </button>
+              ))}
+            </div>
             <textarea
               ref={ajusteRef}
               value={ajusteTexto}
@@ -865,12 +903,12 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
             />
             <div className="mt-2 flex items-center justify-between gap-2">
               <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                O vendedor e o supervisor serão notificados.
+                O vendedor e o supervisor serão notificados. Para correções em locais diferentes, envie uma solicitação para cada local.
               </span>
               <button
                 type="button"
                 onClick={handleSaveAjuste}
-                disabled={savingAjuste || !ajusteTexto.trim() || !canAct}
+                disabled={savingAjuste || !ajusteTexto.trim() || !tipoAjuste || !canAct}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm shadow-amber-500/30 transition-colors hover:bg-amber-700 disabled:opacity-50"
               >
                 {savingAjuste ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
@@ -929,12 +967,12 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
                   </button>
                   <button
                     type="button"
-                    onClick={handleAprovar}
+                    onClick={() => setApprovalDialogOpen(true)}
                     disabled={concluding || loading || result !== "pronto"}
                       title={result !== "pronto" && !loading
                        ? "Aprovação bloqueada: conclua o checklist obrigatório (dados do orçamento e os documentos aplicáveis)."
                       : "Aprovar e encaminhar ao Pós-Vendas (não altera o ERP)"}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm shadow-emerald-500/30 transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-teal-700 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm shadow-teal-500/30 transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {concluding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5" />}
                     Aprovar
@@ -945,6 +983,46 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
           </div>
         </div>
       </div>
+      <AlertDialog open={approvalDialogOpen} onOpenChange={(open) => {
+        if (!concluding) setApprovalDialogOpen(open);
+      }}>
+        <AlertDialogContent className="max-w-md rounded-2xl border-slate-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+          <AlertDialogHeader>
+            <div className="mb-1 flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300">
+                <ThumbsUp className="h-5 w-5" />
+              </span>
+              <div>
+                <AlertDialogTitle className="font-display text-[17px] font-semibold text-gray-900 dark:text-gray-100">
+                  Aprovar orçamento?
+                </AlertDialogTitle>
+                <AlertDialogDescription className="mt-1 text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
+                  Confirme o encaminhamento do orçamento Nº {orcamento?.numero_orcamento || pedidoId} para o Pós-Vendas.
+                </AlertDialogDescription>
+              </div>
+            </div>
+          </AlertDialogHeader>
+          <div className="rounded-xl border border-teal-100 bg-teal-50/70 px-3.5 py-3 text-[12.5px] leading-relaxed text-teal-900 dark:border-teal-900/60 dark:bg-teal-950/20 dark:text-teal-200">
+            Nada será alterado no ERP. Esta ação conclui a auditoria do Pré-venda e encaminha o orçamento para a fila do Pós-Vendas.
+          </div>
+          <AlertDialogFooter className="mt-1 gap-2 sm:space-x-0">
+            <AlertDialogCancel disabled={concluding} className="action-pill-ghost mt-0">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                handleAprovar();
+              }}
+              disabled={concluding}
+              className="action-pill-primary mt-0"
+            >
+              {concluding ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsUp className="h-4 w-4" />}
+              {concluding ? "Aprovando…" : "Aprovar e encaminhar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
