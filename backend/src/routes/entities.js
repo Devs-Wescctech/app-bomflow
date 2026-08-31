@@ -264,6 +264,31 @@ pool.query(`
   -- Aviso antecipado de prazo: marcador de dedup p/ o aviso enviado ao vendedor antes do
   -- vencimento (ex.: faltando 1 dia útil). Preenchido uma única vez quando o aviso é disparado.
   ALTER TABLE presales_ajustes ADD COLUMN IF NOT EXISTS aviso_prazo_info TEXT;
+  ALTER TABLE presales_ajustes ADD COLUMN IF NOT EXISTS tipo_ajuste VARCHAR(20);
+  CREATE TABLE IF NOT EXISTS presales_ajuste_correcoes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ajuste_id UUID NOT NULL REFERENCES presales_ajustes(id),
+    erp_pedido_id BIGINT NOT NULL,
+    vendedor_id UUID NOT NULL,
+    tipo VARCHAR(30) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pendente',
+    dados_anteriores JSONB,
+    dados_novos JSONB NOT NULL,
+    applied_at TIMESTAMPTZ,
+    reconciled_at TIMESTAMPTZ,
+    error_message VARCHAR(500),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  ALTER TABLE presales_ajuste_correcoes
+    ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'pendente';
+  ALTER TABLE presales_ajuste_correcoes
+    ADD COLUMN IF NOT EXISTS applied_at TIMESTAMPTZ;
+  ALTER TABLE presales_ajuste_correcoes
+    ADD COLUMN IF NOT EXISTS reconciled_at TIMESTAMPTZ;
+  ALTER TABLE presales_ajuste_correcoes
+    ADD COLUMN IF NOT EXISTS error_message VARCHAR(500);
+  CREATE INDEX IF NOT EXISTS idx_presales_ajuste_correcoes_ajuste
+    ON presales_ajuste_correcoes(ajuste_id, created_at DESC);
 `).then(() => console.log('[Migration] presales_ajustes OK'))
   .catch(e => console.error('[Migration] presales_ajustes error:', e.message));
 
@@ -369,6 +394,23 @@ pool.query(`
     created_at TIMESTAMPTZ DEFAULT NOW()
   );
   CREATE INDEX IF NOT EXISTS idx_postsales_eventos_verif ON postsales_eventos(verificacao_id);
+  CREATE TABLE IF NOT EXISTS postsales_correcoes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    verificacao_id UUID NOT NULL REFERENCES postsales_verificacoes(id),
+    erp_pedido_id BIGINT NOT NULL,
+    tipo VARCHAR(30) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pendente',
+    actor_id UUID,
+    actor_nome VARCHAR(255),
+    dados_anteriores JSONB,
+    dados_novos JSONB,
+    error_message TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    applied_at TIMESTAMPTZ,
+    reconciled_at TIMESTAMPTZ
+  );
+  CREATE INDEX IF NOT EXISTS idx_postsales_correcoes_verif
+    ON postsales_correcoes(verificacao_id, created_at DESC);
 `).then(() => console.log('[Migration] postsales_verificacoes/eventos OK'))
   .catch(e => console.error('[Migration] postsales error:', e.message));
 
@@ -852,6 +894,121 @@ for (const [route, options] of Object.entries(entities)) {
 
     router.delete(`/${route}/:id`, authMiddleware, crud.delete);
     router.post(`/${route}/filter`, authMiddleware, crud.filter);
+    continue;
+  }
+
+  if (route === 'notifications') {
+    // Notificações são privadas por usuário. Nunca confie no user_email enviado
+    // pelo cliente: o dono vem exclusivamente do token autenticado.
+    router.get(`/${route}`, authMiddleware, async (req, res) => {
+      try {
+        const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+        const params = [req.user.email];
+        const conditions = ['LOWER(user_email) = LOWER($1)'];
+        if (req.query.read !== undefined) {
+          params.push(String(req.query.read) === 'true');
+          conditions.push(`read = $${params.length}`);
+        }
+        if (req.query.type) {
+          params.push(String(req.query.type));
+          conditions.push(`type = $${params.length}`);
+        }
+        params.push(limit);
+        const result = await query(
+          `SELECT * FROM notifications
+            WHERE ${conditions.join(' AND ')}
+            ORDER BY created_at DESC
+            LIMIT $${params.length}`,
+          params
+        );
+        return res.json(result.rows.map(convertKeysToCamel));
+      } catch (error) {
+        console.error('Error listing notifications:', error);
+        return res.status(500).json({ message: 'Falha ao carregar notificações.' });
+      }
+    });
+
+    router.get(`/${route}/:id`, authMiddleware, async (req, res) => {
+      try {
+        const result = await query(
+          `SELECT * FROM notifications
+            WHERE id = $1 AND LOWER(user_email) = LOWER($2)`,
+          [req.params.id, req.user.email]
+        );
+        if (!result.rows[0]) return res.status(404).json({ message: 'Not found' });
+        return res.json(convertKeysToCamel(result.rows[0]));
+      } catch (error) {
+        console.error('Error getting notification:', error);
+        return res.status(500).json({ message: 'Falha ao carregar a notificação.' });
+      }
+    });
+
+    router.post(`/${route}/filter`, authMiddleware, async (req, res) => {
+      try {
+        const body = convertKeysToSnake(req.body || {});
+        const params = [req.user.email];
+        const conditions = ['LOWER(user_email) = LOWER($1)'];
+        if (body.read !== undefined) {
+          params.push(Boolean(body.read));
+          conditions.push(`read = $${params.length}`);
+        }
+        if (body.type) {
+          params.push(String(body.type));
+          conditions.push(`type = $${params.length}`);
+        }
+        const result = await query(
+          `SELECT * FROM notifications
+            WHERE ${conditions.join(' AND ')}
+            ORDER BY created_at DESC
+            LIMIT 200`,
+          params
+        );
+        return res.json(result.rows.map(convertKeysToCamel));
+      } catch (error) {
+        console.error('Error filtering notifications:', error);
+        return res.status(500).json({ message: 'Falha ao carregar notificações.' });
+      }
+    });
+
+    router.put(`/${route}/:id`, authMiddleware, async (req, res) => {
+      try {
+        const body = convertKeysToSnake(req.body || {});
+        const read = body.read === true;
+        const readAt = read ? (body.read_at || new Date()) : null;
+        const result = await query(
+          `UPDATE notifications
+              SET read = $1, read_at = $2
+            WHERE id = $3 AND LOWER(user_email) = LOWER($4)
+            RETURNING *`,
+          [read, readAt, req.params.id, req.user.email]
+        );
+        if (!result.rows[0]) return res.status(404).json({ message: 'Not found' });
+        return res.json(convertKeysToCamel(result.rows[0]));
+      } catch (error) {
+        console.error('Error updating notification:', error);
+        return res.status(500).json({ message: 'Falha ao atualizar a notificação.' });
+      }
+    });
+
+    router.delete(`/${route}/:id`, authMiddleware, async (req, res) => {
+      try {
+        const result = await query(
+          `DELETE FROM notifications
+            WHERE id = $1 AND LOWER(user_email) = LOWER($2)
+            RETURNING id`,
+          [req.params.id, req.user.email]
+        );
+        if (!result.rows[0]) return res.status(404).json({ message: 'Not found' });
+        return res.json({ success: true });
+      } catch (error) {
+        console.error('Error deleting notification:', error);
+        return res.status(500).json({ message: 'Falha ao excluir a notificação.' });
+      }
+    });
+
+    router.post(`/${route}`, authMiddleware, (_req, res) => (
+      res.status(403).json({ message: 'Notificações só podem ser criadas pelo servidor.' })
+    ));
     continue;
   }
 

@@ -13,9 +13,19 @@ import {
   Calendar,
   Package,
   X,
+  MapPin,
+  Save,
+  AlertTriangle,
+  Search,
+  ExternalLink,
 } from "lucide-react";
 import { extractApiError } from "@/utils/apiError";
 import { DOC_TIPOS, getRequiredDocTipos, isDocumentUploadAllowed } from "@/utils/orcamentoDocumentos";
+import PostsalesCorrectionModal from "@/components/postsales/PostsalesCorrectionModal";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const ACCEPT = ".pdf,.jpg,.jpeg,.png";
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -115,15 +125,15 @@ function OrcamentoRow({ orc, index, onOpen }) {
       type="button"
       onClick={() => onOpen(orc)}
       style={{ animation: "od-enter 450ms cubic-bezier(0.16,1,0.3,1) both", animationDelay: `${80 + index * 60}ms` }}
-      className="group flex w-full items-center gap-4 rounded-xl border border-gray-100 bg-white px-4 py-3.5 text-left transition-all duration-200 hover:-translate-y-px hover:border-violet-200/70 hover:shadow-[0_10px_30px_-18px_rgba(76,29,149,0.35)] dark:border-gray-700 dark:bg-gray-900 dark:hover:border-violet-700/60"
+      className="group flex w-full items-center gap-4 rounded-xl border border-gray-100 bg-white px-4 py-3.5 text-left transition-all duration-200 hover:-translate-y-px hover:border-teal-300/70 hover:shadow-[0_10px_30px_-18px_rgba(15,118,110,0.35)] dark:border-gray-700 dark:bg-gray-900 dark:hover:border-teal-700/60"
     >
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-50 to-fuchsia-50 text-violet-600 ring-1 ring-violet-100 dark:from-violet-950/40 dark:to-fuchsia-950/30 dark:text-violet-400 dark:ring-violet-900">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-teal-50 to-cyan-50 text-teal-700 ring-1 ring-teal-100 dark:from-teal-950/40 dark:to-cyan-950/30 dark:text-teal-300 dark:ring-teal-900">
         <FileText className="h-5 w-5" />
       </div>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-gray-900 transition-colors duration-200 group-hover:text-violet-700 dark:text-gray-100 dark:group-hover:text-violet-300">
+          <span className="font-semibold text-gray-900 transition-colors duration-200 group-hover:text-teal-700 dark:text-gray-100 dark:group-hover:text-teal-300">
             Nº {numero}
           </span>
           {dataCriacao && (
@@ -144,7 +154,7 @@ function OrcamentoRow({ orc, index, onOpen }) {
       <AdesaoChip value={orc.adesao_zero} />
        <DocCounter loaded={loaded} total={total} />
 
-      <ChevronRight className="h-5 w-5 shrink-0 text-gray-300 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-violet-400 dark:text-gray-600" />
+      <ChevronRight className="h-5 w-5 shrink-0 text-gray-300 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-teal-500 dark:text-gray-600" />
     </button>
   );
 }
@@ -254,7 +264,44 @@ function DocSlot({ label, doc, canManage, canUpload = true, uploading, deleting,
   );
 }
 
-function OrcamentoModal({ orc, canManage, busyKey, fileInputs, onClose, onView, onDelete, onAdesao }) {
+const EMPTY_ADDRESS = {
+  cep: "",
+  logradouro: "",
+  numero: "",
+  complemento: "",
+  bairro: "",
+  cidade: "",
+};
+
+function inferAdjustmentType(ajuste) {
+  if (ajuste?.tipo_ajuste === "endereco" || ajuste?.tipo_ajuste === "cadastro") return ajuste.tipo_ajuste;
+  return /endere[cç]o|cep|cidade|munic[ií]pio|uf|logradouro|bairro|complemento|resid[eê]ncia|rua|avenida|n[úu]mero\s+(?:do\s+endere[cç]o|da\s+(?:casa|resid[eê]ncia))/i.test(ajuste?.texto || "") ? "endereco" : "cadastro";
+}
+
+function OrcamentoModal({
+  orc,
+  canManage,
+  busyKey,
+  fileInputs,
+  onClose,
+  onView,
+  onDelete,
+  onAdesao,
+  adjustmentContext,
+  addressForm,
+  addressSaving,
+  onAddressChange,
+  onAddressSave,
+  cityOptions,
+  cityOpen,
+  cityLoading,
+  onCitySearch,
+  onCitySelect,
+  selectedCity,
+  onCityFocus,
+  onCityClose,
+  onOpenCadastro,
+}) {
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -270,6 +317,7 @@ function OrcamentoModal({ orc, canManage, busyKey, fileInputs, onClose, onView, 
     ? new Date(orc.created_at).toLocaleDateString("pt-BR")
     : null;
   const azBusy = busyKey === `az:${orc.erp_pedido_id}`;
+  const adjustmentType = inferAdjustmentType(adjustmentContext?.ajuste);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
@@ -333,6 +381,134 @@ function OrcamentoModal({ orc, canManage, busyKey, fileInputs, onClose, onView, 
 
         {/* body */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
+          {adjustmentContext?.ajuste && (
+            <section className="mb-5 rounded-2xl border border-amber-200 bg-white p-4 shadow-sm dark:border-amber-900 dark:bg-gray-900">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    Ajuste solicitado pela auditoria
+                  </h3>
+                  <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-gray-600 dark:text-gray-300">
+                    {adjustmentContext.ajuste.texto}
+                  </p>
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className="rounded-md border border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:border-gray-700 dark:text-slate-300">
+                      {adjustmentType === "endereco" ? "Corrigir no endereço do orçamento" : "Corrigir no cadastro completo"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+          {adjustmentContext?.ajustes?.length > 1 && (
+            <section className="mb-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Solicitações deste orçamento</h3>
+                <span className="text-[11px] text-slate-400">{adjustmentContext.ajustes.length} no total</span>
+              </div>
+              <div className="space-y-2">
+                {adjustmentContext.ajustes.map((item) => {
+                  const type = inferAdjustmentType(item);
+                  return (
+                    <div key={item.id} className="flex items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 dark:border-gray-700 dark:bg-gray-900">
+                      <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${item.status === "ajustado" ? "bg-teal-600" : "bg-amber-500"}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">{type === "endereco" ? "Endereço do orçamento" : "Cadastro completo da venda"}</span>
+                          <span className="text-[10px] text-slate-400">{item.status === "ajustado" ? "Concluído" : "Pendente"}</span>
+                        </div>
+                        <p className="mt-0.5 text-[12px] text-slate-500 dark:text-slate-400">{item.texto}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {adjustmentContext?.ajuste && adjustmentType === "endereco" && (
+            <section className="mb-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+              <div className="mb-4 flex items-start gap-3">
+                <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-teal-700 dark:text-teal-400" />
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    Endereço do orçamento
+                  </h3>
+                  <p className="mt-0.5 text-[12px] text-gray-500 dark:text-gray-400">
+                    Estes dados são gravados no pedido existente do ERP.
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {[
+                  ["cep", "CEP"],
+                  ["logradouro", "Logradouro"],
+                  ["numero", "Número"],
+                  ["complemento", "Complemento"],
+                  ["bairro", "Bairro"],
+                  ["cidade", "Cidade - UF"],
+                ].map(([field, label]) => (
+                  <label key={field} className={field === "logradouro" ? "sm:col-span-2" : ""}>
+                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                      {label}{field !== "complemento" ? " *" : ""}
+                    </span>
+                    {field === "cidade" ? (
+                      <div className="relative">
+                        <div className="relative">
+                          <input
+                            type="text"
+                            role="combobox"
+                            aria-autocomplete="list"
+                            aria-expanded={cityOpen}
+                            value={addressForm[field] || ""}
+                            onChange={(event) => onCitySearch(event.target.value)}
+                            onFocus={onCityFocus}
+                            onBlur={onCityClose}
+                            disabled={!canManage || addressSaving}
+                            placeholder="Digite ao menos 2 letras"
+                            className="eloom-field w-full pr-9"
+                          />
+                          <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                        </div>
+                        {cityOpen && (
+                          <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                            {cityLoading ? <div className="px-3 py-2 text-xs text-gray-400">Consultando cidades do ERP…</div> : addressForm.cidade.trim().length < 2 ? <div className="px-3 py-2 text-xs text-gray-400">Digite ao menos 2 letras para pesquisar.</div> : cityOptions.length ? cityOptions.map((city) => (
+                              <button key={city.id} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => onCitySelect(city)} className="w-full rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-accent dark:text-gray-200">{city.cidade}</button>
+                            )) : <div className="px-3 py-2 text-xs text-gray-400">Nenhuma cidade encontrada no ERP.</div>}
+                          </div>
+                        )}
+                        {!!addressForm[field] && selectedCity !== addressForm[field] && <p className="mt-1 text-[11px] text-red-600">Selecione uma cidade da lista do ERP.</p>}
+                      </div>
+                    ) : <input type="text" value={addressForm[field] || ""} onChange={(event) => onAddressChange(field, event.target.value)} disabled={!canManage || addressSaving} className="eloom-field w-full" />}
+                  </label>
+                ))}
+              </div>
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={onAddressSave}
+                  disabled={!canManage || addressSaving || selectedCity !== addressForm.cidade}
+                  className="action-pill-primary"
+                >
+                  {addressSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Salvar endereço no orçamento
+                </button>
+              </div>
+            </section>
+          )}
+          {adjustmentContext?.ajuste && adjustmentType === "cadastro" && (
+            <section className="mb-5 flex flex-col gap-4 rounded-2xl border border-violet-200 bg-violet-50 p-4 dark:border-violet-900/60 dark:bg-violet-950/20 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Correção no cadastro completo</h3>
+                <p className="mt-1 text-[12px] leading-relaxed text-gray-600 dark:text-gray-300">Abra a venda exata no cadastro para corrigir os dados solicitados. Depois, volte aqui e marque este ajuste como concluído.</p>
+              </div>
+              <button type="button" onClick={onOpenCadastro} className="action-pill-primary min-h-11 w-full shrink-0 px-5 text-sm sm:w-auto sm:min-w-[176px]">
+                <ExternalLink className="action-pill-icon h-4 w-4" /> Abrir cadastro completo
+              </button>
+            </section>
+          )}
+
           {/* Adesão Zero */}
           <div className="flex items-center justify-between gap-4 rounded-xl border border-violet-100 bg-violet-50/50 px-4 py-3 dark:border-violet-900 dark:bg-violet-950/20">
             <div className="flex items-center gap-2.5">
@@ -419,11 +595,31 @@ function ListSkeleton() {
  *  - leadId: id do lead (vínculo do documento ao lead)
  *  - canManage: se o usuário pode enviar/reenviar/excluir e marcar Adesão Zero
  */
-export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = false }) {
+export default function OrcamentoDocumentos({
+  modulo,
+  cpf,
+  leadId,
+  canManage = false,
+  ajusteId = null,
+  initialSelectedId = null,
+  hideList = false,
+  onModalClose,
+}) {
   const [orcamentos, setOrcamentos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [busyKey, setBusyKey] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
+  const [adjustmentContext, setAdjustmentContext] = useState(null);
+  const [addressForm, setAddressForm] = useState(EMPTY_ADDRESS);
+  const [addressSaving, setAddressSaving] = useState(false);
+  const [correctionItem, setCorrectionItem] = useState(null);
+  const [cityOptions, setCityOptions] = useState([]);
+  const [cityOpen, setCityOpen] = useState(false);
+  const [cityLoading, setCityLoading] = useState(false);
+  const [selectedCity, setSelectedCity] = useState("");
+  const [deleteDoc, setDeleteDoc] = useState(null);
+  const citySearchTimer = useRef(null);
+  const citySearchSequence = useRef(0);
   const fileInputs = useRef({});
 
   const fetchOrcamentos = useCallback(async () => {
@@ -443,17 +639,45 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
       if (!res.ok) throw new Error(await extractApiError(res, "Falha ao carregar orçamentos"));
       const data = await res.json();
       setOrcamentos(Array.isArray(data.items) ? data.items : []);
+      const requestedId = Number(initialSelectedId);
+      if (Number.isSafeInteger(requestedId) && requestedId > 0) {
+        setSelectedId(requestedId);
+      }
     } catch (e) {
       console.error("[OrcamentoDocumentos] fetch error:", e);
       toast.error("Não foi possível carregar os orçamentos.");
     } finally {
       setLoading(false);
     }
-  }, [cpf, leadId, modulo]);
+  }, [cpf, initialSelectedId, leadId, modulo]);
 
   useEffect(() => {
     fetchOrcamentos();
   }, [fetchOrcamentos]);
+
+  const fetchAdjustmentContext = useCallback(async () => {
+    if (!ajusteId) {
+      setAdjustmentContext(null);
+      setAddressForm(EMPTY_ADDRESS);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/presales-ajustes/${ajusteId}/context`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao carregar o ajuste"));
+      const data = await res.json();
+      setAdjustmentContext(data);
+      setAddressForm({ ...EMPTY_ADDRESS, ...(data.endereco || {}) });
+      setSelectedCity(data.endereco?.cidade || "");
+    } catch (error) {
+      toast.error(error.message || "Não foi possível carregar o ajuste solicitado.");
+    }
+  }, [ajusteId]);
+
+  useEffect(() => {
+    fetchAdjustmentContext();
+  }, [fetchAdjustmentContext]);
 
   // Recarrega a lista quando um orçamento é criado no formulário irmão (mesmo módulo),
   // para o orçamento recém-criado já aparecer com os campos de upload + Adesão Zero.
@@ -467,7 +691,7 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
 
   // Mantém o modal em sincronia com os dados após cada refetch (docs/adesão atualizados).
   const selected = selectedId != null
-    ? orcamentos.find((o) => o.erp_pedido_id === selectedId) || null
+    ? orcamentos.find((o) => Number(o.erp_pedido_id) === Number(selectedId)) || null
     : null;
 
   async function handleUpload(orc, tipo, file) {
@@ -524,7 +748,6 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
 
   async function handleDelete(doc) {
     if (!doc) return;
-    if (!window.confirm("Excluir este documento? Esta ação não pode ser desfeita.")) return;
     const key = `del:${doc.id}`;
     setBusyKey(key);
     try {
@@ -563,10 +786,103 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
     }
   }
 
+  async function handleAddressSave() {
+    if (!ajusteId) return;
+    if (!selectedCity || selectedCity !== addressForm.cidade) {
+      toast.error("Selecione uma cidade válida na lista do ERP.");
+      return;
+    }
+    setAddressSaving(true);
+    try {
+      const res = await fetch(`/api/presales-ajustes/${ajusteId}/endereco`, {
+        method: "PATCH",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(addressForm),
+      });
+      if (!res.ok) throw new Error(await extractApiError(res, "Falha ao salvar o endereço"));
+      const data = await res.json();
+      setAddressForm({ ...EMPTY_ADDRESS, ...(data.endereco || {}) });
+      toast.success("Endereço do orçamento atualizado no ERP.");
+      await fetchAdjustmentContext();
+    } catch (error) {
+      toast.error(error.message || "Não foi possível atualizar o endereço.");
+    } finally {
+      setAddressSaving(false);
+    }
+  }
+
+  const loadCityOptions = useCallback((value, immediate = false) => {
+    setCityOpen(true);
+    window.clearTimeout(citySearchTimer.current);
+    if (value.trim().length < 2) {
+      setCityOptions([]);
+      setCityLoading(false);
+      return;
+    }
+    const sequence = ++citySearchSequence.current;
+    citySearchTimer.current = window.setTimeout(async () => {
+      setCityLoading(true);
+      try {
+        const res = await fetch(`/api/presales-ajustes/cidades?search=${encodeURIComponent(value)}`, { headers: authHeaders() });
+        if (!res.ok) throw new Error(await extractApiError(res, "Falha ao consultar cidades"));
+        const data = await res.json();
+        if (sequence === citySearchSequence.current) {
+          setCityOptions(Array.isArray(data.items) ? data.items : []);
+        }
+      } catch (error) {
+        if (sequence === citySearchSequence.current) {
+          setCityOptions([]);
+          toast.error(error.message || "Não foi possível consultar as cidades do ERP.");
+        }
+      } finally {
+        if (sequence === citySearchSequence.current) setCityLoading(false);
+      }
+    }, immediate ? 0 : 250);
+  }, []);
+
+  const searchCities = useCallback((value) => {
+    setAddressForm((current) => ({ ...current, cidade: value }));
+    setSelectedCity((current) => current === value ? current : "");
+    loadCityOptions(value);
+  }, [loadCityOptions]);
+
+  const openCityOptions = useCallback(() => {
+    loadCityOptions(addressForm.cidade || "", true);
+  }, [addressForm.cidade, loadCityOptions]);
+
+  const closeCityOptions = useCallback(() => {
+    window.setTimeout(() => setCityOpen(false), 120);
+  }, []);
+
+  useEffect(() => () => {
+    window.clearTimeout(citySearchTimer.current);
+    citySearchSequence.current += 1;
+  }, []);
+
+  const selectCity = useCallback((city) => {
+    setAddressForm((current) => ({ ...current, cidade: city.cidade }));
+    setSelectedCity(city.cidade);
+    setCityOpen(false);
+  }, []);
+
+  const openCadastro = useCallback(() => {
+    if (!ajusteId || !adjustmentContext?.ajuste) return;
+    setSelectedId(null);
+    setCorrectionItem({
+      id: ajusteId,
+      erp_pedido_id: adjustmentContext.ajuste.erp_pedido_id,
+      erp_numero: adjustmentContext.ajuste.erp_numero,
+      motivo_devolucao_nome: "Cadastro completo da venda",
+      devolucao_obs: adjustmentContext.ajuste.texto,
+    });
+  }, [adjustmentContext, ajusteId]);
+
   return (
-    <div className="mt-6 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
+    <div className={hideList ? "" : "mt-6 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900"}>
       <style>{MOTION_CSS}</style>
 
+      {!hideList && (
+      <>
       <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-gray-700">
         <div className="flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-100 text-violet-600 dark:bg-violet-950/50 dark:text-violet-400">
@@ -615,6 +931,8 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
           </div>
         )}
       </div>
+      </>
+      )}
 
       {/* Inputs de arquivo (ficam montados fora do modal para sobreviverem ao refetch). */}
       {orcamentos.map((orc) =>
@@ -643,12 +961,55 @@ export default function OrcamentoDocumentos({ modulo, cpf, leadId, canManage = f
           canManage={canManage}
           busyKey={busyKey}
           fileInputs={fileInputs}
-          onClose={() => setSelectedId(null)}
+          onClose={() => {
+            setSelectedId(null);
+            onModalClose?.();
+          }}
           onView={handleView}
-          onDelete={handleDelete}
+           onDelete={setDeleteDoc}
           onAdesao={handleAdesaoZero}
+          adjustmentContext={
+            Number(adjustmentContext?.ajuste?.erp_pedido_id) === Number(selected.erp_pedido_id)
+              ? adjustmentContext
+              : null
+          }
+          addressForm={addressForm}
+          addressSaving={addressSaving}
+          onAddressChange={(field, value) => setAddressForm((current) => ({ ...current, [field]: value }))}
+          onAddressSave={handleAddressSave}
+          cityOptions={cityOptions}
+          cityOpen={cityOpen}
+          cityLoading={cityLoading}
+          onCitySearch={searchCities}
+          onCitySelect={selectCity}
+          selectedCity={selectedCity}
+            onCityFocus={openCityOptions}
+            onCityClose={closeCityOptions}
+          onOpenCadastro={openCadastro}
         />
       )}
+      {correctionItem && (
+        <PostsalesCorrectionModal
+          item={correctionItem}
+          correctionPath={`/api/presales-ajustes/${encodeURIComponent(correctionItem.id)}/correcao`}
+          onClose={() => setCorrectionItem(null)}
+          onSaved={async () => {
+            await Promise.all([fetchOrcamentos(), fetchAdjustmentContext()]);
+          }}
+        />
+      )}
+      <AlertDialog open={!!deleteDoc} onOpenChange={(open) => !open && setDeleteDoc(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir documento?</AlertDialogTitle>
+            <AlertDialogDescription>Esta ação não pode ser desfeita. O arquivo será removido deste orçamento.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { const doc = deleteDoc; setDeleteDoc(null); handleDelete(doc); }}>Excluir documento</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
