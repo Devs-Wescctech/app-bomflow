@@ -1,5 +1,6 @@
 import pkg from 'pg';
 import { logErpDbQuery } from './erpAuditService.js';
+import { appendCanalCondition } from '../utils/erpReportFilters.js';
 const { Pool } = pkg;
 
 let pool = null;
@@ -1570,10 +1571,10 @@ export async function getRelatorioOrcamentos({
     params.push(situacao);
     conditions.push(`p.situacao = $${params.length}`);
   }
-  if (canalId) {
-    params.push(Number(canalId));
-    conditions.push(`pcv.contrato_id = $${params.length}`);
-  }
+  // O canal histórico vem do vínculo gravado no pedido:
+  // pedidos.agente_venda_id -> pessoas_contratos.contrato_id.
+  // `sem_canal` usa IS NULL e, portanto, também inclui agente_venda_id ausente.
+  appendCanalCondition(conditions, params, canalId);
 
   const limitParam = Math.min(Number(limit) || 500, 1000);
   const offsetParam = Number(offset) || 0;

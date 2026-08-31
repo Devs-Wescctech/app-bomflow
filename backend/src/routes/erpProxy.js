@@ -15,6 +15,7 @@ import { query } from '../config/database.js';
 import { fetchErpAllPages } from '../utils/erpPagination.js';
 import { assessCatalogSelection } from '../utils/erpCatalogValidation.js';
 import { selectTrackedClientName } from '../utils/postsalesDetail.js';
+import { parseCanalFilter } from '../utils/erpReportFilters.js';
 
 const router = express.Router();
 
@@ -1832,6 +1833,11 @@ router.get('/relatorio-orcamentos/consolidado', authMiddleware, async (req, res)
     const eligible = await isConsolidadoEligible(req);
     if (!eligible) {
       return res.status(403).json({ error: 'Acesso restrito ao relatório consolidado de orçamentos.' });
+    }
+
+    const canalFilter = parseCanalFilter(canal_id);
+    if (canalFilter.kind === 'invalid') {
+      return res.status(400).json({ error: 'Filtro de canal inválido.' });
     }
 
     // Rastreio CRM: todos os pedidos dos 4 módulos de vendas.
