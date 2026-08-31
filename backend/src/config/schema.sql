@@ -1825,6 +1825,162 @@ CREATE TABLE IF NOT EXISTS bom_pet_atendimentos (
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Cadastro administrativo de parceiros de cremação do Bom Pet.
+-- O histórico mantém uma linha aberta (vigência atual) por parceiro.
+CREATE TABLE IF NOT EXISTS bom_pet_parceiros (
+  id SERIAL PRIMARY KEY,
+  nome VARCHAR(255) NOT NULL,
+  valor_servico NUMERIC(12,2) NOT NULL CHECK (valor_servico >= 0),
+  data_cadastro DATE NOT NULL,
+  email VARCHAR(255),
+  telefone VARCHAR(20),
+  status VARCHAR(20) NOT NULL DEFAULT 'Ativo'
+    CHECK (status IN ('Ativo', 'Inativo')),
+  data_exclusao DATE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT bom_pet_parceiros_status_data_check CHECK (
+    (status = 'Inativo' AND data_exclusao IS NOT NULL)
+    OR (status = 'Ativo' AND data_exclusao IS NULL)
+  )
+);
+
+CREATE TABLE IF NOT EXISTS bom_pet_parceiros_historico (
+  id SERIAL PRIMARY KEY,
+  parceiro_id INTEGER NOT NULL REFERENCES bom_pet_parceiros(id) ON DELETE RESTRICT,
+  valor_servico NUMERIC(12,2) NOT NULL CHECK (valor_servico >= 0),
+  vigencia_inicio TIMESTAMPTZ NOT NULL,
+  vigencia_fim TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT bom_pet_parceiros_historico_periodo_check CHECK (
+    vigencia_fim IS NULL OR vigencia_fim >= vigencia_inicio
+  )
+);
+
+-- Migra a primeira versão (DATE) para intervalos de timestamp. O fim é
+-- exclusivo: [vigencia_inicio, vigencia_fim), evitando sobreposição quando o
+-- valor muda mais de uma vez no mesmo dia.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+      FROM information_schema.columns
+     WHERE table_schema = current_schema()
+       AND table_name = 'bom_pet_parceiros_historico'
+       AND column_name = 'vigencia_inicio'
+       AND data_type = 'date'
+  ) THEN
+    ALTER TABLE bom_pet_parceiros_historico
+      ALTER COLUMN vigencia_inicio TYPE TIMESTAMPTZ
+      USING vigencia_inicio::timestamp AT TIME ZONE 'America/Sao_Paulo';
+    ALTER TABLE bom_pet_parceiros_historico
+      ALTER COLUMN vigencia_fim TYPE TIMESTAMPTZ
+      USING CASE
+        WHEN vigencia_fim IS NULL THEN NULL
+        ELSE vigencia_fim::timestamp AT TIME ZONE 'America/Sao_Paulo'
+      END;
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_bom_pet_parceiros_historico_atual
+  ON bom_pet_parceiros_historico (parceiro_id)
+  WHERE vigencia_fim IS NULL;
+CREATE INDEX IF NOT EXISTS idx_bom_pet_parceiros_status_nome
+  ON bom_pet_parceiros (status, nome);
+CREATE INDEX IF NOT EXISTS idx_bom_pet_parceiros_historico_parceiro
+  ON bom_pet_parceiros_historico (parceiro_id, vigencia_inicio DESC);
+
+-- Linhas históricas nunca são apagadas ou sobrescritas. A única atualização
+-- permitida é fechar uma vigência que ainda estava aberta.
+CREATE OR REPLACE FUNCTION protect_bom_pet_partner_history()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'O histórico de valores do parceiro é imutável';
+  END IF;
+  IF OLD.vigencia_fim IS NULL
+     AND NEW.vigencia_fim IS NOT NULL
+     AND NEW.id = OLD.id
+     AND NEW.parceiro_id = OLD.parceiro_id
+     AND NEW.valor_servico = OLD.valor_servico
+     AND NEW.vigencia_inicio = OLD.vigencia_inicio
+     AND NEW.created_at = OLD.created_at THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'Apenas o fechamento da vigência atual é permitido';
+END;
+$$ LANGUAGE plpgsql;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+     WHERE tgname = 'trg_protect_bom_pet_partner_history'
+       AND tgrelid = 'bom_pet_parceiros_historico'::regclass
+  ) THEN
+    CREATE TRIGGER trg_protect_bom_pet_partner_history
+      BEFORE UPDATE OR DELETE ON bom_pet_parceiros_historico
+      FOR EACH ROW EXECUTE FUNCTION protect_bom_pet_partner_history();
+  END IF;
+END $$;
+
+-- A checagem é adiada até o COMMIT para permitir fechar e abrir vigências na
+-- mesma transação, mas impede parceiros sem uma única vigência atual.
+CREATE OR REPLACE FUNCTION check_bom_pet_partner_current_history()
+RETURNS TRIGGER AS $$
+DECLARE
+  partner_key INTEGER;
+  current_count INTEGER;
+BEGIN
+  IF TG_TABLE_NAME = 'bom_pet_parceiros' THEN
+    partner_key := CASE WHEN TG_OP = 'DELETE' THEN OLD.id ELSE NEW.id END;
+  ELSE
+    partner_key := CASE WHEN TG_OP = 'DELETE' THEN OLD.parceiro_id ELSE NEW.parceiro_id END;
+  END IF;
+  IF EXISTS (SELECT 1 FROM bom_pet_parceiros WHERE id = partner_key) THEN
+    SELECT COUNT(*) INTO current_count
+      FROM bom_pet_parceiros_historico
+     WHERE parceiro_id = partner_key AND vigencia_fim IS NULL;
+    IF current_count <> 1 THEN
+      RAISE EXCEPTION 'Parceiro % deve possuir exatamente uma vigência atual', partner_key;
+    END IF;
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+     WHERE tgname = 'trg_check_bom_pet_partner_history_from_partner'
+       AND tgrelid = 'bom_pet_parceiros'::regclass
+  ) THEN
+    CREATE CONSTRAINT TRIGGER trg_check_bom_pet_partner_history_from_partner
+      AFTER INSERT OR UPDATE ON bom_pet_parceiros
+      DEFERRABLE INITIALLY DEFERRED
+      FOR EACH ROW EXECUTE FUNCTION check_bom_pet_partner_current_history();
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+     WHERE tgname = 'trg_check_bom_pet_partner_history'
+       AND tgrelid = 'bom_pet_parceiros_historico'::regclass
+  ) THEN
+    CREATE CONSTRAINT TRIGGER trg_check_bom_pet_partner_history
+      AFTER INSERT OR UPDATE OR DELETE ON bom_pet_parceiros_historico
+      DEFERRABLE INITIALLY DEFERRED
+      FOR EACH ROW EXECUTE FUNCTION check_bom_pet_partner_current_history();
+  END IF;
+END $$;
+
+ALTER TABLE bom_pet_atendimentos
+  ADD COLUMN IF NOT EXISTS parceiro_id INTEGER
+    REFERENCES bom_pet_parceiros(id) ON DELETE SET NULL;
+ALTER TABLE bom_pet_atendimentos
+  ADD COLUMN IF NOT EXISTS parceiro_valor NUMERIC(12,2);
+CREATE INDEX IF NOT EXISTS idx_bom_pet_atendimentos_parceiro_id
+  ON bom_pet_atendimentos (parceiro_id);
+
 CREATE TABLE IF NOT EXISTS bom_pet_imagens (
   id SERIAL PRIMARY KEY,
   atendimento_id INTEGER NOT NULL REFERENCES bom_pet_atendimentos(id) ON DELETE CASCADE,
