@@ -11,6 +11,14 @@ import {
 import { enrichPostsalesClientIdentities } from '../services/postsalesClientService.js';
 import { classifyPostsalesDetail } from '../utils/postsalesDetail.js';
 import { validateDateRange } from '../utils/postsalesFilters.js';
+import {
+  POSTSALES_MOTIVOS,
+  buildPostsalesReturnNotification,
+  getPostsalesReasonLabel,
+  normalizePostsalesObservation,
+  validatePostsalesReturn,
+} from '../utils/postsalesReasons.js';
+export { POSTSALES_MOTIVOS };
 
 const router = express.Router();
 
@@ -31,15 +39,6 @@ const router = express.Router();
 
 // Prazo do coordenador para resolver a devolução (dias ÚTEIS) — fixo nesta fase.
 const DEVOLUCAO_PRAZO_DIAS = 3;
-
-// Motivos padronizados de devolução (do fluxograma oficial).
-export const POSTSALES_MOTIVOS = {
-  telefone_incorreto: 'Telefone incorreto',
-  email_incorreto: 'E-mail incorreto',
-  inscritos_divergentes: 'Inscritos divergentes',
-  solicitacao_cancelamento: 'Solicitação de cancelamento',
-  falta_indicacao_carencia: 'Falta de indicação de carência',
-};
 
 // Motivo de cancelamento no ERP (pedidos_motivos_cancelamentos) — mesmo id já validado
 // no auto-cancelamento do Pré-venda ("AJUSTE PRÉ-VENDA NÃO REALIZADO").
@@ -177,7 +176,7 @@ function shapeItem(row, userId) {
   return {
     ...row,
     modulo_nome: MODULO_LABELS[row.modulo] || row.modulo || '-',
-    motivo_devolucao_nome: row.motivo_devolucao ? (POSTSALES_MOTIVOS[row.motivo_devolucao] || row.motivo_devolucao) : null,
+    motivo_devolucao_nome: getPostsalesReasonLabel(row.motivo_devolucao),
     prazo_vencido: !!(row.status === 'devolvida' && row.prazo_ymd && todayYmd > row.prazo_ymd),
     lock_mine: !!(row.auditor_id && String(row.auditor_id) === String(userId)),
   };
@@ -381,10 +380,9 @@ router.post('/:id/devolver', authMiddleware, async (req, res) => {
     if (!eligible) return res.status(403).json({ error: 'Acesso restrito à equipe de Pós-Vendas.' });
 
     const motivo = String(req.body?.motivo || '');
-    if (!POSTSALES_MOTIVOS[motivo]) {
-      return res.status(400).json({ error: 'Escolha um dos motivos padronizados de devolução.' });
-    }
-    const observacao = String(req.body?.observacao || '').trim().slice(0, 1000) || null;
+    const observacao = normalizePostsalesObservation(req.body?.observacao);
+    const motivoError = validatePostsalesReturn(motivo, observacao);
+    if (motivoError) return res.status(400).json({ error: motivoError });
 
     // Prazo: 3 dias úteis; se a API de feriados falhar, cai para 3 dias corridos.
     const todayYmd = brtDateStr();
@@ -415,7 +413,13 @@ router.post('/:id/devolver', authMiddleware, async (req, res) => {
 
     // Notificações internas: vendedor + supervisores do time.
     const numero = numeroDe(v);
-    const msg = `O Pós-Vendas devolveu o orçamento Nº ${numero}${v.cliente_nome ? ` (${v.cliente_nome})` : ''}. Motivo: ${POSTSALES_MOTIVOS[motivo]}. Prazo para resolução: ${prazoYmd} (3 dias).`;
+    const msg = buildPostsalesReturnNotification({
+      numero,
+      clienteNome: v.cliente_nome,
+      motivo,
+      prazoYmd,
+      observacao,
+    });
     if (v.vendedor_id) {
       const vr = await query(`SELECT email FROM agents WHERE id = $1`, [v.vendedor_id]);
       if (vr.rows[0]?.email) {

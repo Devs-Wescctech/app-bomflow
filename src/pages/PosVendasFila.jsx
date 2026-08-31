@@ -261,7 +261,7 @@ function PostSalesDetail({ item, state, onRetry, onViewDocument, viewingId }) {
   );
 }
 
-// Modal de ação sobre uma verificação: concluir, devolver (5 motivos + prazo 3 dias),
+// Modal de ação sobre uma verificação: concluir, devolver (motivos + prazo 3 dias úteis),
 // congelar (reavaliação reprovada) e decisão final de cancelamento no ERP.
 function AcaoModal({ item, motivos, onClose, onChanged }) {
   const { toast } = useToast();
@@ -278,6 +278,8 @@ function AcaoModal({ item, motivos, onClose, onChanged }) {
     documentos: [],
     error: null,
   });
+  const exigeObservacao = motivo === "outros";
+  const podeDevolver = !!motivo && (!exigeObservacao || !!obs.trim()) && !busy;
 
   const loadDetail = useCallback(async () => {
     setDetailState({
@@ -473,26 +475,34 @@ function AcaoModal({ item, motivos, onClose, onChanged }) {
               {/* Devolver ao coordenador */}
               <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
                 <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">
-                  <Undo2 className="h-3.5 w-3.5" /> Devolver ao coordenador (prazo automático: 3 dias)
+                  <Undo2 className="h-3.5 w-3.5" /> Devolver ao coordenador (prazo automático: 3 dias úteis)
                 </div>
                 <div className="grid gap-1.5 sm:grid-cols-2">
                   {Object.entries(motivos || {}).map(([key, label]) => (
-                    <label key={key} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12.5px] font-medium transition-colors ${motivo === key ? "border-amber-500 bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-gray-800 dark:bg-gray-900 dark:text-slate-300"}`}>
+                    <label key={key} className={`flex min-w-0 cursor-pointer items-start gap-2 rounded-lg border px-2.5 py-1.5 text-[12.5px] font-medium transition-colors ${motivo === key ? "border-amber-500 bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-gray-800 dark:bg-gray-900 dark:text-slate-300"}`}>
                       <input type="radio" name="motivo" value={key} checked={motivo === key} onChange={() => setMotivo(key)} className="accent-amber-600" />
-                      {label}
+                      <span className="min-w-0 break-words">{label}</span>
                     </label>
                   ))}
                 </div>
                 <textarea
                   value={obs}
                   onChange={(e) => setObs(e.target.value)}
-                  placeholder="Observação (opcional)…"
+                  maxLength={1000}
+                  required={exigeObservacao}
+                  placeholder={exigeObservacao ? "Explique a pendência para orientar o coordenador (obrigatório)…" : "Observação (opcional)…"}
                   rows={2}
-                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12.5px] text-slate-700 outline-none focus:border-amber-400 dark:border-gray-800 dark:bg-gray-900 dark:text-slate-200"
+                  aria-label={exigeObservacao ? "Observação obrigatória para o motivo Outros" : "Observação da devolução"}
+                  className={`mt-2 w-full rounded-lg border bg-white px-3 py-2 text-[12.5px] text-slate-700 outline-none focus:border-amber-400 dark:bg-gray-900 dark:text-slate-200 ${exigeObservacao && !obs.trim() ? "border-amber-300 dark:border-amber-800" : "border-slate-200 dark:border-gray-800"}`}
                 />
+                {exigeObservacao && !obs.trim() && (
+                  <p className="mt-1 text-[11.5px] font-medium text-amber-700 dark:text-amber-300">
+                    Descreva a pendência para que o coordenador saiba o que corrigir.
+                  </p>
+                )}
                 <button
                   onClick={() => motivo && call("devolver", { motivo, observacao: obs }, "Devolvida ao coordenador — vendedor e supervisores notificados.")}
-                  disabled={!motivo || !!busy}
+                  disabled={!podeDevolver}
                   className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm hover:bg-amber-600 disabled:opacity-50"
                 >
                   {busy === "devolver" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
