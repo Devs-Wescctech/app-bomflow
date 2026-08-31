@@ -1,12 +1,21 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { query } from '../config/database.js';
+import { pool, query } from '../config/database.js';
 import { createNotification } from '../services/notificationService.js';
 import { addBusinessDays, brtDateStr, preloadHolidays } from '../services/businessDaysService.js';
 import { validateDateRange } from '../utils/postsalesFilters.js';
 import { enrichPostsalesClientIdentities } from '../services/postsalesClientService.js';
+import { getOrcamentoDetalhe } from '../services/erpDbService.js';
+import { getApprovalPending } from '../utils/orcamentoDocumentos.js';
 
 const router = express.Router();
+
+function approvalHttpError(status, body) {
+  const error = new Error(body.error);
+  error.approvalStatus = status;
+  error.approvalBody = body;
+  return error;
+}
 
 // Mesma leitura de configuração do job de auto-cancelamento (functions.js), para que
 // o painel de acompanhamento exiba os mesmos prazos/flags que o cron usa de fato.
@@ -365,23 +374,15 @@ router.post('/locks/:erpPedidoId/concluir', authMiddleware, async (req, res) => 
 });
 
 // ----- Aprovação do pré-venda (SEM tocar o ERP) -----
-// Documentos obrigatórios para aprovar (mesma lista do checklist do modal).
-const REQUIRED_DOC_TIPOS = ['documento_identidade', 'comprovante_residencia', 'taxa_adesao', 'copia_contrato'];
-const REQUIRED_DOC_LABELS = {
-  documento_identidade: 'Documento (CPF/RG)',
-  comprovante_residencia: 'Comprovante de residência',
-  taxa_adesao: 'Taxa de adesão',
-  copia_contrato: 'Cópia do contrato',
-};
-
 // POST /aprovacoes/:erpPedidoId — aprova o orçamento no pré-venda e o encaminha à fila
 // do Pós-Vendas. Registro 100% LOCAL: nada é escrito no ERP (a situação do pedido lá
 // permanece como está). Regras impostas no servidor (não só na UI):
 //   • só o auditor que detém a trava ativa pode aprovar;
-//   • os 4 documentos obrigatórios precisam estar anexados.
+//   • os documentos aplicáveis e os dados obrigatórios precisam estar completos.
 // A aprovação grava a decisão na trilha (presales_auditorias: resultado 'aprovado',
 // concluida_at, auditor) e libera a trava automaticamente (status 'concluida').
 router.post('/aprovacoes/:erpPedidoId', authMiddleware, async (req, res) => {
+  let client = null;
   try {
     const { eligible, agent } = await resolveAuditor(req);
     if (!eligible) return res.status(403).json({ error: 'Acesso restrito à auditoria da Fila Pré Vendas.' });
@@ -391,19 +392,27 @@ router.post('/aprovacoes/:erpPedidoId', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'erp_pedido_id inválido.' });
     }
 
-    // Precisa ser o dono da trava ativa.
-    const lockRes = await query(
+    client = await pool.connect();
+    await client.query('BEGIN');
+
+    // Serializa a conclusão com mudanças na trava e mantém os anexos/decisão
+    // lidos abaixo estáveis até o commit da aprovação.
+    const lockRes = await client.query(
       `SELECT erp_pedido_id, auditor_id, auditor_nome, auditor_email, assumido_at
          FROM presales_auditorias
-        WHERE erp_pedido_id = $1 AND status = 'em_auditoria'`,
+         WHERE erp_pedido_id = $1 AND status = 'em_auditoria'
+         FOR UPDATE`,
       [erpPedidoId]
     );
     const activeLock = lockRes.rows[0];
     if (!activeLock) {
-      return res.status(409).json({ error: 'Assuma a auditoria deste orçamento antes de aprová-lo.', lock: null });
+      throw approvalHttpError(409, {
+        error: 'Assuma a auditoria deste orçamento antes de aprová-lo.',
+        lock: null,
+      });
     }
     if (String(activeLock.auditor_id) !== String(agent.id)) {
-      return res.status(409).json({
+      throw approvalHttpError(409, {
         error: activeLock.auditor_nome
           ? `Este orçamento está em auditoria por ${activeLock.auditor_nome}. Somente o auditor responsável pode aprovar.`
           : 'Este orçamento está em auditoria por outro auditor.',
@@ -411,22 +420,57 @@ router.post('/aprovacoes/:erpPedidoId', authMiddleware, async (req, res) => {
       });
     }
 
-    // Guarda de servidor: os 4 documentos obrigatórios precisam estar anexados.
-    const docsRes = await query(
-      `SELECT DISTINCT tipo FROM orcamento_documentos WHERE erp_pedido_id = $1`,
+    const orcRes = await client.query(
+      `SELECT erp_pedido_id, cliente_nome, cliente_cpf, adesao_zero
+         FROM bomflow_orcamentos
+        WHERE erp_pedido_id = $1
+        FOR UPDATE`,
+      [erpPedidoId]
+    );
+    const orcamento = orcRes.rows[0];
+    if (!orcamento) {
+      throw approvalHttpError(404, {
+        error: 'Orçamento não encontrado no rastreio do Bom Flow.',
+      });
+    }
+
+    // A aprovação precisa validar a mesma fonte usada pelo modal. Se o ERP não
+    // responder, falhamos fechado em vez de aprovar sem conferir os campos.
+    let detalhe;
+    try {
+      detalhe = await getOrcamentoDetalhe(erpPedidoId);
+    } catch (detailError) {
+      console.error('[presales-ajustes] detalhe ERP indisponível na aprovação:', detailError.message);
+      throw approvalHttpError(503, {
+        error: 'Não foi possível validar os dados obrigatórios do orçamento no ERP. Tente novamente.',
+        code: 'erp_detalhe_indisponivel',
+      });
+    }
+
+    const docsRes = await client.query(
+      `SELECT tipo FROM orcamento_documentos
+        WHERE erp_pedido_id = $1
+        FOR UPDATE`,
       [erpPedidoId]
     );
     const anexados = new Set(docsRes.rows.map((r) => r.tipo));
-    const faltando = REQUIRED_DOC_TIPOS.filter((t) => !anexados.has(t));
-    if (faltando.length > 0) {
-      return res.status(422).json({
-        error: `Não é possível aprovar: documentação obrigatória incompleta (${faltando.map((t) => REQUIRED_DOC_LABELS[t]).join(', ')}).`,
-        missing_docs: faltando,
+    const validation = getApprovalPending({
+      orcamento,
+      detalhe,
+      documentTypes: anexados,
+    });
+    if (validation.pending.length > 0) {
+      const pendingText = validation.pending.map(({ label }) => label).join(', ');
+      throw approvalHttpError(422, {
+        error: `Não é possível aprovar: pendências encontradas (${pendingText}).`,
+        pending: validation.pending,
+        missing_fields: validation.missingFields.map(({ key }) => key),
+        missing_docs: validation.missingDocs.map(({ tipo }) => tipo),
       });
     }
 
     // Registra a decisão e libera a trava — atômico e restrito ao dono da trava.
-    const upd = await query(
+    const upd = await client.query(
       `UPDATE presales_auditorias
           SET status = 'concluida', resultado = 'aprovado', concluida_at = NOW(), updated_at = NOW()
         WHERE erp_pedido_id = $1 AND auditor_id = $2 AND status = 'em_auditoria'
@@ -434,9 +478,12 @@ router.post('/aprovacoes/:erpPedidoId', authMiddleware, async (req, res) => {
       [erpPedidoId, agent.id]
     );
     if (!upd.rows[0]) {
-      return res.status(409).json({ error: 'A trava mudou durante a aprovação. Recarregue e tente novamente.' });
+      throw approvalHttpError(409, {
+        error: 'A trava mudou durante a aprovação. Recarregue e tente novamente.',
+      });
     }
 
+    await client.query('COMMIT');
     return res.json({
       ok: true,
       lock: null,
@@ -447,8 +494,14 @@ router.post('/aprovacoes/:erpPedidoId', authMiddleware, async (req, res) => {
       },
     });
   } catch (e) {
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    if (e.approvalStatus) {
+      return res.status(e.approvalStatus).json(e.approvalBody);
+    }
     console.error('[presales-ajustes] aprovacoes error:', e.message);
     return res.status(500).json({ error: 'Falha ao aprovar o orçamento.' });
+  } finally {
+    client?.release();
   }
 });
 
