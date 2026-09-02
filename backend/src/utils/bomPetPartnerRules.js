@@ -79,8 +79,20 @@ export function partnerValueChanged(previousValue, nextValue) {
     : previousValue !== nextValue;
 }
 
-export function canManageBomPetPartners({ userRole, agentType } = {}) {
-  return userRole === 'admin' || agentType === 'admin';
+export function canManageBomPetPartners({
+  userRole,
+  agentType,
+  modules = [],
+  allowedSubmenus = [],
+} = {}) {
+  if (userRole === 'admin' || agentType === 'admin') return true;
+
+  const hasBomPetModule = Array.isArray(modules)
+    && (modules.includes('bom_pet') || modules.includes('all'));
+  const hasPartnerSubmenu = Array.isArray(allowedSubmenus)
+    && allowedSubmenus.includes('BomPetParceiros');
+
+  return hasBomPetModule && hasPartnerSubmenu;
 }
 
 export function snapshotActivePartner(partner) {

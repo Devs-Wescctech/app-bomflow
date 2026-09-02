@@ -462,6 +462,9 @@ export function filterMenuItems(agent, menuItems, user = null) {
         }
         
         // No ADM submenu restrictions - use hardcoded flag-based permissions
+        // Itens administrativos explicitamente configuráveis só ficam disponíveis
+        // quando o submenu foi concedido no tipo de agente.
+        if (subItem.requiresExplicitSubmenu) return false;
         
         // allowedEmails: só visível para e-mails específicos (admins sempre veem)
         if (subItem.allowedEmails && subItem.allowedEmails.length > 0) {
