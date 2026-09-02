@@ -7,6 +7,7 @@ import multer from 'multer';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
+import process from 'node:process';
 import { fileURLToPath } from 'url';
 import {
   isValidBomPetDateOnly,
@@ -19,6 +20,14 @@ import {
   snapshotActivePartner,
   validatePartnerPayload,
 } from '../utils/bomPetPartnerRules.js';
+import { lookupPessoaByCpf, resolvePessoa } from '../services/erpPessoaService.js';
+import {
+  findBomPetOrphanFilenames,
+  isBomPetPaymentContentValid,
+  normalizeBomPetOrigem,
+  parseParticularPaidAmount,
+  validateParticularFields,
+} from '../utils/bomPetParticularRules.js';
 
 const router = Router();
 
@@ -49,6 +58,64 @@ const imageUpload = multer({
     }
   }
 });
+
+const paymentUpload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024, files: 3 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error('Comprovantes devem ser imagens JPEG, PNG, GIF, WebP ou PDF.'), false);
+  },
+});
+
+function removeUploadedFiles(files = []) {
+  files.forEach((file) => {
+    try { fs.unlinkSync(file.path); } catch { /* limpeza é idempotente */ }
+  });
+}
+
+function isPaymentFileContentValid(file) {
+  return isBomPetPaymentContentValid(fs.readFileSync(file.path), file.mimetype);
+}
+
+function parseBoolean(value) {
+  return value === true || value === 'true' || value === '1';
+}
+
+export async function cleanupBomPetOrphanFiles({ minAgeMs = 60 * 60 * 1000 } = {}) {
+  try {
+    const references = await query(
+      `SELECT filename FROM bom_pet_imagens
+       UNION
+       SELECT filename FROM bom_pet_comprovantes_pagamento`
+    );
+    const entries = fs.readdirSync(uploadDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => {
+        const stat = fs.statSync(path.join(uploadDir, entry.name));
+        return { name: entry.name, mtimeMs: stat.mtimeMs };
+      });
+    const orphans = findBomPetOrphanFilenames(
+      entries,
+      references.rows.map((row) => row.filename),
+      Date.now() - minAgeMs
+    );
+    let removed = 0;
+    for (const filename of orphans) {
+      try {
+        fs.unlinkSync(path.join(uploadDir, filename));
+        removed += 1;
+      } catch (error) {
+        console.error('[BomPet] Falha ao remover arquivo órfão:', { filename, code: error.code });
+      }
+    }
+    return { checked: entries.length, removed };
+  } catch (error) {
+    console.error('[BomPet] Falha na reconciliação de arquivos privados:', error.message);
+    return { checked: 0, removed: 0, error: true };
+  }
+}
 
 // ── Autorização por perfil no BACKEND (não só na UI) ──────────────────────
 // O JWT carrega apenas id/email/role; o tipo de agente vem do banco.
@@ -502,6 +569,27 @@ router.get('/consulta', authMiddleware, bomPetAuth, async (req, res) => {
   }
 });
 
+// GET /api/bom-pet/particulares/cliente?cpf=...
+// Consulta somente a API oficial de Pessoas; não usa banco do ERP nem cria cadastro.
+router.get('/particulares/cliente', authMiddleware, bomPetAuth, async (req, res) => {
+  try {
+    const cpf = String(req.query.cpf || '').replace(/\D/g, '');
+    if (cpf.length !== 11) {
+      return res.status(400).json({ message: 'CPF inválido. Deve conter 11 dígitos.' });
+    }
+    const pessoa = await lookupPessoaByCpf(erpToken(), cpf);
+    res.json({ encontrada: Boolean(pessoa), pessoa });
+  } catch (error) {
+    const status = error.statusCode || (error.code === 'erp_pessoas_ambiguas' ? 409 : 502);
+    res.status(status).json({
+      message: error.code === 'erp_pessoas_ambiguas'
+        ? error.message
+        : `Não foi possível consultar a Pessoa no ERP: ${error.message}`,
+      code: error.code || 'erp_pessoa_indisponivel',
+    });
+  }
+});
+
 // GET /api/bom-pet/parcelas/:documento — parcelas/boletos pendentes no ERP (somente leitura).
 router.get('/parcelas/:documento', authMiddleware, bomPetAuth, async (req, res) => {
   try {
@@ -560,7 +648,7 @@ router.get('/utilizacoes/:documento', authMiddleware, bomPetAuth, async (req, re
     const docNorm = req.params.documento.replace(/\D/g, '');
     const scoped = !isBomPetSupervisor(req);
     const listResult = await query(
-      `SELECT id, protocolo, status_atendimento, usuario, data_hora, pet_nome, pet_descricao,
+      `SELECT id, protocolo, origem, status_atendimento, usuario, data_hora, pet_nome, pet_descricao,
                remocao_local, remocao_endereco, clinica_nome, parceiro_nome, parceiro_valor,
               telefone_contato, contratos_servicos, nome_cliente, documento_cliente, observacoes,
               termo_local, termo_rua, termo_valores_combinados, termo_descricao_produto
@@ -584,150 +672,196 @@ function stripHtml(s) {
   return s ? String(s).replace(/<[^>]*>/g, '').trim() : null;
 }
 
-// POST /api/bom-pet/atendimentos — registro de atendimento de cremação.
-router.post('/atendimentos', authMiddleware, bomPetAuth, async (req, res) => {
+// POST /api/bom-pet/atendimentos — JSON para Plano; multipart para Particular.
+router.post('/atendimentos', authMiddleware, bomPetAuth, (req, res, next) => {
+  paymentUpload.array('comprovantes_pagamento', 3)(req, res, (error) => {
+    if (error) {
+      removeUploadedFiles(req.files);
+      return res.status(400).json({ message: error.message });
+    }
+    next();
+  });
+}, async (req, res) => {
+  const paymentFiles = req.files || [];
   try {
     const {
       documento_cliente, nome_cliente, pet_nome, pet_descricao, pet_contrato_id,
-      contratos_servicos, situacao_financeira,
       comprovante_pagamento_recebido, comprovante_pagamento_obs,
       remocao_local, remocao_endereco, clinica_nome, parceiro_id,
-      telefone_contato, observacoes,
+      telefone_contato, observacoes, valor_pago_particular, cliente_data_nascimento, cliente_email,
+      cliente_endereco, cliente_cidade, consentimento_comercial,
     } = req.body;
-
+    const origem = normalizeBomPetOrigem(req.body.origem);
+    if (!origem) throw partnerError('Origem inválida. Use Plano ou Particular.');
+    const paidAmountProvided = valor_pago_particular !== undefined &&
+      valor_pago_particular !== null && String(valor_pago_particular).trim() !== '';
+    if (origem === 'Plano' && paidAmountProvided) {
+      throw partnerError('O valor pago pelo cliente é exclusivo do atendimento Particular.');
+    }
+    const valorPagoParticular = origem === 'Particular'
+      ? parseParticularPaidAmount(valor_pago_particular)
+      : null;
+    if (origem === 'Particular' && valorPagoParticular === null) {
+      throw partnerError('Informe o valor pago pelo cliente usando somente números.');
+    }
     const usuario = currentUsuario(req);
-    if (!usuario) return res.status(401).json({ message: 'Usuário não identificado.' });
-
-    if (!documento_cliente || !pet_contrato_id) {
-      return res.status(400).json({ message: 'Campos obrigatórios: documento_cliente, pet_contrato_id' });
-    }
+    if (!usuario) throw partnerError('Usuário não identificado.', 401);
     if (!/^\d+$/.test(String(parceiro_id || '')) || Number(parceiro_id) <= 0) {
-      return res.status(400).json({ message: 'Selecione um parceiro ativo.' });
+      throw partnerError('Selecione um parceiro ativo.');
     }
 
-    // ── Validação SERVER-SIDE contra o ERP (não confiar no body) ─────────
-    const docDigits = String(documento_cliente).replace(/\D/g, '');
-    if (docDigits.length !== 11) {
-      return res.status(400).json({ message: 'CPF inválido. Deve conter 11 dígitos.' });
-    }
+    const docDigits = String(documento_cliente || '').replace(/\D/g, '');
+    if (docDigits.length !== 11) throw partnerError('CPF inválido. Deve conter 11 dígitos.');
     const cpfFormatted = formatCpf(docDigits);
-    const dataset = await getPetDataset();
-    const erpRows = dataset.filter((r) => (r.documento || '').trim() === cpfFormatted);
-    if (erpRows.length === 0) {
-      return res.status(404).json({ message: 'Cliente não encontrado na base Bom Pet do ERP.' });
+    const sanitizedTelefone = String(telefone_contato || '').replace(/\D/g, '').slice(0, 15);
+    if (sanitizedTelefone.length < 10) throw partnerError('Informe um telefone de contato válido.');
+    if (!stripHtml(remocao_local) || !stripHtml(remocao_endereco)) {
+      throw partnerError('Informe o local e o endereço da remoção.');
     }
 
-    const titularNorm = normalizeName(erpRows[0].contratante);
-    // Pets do mesmo plano compartilham o contrato_id; o nome (validado contra o ERP)
-    // desambigua qual pet foi selecionado.
-    const bodyPetNome = normalizeName(pet_nome);
-    const petRow = erpRows.find((r) => {
-      if (String(r.contrato_id) !== String(pet_contrato_id)) return false;
-      const texto = normalizeName(r.texto_original_veiculo);
-      if (texto === titularNorm) return false;
-      if (!bodyPetNome) return true;
-      return texto.split(' - ')[0].trim() === bodyPetNome;
-    });
-    if (!petRow) {
-      return res.status(400).json({ message: 'Pet não incluído no plano do cliente — atendimento negado.' });
-    }
-
-    // Pet já marcado como Falecido localmente não pode gerar novo atendimento.
-    const falecidoRes = await query(
-      `SELECT 1 FROM bom_pet_pets_falecidos
-        WHERE pet_contrato_id = $1 AND (pet_nome IS NULL OR UPPER(pet_nome) = UPPER($2))`,
-      [petRow.contrato_id, (petRow.texto_original_veiculo || '').split(' - ')[0].trim()]
-    );
-    if (falecidoRes.rows.length > 0) {
-      return res.status(400).json({ message: 'Este pet já está marcado como Falecido.' });
-    }
-
-    // Situação financeira derivada do ERP, nunca do body.
-    void situacao_financeira; void nome_cliente; void pet_descricao; void contratos_servicos;
-    const sitFin = erpRows.some((r) => mapSituacaoFinanceira(r.situacao_financeira) === 'INADIMPLENTE')
-      ? 'INADIMPLENTE' : 'ADIMPLENTE';
-    const comprovanteFlag = comprovante_pagamento_recebido === true;
+    let resolvedName;
+    let resolvedPetName;
+    let resolvedPetDescription;
+    let resolvedPetContractId = null;
+    let resolvedServices = null;
+    let situacaoFinanceira = null;
+    let pessoa = null;
+    let comprovanteFlag = false;
     const comprovanteObs = stripHtml(comprovante_pagamento_obs);
 
-    // Bloqueio de inadimplência: só libera com comprovante marcado + observação obrigatória.
-    if (sitFin === 'INADIMPLENTE') {
-      if (!comprovanteFlag) {
-        return res.status(400).json({ message: 'Cliente inadimplente: o registro fica bloqueado até estar adimplente ou o comprovante de pagamento ser recebido.' });
+    if (origem === 'Plano') {
+      if (!pet_contrato_id) throw partnerError('Campos obrigatórios: documento_cliente, pet_contrato_id');
+      if (paymentFiles.length) throw partnerError('Arquivos de pagamento na criação são exclusivos do atendimento Particular.');
+      const dataset = await getPetDataset();
+      const erpRows = dataset.filter((row) => (row.documento || '').trim() === cpfFormatted);
+      if (!erpRows.length) throw partnerError('Cliente não encontrado na base Bom Pet do ERP.', 404);
+      const titularNorm = normalizeName(erpRows[0].contratante);
+      const bodyPetNome = normalizeName(pet_nome);
+      const petRow = erpRows.find((row) => {
+        if (String(row.contrato_id) !== String(pet_contrato_id)) return false;
+        const texto = normalizeName(row.texto_original_veiculo);
+        if (texto === titularNorm) return false;
+        return !bodyPetNome || texto.split(' - ')[0].trim() === bodyPetNome;
+      });
+      if (!petRow) throw partnerError('Pet não incluído no plano do cliente — atendimento negado.');
+      const falecidoRes = await query(
+        `SELECT 1 FROM bom_pet_pets_falecidos
+          WHERE pet_contrato_id = $1 AND (pet_nome IS NULL OR UPPER(pet_nome) = UPPER($2))`,
+        [petRow.contrato_id, (petRow.texto_original_veiculo || '').split(' - ')[0].trim()]
+      );
+      if (falecidoRes.rows.length) throw partnerError('Este pet já está marcado como Falecido.');
+      situacaoFinanceira = erpRows.some((row) => mapSituacaoFinanceira(row.situacao_financeira) === 'INADIMPLENTE')
+        ? 'INADIMPLENTE' : 'ADIMPLENTE';
+      comprovanteFlag = parseBoolean(comprovante_pagamento_recebido);
+      if (situacaoFinanceira === 'INADIMPLENTE' && (!comprovanteFlag || !comprovanteObs)) {
+        throw partnerError('Cliente inadimplente: confirme o comprovante e preencha a observação obrigatória.');
       }
-      if (!comprovanteObs) {
-        return res.status(400).json({ message: 'Observação do comprovante de pagamento é obrigatória.' });
+      resolvedName = erpRows[0].contratante || '';
+      resolvedPetName = (petRow.texto_original_veiculo || '').split(' - ')[0].trim();
+      resolvedPetDescription = petRow.texto_original_veiculo || null;
+      resolvedPetContractId = petRow.contrato_id;
+      resolvedServices = [...new Set(erpRows.map((row) => row.contrato_servicos).filter(Boolean))].join(', ') || null;
+    } else {
+      const particularErrors = validateParticularFields({
+        nome: nome_cliente,
+        petNome: pet_nome,
+        petDescricao: pet_descricao,
+      }, paymentFiles);
+      if (particularErrors.length) throw partnerError(particularErrors[0]);
+      if (paymentFiles.some((file) => !isPaymentFileContentValid(file))) {
+        throw partnerError('O conteúdo de um dos comprovantes não corresponde ao formato informado.');
       }
+      const partnerPreflight = await query(
+        `SELECT id, nome, valor_servico, status
+           FROM bom_pet_parceiros
+          WHERE id = $1`,
+        [parceiro_id]
+      );
+      if (!snapshotActivePartner(partnerPreflight.rows[0])) {
+        throw partnerError('O parceiro selecionado não existe ou foi inativado. Selecione um parceiro ativo.');
+      }
+      pessoa = await resolvePessoa(erpToken(), {
+        cpf: docDigits,
+        nome: stripHtml(nome_cliente),
+        data_nascimento: cliente_data_nascimento || null,
+      });
+      if (!pessoa?.id) throw partnerError('Não foi possível confirmar o vínculo da Pessoa no ERP.', 502);
+      resolvedName = pessoa.nome || stripHtml(nome_cliente);
+      resolvedPetName = stripHtml(pet_nome);
+      resolvedPetDescription = stripHtml(pet_descricao) || resolvedPetName;
+      comprovanteFlag = true;
     }
 
-    const sanitizedTelefone = telefone_contato ? String(telefone_contato).replace(/\D/g, '').slice(0, 15) : null;
-
-    // A leitura do parceiro e o INSERT ficam na mesma transação. O lock impede
-    // que uma inativação concorrente altere a fotografia entre as duas operações.
     const result = await withTransaction(async (client) => {
       const partnerResult = await client.query(
         `SELECT id, nome, valor_servico, status
-           FROM bom_pet_parceiros
-          WHERE id = $1
-          FOR UPDATE`,
+           FROM bom_pet_parceiros WHERE id = $1 FOR UPDATE`,
         [parceiro_id]
       );
       const partner = snapshotActivePartner(partnerResult.rows[0]);
-      if (!partner) {
-        throw partnerError('O parceiro selecionado não existe ou foi inativado. Selecione um parceiro ativo.');
-      }
+      if (!partner) throw partnerError('O parceiro selecionado não existe ou foi inativado. Selecione um parceiro ativo.');
 
       const inserted = await client.query(
         `WITH lock AS (SELECT pg_advisory_xact_lock(hashtext('bom_pet_protocolo'))),
         next_seq AS (
-          SELECT COALESCE(MAX(
-            CASE WHEN protocolo LIKE 'BP' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || '%'
-            THEN CAST(RIGHT(protocolo, 4) AS INTEGER) ELSE 0 END
-          ), 0) + 1 AS seq
+          SELECT COALESCE(MAX(CASE
+            WHEN protocolo LIKE 'BP' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || '%'
+            THEN CAST(RIGHT(protocolo, 4) AS INTEGER) ELSE 0 END), 0) + 1 AS seq
           FROM bom_pet_atendimentos, lock
         )
         INSERT INTO bom_pet_atendimentos
-         (protocolo, documento_cliente, nome_cliente, pet_nome, pet_descricao, pet_contrato_id,
+         (protocolo, origem, documento_cliente, nome_cliente, pet_nome, pet_descricao, pet_contrato_id,
           contratos_servicos, situacao_financeira, comprovante_pagamento_recebido, comprovante_pagamento_obs,
           remocao_local, remocao_endereco, clinica_nome, parceiro_nome, parceiro_id, parceiro_valor,
-          telefone_contato, observacoes, usuario, status_atendimento)
+          telefone_contato, observacoes, valor_pago_particular, usuario, status_atendimento, pessoa_erp_id, pessoa_erp_codigo,
+          cliente_data_nascimento, cliente_email, cliente_endereco, cliente_cidade,
+          consentimento_comercial, consentimento_comercial_em)
         VALUES (
           'BP' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || LPAD((SELECT seq FROM next_seq)::text, 4, '0'),
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-          $14, $15, $16, $17, $18, 'Pendente'
-        )
-        RETURNING *`,
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+          $17, $18, $19, $20, 'Pendente', $21, $22, $23, $24, $25, $26, $27,
+          CASE WHEN $27 THEN CURRENT_TIMESTAMP ELSE NULL END
+        ) RETURNING *`,
         [
-          cpfFormatted,
-          erpRows[0].contratante || '',
-          (petRow.texto_original_veiculo || '').split(' - ')[0].trim(),
-          petRow.texto_original_veiculo || null,
-          petRow.contrato_id,
-          [...new Set(erpRows.map((r) => r.contrato_servicos).filter(Boolean))].join(', ') || null,
-          sitFin,
-          comprovanteFlag, comprovanteObs,
-          stripHtml(remocao_local), stripHtml(remocao_endereco),
-          stripHtml(clinica_nome), partner.parceiro_nome, partner.parceiro_id, partner.parceiro_valor,
-          sanitizedTelefone, stripHtml(observacoes), usuario,
+          origem, cpfFormatted, resolvedName, resolvedPetName, resolvedPetDescription,
+          resolvedPetContractId, resolvedServices, situacaoFinanceira, comprovanteFlag, comprovanteObs,
+          stripHtml(remocao_local), stripHtml(remocao_endereco), stripHtml(clinica_nome),
+          partner.parceiro_nome, partner.parceiro_id, partner.parceiro_valor,
+          sanitizedTelefone, stripHtml(observacoes), valorPagoParticular, usuario,
+          pessoa?.id || null, pessoa?.codigo || null, cliente_data_nascimento || null,
+          stripHtml(cliente_email), stripHtml(cliente_endereco), stripHtml(cliente_cidade),
+          parseBoolean(consentimento_comercial),
         ]
       );
-      return inserted;
+      const atendimento = inserted.rows[0];
+      for (const file of paymentFiles) {
+        const url = `/api/bom-pet/comprovantes-pagamento/${file.filename}`;
+        await client.query(
+          `INSERT INTO bom_pet_comprovantes_pagamento
+           (atendimento_id, filename, original_name, mimetype, size, url)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [atendimento.id, file.filename, file.originalname, file.mimetype, file.size, url]
+        );
+      }
+      if (situacaoFinanceira === 'INADIMPLENTE' && comprovanteFlag) {
+        await client.query(
+          `INSERT INTO bom_pet_historico_alteracoes
+           (atendimento_id, status_anterior, status_novo, usuario, observacao)
+           VALUES ($1, NULL, 'Pendente', $2, $3)`,
+          [atendimento.id, usuario, `Comprovante de pagamento recebido (cliente inadimplente): ${comprovanteObs}`]
+        );
+      }
+      return atendimento;
     });
 
-    const atendimento = result.rows[0];
-
-    // Comprovante recebido sob inadimplência: registrado no histórico.
-    if (sitFin === 'INADIMPLENTE' && comprovanteFlag) {
-      await query(
-        `INSERT INTO bom_pet_historico_alteracoes (atendimento_id, status_anterior, status_novo, usuario, observacao)
-         VALUES ($1, NULL, 'Pendente', $2, $3)`,
-        [atendimento.id, usuario, `Comprovante de pagamento recebido (cliente inadimplente): ${comprovanteObs}`]
-      );
-    }
-
-    res.status(201).json(serializeBomPetRow(atendimento));
+    res.status(201).json(serializeBomPetRow(result));
   } catch (error) {
-    console.error('Error in bom-pet create atendimento:', error);
-    res.status(error.statusCode || 500).json({ message: error.message });
+    removeUploadedFiles(paymentFiles);
+    console.error('Error in bom-pet create atendimento:', {
+      code: error.code || null,
+      status: error.statusCode || error.status || 500,
+    });
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
   }
 });
 
@@ -770,6 +904,29 @@ router.get('/atendimentos/contadores', authMiddleware, bomPetAuth, async (req, r
   }
 });
 
+// Base interna para futura conversão comercial. Não cria lead e só retorna
+// particulares que consentiram, mantendo o mesmo escopo por atendente.
+router.get('/particulares/elegiveis', authMiddleware, bomPetAuth, async (req, res) => {
+  try {
+    const scoped = !isBomPetSupervisor(req);
+    const result = await query(
+      `SELECT id AS atendimento_id, protocolo, pessoa_erp_id, pessoa_erp_codigo,
+              nome_cliente, documento_cliente, telefone_contato, cliente_email,
+              cliente_cidade, valor_pago_particular, consentimento_comercial_em, data_hora
+         FROM bom_pet_atendimentos
+        WHERE origem = 'Particular' AND consentimento_comercial = TRUE
+        ${scoped ? 'AND LOWER(usuario) = LOWER($1)' : ''}
+        ORDER BY data_hora DESC
+        LIMIT 500`,
+      scoped ? [currentUsuario(req)] : []
+    );
+    res.json(result.rows.map(serializeBomPetRow));
+  } catch (error) {
+    console.error('Error fetching eligible Bom Pet particulars:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.get('/atendimentos/:id(\\d+)', authMiddleware, bomPetAuth, async (req, res) => {
   try {
     const { id } = req.params;
@@ -779,9 +936,14 @@ router.get('/atendimentos/:id(\\d+)', authMiddleware, bomPetAuth, async (req, re
       'SELECT * FROM bom_pet_imagens WHERE atendimento_id = $1 ORDER BY created_at ASC',
       [id]
     );
+    const comprovantesResult = await query(
+      'SELECT * FROM bom_pet_comprovantes_pagamento WHERE atendimento_id = $1 ORDER BY created_at ASC',
+      [id]
+    );
     res.json({
       ...serializeBomPetRow(atendimento),
       imagens: imagensResult.rows.map(serializeBomPetRow),
+      comprovantes_pagamento: comprovantesResult.rows.map(serializeBomPetRow),
     });
   } catch (error) {
     console.error('Error fetching bom-pet atendimento detail:', error);
@@ -791,7 +953,7 @@ router.get('/atendimentos/:id(\\d+)', authMiddleware, bomPetAuth, async (req, re
 
 router.get('/atendimentos', authMiddleware, bomPetAuth, async (req, res) => {
   try {
-    const { documento, status, data_inicio, data_fim, nome, pet, atendente } = req.query;
+    const { documento, status, data_inicio, data_fim, nome, pet, atendente, origem } = req.query;
 
     let sql = 'SELECT * FROM bom_pet_atendimentos WHERE 1=1';
     const params = [];
@@ -810,6 +972,13 @@ router.get('/atendimentos', authMiddleware, bomPetAuth, async (req, res) => {
       }
       sql += ` AND status_atendimento = $${paramIndex++}`;
       params.push(status);
+    }
+    if (origem) {
+      if (!['Plano', 'Particular'].includes(origem)) {
+        return res.status(400).json({ message: 'Origem inválida. Use Plano ou Particular.' });
+      }
+      sql += ` AND origem = $${paramIndex++}`;
+      params.push(origem);
     }
     if (documento) {
       sql += ` AND REPLACE(REPLACE(REPLACE(documento_cliente, '.', ''), '-', ''), ' ', '') ILIKE $${paramIndex++}`;
@@ -1000,6 +1169,34 @@ router.patch('/atendimentos/:id/termo', authMiddleware, bomPetAuth, async (req, 
     res.json(serializeBomPetRow(result.rows[0]));
   } catch (error) {
     console.error('Error saving bom-pet termo:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// GET /api/bom-pet/comprovantes-pagamento/:filename — arquivo privado tipado.
+router.get('/comprovantes-pagamento/:filename', authMiddleware, bomPetAuth, async (req, res) => {
+  try {
+    const filename = path.basename(req.params.filename);
+    const result = await query(
+      `SELECT c.filename, c.original_name, c.mimetype, a.usuario
+         FROM bom_pet_comprovantes_pagamento c
+         JOIN bom_pet_atendimentos a ON a.id = c.atendimento_id
+        WHERE c.filename = $1`,
+      [filename]
+    );
+    if (!result.rows.length) return res.status(404).json({ message: 'Comprovante não encontrado.' });
+    const row = result.rows[0];
+    if (!canAccessAtendimento({ isSupervisor: isBomPetSupervisor(req), usuario: currentUsuario(req) }, row)) {
+      return res.status(403).json({ message: 'Acesso negado: este comprovante pertence a outro atendente.' });
+    }
+    const filePath = path.join(uploadDir, filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ message: 'Arquivo não encontrado no servidor.' });
+    res.type(row.mimetype || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${String(row.original_name || 'comprovante').replace(/["\r\n]/g, '')}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.sendFile(filePath);
+  } catch (error) {
+    console.error('Error serving Bom Pet payment proof:', error);
     res.status(500).json({ message: error.message });
   }
 });

@@ -14,7 +14,7 @@ import attendanceConnectionsRoutes from './routes/attendanceConnections.js';
 import attendanceChatRoutes from './routes/attendanceChat.js';
 import attendanceWebhookRoutes from './routes/attendanceWebhook.js';
 import bomAutoRoutes from './routes/bomAuto.js';
-import bomPetRoutes from './routes/bomPet.js';
+import bomPetRoutes, { cleanupBomPetOrphanFiles } from './routes/bomPet.js';
 import erpProxyRoutes from './routes/erpProxy.js';
 import apiKeyRoutes from './routes/apiKeys.js';
 import externalRoutes from './routes/external.js';
@@ -226,6 +226,9 @@ async function runBootSmokeCheck() {
 initDatabase()
   .then(async () => {
     console.log('Database schema initialized successfully');
+
+    await cleanupBomPetOrphanFiles();
+    setInterval(() => cleanupBomPetOrphanFiles(), 60 * 60 * 1000);
 
     try {
       const reconciliation = await runPostsalesReconciliarResolvidas();
