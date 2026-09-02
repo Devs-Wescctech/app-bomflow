@@ -11,7 +11,7 @@ import {
   PawPrint, Search, CheckCircle, XCircle, AlertTriangle,
   Loader2, User, FileText, Phone, Hash,
   ClipboardCheck, Calendar, Copy, RefreshCw, Clock, Download, Save,
-  Receipt, MapPin, Stethoscope, Handshake
+  Receipt, MapPin, Stethoscope, Handshake, UploadCloud
 } from "lucide-react";
 import { extractApiError } from "@/utils/apiError";
 import {
@@ -69,7 +69,7 @@ function StatusBadge({ status }) {
 export default function BomPetConsulta() {
   const { toast } = useToast();
 
-  const [currentUser, setCurrentUser] = useState(null);
+  const [origem, setOrigem] = useState('Plano');
   const [searchCPF, setSearchCPF] = useState('');
   const [searchNome, setSearchNome] = useState('');
   const [loading, setLoading] = useState(false);
@@ -88,27 +88,26 @@ export default function BomPetConsulta() {
   const [parceiros, setParceiros] = useState([]);
   const [loadingParceiros, setLoadingParceiros] = useState(false);
   const [selectedParceiroId, setSelectedParceiroId] = useState('');
-  const [parceiroNome, setParceiroNome] = useState('');
+  const [valorPagoParticular, setValorPagoParticular] = useState('');
   const [telefoneContato, setTelefoneContato] = useState('');
   const [observacoes, setObservacoes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [atendimentoFinalizado, setAtendimentoFinalizado] = useState(null);
+  const [pessoaEncontrada, setPessoaEncontrada] = useState(false);
+  const [particularNome, setParticularNome] = useState('');
+  const [particularNascimento, setParticularNascimento] = useState('');
+  const [particularEmail, setParticularEmail] = useState('');
+  const [particularEndereco, setParticularEndereco] = useState('');
+  const [particularCidade, setParticularCidade] = useState('');
+  const [particularPetNome, setParticularPetNome] = useState('');
+  const [particularPetDescricao, setParticularPetDescricao] = useState('');
+  const [comprovantesPagamento, setComprovantesPagamento] = useState([]);
 
   const [termoLocal, setTermoLocal] = useState('');
   const [termoRua, setTermoRua] = useState('');
   const [termoValoresCombinados, setTermoValoresCombinados] = useState('');
   const [termoDescricaoProduto, setTermoDescricaoProduto] = useState('');
   const [termoSalvo, setTermoSalvo] = useState(false);
-
-  useEffect(() => {
-    async function fetchUser() {
-      try {
-        const res = await fetch(`${API_BASE}/auth/me`, { headers: { ...getAuthHeaders() } });
-        if (res.ok) setCurrentUser(await res.json());
-      } catch (e) { /* silencioso */ }
-    }
-    fetchUser();
-  }, []);
 
   useEffect(() => {
     async function fetchParceiros() {
@@ -128,6 +127,7 @@ export default function BomPetConsulta() {
     fetchParceiros();
   }, [toast]);
 
+  const isParticular = origem === 'Particular';
   const pets = clientData?.pets || [];
   const petsAtivos = pets.filter(p => p.status !== 'Falecido');
   const selectedParceiro = parceiros.find(p => String(p.id) === String(selectedParceiroId));
@@ -139,11 +139,17 @@ export default function BomPetConsulta() {
     setComprovanteRecebido(false); setComprovanteObs('');
     setShowForm(false); setSelectedPet('');
     setRemocaoLocal(''); setRemocaoEndereco(''); setClinicaNome('');
-    setParceiroNome(''); setSelectedParceiroId('');
+    setSelectedParceiroId('');
+    setValorPagoParticular('');
     setTelefoneContato(''); setObservacoes('');
     setAtendimentoFinalizado(null);
     setTermoLocal(''); setTermoRua(''); setTermoValoresCombinados(''); setTermoDescricaoProduto('');
     setTermoSalvo(false);
+    setPessoaEncontrada(false);
+    setParticularNome(''); setParticularNascimento(''); setParticularEmail('');
+    setParticularEndereco(''); setParticularCidade('');
+    setParticularPetNome(''); setParticularPetDescricao('');
+    setComprovantesPagamento([]);
   }
 
   async function handleSearch(e) {
@@ -154,7 +160,15 @@ export default function BomPetConsulta() {
     const cpfDigits = searchCPF.replace(/\D/g, '');
     const nomeTrim = searchNome.trim();
 
-    if (!cpfDigits && !nomeTrim) {
+    if (!origem) {
+      setError('Escolha Plano de Saúde ou Particular antes de consultar.');
+      return;
+    }
+    if (isParticular && !cpfDigits) {
+      setError('No atendimento Particular, informe o CPF do cliente.');
+      return;
+    }
+    if (!isParticular && !cpfDigits && !nomeTrim) {
       setError('Informe o CPF (11 dígitos) ou o nome completo do titular.');
       return;
     }
@@ -166,18 +180,30 @@ export default function BomPetConsulta() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (cpfDigits) params.set('documento', cpfDigits);
-      // Nome é SEMPRE convertido para maiúsculas antes de enviar ao ERP.
+      if (cpfDigits) params.set(isParticular ? 'cpf' : 'documento', cpfDigits);
       else params.set('nome', nomeTrim.toUpperCase());
-
-      const res = await fetch(`${API_BASE}/bom-pet/consulta?${params.toString()}`, {
+      const endpoint = isParticular ? 'particulares/cliente' : 'consulta';
+      const res = await fetch(`${API_BASE}/bom-pet/${endpoint}?${params.toString()}`, {
         headers: { ...getAuthHeaders() },
       });
       if (!res.ok) {
         throw new Error(await extractApiError(res, 'Erro ao consultar cliente.'));
       }
-      const data = await res.json();
+      const raw = await res.json();
+      const data = isParticular ? {
+        origem: 'Particular',
+        contratante: raw.pessoa?.nome || '',
+        documento: formatCPF(cpfDigits),
+        pessoa: raw.pessoa || null,
+        pets: [],
+      } : raw;
       setClientData(data);
+      if (isParticular) {
+        setPessoaEncontrada(raw.encontrada);
+        setParticularNome(raw.pessoa?.nome || '');
+        setParticularNascimento(raw.pessoa?.data_nascimento || '');
+        setTelefoneContato('');
+      }
 
       const doc = (data.documento || '').replace(/\D/g, '');
       if (doc) {
@@ -186,7 +212,7 @@ export default function BomPetConsulta() {
           if (utilRes.ok) setUtilizacoes(await utilRes.json());
         } catch (e) { /* silencioso */ }
 
-        if ((data.situacao_financeira || '').toUpperCase().includes('INADIMPLENTE')) {
+        if (!isParticular && (data.situacao_financeira || '').toUpperCase().includes('INADIMPLENTE')) {
           setLoadingParcelas(true);
           try {
             const pRes = await fetch(`${API_BASE}/bom-pet/parcelas/${doc}`, { headers: { ...getAuthHeaders() } });
@@ -227,8 +253,20 @@ export default function BomPetConsulta() {
   async function handleSubmitAtendimento(e) {
     e.preventDefault();
 
-    if (!selectedPet) {
+    if (!isParticular && !selectedPet) {
       toast({ title: "Erro", description: "Selecione o pet.", variant: "destructive" });
+      return;
+    }
+    if (isParticular && (!particularPetNome.trim() || !particularPetDescricao.trim() || !particularNome.trim())) {
+      toast({ title: "Erro", description: "Informe o nome do cliente, o nome e a descrição do pet.", variant: "destructive" });
+      return;
+    }
+    if (isParticular && !/^\d+(?:[.,]\d{1,2})?$/.test(valorPagoParticular.trim())) {
+      toast({ title: "Erro", description: "Informe o valor pago usando somente números.", variant: "destructive" });
+      return;
+    }
+    if (isParticular && comprovantesPagamento.length === 0) {
+      toast({ title: "Comprovante obrigatório", description: "Anexe ao menos um comprovante de pagamento.", variant: "destructive" });
       return;
     }
     if (!selectedParceiroId) {
@@ -236,7 +274,9 @@ export default function BomPetConsulta() {
       return;
     }
     // Pets do mesmo plano compartilham o contrato_id; a chave única é contrato_id + nome.
-    const pet = pets.find(p => `${p.contrato_id}::${p.nome}` === selectedPet);
+    const pet = isParticular
+      ? { nome: particularPetNome.trim(), descricao: particularPetDescricao.trim(), contrato_id: null, status: 'Ativo' }
+      : pets.find(p => `${p.contrato_id}::${p.nome}` === selectedPet);
     if (!pet) {
       toast({ title: "Atendimento negado", description: "Pet não incluído no plano do cliente.", variant: "destructive" });
       return;
@@ -261,27 +301,38 @@ export default function BomPetConsulta() {
 
     setSubmitting(true);
     try {
+      const payload = {
+        origem,
+        documento_cliente: clientData.documento,
+        nome_cliente: isParticular ? particularNome : clientData.contratante,
+        pet_nome: pet.nome,
+        pet_descricao: pet.descricao,
+        pet_contrato_id: pet.contrato_id,
+        contratos_servicos: isParticular ? '' : (clientData.contratos_servicos || ''),
+        situacao_financeira: isParticular ? '' : (clientData.situacao_financeira || ''),
+        comprovante_pagamento_recebido: isParticular ? true : (isInadimplente ? comprovanteRecebido : false),
+        comprovante_pagamento_obs: isParticular ? stripHTML(comprovanteObs) : (isInadimplente ? stripHTML(comprovanteObs) : ''),
+        remocao_local: stripHTML(remocaoLocal),
+        remocao_endereco: stripHTML(remocaoEndereco),
+        clinica_nome: stripHTML(clinicaNome),
+        parceiro_id: selectedParceiroId,
+        valor_pago_particular: isParticular ? valorPagoParticular : '',
+        telefone_contato: telefoneDigits,
+        observacoes: stripHTML(observacoes),
+        cliente_data_nascimento: particularNascimento,
+        cliente_email: particularEmail,
+        cliente_endereco: particularEndereco,
+        cliente_cidade: particularCidade,
+      };
+      const request = isParticular ? new FormData() : JSON.stringify(payload);
+      if (isParticular) {
+        Object.entries(payload).forEach(([key, value]) => request.append(key, value ?? ''));
+        comprovantesPagamento.forEach((file) => request.append('comprovantes_pagamento', file));
+      }
       const res = await fetch(`${API_BASE}/bom-pet/atendimentos`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify({
-          documento_cliente: clientData.documento,
-          nome_cliente: clientData.contratante,
-          pet_nome: pet.nome,
-          pet_descricao: pet.descricao,
-          pet_contrato_id: pet.contrato_id,
-          contratos_servicos: clientData.contratos_servicos || '',
-          situacao_financeira: clientData.situacao_financeira || '',
-          comprovante_pagamento_recebido: isInadimplente ? comprovanteRecebido : false,
-          comprovante_pagamento_obs: isInadimplente ? stripHTML(comprovanteObs) : null,
-          remocao_local: stripHTML(remocaoLocal),
-          remocao_endereco: stripHTML(remocaoEndereco),
-          clinica_nome: stripHTML(clinicaNome),
-           parceiro_id: selectedParceiroId,
-           parceiro_nome: stripHTML(selectedParceiro?.nome || parceiroNome),
-          telefone_contato: telefoneDigits,
-          observacoes: stripHTML(observacoes),
-        }),
+        headers: isParticular ? { ...getAuthHeaders() } : { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: request,
       });
       if (!res.ok) {
         throw new Error(await extractApiError(res, 'Erro ao registrar atendimento.'));
@@ -375,7 +426,7 @@ export default function BomPetConsulta() {
     seg(hh, 179.8, 131.8);
     seg(mi, 193.5, 131.8);
     fill(tel, 61, 145.5, 135);                                                // Fone p/ contato familiares
-    fill(at?.contratos_servicos, 42, 159.5, 155);                             // Numero do Contrato
+    fill(at?.origem === 'Particular' ? 'Não se aplica' : (at?.contratos_servicos || 'Não informado'), 42, 159.5, 155);
     const titular = [at?.nome_cliente, at?.documento_cliente ? `CPF ${at.documento_cliente}` : '']
       .filter(Boolean).join(' \u2014 ');
     fill(titular, 36, 173.5, 160);                                            // Nome do Titular
@@ -429,7 +480,7 @@ export default function BomPetConsulta() {
     if (!at) return '';
     const tel = at.telefone_contato
       ? at.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : '';
-    return `Autorização de Cremação — Bom Pet\nProtocolo: ${at.protocolo}\n\nTitular: ${at.nome_cliente}\nCPF: ${at.documento_cliente}\nTelefone de Contato: ${tel}\nPet: ${at.pet_descricao || at.pet_nome}\nLocal da Remoção: ${at.remocao_local || '-'}\nEndereço da Remoção: ${at.remocao_endereco || '-'}\nClínica Veterinária: ${at.clinica_nome || '-'}\nData da solicitação: ${formatDateTime(at.data_hora || at.created_at)}${at.observacoes ? `\nObservações: ${at.observacoes}` : ''}`;
+    return `Autorização de Cremação — Bom Pet\nProtocolo: ${at.protocolo}\nOrigem: ${at.origem || 'Plano'}\n\nTitular: ${at.nome_cliente}\nCPF: ${at.documento_cliente}\nTelefone de Contato: ${tel}\nPet: ${at.pet_descricao || at.pet_nome}\nLocal da Remoção: ${at.remocao_local || '-'}\nEndereço da Remoção: ${at.remocao_endereco || '-'}\nClínica Veterinária: ${at.clinica_nome || '-'}\nData da solicitação: ${formatDateTime(at.data_hora || at.created_at)}${at.observacoes ? `\nObservações: ${at.observacoes}` : ''}`;
   }
 
   return (
@@ -440,11 +491,34 @@ export default function BomPetConsulta() {
             <div className="p-2 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-500 shadow-lg">
               <PawPrint className="w-5 h-5 text-white" />
             </div>
-            Bom Pet - Consulta de Cliente
+            Bom Pet - Iniciar Atendimento
           </CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSearch} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Origem do atendimento *</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  ['Plano', 'Plano de Saúde', 'Valida contrato, situação financeira e pet no ERP.'],
+                  ['Particular', 'Particular', 'Confirma ou cadastra a Pessoa e exige comprovante de pagamento.'],
+                ].map(([value, title, description]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => { resetAll(); setOrigem(value); setError(''); }}
+                    className={`rounded-xl border p-4 text-left transition-all ${
+                      origem === value
+                        ? 'border-teal-500 bg-teal-50 ring-2 ring-teal-200 dark:bg-teal-950/40 dark:ring-teal-900'
+                        : 'border-gray-200 hover:border-teal-300 dark:border-gray-700'
+                    }`}
+                  >
+                    <p className="font-bold text-gray-900 dark:text-gray-100">{title}</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{description}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="cpf">CPF</Label>
@@ -456,7 +530,7 @@ export default function BomPetConsulta() {
                   maxLength={14}
                 />
               </div>
-              <div className="space-y-2">
+              {!isParticular && <div className="space-y-2">
                 <Label htmlFor="nome">Nome Completo</Label>
                 <Input
                   id="nome"
@@ -464,11 +538,13 @@ export default function BomPetConsulta() {
                   value={searchNome}
                   onChange={(e) => setSearchNome(e.target.value.toUpperCase())}
                 />
-              </div>
+              </div>}
             </div>
 
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Pesquise pelo CPF (11 dígitos) ou pelo nome completo do titular. O nome é enviado sempre em maiúsculas.
+              {isParticular
+                ? 'Consulte obrigatoriamente pelo CPF para evitar duplicidade de Pessoa no ERP.'
+                : 'Pesquise pelo CPF (11 dígitos) ou pelo nome completo do titular. O nome é enviado sempre em maiúsculas.'}
             </p>
 
             {error && (
@@ -478,14 +554,14 @@ export default function BomPetConsulta() {
               </div>
             )}
 
-            <Button type="submit" disabled={loading} className="w-full md:w-auto">
+            <Button type="submit" disabled={loading || !origem} className="w-full md:w-auto">
               {loading ? (<><Loader2 className="w-4 h-4 animate-spin" />Consultando...</>) : (<><Search className="w-4 h-4" />Consultar</>)}
             </Button>
           </form>
         </CardContent>
       </Card>
 
-      {clientData && !atendimentoFinalizado && (
+      {clientData && !atendimentoFinalizado && !isParticular && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-3">
@@ -570,6 +646,68 @@ export default function BomPetConsulta() {
                   ))}
                 </div>
               )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {clientData && !atendimentoFinalizado && isParticular && (
+        <Card className="border-teal-200 dark:border-teal-800">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-500 shadow-lg">
+                <User className="w-5 h-5 text-white" />
+              </div>
+              Dados da Pessoa e do Pet
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className={`rounded-lg border p-3 text-sm ${
+              pessoaEncontrada
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
+                : 'border-amber-200 bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300'
+            }`}>
+              {pessoaEncontrada
+                 ? 'Pessoa encontrada no ERP. Confira e corrija os dados abaixo, se necessário.'
+                : 'CPF não encontrado. Uma nova Pessoa será cadastrada no ERP somente ao registrar o atendimento.'}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Nome completo *</Label>
+                 <Input value={particularNome} onChange={(e) => setParticularNome(e.target.value.toUpperCase())} />
+              </div>
+              <div className="space-y-2">
+                <Label>CPF</Label>
+                <Input value={clientData.documento} disabled />
+              </div>
+              <div className="space-y-2">
+                <Label>Data de nascimento</Label>
+                 <Input type="date" value={particularNascimento} onChange={(e) => setParticularNascimento(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Telefone de contato *</Label>
+                <Input value={telefoneContato} onChange={(e) => setTelefoneContato(e.target.value.replace(/\D/g, '').slice(0, 15))} placeholder="DDD + número" />
+              </div>
+              <div className="space-y-2">
+                <Label>E-mail</Label>
+                <Input type="email" value={particularEmail} onChange={(e) => setParticularEmail(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Cidade</Label>
+                <Input value={particularCidade} onChange={(e) => setParticularCidade(e.target.value)} />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Endereço do cliente</Label>
+                <Input value={particularEndereco} onChange={(e) => setParticularEndereco(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Nome do pet *</Label>
+                <Input value={particularPetNome} onChange={(e) => setParticularPetNome(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Descrição do pet *</Label>
+                <Input value={particularPetDescricao} onChange={(e) => setParticularPetDescricao(e.target.value)} placeholder="Espécie, raça, porte, cor..." />
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -715,7 +853,7 @@ export default function BomPetConsulta() {
       )}
 
       {/* ── ELEGIBILIDADE + INICIAR ATENDIMENTO ── */}
-      {clientData && !atendimentoFinalizado && (
+      {clientData && !atendimentoFinalizado && !isParticular && (
         <Card className={(!bloqueadoPorInadimplencia && petsAtivos.length > 0)
           ? "border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/30"
           : "border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/30"}>
@@ -742,7 +880,7 @@ export default function BomPetConsulta() {
                 <div>
                   <h3 className="text-lg font-bold text-red-700 dark:text-red-300">Registro Bloqueado — Cliente Inadimplente</h3>
                   <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                    Envie as parcelas pendentes ao tutor. O registro será liberado quando o cliente estiver adimplente ou ao marcar "Comprovante de pagamento recebido" (com observação obrigatória).
+                    Envie as parcelas pendentes ao tutor. O registro será liberado quando o cliente estiver adimplente ou ao marcar &quot;Comprovante de pagamento recebido&quot; (com observação obrigatória).
                   </p>
                 </div>
               </div>
@@ -774,6 +912,28 @@ export default function BomPetConsulta() {
         </Card>
       )}
 
+      {clientData && !atendimentoFinalizado && isParticular && !showForm && (
+        <Card className="border-emerald-200 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-950/30">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="p-3 rounded-xl bg-gradient-to-br from-emerald-500 to-green-500 shadow-lg">
+                <CheckCircle className="w-6 h-6 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-emerald-700 dark:text-emerald-300">Atendimento Particular</h3>
+                <p className="mt-1 text-sm text-emerald-600 dark:text-emerald-400">
+                  Após revisar os dados, prossiga para selecionar o parceiro e anexar o comprovante de pagamento.
+                </p>
+                <Button className="mt-4" onClick={() => setShowForm(true)} disabled={!particularPetNome.trim()}>
+                  <ClipboardCheck className="w-4 h-4" />
+                  Continuar Atendimento Particular
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* ── FORMULÁRIO DE REGISTRO ── */}
       {showForm && !atendimentoFinalizado && (
         <Card>
@@ -787,7 +947,7 @@ export default function BomPetConsulta() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmitAtendimento} className="space-y-5">
-              <div className="space-y-2">
+              {!isParticular && <div className="space-y-2">
                 <Label className="flex items-center gap-1.5"><PawPrint className="w-4 h-4 text-teal-500" />Pet *</Label>
                 <Select value={selectedPet} onValueChange={setSelectedPet}>
                   <SelectTrigger className="border-teal-200 dark:border-teal-800">
@@ -805,7 +965,7 @@ export default function BomPetConsulta() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
+              </div>}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -829,7 +989,6 @@ export default function BomPetConsulta() {
                     value={selectedParceiroId}
                     onValueChange={(value) => {
                       setSelectedParceiroId(value);
-                      setParceiroNome(parceiros.find(p => String(p.id) === value)?.nome || '');
                     }}
                     disabled={loadingParceiros}
                   >
@@ -874,6 +1033,56 @@ export default function BomPetConsulta() {
                 />
               </div>
 
+              {isParticular && (
+                <div className="space-y-2">
+                  <Label htmlFor="valor-pago-particular">Valor pago pelo cliente (R$) *</Label>
+                  <Input
+                    id="valor-pago-particular"
+                    type="text"
+                    inputMode="decimal"
+                    value={valorPagoParticular}
+                    onChange={(e) => setValorPagoParticular(e.target.value.replace(/[^\d.,]/g, ''))}
+                    placeholder="Ex.: 250,00"
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">Informe somente números, com até duas casas decimais.</p>
+                </div>
+              )}
+
+              {isParticular && (
+                <div className="space-y-3 rounded-xl border-2 border-dashed border-teal-300 bg-teal-50/50 p-4 dark:border-teal-800 dark:bg-teal-950/20">
+                  <Label className="flex items-center gap-1.5">
+                    <UploadCloud className="w-4 h-4 text-teal-600" />
+                    Comprovante de pagamento * (até 3 arquivos)
+                  </Label>
+                  <Input
+                    type="file"
+                    multiple
+                    accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []).slice(0, 3);
+                      const invalid = files.find((file) => file.size > 5 * 1024 * 1024);
+                      if (invalid) {
+                        toast({ title: "Arquivo inválido", description: `${invalid.name} excede 5 MB.`, variant: "destructive" });
+                        e.target.value = '';
+                        return;
+                      }
+                      setComprovantesPagamento(files);
+                    }}
+                  />
+                  <p className="text-xs text-gray-500">JPEG, PNG, GIF, WebP ou PDF, até 5 MB por arquivo.</p>
+                  {comprovantesPagamento.length > 0 && (
+                    <ul className="text-xs text-teal-700 dark:text-teal-300">
+                      {comprovantesPagamento.map((file) => <li key={`${file.name}-${file.size}`}>{file.name}</li>)}
+                    </ul>
+                  )}
+                  <div className="space-y-1">
+                    <Label className="text-xs">Observação do pagamento</Label>
+                    <Textarea value={comprovanteObs} onChange={(e) => setComprovanteObs(e.target.value)} rows={2} placeholder="Valor, data ou forma de pagamento (opcional)" />
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label>Observações</Label>
                 <Textarea value={observacoes} onChange={(e) => setObservacoes(e.target.value)} rows={3} placeholder="Detalhes adicionais (opcional)" />
@@ -912,6 +1121,7 @@ export default function BomPetConsulta() {
               <div className="px-6 py-5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
                   {[
+                    ['Origem', atendimentoFinalizado.origem || 'Plano'],
                     ['Titular / Solicitante', atendimentoFinalizado.nome_cliente],
                     ['CPF', atendimentoFinalizado.documento_cliente],
                     ['Pet', atendimentoFinalizado.pet_descricao || atendimentoFinalizado.pet_nome],
@@ -919,9 +1129,12 @@ export default function BomPetConsulta() {
                     ['Endereço da Remoção', atendimentoFinalizado.remocao_endereco],
                     ['Clínica Veterinária', atendimentoFinalizado.clinica_nome],
                     ['Parceiro Operacional', atendimentoFinalizado.parceiro_nome],
+                    ...(atendimentoFinalizado.origem === 'Particular'
+                      ? [['Valor pago pelo cliente', atendimentoFinalizado.valor_pago_particular == null ? 'Não informado' : formatMoney(atendimentoFinalizado.valor_pago_particular)]]
+                      : []),
                     ['Telefone de Contato', atendimentoFinalizado.telefone_contato ? atendimentoFinalizado.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : '-'],
-                    ['Contrato(s) do Plano', atendimentoFinalizado.contratos_servicos],
-                    ['Situação Financeira', atendimentoFinalizado.situacao_financeira],
+                    ['Contrato(s) do Plano', atendimentoFinalizado.origem === 'Particular' ? 'Não se aplica' : (atendimentoFinalizado.contratos_servicos || 'Não informado')],
+                    ['Situação Financeira', atendimentoFinalizado.origem === 'Particular' ? 'Não se aplica' : (atendimentoFinalizado.situacao_financeira || 'Não informado')],
                     ['Registrado por', atendimentoFinalizado.usuario],
                     ['Data / Hora', formatDateTime(atendimentoFinalizado.data_hora || atendimentoFinalizado.created_at)],
                   ].map(([label, value]) => (
@@ -933,7 +1146,9 @@ export default function BomPetConsulta() {
                   {atendimentoFinalizado.comprovante_pagamento_recebido && (
                     <div className="space-y-1 sm:col-span-2">
                       <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400">Comprovante de Pagamento</p>
-                      <p className="text-sm text-gray-900 dark:text-gray-100">Recebido — {atendimentoFinalizado.comprovante_pagamento_obs || '-'}</p>
+                      <p className="text-sm text-gray-900 dark:text-gray-100">
+                        Recebido{atendimentoFinalizado.comprovante_pagamento_obs ? ` — ${atendimentoFinalizado.comprovante_pagamento_obs}` : ''}
+                      </p>
                     </div>
                   )}
                   {atendimentoFinalizado.observacoes && (
@@ -987,7 +1202,7 @@ export default function BomPetConsulta() {
                     ['Atendente Resp.:', atendimentoFinalizado.usuario],
                     ['Data e Hora:', formatDateTime(atendimentoFinalizado.data_hora || atendimentoFinalizado.created_at)],
                     ['Fone para Contato com Familiares:', atendimentoFinalizado.telefone_contato ? atendimentoFinalizado.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : ''],
-                    ['Número do Contrato:', atendimentoFinalizado.contratos_servicos],
+                    ['Número do Contrato:', atendimentoFinalizado.origem === 'Particular' ? 'Não se aplica' : (atendimentoFinalizado.contratos_servicos || 'Não informado')],
                     ['Nome do Titular:', [atendimentoFinalizado.nome_cliente, atendimentoFinalizado.documento_cliente ? `CPF ${atendimentoFinalizado.documento_cliente}` : ''].filter(Boolean).join(' — ')],
                     ['Nome do PET:', atendimentoFinalizado.pet_descricao || atendimentoFinalizado.pet_nome],
                   ].map(([label, value]) => (

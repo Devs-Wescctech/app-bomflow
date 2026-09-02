@@ -148,6 +148,7 @@ export default function BomPetRelatorio() {
     return atendimentos.map(at => ({
       'Data Atendimento': formatDateTime(at.data_hora || at.created_at),
       'Protocolo': at.protocolo || '-',
+      'Origem': at.origem || 'Plano',
       'Cliente': at.nome_cliente || '-',
       'Documento': at.documento_cliente || '-',
       'Pet': at.pet_nome || '-',
@@ -155,6 +156,7 @@ export default function BomPetRelatorio() {
       'Clínica': at.clinica_nome || '-',
       'Parceiro': at.parceiro_nome || '-',
       'Valor do Serviço': formatPartnerValue(at.parceiro_valor),
+      'Valor Pago (Particular)': at.origem === 'Particular' ? formatPartnerValue(at.valor_pago_particular) : '-',
       'Status': at.status_atendimento || '-',
       'Atendente': at.usuario || '-',
     }));
@@ -170,8 +172,8 @@ export default function BomPetRelatorio() {
       const XLSX = await import('xlsx');
       const ws = XLSX.utils.json_to_sheet(getExportData());
       ws['!cols'] = [
-        { wch: 20 }, { wch: 14 }, { wch: 30 }, { wch: 18 }, { wch: 25 },
-        { wch: 25 }, { wch: 25 }, { wch: 25 }, { wch: 16 }, { wch: 14 }, { wch: 30 },
+        { wch: 20 }, { wch: 14 }, { wch: 12 }, { wch: 30 }, { wch: 18 }, { wch: 25 },
+        { wch: 25 }, { wch: 25 }, { wch: 25 }, { wch: 16 }, { wch: 20 }, { wch: 14 }, { wch: 30 },
       ];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Relatório');
@@ -207,10 +209,11 @@ export default function BomPetRelatorio() {
       doc.text(`Gerado em: ${formatDateTime(new Date())}`, 14, 25);
       doc.text(`Total de registros: ${atendimentos.length}`, 14, 30);
 
-      const headers = [['Data', 'Protocolo', 'Cliente', 'Documento', 'Pet', 'Local Remoção', 'Clínica', 'Parceiro', 'Valor Serviço', 'Status', 'Atendente']];
+      const headers = [['Data', 'Protocolo', 'Origem', 'Cliente', 'Documento', 'Pet', 'Local Remoção', 'Clínica', 'Parceiro', 'Valor Serviço', 'Valor Pago (Part.)', 'Status', 'Atendente']];
       const tableData = atendimentos.map(at => [
         formatDateTime(at.data_hora || at.created_at),
         at.protocolo || '-',
+        at.origem || 'Plano',
         at.nome_cliente || '-',
         at.documento_cliente || '-',
         at.pet_nome || '-',
@@ -218,6 +221,7 @@ export default function BomPetRelatorio() {
         at.clinica_nome || '-',
         at.parceiro_nome || '-',
         formatPartnerValue(at.parceiro_valor),
+        at.origem === 'Particular' ? formatPartnerValue(at.valor_pago_particular) : '-',
         at.status_atendimento || '-',
         at.usuario || '-',
       ]);
@@ -396,7 +400,7 @@ export default function BomPetRelatorio() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 dark:bg-gray-800/50">
-                    {['Data Atendimento', 'Protocolo', 'Cliente', 'Documento', 'Pet', 'Local Remoção', 'Clínica', 'Parceiro', 'Valor Serviço', 'Status', 'Atendente'].map(h => (
+                    {['Data Atendimento', 'Protocolo', 'Origem', 'Cliente', 'Documento', 'Pet', 'Local Remoção', 'Clínica', 'Parceiro', 'Valor Serviço', 'Valor Pago (Part.)', 'Status', 'Atendente'].map(h => (
                       <th key={h} className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -406,6 +410,7 @@ export default function BomPetRelatorio() {
                     <tr key={at.id || idx} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
                       <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{formatDateTime(at.data_hora || at.created_at)}</td>
                       <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300 font-mono text-xs">{at.protocolo || '-'}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{at.origem || 'Plano'}</td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-[200px] truncate" title={at.nome_cliente || '-'}>{at.nome_cliente || '-'}</td>
                       <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300 font-mono text-xs">{at.documento_cliente || '-'}</td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-[180px] truncate" title={at.pet_nome || '-'}>{at.pet_nome || '-'}</td>
@@ -413,6 +418,7 @@ export default function BomPetRelatorio() {
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-[160px] truncate" title={at.clinica_nome || '-'}>{at.clinica_nome || '-'}</td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-[160px] truncate" title={at.parceiro_nome || '-'}>{at.parceiro_nome || '-'}</td>
                       <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{formatPartnerValue(at.parceiro_valor)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{at.origem === 'Particular' ? formatPartnerValue(at.valor_pago_particular) : '-'}</td>
                       <td className="px-4 py-3 whitespace-nowrap"><StatusBadge status={at.status_atendimento} /></td>
                       <td className="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{at.usuario || '-'}</td>
                     </tr>

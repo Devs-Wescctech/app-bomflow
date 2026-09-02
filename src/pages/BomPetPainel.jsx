@@ -30,6 +30,12 @@ function getAuthHeaders() {
   return token ? { 'Authorization': `Bearer ${token}` } : {};
 }
 
+function formatMoney(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return 'Não informado';
+  return amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
 function getHoursAgo(dateStr) {
   if (!dateStr) return Infinity;
   return (Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60);
@@ -247,6 +253,7 @@ export default function BomPetPainel() {
       const detail = await detailRes.json();
       revokeDetailBlobs();
       detail.imagens = await loadImageBlobs(detail.imagens);
+      detail.comprovantes_pagamento = await loadImageBlobs(detail.comprovantes_pagamento);
       setSelectedAtendimento(detail);
       const currentStatus = detail.status_atendimento || 'Pendente';
       setTreatmentStatus(currentStatus.toLowerCase() === 'pendente' ? 'Manter Pendente' : currentStatus);
@@ -606,6 +613,9 @@ export default function BomPetPainel() {
                         </Badge>
                       )}
                       <StatusBadge status={at.status_atendimento} />
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        {at.origem || 'Plano'}
+                      </Badge>
                     </div>
                   </div>
                   <div className="space-y-1">
@@ -665,6 +675,7 @@ export default function BomPetPainel() {
             <div className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {[
+                  ['Origem', selectedAtendimento.origem || 'Plano'],
                   ['Cliente', selectedAtendimento.nome_cliente],
                   ['Documento', selectedAtendimento.documento_cliente],
                   ['Pet', selectedAtendimento.pet_descricao || selectedAtendimento.pet_nome],
@@ -673,7 +684,11 @@ export default function BomPetPainel() {
                   ['Clínica Veterinária', selectedAtendimento.clinica_nome],
                   ['Parceiro Operacional', selectedAtendimento.parceiro_nome],
                   ['Telefone de Contato', selectedAtendimento.telefone_contato ? selectedAtendimento.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : '-'],
-                  ['Situação Financeira', selectedAtendimento.situacao_financeira],
+                  ['Contrato do Plano', selectedAtendimento.origem === 'Particular' ? 'Não se aplica' : (selectedAtendimento.contratos_servicos || 'Não informado')],
+                  ['Situação Financeira', selectedAtendimento.origem === 'Particular' ? 'Não se aplica' : (selectedAtendimento.situacao_financeira || 'Não informado')],
+                  ...(selectedAtendimento.origem === 'Particular'
+                    ? [['Valor pago pelo cliente', selectedAtendimento.valor_pago_particular == null ? 'Não informado' : formatMoney(selectedAtendimento.valor_pago_particular)]]
+                    : []),
                   ['Protocolo', selectedAtendimento.protocolo],
                   ['Data/Hora', formatDateTime(selectedAtendimento.data_hora || selectedAtendimento.created_at)],
                 ].map(([label, value]) => (
@@ -691,7 +706,25 @@ export default function BomPetPainel() {
               {selectedAtendimento.comprovante_pagamento_recebido && (
                 <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800">
                   <p className="text-xs font-medium text-amber-700 dark:text-amber-300 uppercase tracking-wide mb-1">Comprovante de Pagamento Recebido</p>
-                  <p className="text-sm text-amber-800 dark:text-amber-200">{selectedAtendimento.comprovante_pagamento_obs || '-'}</p>
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                    {selectedAtendimento.comprovante_pagamento_obs || 'Comprovante anexado ao atendimento.'}
+                  </p>
+                  {selectedAtendimento.comprovantes_pagamento?.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedAtendimento.comprovantes_pagamento.map((arquivo, index) => (
+                        <a
+                          key={arquivo.id || index}
+                          href={arquivo.blobUrl || '#'}
+                          target="_blank"
+                          rel="noreferrer"
+                          download={arquivo.original_name}
+                          className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                        >
+                          {arquivo.original_name || `Comprovante ${index + 1}`}
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -791,7 +824,7 @@ export default function BomPetPainel() {
                     </label>
                   </div>
 
-                  {treatmentStatus === "Solucionado" && !selectedAtendimento.pet_falecido_marcado && (
+                  {treatmentStatus === "Solucionado" && selectedAtendimento.origem !== 'Particular' && !selectedAtendimento.pet_falecido_marcado && (
                     <label className="flex items-center gap-2 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-800 dark:text-gray-200 cursor-pointer">
                       <input
                         type="checkbox"

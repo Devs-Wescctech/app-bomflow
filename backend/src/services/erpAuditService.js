@@ -41,15 +41,15 @@ export function erpOriginMiddleware(req, res, next) {
 }
 
 // Mascara valores sensíveis na URL (token nunca pode ir para o log).
-function sanitizeUrl(url) {
+export function sanitizeUrl(url) {
   try {
     const u = new URL(url);
-    for (const p of ['token', 'senha', 'password', 'apikey', 'api_key']) {
+    for (const p of ['token', 'senha', 'password', 'apikey', 'api_key', 'cpf', 'documento', 'nome', 'email', 'telefone']) {
       if (u.searchParams.has(p)) u.searchParams.set(p, '***');
     }
     return u.toString();
   } catch {
-    return String(url).replace(/([?&](?:token|senha|password|apikey|api_key)=)[^&]*/gi, '$1***');
+    return String(url).replace(/([?&](?:token|senha|password|apikey|api_key|cpf|documento|nome|email|telefone)=)[^&]*/gi, '$1***');
   }
 }
 

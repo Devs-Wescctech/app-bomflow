@@ -1828,6 +1828,35 @@ CREATE TABLE IF NOT EXISTS bom_pet_atendimentos (
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Origem e dados cadastrais do atendimento. Registros antigos são, por
+-- definição do histórico anterior a este fluxo, atendimentos de Plano.
+ALTER TABLE bom_pet_atendimentos
+  ADD COLUMN IF NOT EXISTS origem VARCHAR(12) NOT NULL DEFAULT 'Plano'
+    CHECK (origem IN ('Plano', 'Particular'));
+ALTER TABLE bom_pet_atendimentos
+  ADD COLUMN IF NOT EXISTS pessoa_erp_id BIGINT;
+ALTER TABLE bom_pet_atendimentos
+  ADD COLUMN IF NOT EXISTS pessoa_erp_codigo VARCHAR(80);
+ALTER TABLE bom_pet_atendimentos
+  ADD COLUMN IF NOT EXISTS cliente_data_nascimento DATE;
+ALTER TABLE bom_pet_atendimentos
+  ADD COLUMN IF NOT EXISTS cliente_email VARCHAR(255);
+ALTER TABLE bom_pet_atendimentos
+  ADD COLUMN IF NOT EXISTS cliente_endereco TEXT;
+ALTER TABLE bom_pet_atendimentos
+  ADD COLUMN IF NOT EXISTS cliente_cidade VARCHAR(160);
+ALTER TABLE bom_pet_atendimentos
+  ADD COLUMN IF NOT EXISTS valor_pago_particular NUMERIC(12,2)
+    CHECK (valor_pago_particular IS NULL OR valor_pago_particular >= 0);
+ALTER TABLE bom_pet_atendimentos
+  ADD COLUMN IF NOT EXISTS consentimento_comercial BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE bom_pet_atendimentos
+  ADD COLUMN IF NOT EXISTS consentimento_comercial_em TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_bom_pet_atendimentos_origem
+  ON bom_pet_atendimentos (origem);
+CREATE INDEX IF NOT EXISTS idx_bom_pet_atendimentos_particular_busca
+  ON bom_pet_atendimentos (origem, consentimento_comercial, nome_cliente, documento_cliente);
+
 -- Cadastro administrativo de parceiros de cremação do Bom Pet.
 -- O histórico mantém uma linha aberta (vigência atual) por parceiro.
 CREATE TABLE IF NOT EXISTS bom_pet_parceiros (
@@ -1994,6 +2023,21 @@ CREATE TABLE IF NOT EXISTS bom_pet_imagens (
   url VARCHAR(500) NOT NULL,
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Comprovantes de pagamento têm ciclo de vida e autorização separados das
+-- imagens de remoção (bom_pet_imagens). Os arquivos continuam privados.
+CREATE TABLE IF NOT EXISTS bom_pet_comprovantes_pagamento (
+  id SERIAL PRIMARY KEY,
+  atendimento_id INTEGER NOT NULL REFERENCES bom_pet_atendimentos(id) ON DELETE CASCADE,
+  filename VARCHAR(255) NOT NULL UNIQUE,
+  original_name VARCHAR(255) NOT NULL,
+  mimetype VARCHAR(100) NOT NULL,
+  size INTEGER NOT NULL CHECK (size > 0),
+  url VARCHAR(500) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_bom_pet_comprovantes_atendimento
+  ON bom_pet_comprovantes_pagamento (atendimento_id, created_at);
 
 CREATE TABLE IF NOT EXISTS bom_pet_historico_alteracoes (
   id SERIAL PRIMARY KEY,
