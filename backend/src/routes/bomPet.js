@@ -133,17 +133,20 @@ async function bomPetAuth(req, res, next) {
     );
     const agent = result.rows[0];
     if (!agent) return res.status(403).json({ message: 'Acesso negado ao módulo Bom Pet.' });
+
+    const typeResult = await query(
+      'SELECT modules, allowed_submenus FROM agent_types WHERE key = $1',
+      [agent.agent_type]
+    );
+    const modules = typeResult.rows[0]?.modules || [];
+    const allowedSubmenus = typeResult.rows[0]?.allowed_submenus || [];
     const hasModule = ALLOWED_AGENT_TYPES.includes(agent.agent_type);
-    let hasDynamicModule = false;
-    if (!hasModule) {
-      const t = await query('SELECT modules FROM agent_types WHERE key = $1', [agent.agent_type]);
-      const mods = t.rows[0]?.modules;
-      hasDynamicModule = Array.isArray(mods) && (mods.includes('bom_pet') || mods.includes('all'));
-    }
+    const hasDynamicModule = Array.isArray(modules)
+      && (modules.includes('bom_pet') || modules.includes('all'));
     if (!hasModule && !hasDynamicModule) {
       return res.status(403).json({ message: 'Acesso negado ao módulo Bom Pet.' });
     }
-    req.bomPetAgent = agent;
+    req.bomPetAgent = { ...agent, modules, allowedSubmenus };
     next();
   } catch (err) {
     console.error('[BomPet] Erro na autorização:', err.message);
@@ -189,16 +192,18 @@ function requireSupervisor(req, res, next) {
   next();
 }
 
-function isBomPetAdmin(req) {
+function canManageBomPetPartnersForRequest(req) {
   return canManageBomPetPartners({
     userRole: req.user?.role,
     agentType: req.bomPetAgent?.agent_type,
+    modules: req.bomPetAgent?.modules,
+    allowedSubmenus: req.bomPetAgent?.allowedSubmenus,
   });
 }
 
-function requireBomPetAdmin(req, res, next) {
-  if (!isBomPetAdmin(req)) {
-    return res.status(403).json({ message: 'Acesso restrito a administradores.' });
+function requireBomPetPartnerManagement(req, res, next) {
+  if (!canManageBomPetPartnersForRequest(req)) {
+    return res.status(403).json({ message: 'Seu perfil não tem permissão para gerenciar parceiros do Bom Pet.' });
   }
   next();
 }
@@ -240,7 +245,7 @@ router.get('/parceiros/ativos', authMiddleware, bomPetAuth, async (req, res) => 
   }
 });
 
-router.get('/parceiros', authMiddleware, bomPetAuth, requireBomPetAdmin, async (req, res) => {
+router.get('/parceiros', authMiddleware, bomPetAuth, requireBomPetPartnerManagement, async (req, res) => {
   try {
     const { status = 'todos', busca = '' } = req.query;
     if (status !== 'todos' && !BOM_PET_PARTNER_STATUSES.includes(status)) {
@@ -271,7 +276,7 @@ router.get('/parceiros', authMiddleware, bomPetAuth, requireBomPetAdmin, async (
   }
 });
 
-router.get('/parceiros/:id(\\d+)', authMiddleware, bomPetAuth, requireBomPetAdmin, async (req, res) => {
+router.get('/parceiros/:id(\\d+)', authMiddleware, bomPetAuth, requireBomPetPartnerManagement, async (req, res) => {
   try {
     const result = await query(
       `SELECT id, nome, valor_servico, data_cadastro, email, telefone, status,
@@ -300,7 +305,7 @@ router.get('/parceiros/:id(\\d+)', authMiddleware, bomPetAuth, requireBomPetAdmi
   }
 });
 
-router.post('/parceiros', authMiddleware, bomPetAuth, requireBomPetAdmin, async (req, res) => {
+router.post('/parceiros', authMiddleware, bomPetAuth, requireBomPetPartnerManagement, async (req, res) => {
   try {
     const { errors, normalized } = validatePartnerPayload(req.body);
     if (errors.length > 0) return res.status(400).json({ message: errors.join(' ') });
@@ -338,7 +343,7 @@ router.post('/parceiros', authMiddleware, bomPetAuth, requireBomPetAdmin, async 
   }
 });
 
-router.put('/parceiros/:id(\\d+)', authMiddleware, bomPetAuth, requireBomPetAdmin, async (req, res) => {
+router.put('/parceiros/:id(\\d+)', authMiddleware, bomPetAuth, requireBomPetPartnerManagement, async (req, res) => {
   try {
     const { errors, normalized } = validatePartnerPayload(req.body, { partial: true });
     if (errors.length > 0) return res.status(400).json({ message: errors.join(' ') });

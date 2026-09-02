@@ -251,7 +251,7 @@ export default function BomPetParceiros() {
             <ShieldAlert className="h-12 w-12 text-red-500" />
             <h1 className="text-xl font-semibold">Acesso restrito</h1>
             <p className="text-sm text-muted-foreground">
-              O Cadastro Parceiros do Bom Pet está disponível somente para administradores.
+              Seu perfil não tem permissão para acessar o Cadastro Parceiros do Bom Pet.
             </p>
           </CardContent>
         </Card>
