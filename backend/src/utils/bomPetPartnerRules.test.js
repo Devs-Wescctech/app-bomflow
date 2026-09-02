@@ -48,9 +48,33 @@ test('detecta somente mudanças reais de valor', () => {
   assert.equal(partnerValueChanged('10.00', 10.01), true);
 });
 
-test('cadastro é restrito ao perfil administrador', () => {
+test('cadastro é liberado para administradores ou perfil com módulo e submenu', () => {
   assert.equal(canManageBomPetPartners({ userRole: 'admin', agentType: 'support' }), true);
   assert.equal(canManageBomPetPartners({ userRole: 'agent', agentType: 'admin' }), true);
+  assert.equal(canManageBomPetPartners({
+    userRole: 'supervisor',
+    agentType: 'multiassistencias_supervisor',
+    modules: ['bom_pet'],
+    allowedSubmenus: ['BomPetParceiros'],
+  }), true);
+  assert.equal(canManageBomPetPartners({
+    userRole: 'supervisor',
+    agentType: 'multiassistencias_supervisor',
+    modules: ['all'],
+    allowedSubmenus: ['BomPetParceiros'],
+  }), true);
+  assert.equal(canManageBomPetPartners({
+    userRole: 'supervisor',
+    agentType: 'multiassistencias_supervisor',
+    modules: ['bom_pet'],
+    allowedSubmenus: ['BomPetConsulta'],
+  }), false);
+  assert.equal(canManageBomPetPartners({
+    userRole: 'supervisor',
+    agentType: 'multiassistencias_supervisor',
+    modules: ['sales'],
+    allowedSubmenus: ['BomPetParceiros'],
+  }), false);
   assert.equal(canManageBomPetPartners({ userRole: 'supervisor', agentType: 'bom_pet_supervisor' }), false);
   assert.equal(canManageBomPetPartners({ userRole: 'agent', agentType: 'bom_pet_atendente' }), false);
 });
