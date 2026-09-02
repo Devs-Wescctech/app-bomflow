@@ -653,7 +653,7 @@ export const API_SECTIONS = [
     title: "Bom Pet",
     icon: Car,
     overview:
-      "Módulo de atendimento para cremação de pets, integrado ao ERP (API_BOM_FLOW_PET). Consulta por CPF ou nome completo (maiúsculas), elegibilidade por situação financeira (adimplente/inadimplente) e registro local de atendimentos.",
+      "Módulo de atendimento para cremação de pets com origem Plano ou Particular. Plano usa o dataset API_BOM_FLOW_PET; Particular resolve a Pessoa por CPF na API oficial do ERP e exige comprovante de pagamento privado.",
     endpoints: [
       {
         id: "bp-consulta",
@@ -675,6 +675,17 @@ export const API_SECTIONS = [
             pets: [{ id: 1, descricao: "THEO - SHIH TZU - BRANCO", falecido: false }],
           },
         },
+      },
+      {
+        id: "bp-particular-cliente",
+        method: "GET",
+        path: "/bom-pet/particulares/cliente",
+        title: "Consultar Pessoa para Atendimento Particular",
+        description:
+          "Consulta a API oficial de Pessoas por CPF sem criar cadastro. Retorna 409 quando há mais de uma correspondência e 502 quando não é possível confirmar a consulta no ERP.",
+        auth: true,
+        query: [{ name: "cpf", type: "string", required: true, description: "CPF com 11 dígitos" }],
+        response: { status: 200, example: { encontrada: true, pessoa: { id: 123, codigo: "456", nome: "MARIA SILVA", cpf: "123.456.789-00" } } },
       },
       {
         id: "bp-parcelas",
@@ -703,9 +714,10 @@ export const API_SECTIONS = [
         path: "/bom-pet/atendimentos",
         title: "Criar Atendimento",
         description:
-          "Registra um atendimento de cremação e gera protocolo (BP+AAMMDD+sequência). O atendente é extraído do token JWT. Se o cliente estiver inadimplente, exige comprovante_pagamento_recebido=true com observação obrigatória (registrada no histórico).",
+          "Registra um atendimento e gera protocolo. Plano preserva a validação de contrato, pet e situação financeira. Particular usa multipart/form-data, resolve a Pessoa lookup-first no ERP e exige ao menos um comprovante válido no campo comprovantes_pagamento.",
         auth: true,
         body: [
+          { name: "origem", type: "string", required: false, description: "Plano (padrão histórico) | Particular" },
           { name: "documento_cliente", type: "string", required: true, description: "CPF do titular" },
           { name: "nome_cliente", type: "string", required: true, description: "Nome do titular" },
           { name: "pet_contrato_id", type: "number", required: true, description: "ID do pet no ERP" },
@@ -718,6 +730,13 @@ export const API_SECTIONS = [
           { name: "observacoes", type: "string", required: false, description: "Observações" },
           { name: "comprovante_pagamento_recebido", type: "boolean", required: false, description: "Obrigatório true quando inadimplente" },
           { name: "comprovante_pagamento_obs", type: "string", required: false, description: "Observação obrigatória quando comprovante marcado" },
+          { name: "cliente_data_nascimento", type: "string", required: false, description: "YYYY-MM-DD" },
+          { name: "cliente_email", type: "string", required: false, description: "Contato estruturado local" },
+          { name: "cliente_endereco", type: "string", required: false, description: "Endereço estruturado local" },
+          { name: "cliente_cidade", type: "string", required: false, description: "Cidade estruturada local" },
+          { name: "consentimento_comercial", type: "boolean", required: false, description: "Consentimento opcional e separado para contato comercial futuro" },
+          { name: "valor_pago_particular", type: "number", required: false, description: "Obrigatório somente no Particular; valor pago pelo cliente, com até duas casas decimais. Rejeitado no Plano." },
+          { name: "comprovantes_pagamento", type: "file[]", required: false, description: "Obrigatório no Particular; até 3 JPEG/PNG/GIF/WebP/PDF de 5MB" },
         ],
         response: { status: 201, example: { id: 1, protocolo: "BP2607300001" } },
       },
@@ -730,6 +749,7 @@ export const API_SECTIONS = [
         auth: true,
         query: [
           { name: "status", type: "string", required: false, description: "Pendente | Solucionado | Cancelado" },
+          { name: "origem", type: "string", required: false, description: "Plano | Particular" },
           { name: "documento", type: "string", required: false, description: "CPF do cliente" },
           { name: "nome", type: "string", required: false, description: "Nome do cliente (parcial)" },
           { name: "pet", type: "string", required: false, description: "Nome do pet (parcial)" },
@@ -738,6 +758,16 @@ export const API_SECTIONS = [
           { name: "data_fim", type: "string", required: false, description: "Data final (YYYY-MM-DD)" },
         ],
         response: { status: 200, example: [{ id: 1, protocolo: "BP2607300001", status_atendimento: "Pendente" }] },
+      },
+      {
+        id: "bp-particulares-elegiveis",
+        method: "GET",
+        path: "/bom-pet/particulares/elegiveis",
+        title: "Particulares com Consentimento",
+        description:
+          "Consulta interna e escopada dos atendimentos Particulares com consentimento comercial. Não cria nem altera oportunidades.",
+        auth: true,
+        response: { status: 200, example: [{ atendimento_id: 1, protocolo: "BP2608310001", pessoa_erp_id: 123, consentimento_comercial_em: "2026-08-31T12:00:00.000Z" }] },
       },
       {
         id: "bp-atendimentos-update",
@@ -774,6 +804,16 @@ export const API_SECTIONS = [
         auth: true,
         params: [{ name: "filename", type: "string", required: true, description: "Nome do arquivo da imagem" }],
         response: { status: 200, example: "(binário da imagem)" },
+      },
+      {
+        id: "bp-comprovante-pagamento-download",
+        method: "GET",
+        path: "/bom-pet/comprovantes-pagamento/:filename",
+        title: "Download de Comprovante de Pagamento",
+        description: "Serve imagem ou PDF privado com autenticação e escopo do atendimento. É separado dos comprovantes posteriores de remoção.",
+        auth: true,
+        params: [{ name: "filename", type: "string", required: true, description: "Nome interno do arquivo" }],
+        response: { status: 200, example: "(binário do comprovante)" },
       },
       {
         id: "bp-termo",
