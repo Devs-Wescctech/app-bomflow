@@ -4,6 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  buildBomPetSelectionValue,
+  findBomPetBySelection,
+} from "@/utils/bomPetPetSelection";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
@@ -273,10 +277,10 @@ export default function BomPetConsulta() {
       toast({ title: "Erro", description: "Selecione um parceiro de cremação.", variant: "destructive" });
       return;
     }
-    // Pets do mesmo plano compartilham o contrato_id; a chave única é contrato_id + nome.
+    // Pets do mesmo plano podem compartilhar contrato e nome; preserve a identidade completa.
     const pet = isParticular
       ? { nome: particularPetNome.trim(), descricao: particularPetDescricao.trim(), contrato_id: null, status: 'Ativo' }
-      : pets.find(p => `${p.contrato_id}::${p.nome}` === selectedPet);
+      : findBomPetBySelection(pets, selectedPet);
     if (!pet) {
       toast({ title: "Atendimento negado", description: "Pet não incluído no plano do cliente.", variant: "destructive" });
       return;
@@ -955,7 +959,10 @@ export default function BomPetConsulta() {
                   </SelectTrigger>
                   <SelectContent>
                     {petsAtivos.map((p) => (
-                      <SelectItem key={`${p.contrato_id}::${p.nome}`} value={`${p.contrato_id}::${p.nome}`}>
+                      <SelectItem
+                        key={buildBomPetSelectionValue(p)}
+                        value={buildBomPetSelectionValue(p)}
+                      >
                         <div className="flex items-center gap-2">
                           <PawPrint className="w-4 h-4 text-teal-500" />
                           <span className="font-bold">{p.nome}</span>
