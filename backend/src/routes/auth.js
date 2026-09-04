@@ -25,8 +25,8 @@ router.post('/register', async (req, res) => {
     const password_hash = await bcrypt.hash(password, 10);
     
     const result = await query(
-      `INSERT INTO agents (email, password_hash, name, agent_type, role, active) 
-       VALUES ($1, $2, $3, 'support', 'agent', true) 
+      `INSERT INTO agents (email, password_hash, name, agent_type, role, active)
+       VALUES ($1, $2, $3, 'support', 'agent', true)
        RETURNING id, email, name, agent_type, role, active, created_at`,
       [email, password_hash, full_name || email.split('@')[0]]
     );
