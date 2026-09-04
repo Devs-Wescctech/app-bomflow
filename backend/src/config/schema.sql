@@ -1804,6 +1804,10 @@ CREATE TABLE IF NOT EXISTS bom_pet_atendimentos (
   pet_nome VARCHAR(255) NOT NULL,
   pet_descricao VARCHAR(255),
   pet_contrato_id BIGINT,
+  erp_pet_pessoa_id BIGINT,
+  erp_pet_pessoa_codigo VARCHAR(50),
+  erp_pet_identity_status VARCHAR(30) NOT NULL DEFAULT 'pending',
+  erp_pet_identity_error TEXT,
   contratos_servicos TEXT,
   situacao_financeira VARCHAR(30),
   comprovante_pagamento_recebido BOOLEAN NOT NULL DEFAULT FALSE,
@@ -1821,6 +1825,12 @@ CREATE TABLE IF NOT EXISTS bom_pet_atendimentos (
   usuario_responsavel_tratamento VARCHAR(255),
   observacoes_tratamento TEXT,
   pet_falecido_marcado BOOLEAN NOT NULL DEFAULT FALSE,
+  pet_data_falecimento DATE,
+  erp_falecimento_sync_status VARCHAR(30) NOT NULL DEFAULT 'not_requested',
+  erp_falecimento_sync_attempts INTEGER NOT NULL DEFAULT 0,
+  erp_falecimento_sync_error TEXT,
+  erp_falecimento_last_attempt_at TIMESTAMPTZ,
+  erp_falecimento_synced_at TIMESTAMPTZ,
   termo_local TEXT,
   termo_rua TEXT,
   termo_valores_combinados TEXT,
@@ -2010,8 +2020,23 @@ ALTER TABLE bom_pet_atendimentos
     REFERENCES bom_pet_parceiros(id) ON DELETE SET NULL;
 ALTER TABLE bom_pet_atendimentos
   ADD COLUMN IF NOT EXISTS parceiro_valor NUMERIC(12,2);
+ALTER TABLE bom_pet_atendimentos
+  ADD COLUMN IF NOT EXISTS erp_pet_pessoa_id BIGINT,
+  ADD COLUMN IF NOT EXISTS erp_pet_pessoa_codigo VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS erp_pet_identity_status VARCHAR(30) NOT NULL DEFAULT 'pending',
+  ADD COLUMN IF NOT EXISTS erp_pet_identity_error TEXT,
+  ADD COLUMN IF NOT EXISTS pet_data_falecimento DATE,
+  ADD COLUMN IF NOT EXISTS erp_falecimento_sync_status VARCHAR(30) NOT NULL DEFAULT 'not_requested',
+  ADD COLUMN IF NOT EXISTS erp_falecimento_sync_attempts INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS erp_falecimento_sync_error TEXT,
+  ADD COLUMN IF NOT EXISTS erp_falecimento_last_attempt_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS erp_falecimento_synced_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_bom_pet_atendimentos_parceiro_id
   ON bom_pet_atendimentos (parceiro_id);
+CREATE INDEX IF NOT EXISTS idx_bom_pet_atendimentos_erp_pet_pessoa_id
+  ON bom_pet_atendimentos (erp_pet_pessoa_id);
+CREATE INDEX IF NOT EXISTS idx_bom_pet_atendimentos_erp_sync_status
+  ON bom_pet_atendimentos (erp_falecimento_sync_status);
 
 CREATE TABLE IF NOT EXISTS bom_pet_imagens (
   id SERIAL PRIMARY KEY,
@@ -2049,16 +2074,37 @@ CREATE TABLE IF NOT EXISTS bom_pet_historico_alteracoes (
   observacao TEXT
 );
 
--- Status "Falecido" do pet é LOCAL (nunca escrito no ERP); chaveado pelo contrato ERP do pet.
+-- Controle local do falecimento e espelho da sincronização com pessoas.data_falecimento no ERP.
 CREATE TABLE IF NOT EXISTS bom_pet_pets_falecidos (
   id SERIAL PRIMARY KEY,
-  pet_contrato_id BIGINT NOT NULL UNIQUE,
+  pet_contrato_id BIGINT NOT NULL,
   pet_nome VARCHAR(255),
+  pet_descricao TEXT,
+  erp_pet_pessoa_id BIGINT,
+  erp_pet_pessoa_codigo VARCHAR(50),
+  data_falecimento DATE,
   documento_cliente VARCHAR(20),
   atendimento_id INTEGER REFERENCES bom_pet_atendimentos(id) ON DELETE SET NULL,
   usuario VARCHAR(255) NOT NULL,
   data_hora TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE bom_pet_pets_falecidos
+  ADD COLUMN IF NOT EXISTS pet_descricao TEXT,
+  ADD COLUMN IF NOT EXISTS erp_pet_pessoa_id BIGINT,
+  ADD COLUMN IF NOT EXISTS erp_pet_pessoa_codigo VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS data_falecimento DATE;
+ALTER TABLE bom_pet_pets_falecidos
+  DROP CONSTRAINT IF EXISTS bom_pet_pets_falecidos_pet_contrato_id_key;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bom_pet_falecidos_erp_pessoa_unique
+  ON bom_pet_pets_falecidos (erp_pet_pessoa_id)
+  WHERE erp_pet_pessoa_id IS NOT NULL;
+DROP INDEX IF EXISTS idx_bom_pet_falecidos_legacy_identity_unique;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bom_pet_falecidos_description_identity_unique
+  ON bom_pet_pets_falecidos (pet_contrato_id, UPPER(BTRIM(pet_descricao)))
+  WHERE erp_pet_pessoa_id IS NULL AND pet_descricao IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bom_pet_falecidos_legacy_identity_unique
+  ON bom_pet_pets_falecidos (pet_contrato_id, UPPER(BTRIM(pet_nome)))
+  WHERE erp_pet_pessoa_id IS NULL AND pet_descricao IS NULL AND pet_nome IS NOT NULL;
 
 -- Os campos Bom Pet foram criados originalmente como timestamp sem fuso.
 -- Os valores antigos representam o relógio UTC da sessão do banco; converta-os

@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import {
   formatBomPetDateTime,
   getBomPetDateParts,
+  getBomPetDeathMarkingConflict,
   isValidBomPetDateOnly,
+  normalizeBomPetDateOnly,
   serializeBomPetTimestamp,
 } from './bomPetDate.js';
 import {
@@ -52,4 +54,31 @@ test('valida filtros de data como datas de calendário', () => {
   assert.equal(isValidBomPetDateOnly('2025-02-28'), true);
   assert.equal(isValidBomPetDateOnly('2025-02-29'), false);
   assert.equal(isValidBomPetDateOnly('2025-2-28'), false);
+});
+
+test('normaliza a data local já persistida sem deslocamento de calendário', () => {
+  assert.equal(normalizeBomPetDateOnly('2026-09-04'), '2026-09-04');
+  assert.equal(normalizeBomPetDateOnly('2026-09-04T00:00:00.000Z'), '2026-09-04');
+  assert.equal(normalizeBomPetDateOnly(new Date('2026-09-04T00:00:00.000Z')), '2026-09-04');
+});
+
+test('primeira marcação é permitida e repetição com a mesma data exige o endpoint de reenvio', () => {
+  assert.equal(getBomPetDeathMarkingConflict({
+    marked: false,
+    existingDate: null,
+    requestedDate: '2026-09-04',
+  }), null);
+  assert.equal(getBomPetDeathMarkingConflict({
+    marked: true,
+    existingDate: '2026-09-04',
+    requestedDate: '2026-09-04',
+  }), 'already_marked');
+});
+
+test('marcação local existente nunca aceita uma data divergente', () => {
+  assert.equal(getBomPetDeathMarkingConflict({
+    marked: true,
+    existingDate: '2026-09-04',
+    requestedDate: '2026-09-05',
+  }), 'date_conflict');
 });

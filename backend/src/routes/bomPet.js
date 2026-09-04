@@ -10,9 +10,14 @@ import fs from 'fs';
 import process from 'node:process';
 import { fileURLToPath } from 'url';
 import {
+  getBomPetDeathMarkingConflict,
   isValidBomPetDateOnly,
   serializeBomPetRow,
 } from '../utils/bomPetDate.js';
+import {
+  assertBomPetGuardedUpdateApplied,
+  evaluateBomPetDeathEligibility,
+} from '../utils/bomPetDeathEligibility.js';
 import {
   BOM_PET_PARTNER_STATUSES,
   canManageBomPetPartners,
@@ -28,6 +33,11 @@ import {
   parseParticularPaidAmount,
   validateParticularFields,
 } from '../utils/bomPetParticularRules.js';
+import {
+  isBomPetErpDeathSyncEnabled,
+  markBomPetPessoaFalecida,
+  resolveBomPetPessoa,
+} from '../services/bomPetErpDeathService.js';
 
 const router = Router();
 
@@ -527,30 +537,64 @@ router.get('/consulta', authMiddleware, bomPetAuth, async (req, res) => {
 
     // Status local Falecido (nunca gravado no ERP).
     const falecidosRes = await query(
-      'SELECT pet_contrato_id, pet_nome FROM bom_pet_pets_falecidos WHERE documento_cliente = $1',
+      `SELECT pet_contrato_id, pet_nome, pet_descricao, erp_pet_pessoa_id, data_falecimento
+         FROM bom_pet_pets_falecidos
+        WHERE documento_cliente = $1`,
       [docDigits]
     );
-    // Pets do mesmo plano compartilham o contrato_id — o nome desambigua.
-    const falecidos = new Set(
-      falecidosRes.rows.map((r) => `${r.pet_contrato_id}::${normalizeName(r.pet_nome)}`)
+    const falecidosPorDescricao = new Set(
+      falecidosRes.rows
+        .filter((r) => r.pet_descricao)
+        .map((r) => `${r.pet_contrato_id}::${normalizeName(r.pet_descricao)}`)
+    );
+    const falecidosLegadosPorNome = new Set(
+      falecidosRes.rows
+        .filter((r) => !r.pet_descricao && r.pet_nome)
+        .map((r) => `${r.pet_contrato_id}::${normalizeName(r.pet_nome)}`)
     );
     const falecidosSemNome = new Set(
       falecidosRes.rows.filter((r) => !r.pet_nome).map((r) => String(r.pet_contrato_id))
     );
+    const falecidosPorPessoa = new Set(
+      falecidosRes.rows.filter((r) => r.erp_pet_pessoa_id).map((r) => String(r.erp_pet_pessoa_id))
+    );
 
-    const pets = petRows.map((r) => {
+    const pets = [];
+    for (const r of petRows) {
       const nome = (r.texto_original_veiculo || '').split(' - ')[0].trim();
-      const falecido = falecidos.has(`${r.contrato_id}::${normalizeName(nome)}`) ||
+      let identity = null;
+      let identityStatus = 'resolved';
+      try {
+        identity = await resolveBomPetPessoa({
+          contratoId: r.contrato_id,
+          petDescricao: r.texto_original_veiculo,
+          petNome: nome,
+          requireExactDescription: true,
+        });
+      } catch (identityError) {
+        identityStatus = getErpIdentityErrorStatus(identityError);
+        console.warn(
+          `[BomPet] Consulta sem identidade ERP individual no contrato ${r.contrato_id}: ${identityError.code || identityError.message}`
+        );
+      }
+      const falecidoLocal = (identity?.pessoaId && falecidosPorPessoa.has(String(identity.pessoaId))) ||
+        falecidosPorDescricao.has(`${r.contrato_id}::${normalizeName(r.texto_original_veiculo)}`) ||
+        falecidosLegadosPorNome.has(`${r.contrato_id}::${normalizeName(nome)}`) ||
         falecidosSemNome.has(String(r.contrato_id));
-      return {
+      const falecido = Boolean(identity?.dataFalecimento) || falecidoLocal;
+      pets.push({
         nome,
         descricao: r.texto_original_veiculo || '',
         contrato_id: r.contrato_id,
+        erp_pessoa_id: identity?.pessoaId || null,
+        erp_pessoa_codigo: identity?.pessoaCodigo || null,
+        erp_identity_status: identityStatus,
+        data_falecimento: identity?.dataFalecimento || null,
         contrato_servicos: r.contrato_servicos,
         situacao_contrato: mapSituacaoContrato(r.situacao_contrato),
         status: falecido ? 'Falecido' : 'Ativo',
-      };
-    });
+      });
+    }
 
     // Única regra de elegibilidade financeira: adimplente/inadimplente.
     const inadimplente = rows.some((r) => mapSituacaoFinanceira(r.situacao_financeira) === 'INADIMPLENTE');
@@ -677,6 +721,203 @@ function stripHtml(s) {
   return s ? String(s).replace(/<[^>]*>/g, '').trim() : null;
 }
 
+function todayInSaoPaulo() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function sanitizeErpSyncError(error) {
+  return String(error?.message || 'Falha não identificada ao sincronizar com o ERP')
+    .replace(/\s+/g, ' ')
+    .slice(0, 500);
+}
+
+function getErpIdentityErrorStatus(error) {
+  if ([
+    'erp_pet_identity_ambiguous',
+    'erp_pet_identity_weak_match',
+    'erp_pet_identity_changed',
+    'erp_pet_identity_not_found',
+  ].includes(error?.code)) {
+    return error.code === 'erp_pet_identity_not_found' ? 'not_found' : 'ambiguous';
+  }
+  return 'retryable_error';
+}
+
+function getErpSyncErrorStatus(error) {
+  if ([
+    'erp_pet_identity_ambiguous',
+    'erp_pet_identity_weak_match',
+    'erp_pet_identity_changed',
+    'erp_pet_identity_not_found',
+    'erp_pet_person_not_found',
+    'erp_pet_death_characteristic_not_found',
+    'erp_pet_death_characteristic_ambiguous',
+    'erp_pet_death_value_invalid',
+    'erp_pet_death_date_conflict',
+  ].includes(error?.code)) {
+    return 'manual_review';
+  }
+  return 'retryable_error';
+}
+
+async function loadBomPetDeathSyncPrerequisites(atendimentoId) {
+  const result = await query(
+    `SELECT status_atendimento, erp_falecimento_sync_status,
+            EXISTS (
+              SELECT 1
+                FROM bom_pet_imagens i
+               WHERE i.atendimento_id = bom_pet_atendimentos.id
+            ) AS has_removal_image
+       FROM bom_pet_atendimentos
+      WHERE id = $1`,
+    [atendimentoId]
+  );
+  if (!result.rows.length) {
+    throw partnerError('Atendimento não encontrado.', 404);
+  }
+  return result.rows[0];
+}
+
+async function assertBomPetDeathSyncPrerequisites(atendimentoId, statusCode = 409) {
+  const state = await loadBomPetDeathSyncPrerequisites(atendimentoId);
+  const eligibility = evaluateBomPetDeathEligibility({
+    statusAtendimento: state.status_atendimento,
+    hasRemovalImage: state.has_removal_image,
+  });
+  if (!eligibility.ok) {
+    throw partnerError(eligibility.message, statusCode);
+  }
+  return state;
+}
+
+async function resolveBomPetDeathSyncUpdateMiss(atendimentoId) {
+  const state = await assertBomPetDeathSyncPrerequisites(atendimentoId, 409);
+  if (state.erp_falecimento_sync_status === 'confirmed') {
+    return { status: 'confirmed', alreadyApplied: true };
+  }
+  throw partnerError(
+    'O estado do atendimento mudou durante a sincronização. Recarregue os dados antes de tentar novamente.',
+    409
+  );
+}
+
+async function synchronizePetDeathWithErp(atendimento, usuario) {
+  if (!isBomPetErpDeathSyncEnabled()) {
+    const pendingResult = await query(
+      `UPDATE bom_pet_atendimentos
+          SET erp_falecimento_sync_status = 'pending_homologation',
+              erp_falecimento_sync_error = NULL
+        WHERE id = $1
+          AND erp_falecimento_sync_status <> 'confirmed'
+          AND status_atendimento = 'Solucionado'
+          AND EXISTS (
+            SELECT 1
+              FROM bom_pet_imagens i
+             WHERE i.atendimento_id = bom_pet_atendimentos.id
+          )
+        RETURNING id`,
+      [atendimento.id]
+    );
+    if (!pendingResult.rowCount) {
+      return resolveBomPetDeathSyncUpdateMiss(atendimento.id);
+    }
+    return { status: 'pending_homologation' };
+  }
+
+  const processingResult = await query(
+    `UPDATE bom_pet_atendimentos
+        SET erp_falecimento_sync_status = 'processing',
+            erp_falecimento_sync_attempts = erp_falecimento_sync_attempts + 1,
+            erp_falecimento_sync_error = NULL,
+            erp_falecimento_last_attempt_at = NOW()
+      WHERE id = $1
+        AND erp_falecimento_sync_status <> 'confirmed'
+        AND status_atendimento = 'Solucionado'
+        AND EXISTS (
+          SELECT 1
+            FROM bom_pet_imagens i
+           WHERE i.atendimento_id = bom_pet_atendimentos.id
+        )
+      RETURNING id`,
+    [atendimento.id]
+  );
+  if (!processingResult.rowCount) {
+    return resolveBomPetDeathSyncUpdateMiss(atendimento.id);
+  }
+
+  try {
+    const result = await markBomPetPessoaFalecida({
+      pessoaId: atendimento.erp_pet_pessoa_id,
+      contratoId: atendimento.pet_contrato_id,
+      petDescricao: atendimento.pet_descricao,
+      petNome: atendimento.pet_nome,
+      dataFalecimento: atendimento.pet_data_falecimento,
+    });
+    await query(
+      `UPDATE bom_pet_atendimentos
+          SET erp_falecimento_sync_status = 'confirmed',
+              erp_falecimento_sync_error = NULL,
+              erp_falecimento_synced_at = NOW(),
+              erp_pet_pessoa_id = $2,
+              erp_pet_pessoa_codigo = COALESCE($3, erp_pet_pessoa_codigo),
+              erp_pet_identity_status = 'resolved',
+              erp_pet_identity_error = NULL
+        WHERE id = $1`,
+      [atendimento.id, result.pessoaId, result.pessoaCodigo]
+    );
+    await query(
+      `UPDATE bom_pet_pets_falecidos
+          SET erp_pet_pessoa_id = $2,
+              erp_pet_pessoa_codigo = COALESCE($3, erp_pet_pessoa_codigo),
+              data_falecimento = $4
+        WHERE atendimento_id = $1`,
+      [atendimento.id, result.pessoaId, result.pessoaCodigo, result.dataFalecimento]
+    );
+    await query(
+      `INSERT INTO bom_pet_historico_alteracoes
+         (atendimento_id, status_anterior, status_novo, usuario, observacao)
+       VALUES ($1, $2, $2, $3, $4)`,
+      [atendimento.id, atendimento.status_atendimento, usuario,
+       result.alreadyApplied
+         ? 'Data de Falecimento já estava preenchida e foi confirmada no ERP.'
+         : 'Data de Falecimento preenchida e confirmada no ERP.']
+    );
+    return { status: 'confirmed', alreadyApplied: result.alreadyApplied };
+  } catch (error) {
+    const status = getErpSyncErrorStatus(error);
+    const safeError = sanitizeErpSyncError(error);
+    const errorUpdateResult = await query(
+      `UPDATE bom_pet_atendimentos
+          SET erp_falecimento_sync_status = $2,
+              erp_falecimento_sync_error = $3,
+              erp_pet_identity_status = $4,
+              erp_pet_identity_error = $3
+        WHERE id = $1
+          AND erp_falecimento_sync_status <> 'confirmed'
+        RETURNING id`,
+      [atendimento.id, status, safeError, getErpIdentityErrorStatus(error)]
+    );
+    if (!errorUpdateResult.rowCount) {
+      return { status: 'confirmed', alreadyApplied: true };
+    }
+    await query(
+      `INSERT INTO bom_pet_historico_alteracoes
+         (atendimento_id, status_anterior, status_novo, usuario, observacao)
+       VALUES ($1, $2, $2, $3, $4)`,
+      [atendimento.id, atendimento.status_atendimento, usuario,
+       `Registro local concluído; sincronização com o ERP pendente (${error.code || 'erro_erp'}).`]
+    );
+    return { status, error: safeError };
+  }
+}
+
 // POST /api/bom-pet/atendimentos — JSON para Plano; multipart para Particular.
 router.post('/atendimentos', authMiddleware, bomPetAuth, (req, res, next) => {
   paymentUpload.array('comprovantes_pagamento', 3)(req, res, (error) => {
@@ -731,6 +972,9 @@ router.post('/atendimentos', authMiddleware, bomPetAuth, (req, res, next) => {
     let resolvedServices = null;
     let situacaoFinanceira = null;
     let pessoa = null;
+    let erpPetIdentity = null;
+    let erpPetIdentityStatus = origem === 'Plano' ? 'pending' : 'not_applicable';
+    let erpPetIdentityError = null;
     let comprovanteFlag = false;
     const comprovanteObs = stripHtml(comprovante_pagamento_obs);
 
@@ -741,20 +985,54 @@ router.post('/atendimentos', authMiddleware, bomPetAuth, (req, res, next) => {
       const erpRows = dataset.filter((row) => (row.documento || '').trim() === cpfFormatted);
       if (!erpRows.length) throw partnerError('Cliente não encontrado na base Bom Pet do ERP.', 404);
       const titularNorm = normalizeName(erpRows[0].contratante);
-      const bodyPetNome = normalizeName(pet_nome);
-      const petRow = erpRows.find((row) => {
+      const bodyPetDescricao = normalizeName(pet_descricao);
+      if (!bodyPetDescricao) throw partnerError('A descrição completa do pet é obrigatória.');
+      const matchingPetRows = erpRows.filter((row) => {
         if (String(row.contrato_id) !== String(pet_contrato_id)) return false;
         const texto = normalizeName(row.texto_original_veiculo);
         if (texto === titularNorm) return false;
-        return !bodyPetNome || texto.split(' - ')[0].trim() === bodyPetNome;
+        return texto === bodyPetDescricao;
       });
-      if (!petRow) throw partnerError('Pet não incluído no plano do cliente — atendimento negado.');
+      if (matchingPetRows.length > 1) {
+        throw partnerError('Mais de um pet corresponde à descrição informada. Solicite revisão cadastral no ERP.', 409);
+      }
+      if (!matchingPetRows.length) throw partnerError('Pet não incluído no plano do cliente — atendimento negado.');
+      const petRow = matchingPetRows[0];
       const falecidoRes = await query(
         `SELECT 1 FROM bom_pet_pets_falecidos
-          WHERE pet_contrato_id = $1 AND (pet_nome IS NULL OR UPPER(pet_nome) = UPPER($2))`,
-        [petRow.contrato_id, (petRow.texto_original_veiculo || '').split(' - ')[0].trim()]
+          WHERE pet_contrato_id = $1
+            AND (
+              (pet_descricao IS NOT NULL AND UPPER(BTRIM(pet_descricao)) = UPPER(BTRIM($2)))
+              OR (
+                pet_descricao IS NULL
+                AND (pet_nome IS NULL OR UPPER(BTRIM(pet_nome)) = UPPER(BTRIM($3)))
+              )
+            )`,
+        [
+          petRow.contrato_id,
+          petRow.texto_original_veiculo || '',
+          (petRow.texto_original_veiculo || '').split(' - ')[0].trim(),
+        ]
       );
       if (falecidoRes.rows.length) throw partnerError('Este pet já está marcado como Falecido.');
+      try {
+        erpPetIdentity = await resolveBomPetPessoa({
+          contratoId: petRow.contrato_id,
+          petDescricao: petRow.texto_original_veiculo,
+          petNome: (petRow.texto_original_veiculo || '').split(' - ')[0].trim(),
+          requireExactDescription: true,
+        });
+        erpPetIdentityStatus = 'resolved';
+      } catch (identityError) {
+        erpPetIdentityStatus = getErpIdentityErrorStatus(identityError);
+        erpPetIdentityError = sanitizeErpSyncError(identityError);
+        console.warn(
+          `[BomPet] Identidade ERP do pet pendente no contrato ${petRow.contrato_id}: ${identityError.code || identityError.message}`
+        );
+      }
+      if (erpPetIdentity?.dataFalecimento) {
+        throw partnerError(`Este pet já possui Data de Falecimento registrada no ERP (${erpPetIdentity.dataFalecimento}).`);
+      }
       situacaoFinanceira = erpRows.some((row) => mapSituacaoFinanceira(row.situacao_financeira) === 'INADIMPLENTE')
         ? 'INADIMPLENTE' : 'ADIMPLENTE';
       comprovanteFlag = parseBoolean(comprovante_pagamento_recebido);
@@ -816,6 +1094,7 @@ router.post('/atendimentos', authMiddleware, bomPetAuth, (req, res, next) => {
         )
         INSERT INTO bom_pet_atendimentos
          (protocolo, origem, documento_cliente, nome_cliente, pet_nome, pet_descricao, pet_contrato_id,
+          erp_pet_pessoa_id, erp_pet_pessoa_codigo, erp_pet_identity_status, erp_pet_identity_error,
           contratos_servicos, situacao_financeira, comprovante_pagamento_recebido, comprovante_pagamento_obs,
           remocao_local, remocao_endereco, clinica_nome, parceiro_nome, parceiro_id, parceiro_valor,
           telefone_contato, observacoes, valor_pago_particular, usuario, status_atendimento, pessoa_erp_id, pessoa_erp_codigo,
@@ -824,12 +1103,14 @@ router.post('/atendimentos', authMiddleware, bomPetAuth, (req, res, next) => {
         VALUES (
           'BP' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || LPAD((SELECT seq FROM next_seq)::text, 4, '0'),
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-          $17, $18, $19, $20, 'Pendente', $21, $22, $23, $24, $25, $26, $27,
-          CASE WHEN $27 THEN CURRENT_TIMESTAMP ELSE NULL END
+          $17, $18, $19, $20, $21, $22, $23, $24, 'Pendente', $25, $26, $27, $28, $29, $30, $31,
+          CASE WHEN $31 THEN CURRENT_TIMESTAMP ELSE NULL END
         ) RETURNING *`,
         [
           origem, cpfFormatted, resolvedName, resolvedPetName, resolvedPetDescription,
-          resolvedPetContractId, resolvedServices, situacaoFinanceira, comprovanteFlag, comprovanteObs,
+          resolvedPetContractId, erpPetIdentity?.pessoaId || null, erpPetIdentity?.pessoaCodigo || null,
+          erpPetIdentityStatus, erpPetIdentityError,
+          resolvedServices, situacaoFinanceira, comprovanteFlag, comprovanteObs,
           stripHtml(remocao_local), stripHtml(remocao_endereco), stripHtml(clinica_nome),
           partner.parceiro_nome, partner.parceiro_id, partner.parceiro_valor,
           sanitizedTelefone, stripHtml(observacoes), valorPagoParticular, usuario,
@@ -1070,7 +1351,12 @@ router.post('/atendimentos/:id/imagens', authMiddleware, bomPetAuth, (req, res, 
 router.put('/atendimentos/:id', authMiddleware, bomPetAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { status_atendimento, observacoes_tratamento, marcar_pet_falecido } = req.body;
+    const {
+      status_atendimento,
+      observacoes_tratamento,
+      marcar_pet_falecido,
+      data_falecimento,
+    } = req.body;
     const usuario = currentUsuario(req);
 
     if (status_atendimento && !ALLOWED_STATUS.includes(status_atendimento)) {
@@ -1080,10 +1366,23 @@ router.put('/atendimentos/:id', authMiddleware, bomPetAuth, async (req, res) => 
     const atendimento = await loadAuthorizedAtendimento(req, res, id);
     if (!atendimento) return;
     const statusAnterior = atendimento.status_atendimento;
+    const finalStatus = status_atendimento || statusAnterior;
+    const statusChanged = Boolean(status_atendimento && status_atendimento !== statusAnterior);
+    let hasRemovalImage = null;
+
+    if (atendimento.pet_falecido_marcado && statusChanged && finalStatus !== 'Solucionado') {
+      return res.status(409).json({
+        message: 'Um atendimento com falecimento registrado deve permanecer Solucionado. Correções exigem revisão manual.',
+      });
+    }
 
     if (status_atendimento === 'Solucionado') {
-      const imgCount = await query('SELECT COUNT(*) FROM bom_pet_imagens WHERE atendimento_id = $1', [id]);
-      if (parseInt(imgCount.rows[0].count, 10) === 0) {
+      const imageResult = await query(
+        'SELECT EXISTS (SELECT 1 FROM bom_pet_imagens WHERE atendimento_id = $1) AS has_removal_image',
+        [id]
+      );
+      hasRemovalImage = imageResult.rows[0]?.has_removal_image === true;
+      if (!hasRemovalImage) {
         return res.status(400).json({ message: 'Para marcar como Solucionado, é obrigatório anexar o comprovante de remoção (imagem).' });
       }
     }
@@ -1105,48 +1404,168 @@ router.put('/atendimentos/:id', authMiddleware, bomPetAuth, async (req, res) => 
     // Marcar o pet como Falecido: só ao solucionar com comprovante anexado; status é LOCAL.
     let falecidoMarcado = false;
     if (marcar_pet_falecido === true) {
-      const finalStatus = status_atendimento || statusAnterior;
-      if (finalStatus !== 'Solucionado') {
-        return res.status(400).json({ message: 'O pet só pode ser marcado como Falecido ao solucionar o atendimento.' });
+      if (hasRemovalImage === null) {
+        const imageResult = await query(
+          'SELECT EXISTS (SELECT 1 FROM bom_pet_imagens WHERE atendimento_id = $1) AS has_removal_image',
+          [id]
+        );
+        hasRemovalImage = imageResult.rows[0]?.has_removal_image === true;
+      }
+      const eligibility = evaluateBomPetDeathEligibility({
+        statusAtendimento: finalStatus,
+        hasRemovalImage,
+      });
+      if (!eligibility.ok) {
+        return res.status(eligibility.statusCode).json({ message: eligibility.message });
       }
       if (!atendimento.pet_contrato_id) {
         return res.status(400).json({ message: 'Atendimento sem contrato ERP do pet vinculado; não é possível marcar como Falecido.' });
       }
-      updateSql += `, pet_falecido_marcado = TRUE`;
+      if (!isValidBomPetDateOnly(data_falecimento)) {
+        return res.status(400).json({ message: 'Informe uma Data de Falecimento válida no formato YYYY-MM-DD.' });
+      }
+      if (data_falecimento > todayInSaoPaulo()) {
+        return res.status(400).json({ message: 'A Data de Falecimento não pode estar no futuro.' });
+      }
+      const deathMarkingConflict = getBomPetDeathMarkingConflict({
+        marked: atendimento.pet_falecido_marcado,
+        existingDate: atendimento.pet_data_falecimento,
+        requestedDate: data_falecimento,
+      });
+      if (deathMarkingConflict === 'date_conflict') {
+        return res.status(409).json({
+          message: 'Este pet já possui outra Data de Falecimento registrada neste atendimento. A correção exige revisão manual.',
+        });
+      }
+      if (deathMarkingConflict === 'already_marked') {
+        return res.status(409).json({
+          message: 'O falecimento já foi registrado com esta data. Use a ação Sincronizar com o ERP para reenviar.',
+        });
+      }
+      updateSql += `, pet_falecido_marcado = TRUE,
+        pet_data_falecimento = $${paramIdx++},
+        erp_falecimento_sync_status = $${paramIdx++},
+        erp_falecimento_sync_error = NULL`;
+      updateParams.push(
+        data_falecimento,
+        isBomPetErpDeathSyncEnabled() ? 'pending' : 'pending_homologation'
+      );
       falecidoMarcado = true;
     }
 
-    updateSql += ` WHERE id = $${paramIdx++} RETURNING *`;
+    updateSql += ` WHERE id = $${paramIdx++}`;
     updateParams.push(id);
-
-    const result = await query(updateSql, updateParams);
-
+    if (falecidoMarcado || statusChanged) {
+      // O WHERE vê o estado anterior ao SET: este parâmetro é intencionalmente
+      // statusAnterior, impedindo que uma requisição obsoleta sobrescreva outra.
+      updateSql += ` AND status_atendimento = $${paramIdx++}`;
+      updateParams.push(statusAnterior);
+    }
     if (falecidoMarcado) {
-      await query(
-        `INSERT INTO bom_pet_pets_falecidos (pet_contrato_id, pet_nome, documento_cliente, atendimento_id, usuario)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (pet_contrato_id) DO NOTHING`,
-        [atendimento.pet_contrato_id, atendimento.pet_nome,
-         (atendimento.documento_cliente || '').replace(/\D/g, ''), id, usuario]
-      );
+      updateSql += ' AND pet_falecido_marcado = FALSE';
     }
+    if (falecidoMarcado || status_atendimento === 'Solucionado') {
+      updateSql += ` AND EXISTS (
+          SELECT 1
+            FROM bom_pet_imagens i
+           WHERE i.atendimento_id = bom_pet_atendimentos.id
+        )`;
+    }
+    if (statusChanged && finalStatus !== 'Solucionado') {
+      updateSql += ' AND pet_falecido_marcado = FALSE';
+    }
+    updateSql += ' RETURNING *';
 
-    const statusChanged = status_atendimento && status_atendimento !== statusAnterior;
     const hasObs = stripHtml(observacoes_tratamento);
-    if (statusChanged || hasObs || falecidoMarcado) {
-      const obsHist = [hasObs, falecidoMarcado ? 'Pet marcado como Falecido (status local, sem escrita no ERP).' : null]
-        .filter(Boolean).join(' | ') || null;
-      await query(
-        `INSERT INTO bom_pet_historico_alteracoes (atendimento_id, status_anterior, status_novo, usuario, observacao)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [id, statusAnterior, statusChanged ? status_atendimento : statusAnterior, usuario, obsHist]
-      );
+    const result = await withTransaction(async (client) => {
+      const updated = await client.query(updateSql, updateParams);
+      assertBomPetGuardedUpdateApplied({
+        rowCount: updated.rowCount,
+        guarded: falecidoMarcado || statusChanged,
+      });
+
+      if (falecidoMarcado) {
+        await client.query(
+          `INSERT INTO bom_pet_pets_falecidos
+             (pet_contrato_id, pet_nome, pet_descricao, erp_pet_pessoa_id, erp_pet_pessoa_codigo,
+              data_falecimento, documento_cliente, atendimento_id, usuario)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT DO NOTHING`,
+          [
+            atendimento.pet_contrato_id,
+            atendimento.pet_nome,
+            atendimento.pet_descricao,
+            atendimento.erp_pet_pessoa_id || null,
+            atendimento.erp_pet_pessoa_codigo || null,
+            data_falecimento,
+            (atendimento.documento_cliente || '').replace(/\D/g, ''),
+            id,
+            usuario,
+          ]
+        );
+      }
+
+      if (statusChanged || hasObs || falecidoMarcado) {
+        const obsHist = [
+          hasObs,
+          falecidoMarcado
+            ? `Pet marcado como Falecido em ${data_falecimento}; registro local concluído e sincronização ERP iniciada.`
+            : null,
+        ].filter(Boolean).join(' | ') || null;
+        await client.query(
+          `INSERT INTO bom_pet_historico_alteracoes
+             (atendimento_id, status_anterior, status_novo, usuario, observacao)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [id, statusAnterior, statusChanged ? status_atendimento : statusAnterior, usuario, obsHist]
+        );
+      }
+
+      return updated;
+    });
+
+    let responseRow = result.rows[0];
+    let erpSync = null;
+    if (falecidoMarcado) {
+      erpSync = await synchronizePetDeathWithErp(responseRow, usuario);
+      const refreshed = await query('SELECT * FROM bom_pet_atendimentos WHERE id = $1', [id]);
+      responseRow = refreshed.rows[0] || responseRow;
     }
 
-    res.json(serializeBomPetRow(result.rows[0]));
+    res.json({
+      ...serializeBomPetRow(responseRow),
+      erp_falecimento_sync: erpSync,
+    });
   } catch (error) {
     console.error('Error updating bom-pet atendimento:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message });
+  }
+});
+
+// POST /api/bom-pet/atendimentos/:id/sincronizar-falecimento — reenvio manual seguro.
+router.post('/atendimentos/:id/sincronizar-falecimento', authMiddleware, bomPetAuth, async (req, res) => {
+  try {
+    const atendimento = await loadAuthorizedAtendimento(req, res, req.params.id);
+    if (!atendimento) return;
+    if (!atendimento.pet_falecido_marcado || !atendimento.pet_data_falecimento) {
+      return res.status(400).json({
+        message: 'Este atendimento ainda não possui uma marcação local de falecimento para sincronizar.',
+      });
+    }
+    await assertBomPetDeathSyncPrerequisites(atendimento.id, 409);
+
+    const erpSync = await synchronizePetDeathWithErp(atendimento, currentUsuario(req));
+    const refreshed = await query(
+      'SELECT * FROM bom_pet_atendimentos WHERE id = $1',
+      [atendimento.id]
+    );
+    const statusCode = erpSync.status === 'confirmed' ? 200 : 202;
+    res.status(statusCode).json({
+      ...serializeBomPetRow(refreshed.rows[0] || atendimento),
+      erp_falecimento_sync: erpSync,
+    });
+  } catch (error) {
+    console.error('Error retrying bom-pet ERP death sync:', error);
+    res.status(error.statusCode || 500).json({ message: error.message });
   }
 });
 

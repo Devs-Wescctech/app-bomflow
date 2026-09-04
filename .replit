@@ -63,28 +63,20 @@ isValidation = true
 
 [[ports]]
 localPort = 3001
-externalPort = 3001
-
-[[ports]]
-localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 5001
-externalPort = 3000
-
-[[ports]]
-localPort = 5099
-externalPort = 3003
+localPort = 5000
+externalPort = 5000
 
 [[ports]]
 localPort = 23636
-externalPort = 3002
+externalPort = 3000
 
 [deployment]
 deploymentTarget = "vm"
 build = ["bash", "-c", "npm run build && cd backend && npm install"]
-run = ["bash", "-c", "cd backend && PORT=5000 npm start"]
+run = ["bash", "-c", "cd backend && PORT=3001 npm start"]
 
 [userenv]
 
@@ -101,6 +93,7 @@ PRESALES_AUTOCANCEL_DEADLINE_DAYS = "3"
 INVERTEXTO_STATE = "SP"
 
 [userenv.development]
+BOM_PET_ERP_DEATH_SYNC_ENABLED = "false"
 
 [userenv.production]
 

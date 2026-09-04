@@ -41,6 +41,36 @@ function getHoursAgo(dateStr) {
   return (Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60);
 }
 
+function todayInSaoPaulo() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function formatDateOnly(value) {
+  if (!value) return '-';
+  const [year, month, day] = String(value).slice(0, 10).split('-');
+  return year && month && day ? `${day}/${month}/${year}` : value;
+}
+
+function erpSyncLabel(status) {
+  const labels = {
+    not_requested: 'Não solicitada',
+    pending: 'Pendente',
+    processing: 'Processando',
+    confirmed: 'Confirmada',
+    retryable_error: 'Aguardando reenvio',
+    manual_review: 'Revisão manual',
+    pending_homologation: 'Aguardando homologação',
+  };
+  return labels[status] || status || '-';
+}
+
 function StatusBadge({ status }) {
   if (!status) return null;
   const s = status.toLowerCase();
@@ -96,9 +126,11 @@ export default function BomPetPainel() {
   const [treatmentStatus, setTreatmentStatus] = useState("");
   const [treatmentObs, setTreatmentObs] = useState("");
   const [marcarFalecido, setMarcarFalecido] = useState(false);
+  const [dataFalecimento, setDataFalecimento] = useState("");
   const [selectedImages, setSelectedImages] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [syncingFalecimento, setSyncingFalecimento] = useState(false);
 
   const [lightboxImage, setLightboxImage] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
@@ -240,6 +272,7 @@ export default function BomPetPainel() {
     setTreatmentStatus("");
     setTreatmentObs("");
     setMarcarFalecido(false);
+    setDataFalecimento("");
     setSelectedImages([]);
     imagePreviews.forEach(url => URL.revokeObjectURL(url));
     setImagePreviews([]);
@@ -276,6 +309,7 @@ export default function BomPetPainel() {
     setTreatmentStatus("");
     setTreatmentObs("");
     setMarcarFalecido(false);
+    setDataFalecimento("");
     imagePreviews.forEach(url => URL.revokeObjectURL(url));
     setSelectedImages([]);
     setImagePreviews([]);
@@ -331,6 +365,10 @@ export default function BomPetPainel() {
       toast({ title: "Erro", description: "O pet só pode ser marcado como Falecido ao solucionar o atendimento.", variant: "destructive" });
       return;
     }
+    if (marcarFalecido && !dataFalecimento) {
+      toast({ title: "Data obrigatória", description: "Informe a Data de Falecimento do pet.", variant: "destructive" });
+      return;
+    }
 
     setSaving(true);
     try {
@@ -352,19 +390,74 @@ export default function BomPetPainel() {
           status_atendimento: finalStatus,
           observacoes_tratamento: treatmentObs,
           marcar_pet_falecido: marcarFalecido,
+          data_falecimento: marcarFalecido ? dataFalecimento : null,
         }),
       });
       if (!res.ok) {
         throw new Error(await extractApiError(res, 'Erro ao salvar tratamento.'));
       }
+      const updated = await res.json();
 
-      toast({ title: "Sucesso", description: marcarFalecido ? "Tratamento salvo e pet marcado como Falecido (status local)." : "Tratamento salvo com sucesso!" });
+      let successMessage = "Tratamento salvo com sucesso!";
+      if (marcarFalecido) {
+        const syncStatus = updated.erp_falecimento_sync?.status || updated.erp_falecimento_sync_status;
+        if (syncStatus === "confirmed") {
+          successMessage = "Tratamento salvo e Data de Falecimento confirmada no ERP.";
+        } else if (syncStatus === "pending_homologation") {
+          successMessage = "Falecimento registrado no Bom Flow; sincronização com o ERP aguardando homologação.";
+        } else {
+          successMessage = "Falecimento registrado no Bom Flow; sincronização com o ERP ficou pendente para revisão.";
+        }
+      }
+      toast({ title: "Sucesso", description: successMessage });
       handleCloseModal();
       fetchAtendimentos();
     } catch (err) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleRetryPetDeathSync() {
+    if (!selectedAtendimento?.id) return;
+    setSyncingFalecimento(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/bom-pet/atendimentos/${selectedAtendimento.id}/sincronizar-falecimento`,
+        {
+          method: 'POST',
+          headers: { ...getAuthHeaders() },
+        }
+      );
+      if (!res.ok) {
+        throw new Error(await extractApiError(res, 'Erro ao sincronizar a Data de Falecimento.'));
+      }
+      const updated = await res.json();
+      const syncStatus = updated.erp_falecimento_sync?.status || updated.erp_falecimento_sync_status;
+      setSelectedAtendimento((current) => current ? { ...current, ...updated } : updated);
+
+      const histRes = await fetch(
+        `${API_BASE}/bom-pet/atendimentos/${selectedAtendimento.id}/historico`,
+        { headers: { ...getAuthHeaders() } }
+      );
+      if (histRes.ok) {
+        const histData = await histRes.json();
+        setHistorico(Array.isArray(histData) ? histData : []);
+      }
+      await fetchAtendimentos(true);
+
+      toast({
+        title: syncStatus === 'confirmed' ? 'Sincronização confirmada' : 'Sincronização pendente',
+        description: syncStatus === 'confirmed'
+          ? 'A Data de Falecimento foi preenchida e confirmada no ERP.'
+          : (updated.erp_falecimento_sync_error || 'O ERP não confirmou a alteração; consulte o detalhe para revisar.'),
+        variant: syncStatus === 'confirmed' ? undefined : 'destructive',
+      });
+    } catch (err) {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+    } finally {
+      setSyncingFalecimento(false);
     }
   }
 
@@ -691,6 +784,11 @@ export default function BomPetPainel() {
                     : []),
                   ['Protocolo', selectedAtendimento.protocolo],
                   ['Data/Hora', formatDateTime(selectedAtendimento.data_hora || selectedAtendimento.created_at)],
+                  ...(selectedAtendimento.pet_falecido_marcado ? [
+                    ['Data de Falecimento', formatDateOnly(selectedAtendimento.pet_data_falecimento)],
+                    ['Pessoa do Pet no ERP', selectedAtendimento.erp_pet_pessoa_codigo || '-'],
+                    ['Sincronização ERP', erpSyncLabel(selectedAtendimento.erp_falecimento_sync_status)],
+                  ] : []),
                 ].map(([label, value]) => (
                   <div key={label} className="space-y-1">
                     <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">{label}</p>
@@ -825,15 +923,43 @@ export default function BomPetPainel() {
                   </div>
 
                   {treatmentStatus === "Solucionado" && selectedAtendimento.origem !== 'Particular' && !selectedAtendimento.pet_falecido_marcado && (
-                    <label className="flex items-center gap-2 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-800 dark:text-gray-200 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={marcarFalecido}
-                        onChange={(e) => setMarcarFalecido(e.target.checked)}
-                        className="w-4 h-4 accent-teal-600"
-                      />
-                      Marcar pet como Falecido (status local — não altera o ERP)
-                    </label>
+                    <div className="space-y-3 rounded-xl border border-border bg-background/70 p-3">
+                      <label className="flex items-start gap-2 text-sm font-medium text-foreground cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={marcarFalecido}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setMarcarFalecido(checked);
+                            if (checked && !dataFalecimento) setDataFalecimento(todayInSaoPaulo());
+                          }}
+                          className="mt-0.5 w-4 h-4 accent-teal-600"
+                        />
+                        <span>
+                          Marcar pet como Falecido
+                          <span className="block mt-0.5 text-xs font-normal text-muted-foreground">
+                            Registra no Bom Flow e sincroniza a Data de Falecimento da Pessoa do pet no ERP.
+                          </span>
+                        </span>
+                      </label>
+                      {marcarFalecido && (
+                        <div className="space-y-1.5 pl-6">
+                          <Label htmlFor="bom-pet-data-falecimento" className="flex items-center gap-2 text-xs">
+                            <Calendar className="h-3.5 w-3.5 text-primary" />
+                            Data de Falecimento
+                          </Label>
+                          <Input
+                            id="bom-pet-data-falecimento"
+                            type="date"
+                            value={dataFalecimento}
+                            max={todayInSaoPaulo()}
+                            onChange={(e) => setDataFalecimento(e.target.value)}
+                            className="eloom-field w-full"
+                            required
+                          />
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   <div className="space-y-2">
@@ -842,6 +968,35 @@ export default function BomPetPainel() {
                   </div>
                 </div>
               </div>
+
+              {selectedAtendimento.origem !== 'Particular'
+                && selectedAtendimento.pet_falecido_marcado
+                && selectedAtendimento.erp_falecimento_sync_status !== 'confirmed' && (
+                <div className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50/70 p-4 dark:border-amber-800 dark:bg-amber-950/30 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-1">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      Sincronização ERP pendente
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Estado atual: {erpSyncLabel(selectedAtendimento.erp_falecimento_sync_status)}.
+                      {selectedAtendimento.erp_falecimento_sync_error
+                        ? ` ${selectedAtendimento.erp_falecimento_sync_error}`
+                        : ' Reenvie para validar e confirmar a Data de Falecimento.'}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    className="action-pill-primary h-10 shrink-0 px-4 text-sm"
+                    onClick={handleRetryPetDeathSync}
+                    disabled={saving || syncingFalecimento}
+                  >
+                    {syncingFalecimento
+                      ? <><Loader2 className="h-4 w-4 animate-spin" />Sincronizando...</>
+                      : <><RefreshCw className="action-pill-icon h-4 w-4" />Sincronizar com o ERP</>}
+                  </Button>
+                </div>
+              )}
 
               {historico.length > 0 && (
                 <div className="border-t border-gray-200 dark:border-gray-700 pt-5">

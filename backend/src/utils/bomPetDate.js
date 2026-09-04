@@ -65,3 +65,17 @@ export function isValidBomPetDateOnly(value) {
     date.getUTCMonth() === month - 1 &&
     date.getUTCDate() === day;
 }
+
+export function normalizeBomPetDateOnly(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  const match = String(value || '').match(/^(\d{4}-\d{2}-\d{2})(?:$|T|\s)/);
+  return match && isValidBomPetDateOnly(match[1]) ? match[1] : null;
+}
+
+export function getBomPetDeathMarkingConflict({ marked, existingDate, requestedDate }) {
+  const normalizedExistingDate = normalizeBomPetDateOnly(existingDate);
+  if (!marked && !normalizedExistingDate) return null;
+  return normalizedExistingDate === requestedDate ? 'already_marked' : 'date_conflict';
+}
