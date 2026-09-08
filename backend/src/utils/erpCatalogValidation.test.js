@@ -120,3 +120,73 @@ test('rejeita valor com fração de centavo e devolve preço ERP autoritativo', 
   assert.equal(valid.ok, true);
   assert.equal(valid.items[0].preco, 20);
 });
+
+test('rejeita payload forjado que vincula produto de beneficiário ao titular', () => {
+  const result = assessCatalogSelection({
+    contractId: 830,
+    title: 'BOM PASTOR',
+    items: [
+      item({
+        preco: 0.01,
+        incluirTitular: true,
+        beneficiarios: [],
+      }),
+    ],
+    rows: [
+      row({
+        descricao: 'BOM MED - DEPENDENTE 0,00',
+        preco_informado: 0.01,
+      }),
+    ],
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'produto_beneficiario_com_titular');
+});
+
+test('rejeita produto especial selecionado sem beneficiário nomeado', () => {
+  const result = assessCatalogSelection({
+    contractId: 830,
+    title: 'BOM PASTOR',
+    items: [
+      item({
+        preco: 0.01,
+        incluirTitular: false,
+        beneficiarios: [{ nome: '   ' }],
+      }),
+    ],
+    rows: [
+      row({
+        descricao: 'BOM PET SAÚDE - NOME DO PET',
+        preco_informado: 0.01,
+      }),
+    ],
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'produto_beneficiario_sem_pessoa');
+});
+
+test('aceita produto especial com beneficiário nomeado e sem titular', () => {
+  const result = assessCatalogSelection({
+    contractId: 830,
+    title: 'BOM PASTOR',
+    items: [
+      item({
+        preco: 0.01,
+        incluirTitular: false,
+        beneficiarios: [{ nome: 'MARIA SILVA' }],
+      }),
+    ],
+    rows: [
+      row({
+        descricao: 'BOM AUTO CLIENTES - DADOS DO VEÍCULO',
+        preco_informado: 0.01,
+      }),
+    ],
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.items[0].incluirTitular, false);
+  assert.equal(result.items[0].beneficiarios[0].nome, 'MARIA SILVA');
+});

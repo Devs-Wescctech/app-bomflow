@@ -13,6 +13,22 @@ function hasCanonicalCentPrecision(value) {
     Math.abs((numeric * 100) - Math.round(numeric * 100)) < 1e-8;
 }
 
+function isBeneficiaryOnlyCatalogRow(row) {
+  const description = String(row?.descricao || '').trim();
+  return (
+    /DEPENDENTE/i.test(description) ||
+    /NOME DO PET/i.test(description) ||
+    /DADOS DO CONDUTOR/i.test(description) ||
+    /DADOS DO VE[IÍ]CULO/i.test(description)
+  );
+}
+
+function hasNamedBeneficiary(item) {
+  return (Array.isArray(item?.beneficiarios) ? item.beneficiarios : []).some(
+    (beneficiary) => Boolean(String(beneficiary?.nome || '').trim())
+  );
+}
+
 /**
  * Confere a seleção do navegador contra uma resposta fresca da
  * API_MV_API_PRODUTOS. A API do ERP é responsável por publicar somente
@@ -84,6 +100,25 @@ export function assessCatalogSelection({ contractId, title, items, rows }) {
       continue;
     }
 
+    // A classificação vem exclusivamente das linhas frescas do ERP, nunca do
+    // payload do navegador. Produtos de dependente/pet/condutor/veículo são
+    // vinculados à pessoa correspondente e jamais ao titular do contrato.
+    const isBeneficiaryOnly = candidates.some(isBeneficiaryOnlyCatalogRow);
+    if (isBeneficiaryOnly && item.incluirTitular) {
+      details.push({
+        produtoId: Number(item.produtoId),
+        reason: 'produto_beneficiario_com_titular',
+      });
+      continue;
+    }
+    if (isBeneficiaryOnly && !hasNamedBeneficiary(item)) {
+      details.push({
+        produtoId: Number(item.produtoId),
+        reason: 'produto_beneficiario_sem_pessoa',
+      });
+      continue;
+    }
+
     // A gravação nunca reutiliza o preço enviado pelo navegador: utiliza o
     // valor autoritativo já normalizado em centavos.
     validatedItems.push({ ...item, preco: prices[0] / 100 });
@@ -95,6 +130,8 @@ export function assessCatalogSelection({ contractId, title, items, rows }) {
       sem_vinculo_no_titulo: 'Um ou mais produtos não pertencem ao título de contrato selecionado.',
       preco_desatualizado: 'O preço de um ou mais produtos mudou no ERP. Atualize o catálogo e tente novamente.',
       preco_ERP_ambiguo_ou_ausente: 'O ERP não retornou um preço único e válido para um ou mais produtos.',
+      produto_beneficiario_com_titular: 'Produtos de beneficiário não podem ser vinculados ao titular do contrato.',
+      produto_beneficiario_sem_pessoa: 'Vincule uma pessoa ao produto de beneficiário antes de enviar o orçamento.',
     };
     return {
       ok: false,

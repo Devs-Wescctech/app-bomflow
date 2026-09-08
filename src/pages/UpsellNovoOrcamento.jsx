@@ -24,6 +24,24 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { extractApiError } from "@/utils/apiError";
+import {
+  findBomAutoConductorForVehicle,
+  getBomAutoVehicleCatalogIssue,
+  getBomAutoVariant,
+  selectBomAutoProductForVariant,
+} from "@/utils/bomAutoProductSelection";
+import {
+  canProdutoIncluirTitular,
+  createProdutoSelecionado,
+  hasBeneficiarioVinculado,
+  isCondutorProduto,
+  isDependentePagoProduto,
+  isDependenteProduto,
+  isPetProduto,
+  isProdutoBeneficiario,
+  isVeiculoProduto,
+  normalizeIncluirTitular,
+} from "@/utils/orcamentoProductClassification";
 
 // Formata um número como celular brasileiro: (XX) 9XXXX-XXXX
 const formatMobilePhone = (v) => {
@@ -157,44 +175,6 @@ const STEPS = [
 ];
 
 const NOME_ESTABELECIMENTO_FIXO = "LIMEIRA - CNPA";
-
-// Produtos cujo nome contém "NOME DO PET" são planos de pet, atrelados aos beneficiários (não ao titular).
-function isPetProduto(prod) {
-  return /NOME DO PET/i.test(prod?.descricao || prod?.titulo_contrato || "");
-}
-
-// BOM AUTO: produtos de "DADOS DO CONDUTOR" e "DADOS DO VEÍCULO" também são produtos de beneficiário
-// (não do titular). Cada um vira um card fixo de beneficiário no Step 5.
-function isCondutorProduto(prod) {
-  return /DADOS DO CONDUTOR/i.test(prod?.descricao || prod?.titulo_contrato || "");
-}
-function isVeiculoProduto(prod) {
-  return /DADOS DO VE[IÍ]CULO/i.test(prod?.descricao || prod?.titulo_contrato || "");
-}
-
-// Produtos com "DEPENDENTE" no nome E valor 0,01 são "vagas" de dependente (sem custo): não devem
-// aparecer na lista do titular (Step 3) e sim apenas como produto de beneficiário (Step 5). Os
-// produtos DEPENDENTE com preço real (faixas etárias etc.) continuam sendo do titular, como hoje.
-function isDependenteProduto(prod) {
-  const desc = prod?.descricao || prod?.titulo_contrato || "";
-  const preco = Number(prod?.preco_informado);
-  return /DEPENDENTE/i.test(desc) && Math.abs(preco - 0.01) < 0.005;
-}
-
-// Produtos "DEPENDENTE" com preço real (> 0,01) são serviços de valor agregado: continuam sendo itens
-// do TITULAR (aparecem e são cobrados no passo Plano), mas exigem o cadastro do dependente como
-// beneficiário vinculado ao próprio item — o titular NÃO entra na quantidade desse item. Modelo
-// confirmado no pedido ERP 68923 (item "ESSENCIAL DEPENDENTES - 0 A 50 ANOS" vinculado só ao dependente).
-function isDependentePagoProduto(prod) {
-  const desc = prod?.descricao || prod?.titulo_contrato || "";
-  const preco = Number(prod?.preco_informado);
-  return /DEPENDENTE/i.test(desc) && Number.isFinite(preco) && preco > 0.015;
-}
-
-// Um produto é "de beneficiário" (não do titular) se for pet, condutor, veículo ou vaga de dependente.
-function isProdutoBeneficiario(prod) {
-  return isPetProduto(prod) || isCondutorProduto(prod) || isVeiculoProduto(prod) || isDependenteProduto(prod);
-}
 
 // Placa: aceita modelo antigo (AAA9999) e Mercosul (AAA9A99). Normaliza para alfanumérico maiúsculo.
 function normalizaPlaca(v) {
@@ -430,50 +410,45 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     );
   }, [erpProdutos, form.titulo_contrato, contratoIdSelecionado]);
 
-  // BOM AUTO: produto de veículo presente no título selecionado.
+  // BOM AUTO: o título puro publica pares CLIENTES e NÃO CLIENTES. A escolha do plano no Step 3
+  // determina qual variante de condutor/veículo será montada automaticamente no Step 5.
+  const bomAutoVariantSelecionada = useMemo(() => {
+    for (const selected of produtosSel) {
+      const prod =
+        produtosFiltrados.find((p) => String(p.id) === String(selected.produto_id)) ||
+        erpProdutos.find((p) => String(p.id) === String(selected.produto_id));
+      const variant = getBomAutoVariant(prod);
+      if (variant) return variant;
+    }
+    return "";
+  }, [produtosSel, produtosFiltrados, erpProdutos]);
+
+  // BOM AUTO: produto de veículo da variante selecionada presente no título.
   const produtoVeiculo = useMemo(
-    () => produtosFiltrados.find((p) => isVeiculoProduto(p)) || null,
-    [produtosFiltrados]
+    () =>
+      selectBomAutoProductForVariant(
+        produtosFiltrados.filter((p) => isVeiculoProduto(p)),
+        bomAutoVariantSelecionada
+      ),
+    [produtosFiltrados, bomAutoVariantSelecionada]
   );
   // Condutor presente diretamente no título (BOM AUTO puro, ex.: "BOM PASTOR - BOM AUTO").
   const produtoCondutorDireto = useMemo(
-    () => produtosFiltrados.find((p) => isCondutorProduto(p)) || null,
-    [produtosFiltrados]
+    () => findBomAutoConductorForVehicle(produtoVeiculo, produtosFiltrados),
+    [produtosFiltrados, produtoVeiculo]
   );
   // BOM AUTO puro: o título traz condutor E veículo — gera exatamente dois cards fixos (efeito abaixo).
   const isBomAuto = !!(produtoCondutorDireto && produtoVeiculo);
-  // Condutor EFETIVO: nos contratos COMBO o título traz só "DADOS DO VEÍCULO" (sem o condutor). Pareia o
-  // produto de condutor a partir do veículo (mesma variante CLIENTES / NÃO CLIENTES) buscando na lista
-  // completa do ERP, para que todo veículo tenha um condutor — assim o fechamento do BOM AUTO no combo
-  // não sai em branco (o item do condutor reaproveita a pessoa real do titular via dedup por CPF).
-  const produtoCondutor = useMemo(() => {
-    if (produtoCondutorDireto) return produtoCondutorDireto;
-    if (!produtoVeiculo) return null;
-    const descVeic = (produtoVeiculo.descricao || "").trim().toUpperCase();
-    const alvo = descVeic.replace(/DADOS DO VE[IÍ]CULO/i, "DADOS DO CONDUTOR");
-    if (!alvo || alvo === descVeic) return null; // descrição do veículo não bate o padrão esperado
-    return (
-      erpProdutos.find(
-        (p) => isCondutorProduto(p) && (p.descricao || "").trim().toUpperCase() === alvo
-      ) || null
-    );
-  }, [produtoCondutorDireto, produtoVeiculo, erpProdutos]);
+  // Nunca injeta um condutor encontrado em outro contrato/título: o backend valida o catálogo
+  // estritamente e rejeitaria esse item. Ausência do par é explicada no Step 3.
+  const produtoCondutor = produtoCondutorDireto;
 
-  // Produtos de BENEFICIÁRIO (pet, condutor ou veículo): não aparecem na seleção do titular (Step 3)
-  // e sim como produto fixo de cada beneficiário (Step 5).
-  const produtosTitular = useMemo(
-    () => produtosFiltrados.filter((p) => !isProdutoBeneficiario(p)),
-    [produtosFiltrados]
-  );
+  // Produtos especiais continuam identificados como produtos de BENEFICIÁRIO (pet, condutor,
+  // veículo e dependente 0,01), mas também precisam estar disponíveis para seleção no Step 3.
+  // A etapa Beneficiários continua responsável por vincular a pessoa ao item.
   const produtosBeneficiario = useMemo(() => {
-    const base = produtosFiltrados.filter((p) => isProdutoBeneficiario(p));
-    // COMBO: injeta o condutor pareado (ausente no título do combo) para que o card de condutor tenha
-    // um produto válido e gere o item correspondente no ERP. No BOM AUTO puro o condutor já está em base.
-    if (produtoCondutor && !base.some((p) => String(p.id) === String(produtoCondutor.id))) {
-      return [...base, produtoCondutor];
-    }
-    return base;
-  }, [produtosFiltrados, produtoCondutor]);
+    return produtosFiltrados.filter((p) => isProdutoBeneficiario(p));
+  }, [produtosFiltrados]);
   // Produtos "DEPENDENTE" pagos (> 0,01) que o titular selecionou no Plano. Continuam sendo itens do
   // titular (cobrados no Plano), mas precisam aparecer como opção no card de beneficiário para cadastrar
   // o dependente vinculado ao item. Só os selecionados entram (linkar dependente só faz sentido no pedido).
@@ -563,13 +538,16 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     );
     return produtosBeneficiario
       .filter((p) => refs.has(String(p.id)))
+      // Se o vendedor já selecionou o produto no Step 3, esse mesmo item recebe os
+      // beneficiários abaixo; não crie uma segunda linha no orçamento.
+      .filter((p) => !produtosSel.some((ps) => String(ps.produto_id) === String(p.id)))
       .map((p) => ({
         produto_id: String(p.id),
         preco: p.preco_informado !== undefined ? String(p.preco_informado) : "0",
         incluir_titular: false,
         is_beneficiario: true,
       }));
-  }, [beneficiarios, produtosBeneficiario]);
+  }, [beneficiarios, produtosBeneficiario, produtosSel]);
 
   // Lista completa de itens do orçamento = produtos do titular (Step 3) + itens de beneficiário (Step 5).
   const itensSel = useMemo(() => [...produtosSel, ...benefItens], [produtosSel, benefItens]);
@@ -598,8 +576,8 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
 
   // Opções de produto para cada beneficiário (Step 5): os itens selecionados no passo "Plano"
   // cujo tipo_contrato é permitido (whitelist) — inclui dependentes pagos (> 0,01) — mais as
-  // "vagas" de dependente 0,01 do título (não selecionáveis no Plano). O beneficiário vinculado
-  // a um item soma na quantidade dele.
+  // "vagas" de dependente 0,01 do título. Produtos especiais selecionados no Step 3 também
+  // ficam disponíveis aqui para o vendedor vincular a pessoa correspondente.
   const opcoesBenefProduto = useMemo(() => {
     const base = [];
     const ids = new Set();
@@ -617,7 +595,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       });
       ids.add(pid);
     }
-    // Vagas de dependente (0,01): não aparecem no Plano, mas são opção direta do beneficiário.
+    // Vagas de dependente (0,01): também podem ser escolhidas diretamente pelo beneficiário.
     for (const prod of produtosFiltrados) {
       const pid = String(prod.id);
       if (ids.has(pid) || !isDependenteProduto(prod)) continue;
@@ -719,41 +697,6 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     bomAutoSetupRef.current = key;
   }, [isBomAuto, produtoCondutor, produtoVeiculo, form.titulo_contrato]);
 
-  // COMBO (não BOM AUTO puro): garante um card "DADOS DO CONDUTOR" pareado sempre que houver um card de
-  // veículo. O condutor nasce com os dados do TITULAR — no fechamento/adesão do ERP o endereço e contato
-  // são sempre do titular, e isso faz o item do condutor reaproveitar a pessoa real do contratante (dedup
-  // por CPF no backend), evitando que o contrato BOM AUTO do combo saia em branco. Sincroniza o par:
-  // adiciona o condutor quando surge um veículo e o remove quando o veículo é retirado.
-  useEffect(() => {
-    if (isBomAuto) return; // BOM AUTO puro já monta condutor + veículo no efeito acima
-    if (!produtoVeiculo || !produtoCondutor) return;
-    const veicId = String(produtoVeiculo.id);
-    const condId = String(produtoCondutor.id);
-    const temVeiculo = beneficiarios.some((b) => String(b.usua_produtos) === veicId);
-    const temCondutor = beneficiarios.some((b) => String(b.usua_produtos) === condId);
-    if (temVeiculo && !temCondutor) {
-      setBeneficiarios((bs) => [
-        ...bs,
-        {
-          ...EMPTY_BENEFICIARIO,
-          usua_produtos: condId,
-          usua_nome_completo: form.pessoa_contato || "",
-          usua_cpf: form.cpf || "",
-          usua_sexo: form.sexo || "",
-          usua_telefone: form.celular || form.telefone || "",
-        },
-      ]);
-      setOpenBenef((o) => [...o, true]);
-    } else if (!temVeiculo && temCondutor) {
-      const idxCond = beneficiarios.findIndex((b) => String(b.usua_produtos) === condId);
-      setBeneficiarios((bs) => bs.filter((_, idx) => idx !== idxCond));
-      setOpenBenef((o) => o.filter((_, idx) => idx !== idxCond));
-    }
-  }, [
-    isBomAuto, produtoVeiculo, produtoCondutor, beneficiarios,
-    form.pessoa_contato, form.cpf, form.sexo, form.celular, form.telefone,
-  ]);
-
   // DEPENDENTE PAGO: não gera mais card automático — o produto aparece no select de
   // Produto/Plano como qualquer outro item permitido e o vendedor atribui manualmente.
 
@@ -849,20 +792,22 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       }
       return [
         ...list,
-        {
-          produto_id: String(prod.id),
-          preco: prod.preco_informado !== undefined ? String(prod.preco_informado) : "",
-          // Dependente pago (> 0,01): no ERP o item é vinculado só ao dependente, não ao titular —
-          // por isso "incluir titular" nasce desligado (a quantidade vira o nº de dependentes).
-          incluir_titular: !isDependentePagoProduto(prod),
-        },
+        // Produtos especiais entram na seleção, mas não vinculam o titular por padrão.
+        createProdutoSelecionado(prod),
       ];
     });
   };
 
   const setProdutoField = (produtoId, field, value) => {
     setProdutosSel((list) =>
-      list.map((p) => (String(p.produto_id) === String(produtoId) ? { ...p, [field]: value } : p))
+      list.map((p) => {
+        if (String(p.produto_id) !== String(produtoId)) return p;
+        if (field !== "incluir_titular") return { ...p, [field]: value };
+        const prod =
+          produtosFiltrados.find((item) => String(item.id) === String(produtoId)) ||
+          erpProdutos.find((item) => String(item.id) === String(produtoId));
+        return { ...p, incluir_titular: normalizeIncluirTitular(prod, value) };
+      })
     );
   };
 
@@ -948,7 +893,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       return {
         produtoId: produtoIdNum,
         preco: Number(ps.preco) || 0,
-        incluirTitular: !!ps.incluir_titular,
+        incluirTitular: normalizeIncluirTitular(prod, ps.incluir_titular),
         beneficiarios: beneficiariosDoItem,
       };
     });
@@ -1069,6 +1014,14 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     if (step === 3) {
       if (!form.titulo_contrato) { toast.error("Selecione o título do contrato"); return false; }
       if (produtosSel.length === 0) { toast.error("Selecione ao menos um produto"); return false; }
+      const bomAutoCatalogIssue = getBomAutoVehicleCatalogIssue(
+        produtosSel.map((selected) => selected.produto_id),
+        produtosFiltrados
+      );
+      if (bomAutoCatalogIssue) {
+        toast.error(bomAutoCatalogIssue);
+        return false;
+      }
       // Produtos de pet têm preço padrão do ERP; a validação de preço vale só para os produtos do titular.
       const semPreco = produtosResumo.find((p) => !p.is_beneficiario && !(Number(p.preco) > 0));
       if (semPreco) { toast.error(`Informe um preço válido para "${semPreco.descricao}"`); return false; }
@@ -1112,6 +1065,25 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       );
       if (petIncompleto) {
         toast.error("Preencha todos os dados do pet (nome, tipo, raça, cor e porte)"); return false;
+      }
+      // Produto especial selecionado no Plano precisa estar vinculado à pessoa/pet/veículo/condutor
+      // correspondente. Ele nunca pode avançar contando apenas o titular.
+      const especialSemBeneficiario = produtosSel.find((ps) => {
+        const prod =
+          produtosFiltrados.find((p) => String(p.id) === String(ps.produto_id)) ||
+          erpProdutos.find((p) => String(p.id) === String(ps.produto_id));
+        return (
+          isProdutoBeneficiario(prod) &&
+          !hasBeneficiarioVinculado(ps.produto_id, beneficiarios)
+        );
+      });
+      if (especialSemBeneficiario) {
+        const prod =
+          produtosFiltrados.find((p) => String(p.id) === String(especialSemBeneficiario.produto_id)) ||
+          erpProdutos.find((p) => String(p.id) === String(especialSemBeneficiario.produto_id));
+        const desc = prod?.descricao || prod?.titulo_contrato || `Produto ${especialSemBeneficiario.produto_id}`;
+        toast.error(`Vincule um beneficiário ao produto "${desc}"`);
+        return false;
       }
       // Beneficiários de dependente pago (produto DEPENDENTE > 0,01): nome completo e
       // data de nascimento são obrigatórios; CPF é opcional (se informado, deve ser válido).
@@ -1344,7 +1316,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
                   form={form}
                   set={set}
                   setTituloContrato={setTituloContrato}
-                  produtosFiltrados={produtosTitular}
+                  produtosFiltrados={produtosFiltrados}
                   produtosSel={produtosSel}
                   produtosResumo={produtosResumo}
                   grandTotal={grandTotal}
@@ -1702,6 +1674,7 @@ function Step2({ form, set, cepLookup, setCepLookup, lookupCepMutation }) {
 function Step3({ form, set, setTituloContrato, produtosFiltrados, produtosSel, produtosResumo, grandTotal, toggleProduto, setProdutoField, loadingProdutos }) {
   const isSelected = (id) => produtosSel.some((p) => String(p.produto_id) === String(id));
   const resumoById = (id) => produtosResumo.find((p) => String(p.produto_id) === String(id));
+  const hasCatalogProducts = produtosFiltrados.length > 0;
 
   return (
     <div className="space-y-4">
@@ -1726,7 +1699,8 @@ function Step3({ form, set, setTituloContrato, produtosFiltrados, produtosSel, p
         <Label>Produtos / planos <span className="text-red-500">*</span></Label>
         <p className="text-xs text-slate-400">
           Marque um ou mais produtos. Cada produto vira um item do orçamento. A quantidade de cada item é
-          o número de pessoas vinculadas (titular + beneficiários).
+          o número de pessoas vinculadas (titular + beneficiários). Produtos identificados como
+          “Beneficiário” também podem ser selecionados aqui e vinculados na próxima etapa.
         </p>
         {loadingProdutos ? (
           <div className="flex items-center gap-2 text-sm text-slate-500 p-2">
@@ -1734,11 +1708,11 @@ function Step3({ form, set, setTituloContrato, produtosFiltrados, produtosSel, p
           </div>
         ) : !form.titulo_contrato ? (
           <p className="text-xs text-slate-400 p-2">Selecione o título do contrato primeiro</p>
-        ) : produtosFiltrados.length === 0 ? (
+        ) : !hasCatalogProducts ? (
           <p className="text-xs text-amber-600 p-2 flex items-center gap-1">
             <AlertCircle className="w-3 h-3" /> Nenhum produto encontrado para este título
           </p>
-        ) : (
+        ) : produtosFiltrados.length > 0 ? (
           <div className="max-h-72 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
             {produtosFiltrados.map((p) => (
               <label
@@ -1757,13 +1731,19 @@ function Step3({ form, set, setTituloContrato, produtosFiltrados, produtosSel, p
                 <span className="text-sm text-slate-700 flex-1">
                   {p.descricao || p.titulo_contrato || `Produto ${p.id}`}
                 </span>
+                {isProdutoBeneficiario(p) && (
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-violet-600 border border-violet-300 rounded-md px-1.5 py-0.5 whitespace-nowrap">
+                    Beneficiário
+                  </span>
+                )}
                 {p.preco_informado !== undefined && (
                   <span className="text-xs text-slate-400">R$ {Number(p.preco_informado).toFixed(2)}</span>
                 )}
               </label>
             ))}
           </div>
-        )}
+        ) : null}
+
       </div>
 
       {produtosSel.length > 0 && (
@@ -1772,7 +1752,8 @@ function Step3({ form, set, setTituloContrato, produtosFiltrados, produtosSel, p
           {produtosSel.map((ps) => {
             const r = resumoById(ps.produto_id) || { descricao: ps.produto_id, quantidade: 0, total: 0 };
             const prodOriginal = produtosFiltrados.find((p) => String(p.id) === String(ps.produto_id));
-            const isDepPago = prodOriginal ? isDependentePagoProduto(prodOriginal) : false;
+            const isBeneficiario = prodOriginal ? isProdutoBeneficiario(prodOriginal) : false;
+            const canIncludeTitular = prodOriginal ? canProdutoIncluirTitular(prodOriginal) : true;
             return (
               <Card key={ps.produto_id} className="border-violet-200">
                 <CardContent className="p-3 space-y-2">
@@ -1793,10 +1774,12 @@ function Step3({ form, set, setTituloContrato, produtosFiltrados, produtosSel, p
                         R$ {(Number(ps.preco) || 0).toFixed(2)}
                       </div>
                     </div>
-                    {isDepPago ? (
+                    {!canIncludeTitular ? (
                       <div className="flex items-center pb-2">
                         <span className="text-xs text-slate-500">
-                          Item vinculado ao(s) dependente(s) — cadastre-os na etapa de Beneficiários.
+                          {isBeneficiario
+                            ? "Item de beneficiário — faça o vínculo na etapa Beneficiários."
+                            : "Item vinculado ao(s) dependente(s) — cadastre-os na etapa de Beneficiários."}
                         </span>
                       </div>
                     ) : (

@@ -77,7 +77,7 @@ A jornada completa começa no lead e termina com o orçamento aprovado, os docum
 | **Ações** | Selecionar título do contrato → aguardar filtro de produtos → selecionar produto(s) → informar preço(s) → verificar total. |
 | **Cliques estimados** | 5–10 (cresce proporcionalmente ao número de produtos selecionados) |
 | **Pontos de espera** | Carregamento inicial da lista de produtos ERP (pode demorar; exibe `Loader2` mas sem barra de progresso nem estimativa). Toda vez que o título é trocado, a lista de produtos é filtrada — se o carregamento estiver em andamento, o vendedor pode selecionar produto da lista anterior. |
-| **Riscos de erro** | (1) A lista de títulos de contrato é hardcoded no frontend — se o ERP adicionar um novo título, ele não aparece. (2) O vendedor pode não entender a diferença entre "produtos do titular" e "produtos de beneficiário" que aparecem apenas no passo seguinte. (3) Preço pode ser zerado acidentalmente se o vendedor limpar o campo (bloqueado pela validação, mas o toast de erro não informa qual produto está sem preço de forma clara). (4) Produtos de beneficiário "DEPENDENTE vaga 0,01" não aparecem aqui — o vendedor não sabe quantas vagas terá até o passo 4. |
+| **Riscos de erro** | (1) A lista de títulos de contrato é hardcoded no frontend — se o ERP adicionar um novo título, ele não aparece. (2) O vendedor precisa distinguir os produtos identificados como "Beneficiário": eles são selecionáveis, mas a pessoa e a quantidade são definidas no passo seguinte. (3) Preço pode ser zerado acidentalmente se o vendedor limpar o campo (bloqueado pela validação, mas o toast de erro não informa qual produto está sem preço de forma clara). |
 
 #### Passo 4 — Beneficiários
 
