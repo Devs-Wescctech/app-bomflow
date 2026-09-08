@@ -106,7 +106,60 @@ function DetailSectionTitle({ children, count }) {
   );
 }
 
-function PostSalesDetail({ item, state, onRetry, onViewDocument, viewingId }) {
+function PreviousContractsNotice({ state, onRetry }) {
+  if (state.status === "ok" && state.items.length > 0) {
+    return (
+      <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950/35 dark:text-amber-200">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="min-w-0">
+            <div className="text-[12.5px] font-bold">Contratos anteriores deste titular</div>
+            <div className="mt-0.5 text-[11.5px]">Consulte no ERP antes de formalizar um novo contrato.</div>
+            <ul className="mt-2 space-y-1">
+              {state.items.map((contrato) => (
+                <li key={`${contrato.numero}-${contrato.situacao}`} className="text-[12px] font-semibold">
+                  Contrato Nº {contrato.numero} · {contrato.situacao}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (state.status === "ok") {
+    return (
+      <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-slate-600 dark:border-gray-800 dark:bg-gray-900 dark:text-slate-300">
+        <div className="flex items-start gap-2">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-teal-700 dark:text-teal-400" />
+          <div className="min-w-0">
+            <div className="text-[12.5px] font-bold text-slate-700 dark:text-slate-200">Nenhum contrato anterior encontrado</div>
+            <div className="mt-0.5 text-[11.5px]">Este titular não possui contratos ou orçamentos vigentes no ERP.</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (state.status === "unavailable") {
+    return (
+      <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 text-slate-600 dark:border-gray-800 dark:bg-gray-900 dark:text-slate-300">
+        <div className="flex items-start gap-2 text-[11.5px]">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+          <span>A consulta complementar de contratos anteriores está indisponível. Isso não impede a análise.</span>
+        </div>
+        <button type="button" onClick={onRetry} className="shrink-0 text-[11px] font-semibold text-violet-700 hover:underline dark:text-violet-300">
+          Tentar novamente
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function PostSalesDetail({ item, state, contractsState, onRetry, onRetryContracts, onViewDocument, viewingId }) {
   const detalhe = state.detalhe;
   const pessoas = Array.isArray(detalhe?.pessoas) ? detalhe.pessoas : [];
   const titular = pessoas.find((p) => p.is_titular) || null;
@@ -133,6 +186,8 @@ function PostSalesDetail({ item, state, onRetry, onViewDocument, viewingId }) {
           </button>
         )}
       </div>
+
+      <PreviousContractsNotice state={contractsState} onRetry={onRetryContracts} />
 
       {state.status === "loading" && (
         <div className="flex items-center justify-center gap-2 py-8 text-[12.5px] text-slate-500 dark:text-slate-400">
@@ -283,6 +338,7 @@ function AcaoModal({ item, motivos, onClose, onChanged, onItemChanged }) {
     documentos: [],
     error: null,
   });
+  const [contractsState, setContractsState] = useState({ status: "loading", items: [] });
   const exigeObservacao = motivo === "outros";
   const podeDevolver = !!motivo && (!exigeObservacao || !!obs.trim()) && !busy;
 
@@ -319,13 +375,32 @@ function AcaoModal({ item, motivos, onClose, onChanged, onItemChanged }) {
     }
   }, [item.id, onItemChanged]);
 
+  const loadPreviousContracts = useCallback(async () => {
+    setContractsState({ status: "loading", items: [] });
+    try {
+      const res = await fetch(`${API_BASE}/postsales/${item.id}/contratos-anteriores`, { headers: authHeaders() });
+      if (!res.ok) throw new Error("Consulta complementar indisponível.");
+      const data = await res.json().catch(() => ({}));
+      setContractsState({
+        status: "ok",
+        items: Array.isArray(data.contratos) ? data.contratos : [],
+      });
+    } catch {
+      // Informação complementar: uma falha nunca bloqueia as ações do orçamento.
+      setContractsState({ status: "unavailable", items: [] });
+    }
+  }, [item.id]);
+
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  useEffect(() => { loadDetail(); }, [loadDetail]);
+  useEffect(() => {
+    loadDetail();
+    loadPreviousContracts();
+  }, [loadDetail, loadPreviousContracts]);
 
   const handleViewDocument = async (documento) => {
     setViewingId(documento.id);
@@ -431,7 +506,9 @@ function AcaoModal({ item, motivos, onClose, onChanged, onItemChanged }) {
           <PostSalesDetail
             item={item}
             state={detailState}
+            contractsState={contractsState}
             onRetry={loadDetail}
+            onRetryContracts={loadPreviousContracts}
             onViewDocument={handleViewDocument}
             viewingId={viewingId}
           />

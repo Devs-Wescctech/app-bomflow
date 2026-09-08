@@ -49,6 +49,29 @@ export function hasBeneficiarioVinculado(produtoId, beneficiarios) {
   );
 }
 
+export function hasAdditionalBomAutoBeneficiaryProduct(
+  selectedProducts,
+  catalogProducts,
+  condutorProductId,
+  veiculoProductId
+) {
+  const fixedIds = new Set(
+    [condutorProductId, veiculoProductId]
+      .filter((id) => id != null && String(id) !== "")
+      .map(String)
+  );
+  const catalog = Array.isArray(catalogProducts) ? catalogProducts : [];
+  return (Array.isArray(selectedProducts) ? selectedProducts : []).some((selected) => {
+    const productId = String(selected?.produto_id || "");
+    if (!productId || fixedIds.has(productId)) return false;
+    const product = catalog.find((item) => String(item?.id) === productId);
+    // No BOM AUTO, somente produtos explicitamente classificados como DEPENDENTE
+    // liberam e exigem um card adicional de pessoa. Produtos técnicos de R$ 0,01
+    // (pet, condutor ou veículo) têm fluxos próprios e não representam dependentes.
+    return isDependenteProduto(product) || isDependentePagoProduto(product);
+  });
+}
+
 export function createProdutoSelecionado(prod) {
   return {
     produto_id: String(prod.id),
