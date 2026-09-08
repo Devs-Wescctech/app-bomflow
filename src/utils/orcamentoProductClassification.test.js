@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   canProdutoIncluirTitular,
   createProdutoSelecionado,
+  hasAdditionalBomAutoBeneficiaryProduct,
   hasBeneficiarioVinculado,
   isProdutoBeneficiario,
   normalizeIncluirTitular,
@@ -86,6 +87,66 @@ test("produto comum selecionado inclui o titular por padrão", () => {
       incluir_titular: true,
     }
   );
+});
+
+test("BOM AUTO misto libera card adicional quando há dependente selecionado", () => {
+  const catalog = [
+    { id: "condutor", descricao: "DADOS DO CONDUTOR", preco_informado: 0.01 },
+    { id: "veiculo", descricao: "DADOS DO VEÍCULO", preco_informado: 0.01 },
+    { id: "dependente", descricao: "BD FAMILIA- DEPENDENTE 0,00", preco_informado: 0.01 },
+  ];
+
+  assert.equal(hasAdditionalBomAutoBeneficiaryProduct(
+    [{ produto_id: "condutor" }, { produto_id: "veiculo" }, { produto_id: "dependente" }],
+    catalog,
+    "condutor",
+    "veiculo"
+  ), true);
+});
+
+test("BOM AUTO puro mantém somente os cards fixos de condutor e veículo", () => {
+  const catalog = [
+    { id: "condutor", descricao: "DADOS DO CONDUTOR", preco_informado: 0.01 },
+    { id: "veiculo", descricao: "DADOS DO VEÍCULO", preco_informado: 0.01 },
+    { id: "dependente", descricao: "BD FAMILIA- DEPENDENTE 0,00", preco_informado: 0.01 },
+  ];
+
+  assert.equal(hasAdditionalBomAutoBeneficiaryProduct(
+    [{ produto_id: "condutor" }, { produto_id: "veiculo" }],
+    catalog,
+    "condutor",
+    "veiculo"
+  ), false);
+});
+
+test("produto técnico de pet não exige dependente adicional no BOM AUTO", () => {
+  const catalog = [
+    { id: "condutor", descricao: "DADOS DO CONDUTOR", preco_informado: 0.01 },
+    { id: "veiculo", descricao: "DADOS DO VEÍCULO", preco_informado: 0.01 },
+    { id: "pet", descricao: "BOM PET SAÚDE - NOME DO PET", preco_informado: 0.01 },
+  ];
+
+  assert.equal(hasAdditionalBomAutoBeneficiaryProduct(
+    [{ produto_id: "condutor" }, { produto_id: "veiculo" }, { produto_id: "pet" }],
+    catalog,
+    "condutor",
+    "veiculo"
+  ), false);
+});
+
+test("outro produto técnico de veículo não exige dependente adicional no BOM AUTO", () => {
+  const catalog = [
+    { id: "condutor", descricao: "DADOS DO CONDUTOR", preco_informado: 0.01 },
+    { id: "veiculo", descricao: "DADOS DO VEÍCULO", preco_informado: 0.01 },
+    { id: "veiculo-extra-dado", descricao: "DADOS DO VEÍCULO ADICIONAL", preco_informado: 0.01 },
+  ];
+
+  assert.equal(hasAdditionalBomAutoBeneficiaryProduct(
+    [{ produto_id: "condutor" }, { produto_id: "veiculo" }, { produto_id: "veiculo-extra-dado" }],
+    catalog,
+    "condutor",
+    "veiculo"
+  ), false);
 });
 
 test("produto especial nunca aceita incluir o titular, mesmo se a UI solicitar", () => {

@@ -33,6 +33,7 @@ import {
 import {
   canProdutoIncluirTitular,
   createProdutoSelecionado,
+  hasAdditionalBomAutoBeneficiaryProduct,
   hasBeneficiarioVinculado,
   isCondutorProduto,
   isDependentePagoProduto,
@@ -574,10 +575,9 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     [produtosResumo]
   );
 
-  // Opções de produto para cada beneficiário (Step 5): os itens selecionados no passo "Plano"
-  // cujo tipo_contrato é permitido (whitelist) — inclui dependentes pagos (> 0,01) — mais as
-  // "vagas" de dependente 0,01 do título. Produtos especiais selecionados no Step 3 também
-  // ficam disponíveis aqui para o vendedor vincular a pessoa correspondente.
+  // Opções de produto para cada beneficiário (Step 5): somente os itens selecionados no passo
+  // "Plano" cujo tipo_contrato é permitido (whitelist). Isso evita oferecer outras vagas de
+  // dependente existentes no catálogo do título que o vendedor não incluiu no orçamento.
   const opcoesBenefProduto = useMemo(() => {
     const base = [];
     const ids = new Set();
@@ -589,16 +589,6 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
         erpProdutos.find((p) => String(p.id) === pid);
       if (!prod) continue;
       if (!BENEF_TIPO_CONTRATO_PERMITIDOS.includes(normalizaTipoContrato(prod.tipo_contrato))) continue;
-      base.push({
-        produto_id: pid,
-        descricao: prod.descricao || prod.titulo_contrato || `Produto ${pid}`,
-      });
-      ids.add(pid);
-    }
-    // Vagas de dependente (0,01): também podem ser escolhidas diretamente pelo beneficiário.
-    for (const prod of produtosFiltrados) {
-      const pid = String(prod.id);
-      if (ids.has(pid) || !isDependenteProduto(prod)) continue;
       base.push({
         produto_id: pid,
         descricao: prod.descricao || prod.titulo_contrato || `Produto ${pid}`,
@@ -644,6 +634,16 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     return s;
   }, [opcoesBenefProduto, produtosBeneficiario]);
 
+  const allowExtraBomAutoBeneficiary = useMemo(
+    () => isBomAuto && hasAdditionalBomAutoBeneficiaryProduct(
+      produtosSel,
+      [...produtosFiltrados, ...erpProdutos],
+      produtoCondutor?.id,
+      produtoVeiculo?.id
+    ),
+    [isBomAuto, produtosSel, produtosFiltrados, erpProdutos, produtoCondutor, produtoVeiculo]
+  );
+
   // Opções de produto do beneficiário PRINCIPAL: produtos com tipo_contrato = 'TITULAR'
   // do título de contrato escolhido no passo 1.
   const opcoesPrincipalProduto = useMemo(
@@ -688,7 +688,22 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
     const veicId = produtoVeiculo ? String(produtoVeiculo.id) : "";
     if (!condId && !veicId) return; // produtos ainda não carregaram
     const key = `${form.titulo_contrato}|${condId}|${veicId}`;
-    if (bomAutoSetupRef.current === key) return;
+    if (bomAutoSetupRef.current === key) {
+      // O card fixo pode conservar os dados já preenchidos, mas nunca pode perder o produto
+      // ao vendedor ajustar a seleção no passo Plano. Repara somente o vínculo, sem recriar cards.
+      setBeneficiarios((cards) => {
+        const expectedIds = [condId, veicId].filter(Boolean);
+        let changed = false;
+        const next = cards.map((card, index) => {
+          const expectedId = expectedIds[index];
+          if (!expectedId || String(card.usua_produtos || "") === expectedId) return card;
+          changed = true;
+          return { ...card, usua_produtos: expectedId };
+        });
+        return changed ? next : cards;
+      });
+      return;
+    }
     const cards = [];
     if (produtoCondutor) cards.push({ ...EMPTY_BENEFICIARIO, usua_produtos: condId });
     if (produtoVeiculo) cards.push({ ...EMPTY_BENEFICIARIO, usua_produtos: veicId });
@@ -786,7 +801,16 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       if (exists) {
         // ao remover o produto, limpa a atribuição dos beneficiários que apontavam para ele
         setBeneficiarios((bs) =>
-          bs.map((b) => (String(b.usua_produtos) === String(prod.id) ? { ...b, usua_produtos: "" } : b))
+          bs.map((b, index) => {
+            const isFixedBomAutoCard =
+              isBomAuto &&
+              (
+                (index === 0 && String(prod.id) === String(produtoCondutor?.id || "")) ||
+                (index === 1 && String(prod.id) === String(produtoVeiculo?.id || ""))
+              );
+            if (isFixedBomAutoCard || String(b.usua_produtos) !== String(prod.id)) return b;
+            return { ...b, usua_produtos: "" };
+          })
         );
         return list.filter((p) => String(p.produto_id) !== String(prod.id));
       }
@@ -1346,6 +1370,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
                   petProdutoIds={petProdutoIds}
                   dependentePagoIds={dependentePagoIds}
                   allowExtraVeiculo={veiculoExtraSelecionado}
+                  allowExtraBeneficiary={allowExtraBomAutoBeneficiary}
                 />
               )}
               {step === 5 && <Step4 form={form} set={set} planosPagamento={planosPagamento} loadingPlanos={loadingPlanos} planosError={planosError} refetchPlanos={refetchPlanos} planoSelecionado={planoSelecionado} />}
@@ -1906,7 +1931,7 @@ function Step4({ form, set, planosPagamento, loadingPlanos, planosError, refetch
   );
 }
 
-function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, opcoesPrincipalProduto = [], allProdutos = [], setBenef, setVeiculoField, setPetField, toggleBenef, addBeneficiario, removeBeneficiario, isBomAuto, isBomPet = false, produtoVeiculoId, produtoCondutorId = "", petProdutoIds = [], dependentePagoIds = [], allowExtraVeiculo = false }) {
+function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, opcoesPrincipalProduto = [], allProdutos = [], setBenef, setVeiculoField, setPetField, toggleBenef, addBeneficiario, removeBeneficiario, isBomAuto, isBomPet = false, produtoVeiculoId, produtoCondutorId = "", petProdutoIds = [], dependentePagoIds = [], allowExtraVeiculo = false, allowExtraBeneficiary = false }) {
   const descProduto = (produtoId) => {
     const fromOpcoes = opcoesBenefProduto.find((p) => String(p.produto_id) === String(produtoId))?.descricao;
     if (fromOpcoes) return fromOpcoes;
@@ -1930,6 +1955,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
   // Card de condutor pareado (contratos COMBO): produto fixo (read-only), pré-preenchido com o titular.
   const isCondutorCard = (b) =>
     !!produtoCondutorId && String(b.usua_produtos) === String(produtoCondutorId);
+  const allowBomAutoExtraCards = allowExtraVeiculo || allowExtraBeneficiary;
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -1940,9 +1966,9 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
             ? `BOM PET — cards de pet já vêm com o plano de pet; troque o produto/plano do card para cadastrar outros beneficiários`
             : `${beneficiarios.length} beneficiário(s) — cada um deve ser atribuído a um produto/plano`}
         </p>
-        {(!isBomAuto || allowExtraVeiculo) && (
+        {(!isBomAuto || allowBomAutoExtraCards) && (
           <Button type="button" variant="outline" size="sm" onClick={addBeneficiario} className="text-violet-600 border-violet-200 hover:bg-violet-50">
-            <Plus className="w-4 h-4 mr-1" /> Adicionar beneficiário
+            <Plus className="w-4 h-4 mr-1" /> {isBomAuto && allowExtraBeneficiary ? "Adicionar dependente" : "Adicionar beneficiário"}
           </Button>
         )}
       </div>
@@ -1968,7 +1994,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
               {(isDepPagoCard(b) || (!isBomAuto && !isVeiculoCard(b) && !isCondutorCard(b) && !isPetCard(b))) && <Badge className="bg-amber-100 text-amber-700 text-xs">Dependente</Badge>}
             </div>
             <div className="flex items-center gap-2">
-              {(isBomAuto ? allowExtraVeiculo && i >= 2 : i > 0 && !isCondutorCard(b)) && (
+              {(isBomAuto ? allowBomAutoExtraCards && i >= 2 : i > 0 && !isCondutorCard(b)) && (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); removeBeneficiario(i); }}
@@ -2241,11 +2267,23 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
                   // Card Principal (fluxo comum): lista os produtos TITULAR do título de contrato escolhido.
                   const isPrincipalCard = ENABLE_PRINCIPAL_TITULAR && !isBomAuto && !isBomPet && i === 0 && !isDepPagoCard(b);
                   const opcoes = isPrincipalCard ? opcoesPrincipalProduto : opcoesBenefProduto;
+                   const opcoesDoCard = isBomAuto && i >= 2
+                     ? opcoes.filter((opcao) => {
+                         const id = String(opcao.produto_id);
+                         const isFixedVehicleProduct =
+                           id === String(produtoCondutorId || "") ||
+                           id === String(produtoVeiculoId || "");
+                         if (isFixedVehicleProduct) return allowExtraVeiculo;
+                         const product = allProdutos.find((item) => String(item.id) === id);
+                         return allowExtraBeneficiary &&
+                           (isDependenteProduto(product) || isDependentePagoProduto(product));
+                       })
+                     : opcoes;
                   // Produto fixo (read-only): cards fixos do BOM AUTO puro (condutor + veículo,
                   // índices 0 e 1) e o condutor pareado do COMBO. Cards extras (VEÍCULO EXTRA)
                   // mantêm o select para o vendedor escolher condutor/veículo/dependente.
                   const produtoFixo = isBomAuto
-                    ? i < 2 || !allowExtraVeiculo
+                    ? i < 2 || !allowBomAutoExtraCards
                     : isCondutorCard(b) && !allowExtraVeiculo;
                   if (produtoFixo) {
                     return (
@@ -2254,7 +2292,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
                       </div>
                     );
                   }
-                  if (opcoes.length === 0) {
+                   if (opcoesDoCard.length === 0) {
                     return (
                       <p className="text-xs text-amber-600 flex items-center gap-1">
                         <AlertCircle className="w-3 h-3" />{" "}
@@ -2273,13 +2311,11 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
                         <SelectValue placeholder="Selecione o produto deste beneficiário..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {opcoes
-                          .filter((p) => allowExtraVeiculo || !produtoCondutorId || String(p.produto_id) !== String(produtoCondutorId))
-                          .map((p) => (
+                         {opcoesDoCard.map((p) => (
                             <SelectItem key={p.produto_id} value={String(p.produto_id)}>
                               {p.descricao}
                             </SelectItem>
-                          ))}
+                           ))}
                       </SelectContent>
                     </Select>
                   );
@@ -2290,13 +2326,13 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
         </Card>
       ))}
 
-      {!isBomAuto && beneficiarios.length < 15 && (
+      {(!isBomAuto || allowBomAutoExtraCards) && beneficiarios.length < 15 && (
         <button
           type="button"
           onClick={addBeneficiario}
           className="w-full flex items-center justify-center gap-1 py-3 rounded-lg border-2 border-dashed border-violet-200 text-violet-600 text-sm font-medium hover:bg-violet-50 hover:border-violet-300 transition-colors"
         >
-          <Plus className="w-4 h-4" /> Adicionar beneficiário
+          <Plus className="w-4 h-4" /> {isBomAuto && allowExtraBeneficiary ? "Adicionar dependente" : "Adicionar beneficiário"}
         </button>
       )}
     </div>

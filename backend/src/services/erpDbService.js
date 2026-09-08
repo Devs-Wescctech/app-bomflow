@@ -490,6 +490,75 @@ export async function getOrcamentoDetalhe(pedidoId) {
   return { produtos, pessoas, email, endereco, plano_pagamento: plano };
 }
 
+const CONTRATO_ANTERIOR_STATUS = Object.freeze({
+  A: 'ATIVO',
+  I: 'INADIMPLENTE',
+  P: 'SUSPENSO',
+  S: 'SUSPENSO',
+  E: 'ENCERRADO',
+});
+
+export function normalizeContratosAnteriores(rows = []) {
+  const seen = new Set();
+  return rows.flatMap((row) => {
+    const situacao = CONTRATO_ANTERIOR_STATUS[String(row?.situacao_contrato || '').trim().toUpperCase()];
+    const numero = row?.numero_contrato == null ? '' : String(row.numero_contrato).trim();
+    if (!situacao || !numero || seen.has(numero)) return [];
+    seen.add(numero);
+    return [{ numero, situacao }];
+  });
+}
+
+/**
+ * Busca contratos anteriores do titular canônico de um pedido.
+ *
+ * O vínculo usa pedidos_pessoas.pessoa_id da primeira Pessoa global do pedido,
+ * a mesma regra usada pelo detalhe para identificar o titular. A busca segue
+ * contratos_servicos.contratante_id (não pessoas_contratos, que também contém
+ * beneficiários), e o número comercial vem de contrato_servicos.
+ */
+export async function getContratosAnteriores(pedidoId, { db = getPool() } = {}) {
+  const id = Number(pedidoId);
+  if (!Number.isSafeInteger(id) || id <= 0) return [];
+
+  const result = await db.query({
+    text: `WITH pedido_atual AS (
+             SELECT p.id,
+                    p.contrato_id,
+                    p.numero_pedido,
+                    titular.pessoa_id
+               FROM pedidos p
+               LEFT JOIN LATERAL (
+                 SELECT pp.pessoa_id
+                   FROM pedidos_pessoas pp
+                  WHERE pp.pedido_id = p.id
+                    AND pp.pessoa_id IS NOT NULL
+                  ORDER BY pp.id
+                  LIMIT 1
+               ) titular ON TRUE
+              WHERE p.id = $1
+              LIMIT 1
+           )
+           SELECT cs.contrato_servicos AS numero_contrato,
+                  cs.situacao_contrato,
+                  (pa.pessoa_id IS NOT NULL) AS titular_resolvido
+             FROM pedido_atual pa
+             LEFT JOIN contratos_servicos cs
+               ON cs.contratante_id = pa.pessoa_id
+              AND cs.situacao_contrato IN ('A', 'I', 'P', 'S', 'E')
+              AND (pa.contrato_id IS NULL OR cs.id <> pa.contrato_id)
+              AND (pa.numero_pedido IS NULL OR cs.contrato_servicos <> pa.numero_pedido)
+            ORDER BY cs.data_contrato DESC NULLS LAST, cs.id DESC
+            LIMIT 20`,
+    values: [id],
+    query_timeout: 5000,
+  });
+  if (result.rows.length === 0 || result.rows[0]?.titular_resolvido !== true) {
+    throw new Error('Titular canônico do pedido não identificado no ERP.');
+  }
+  return normalizeContratosAnteriores(result.rows);
+}
+
 /**
  * Lê em lote a identidade do titular dos pedidos para preencher cards de fila.
  * Prioriza a primeira pessoa vinculada a uma Pessoa global do ERP e, em pedidos
