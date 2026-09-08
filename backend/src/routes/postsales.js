@@ -8,6 +8,7 @@ import {
   getErpPool,
   getProdutosByPedidoIds,
   getOrcamentoDetalhe,
+  getContratosAnteriores,
 } from '../services/erpDbService.js';
 import { enrichPostsalesClientIdentities } from '../services/postsalesClientService.js';
 import { classifyPostsalesDetail } from '../utils/postsalesDetail.js';
@@ -947,6 +948,31 @@ router.get('/:id/detalhe', authMiddleware, async (req, res) => {
   } catch (e) {
     console.error('[postsales] GET /detalhe error:', e.message);
     return res.status(500).json({ error: 'Falha ao carregar os dados do orçamento no Pós-Vendas.' });
+  }
+});
+
+router.get('/:id/contratos-anteriores', authMiddleware, async (req, res) => {
+  try {
+    const { eligible } = await resolvePostsalesAuditor(req);
+    if (!eligible) {
+      return res.status(403).json({ error: 'Acesso restrito à equipe de Pós-Vendas.' });
+    }
+
+    const verificacao = await getVerificacao(req.params.id);
+    if (!verificacao) return res.status(404).json({ error: 'Verificação não encontrada.' });
+
+    const pedidoId = Number(verificacao.erp_pedido_id);
+    if (!Number.isSafeInteger(pedidoId) || pedidoId <= 0) {
+      return res.status(422).json({ error: 'A verificação não possui um orçamento ERP válido.' });
+    }
+
+    const contratos = await getContratosAnteriores(pedidoId);
+    return res.json({ contratos });
+  } catch (e) {
+    console.error('[postsales] GET /contratos-anteriores error:', e.message);
+    return res.status(503).json({
+      error: 'A consulta de contratos anteriores está temporariamente indisponível.',
+    });
   }
 });
 
