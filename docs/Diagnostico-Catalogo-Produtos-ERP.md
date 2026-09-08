@@ -1,6 +1,7 @@
 # Diagnóstico do catálogo de produtos ERP
 
 **Data da análise:** 26/08/2026  
+**Revalidação dos produtos dependentes:** 28/08/2026
 **Escopo:** catálogo usado pelo wizard de novo orçamento do Bom Flow  
 **Método:** leitura do código, consulta somente leitura à API e ao banco do ERP e confronto com as imagens fornecidas  
 **Mutação realizada:** nenhuma
@@ -92,7 +93,7 @@ Não existe cache de produtos no backend.
 - no máximo 50 páginas;
 - timeout de 120 segundos por página.
 
-Isso contorna o limite histórico de 100 linhas de APIs do ERP. A consulta realizada durante esta análise devolveu **437 linhas** no catálogo completo.
+Isso contorna o limite histórico de 100 linhas de APIs do ERP. A consulta original de 26/08/2026 devolveu **437 linhas** no catálogo completo. Na revalidação de 28/08/2026, o endpoint devolveu **338 linhas**; a diferença de volume não afetou os 38 vínculos de dependentes elegíveis detalhados na seção 13.
 
 ### 3.4 Endpoint e campos
 
@@ -462,3 +463,161 @@ GET /api/erp/produtos
 ```
 
 O ajuste definitivo deve ser feito na implementação da `API_MV_API_PRODUTOS`, para que ela filtre vínculos suspensos/cancelados. A conferência no Bom Flow continua importante como proteção contra cache, alteração de preço, correspondência parcial de títulos e clientes que tentem enviar payload manualmente.
+
+## 13. Validação global dos produtos de dependentes de R$ 0,01
+
+### 13.1 Critério e resultado
+
+Em 28/08/2026 foi feita uma nova consulta somente leitura ao banco ERP e à `API_MV_API_PRODUTOS`. O critério reproduziu a regra do wizard:
+
+- a descrição do produto contém `DEPENDENTE`, sem diferenciar maiúsculas e minúsculas;
+- o preço autoritativo é aproximadamente R$ 0,01 (`|preço - 0,01| < 0,005`);
+- o produto está em situação `P`;
+- o vínculo em `contratos_servicos_produtos` está em situação `A`;
+- o título em `contratos_servicos` está em situação `A`.
+
+O resultado foi:
+
+| Conferência | Resultado |
+|---|---:|
+| Linhas no catálogo completo da API | 338 |
+| Vínculos elegíveis no banco | 38 |
+| Linhas elegíveis publicadas pela API | 38 |
+| Títulos com vínculos elegíveis | 13 |
+| Vínculos ativos ausentes na API | 0 |
+| Linhas da API sem vínculo ativo correspondente | 0 |
+| Títulos elegíveis ausentes das opções do wizard | 0 |
+
+O cruzamento foi feito por `contrato_id` + título exato + ID interno do produto. Portanto, não depende de semelhança textual entre títulos.
+
+### 13.2 Inventário confirmado
+
+Todas as 38 linhas abaixo têm preço **R$ 0,01**, situação do produto **`P`**, situação do vínculo **`A`**, situação do título **`A`** e publicação confirmada na API para o mesmo `contrato_id`, título e ID interno.
+
+| Título (`contrato_id`) | Código ERP | ID interno | Descrição |
+|---|---:|---:|---|
+| BOM PASTOR (`40477738`) | `25` | `47219026` | DEPENDENTE TOTAL + |
+| BOM PASTOR (`40477738`) | `2307` | `55482336` | BOM MED - DEPENDENTE 0,00 |
+| BOM PASTOR (`40477738`) | `2311` | `55482462` | SAFIRA - DEPENDENTE 0,00 |
+| BOM PASTOR (`40477738`) | `2312` | `55482510` | TOPAZIO - DEPENDENTE 0,00 |
+| BOM PASTOR (`40477738`) | `18732` | `63969482` | RUBI - DEPENDENTE 0,00 |
+| BOM PASTOR (`40477738`) | `95418` | `106134686` | BD FAMILIA- DEPENDENTE 0,00 |
+| BOM PASTOR (`40477738`) | `114054` | `111294788` | CACONDE - PRATA DEPENDENTE |
+| BOM PASTOR (`40477738`) | `121221` | `195750242` | DEPENDENTE EXTRA |
+| BOM PASTOR (`40477738`) | `121878` | `214480569` | BOM DESCANSO IDEAL (DEPENDENTE) |
+| BOM PASTOR - BOM DESCANSO FAMILIA (`106133840`) | `2307` | `55482336` | BOM MED - DEPENDENTE 0,00 |
+| BOM PASTOR - BOM DESCANSO FAMILIA (`106133840`) | `95418` | `106134686` | BD FAMILIA- DEPENDENTE 0,00 |
+| BOM PASTOR - BOM DESCANSO FAMILIA (`106133840`) | `121794` | `212085487` | BOM MED - SEM CPF DEPENDENTE |
+| BOM PASTOR - BOM MED (`82790080`) | `2307` | `55482336` | BOM MED - DEPENDENTE 0,00 |
+| BOM PASTOR - BOM MED (`82790080`) | `121794` | `212085487` | BOM MED - SEM CPF DEPENDENTE |
+| BOM PASTOR - COMBO MULTI ESPECIAL (`293025223`) | `2307` | `55482336` | BOM MED - DEPENDENTE 0,00 |
+| BOM PASTOR - COMBO MULTI ESPECIAL (`293025223`) | `123297` | `294416738` | ESSENCIAL DEPENDENTE 0,01 |
+| BOM PASTOR - DIGITAL (`47882407`) | `25` | `47219026` | DEPENDENTE TOTAL + |
+| BOM PASTOR - DIGITAL (`47882407`) | `2307` | `55482336` | BOM MED - DEPENDENTE 0,00 |
+| BOM PASTOR - DIGITAL (`47882407`) | `2309` | `55482411` | PEROLA - DEPENDENTE 0,00 |
+| BOM PASTOR - DIGITAL (`47882407`) | `2310` | `55482437` | PEROLA - DEPENDENTE 0,00 |
+| BOM PASTOR - DIGITAL (`47882407`) | `2311` | `55482462` | SAFIRA - DEPENDENTE 0,00 |
+| BOM PASTOR - DIGITAL (`47882407`) | `13715` | `57574423` | RUBI - DEPENDENTE 0,00 |
+| BOM PASTOR - DIGITAL (`47882407`) | `18737` | `64026858` | LIMEIRA - RUBI DEPENDENTES 0,00 |
+| BOM PASTOR - ESSENCIAL (`82786307`) | `2307` | `55482336` | BOM MED - DEPENDENTE 0,00 |
+| BOM PASTOR - IDEAL (`272893002`) | `121878` | `214480569` | BOM DESCANSO IDEAL (DEPENDENTE) |
+| BOM PASTOR - PEROLA (`82787358`) | `2309` | `55482411` | PEROLA - DEPENDENTE 0,00 |
+| BOM PASTOR - PEROLA (`82787358`) | `2310` | `55482437` | PEROLA - DEPENDENTE 0,00 |
+| BOM PASTOR - RUBI (`82787874`) | `13715` | `57574423` | RUBI - DEPENDENTE 0,00 |
+| BOM PASTOR - RUBI (`82787874`) | `18732` | `63969482` | RUBI - DEPENDENTE 0,00 |
+| BOM PASTOR - RUBI (`82787874`) | `18736` | `64024649` | CAMPINAS - RUBI DEPENDENTES 0,00 |
+| BOM PASTOR - RUBI (`82787874`) | `18737` | `64026858` | LIMEIRA - RUBI DEPENDENTES 0,00 |
+| BOM PASTOR - SAFIRA (`82789243`) | `2311` | `55482462` | SAFIRA - DEPENDENTE 0,00 |
+| BOM PASTOR - SAFIRA (`82789243`) | `114054` | `111294788` | CACONDE - PRATA DEPENDENTE |
+| BOM PASTOR - TOPAZIO (`82792117`) | `2312` | `55482510` | TOPAZIO - DEPENDENTE 0,00 |
+| BOM PASTOR - TOTAL + (`82789571`) | `25` | `47219026` | DEPENDENTE TOTAL + |
+| BOM PASTOR - TOTAL + (`82789571`) | `2307` | `55482336` | BOM MED - DEPENDENTE 0,00 |
+| EXPLORER CALLCENTER (`47194339`) | `25` | `47219026` | DEPENDENTE TOTAL + |
+| EXPLORER CALLCENTER (`47194339`) | `2307` | `55482336` | BOM MED - DEPENDENTE 0,00 |
+
+### 13.3 Exceções e vínculos não elegíveis
+
+A publicação está completa para os vínculos ativos, mas há diferenças de metadados que não mudam a classificação atual do wizard:
+
+- o código `121794` (`BOM MED - SEM CPF DEPENDENTE`), publicado em dois títulos, vem da API com `tipo_contrato = BOM MED`, e não `DEPENDENTE`;
+- o código `123297` vem com `tipo_contrato = Dependente`, apenas com capitalização diferente;
+- o código `18737` vem com `tipo_produto` vazio;
+- os códigos `114054`, `121221` e `123297` têm pelo menos uma publicação com `produto_adendo` vazio.
+
+Essas diferenças não impedem o destino correto porque a vaga gratuita é reconhecida pela **descrição + preço**, e sua inclusão direta nas opções de beneficiário não depende da whitelist de `tipo_contrato`.
+
+Além dos 38 vínculos elegíveis, o banco contém 11 registros que casam com descrição e preço, mas não atendem ao estado ativo completo:
+
+| Título | Códigos | Motivo |
+|---|---|---|
+| BOM PASTOR | `13715`, `18736`, `2309`, `2310`, `2312` | vínculos `S`; o código `2312` também possui outro vínculo `A`, que é o elegível publicado |
+| BOM PASTOR - COMBO MULTI SELEÇÃO | `123297`, `2307` | vínculos `S` |
+| BOM PASTOR - DIGITAL | `18736`, `2312` | vínculos `S` |
+| BOM SAMBA | `121794`, `2307` | vínculos `A`, mas título em situação `P` |
+
+Nenhuma combinação sem ao menos um vínculo ativo correspondente apareceu entre as 38 linhas elegíveis da API.
+
+### 13.4 Destino no wizard
+
+O comportamento observado se aplica aos 38 vínculos:
+
+1. `isDependenteProduto` reconhece qualquer descrição com `DEPENDENTE` e preço aproximadamente R$ 0,01;
+2. a etapa **Produtos / planos** exibe esses itens na lista principal, com checkbox e identificação **Beneficiário**;
+3. a seleção cria o item do orçamento sem permitir incluir o titular; a pessoa correspondente deve ser vinculada na etapa **Beneficiários** antes de avançar;
+4. produtos de veículo só podem avançar quando o mesmo contrato e título também publicam o condutor correspondente; itens de outro título nunca são injetados.
+5. quando um produto especial já foi selecionado no Plano, a atribuição do beneficiário usa o mesmo item em vez de criar uma linha duplicada;
+6. antes da criação do orçamento, o backend recarrega o catálogo e exige o mesmo `contrato_id`, título exato, ID interno e preço.
+
+Os 13 títulos estão na lista `TITULO_CONTRATO_OPTIONS`. Todos também possuem produtos restantes para a etapa Plano; a quantidade de opções de Plano varia de 5 a 66 depois da retirada dos itens especiais. Portanto, não foi encontrado título elegível que fique sem plano selecionável por causa desta regra.
+
+### 13.5 Conclusão específica
+
+Não há falha de catálogo nem de classificação para os produtos dependentes ativos de R$ 0,01 na fotografia de 28/08/2026. Os 38 vínculos ativos dos 13 títulos estão publicados e seguem o desenho esperado:
+
+- **aparecem em Produtos / planos, identificados como produtos de Beneficiário e com seleção por checkbox**;
+- **aparecem como opções de produto em Beneficiários**;
+- **entram no orçamento quando selecionados e recebem quantidade ao serem vinculados a um beneficiário**;
+- **não dependem de `tipo_contrato = DEPENDENTE` para funcionar**.
+
+Esses itens são selecionáveis na lista principal, mas a seleção não marca o titular como pessoa do item. O vínculo e a quantidade continuam vindo da etapa Beneficiários. Produtos com `DEPENDENTE` e preço real superior a R$ 0,015 também permanecem selecionáveis em Plano e recebem o dependente vinculado ao próprio item.
+
+## 14. Validação complementar: produtos especiais de BOM AUTO e BOM PET
+
+Os três códigos sinalizados depois da primeira consolidação não estavam na seção 13 porque suas descrições não contêm `DEPENDENTE`. Eles pertencem à mesma família funcional de itens de R$ 0,01 vinculados ao beneficiário, mas usam classificadores próprios:
+
+- `DADOS DO VEÍCULO` para BOM AUTO;
+- `NOME DO PET` para BOM PET.
+
+### 14.1 Cadastro e publicação
+
+A conferência somente leitura confirmou:
+
+| Título (`contrato_id`) | Código ERP | ID interno | Descrição | Preço | Produto / vínculo / título | API |
+|---|---:|---:|---|---:|---|---|
+| BOM PASTOR - BOM AUTO (`82860478`) | `94413` | `88167567` | BOM AUTO CLIENTES - DADOS DO VEÍCULO | R$ 0,01 | `P` / `A` / `A` | publicado |
+| BOM PASTOR - BOM AUTO (`82860478`) | `94414` | `88167862` | BOM AUTO NÃO CLIENTES - DADOS DO VEÍCULO | R$ 0,01 | `P` / `A` / `A` | publicado |
+| BOM PASTOR - BOM PET (`82789405`) | `76719` | `79080781` | BOM PET SAÚDE - NOME DO PET | R$ 0,01 | `P` / `A` / `A` | publicado |
+
+O título BOM AUTO também publica os pares de condutor necessários:
+
+| Variante | Código ERP | ID interno | Descrição | Preço | Produto / vínculo / título | API |
+|---|---:|---:|---|---:|---|---|
+| Clientes | `94430` | `88588931` | BOM AUTO CLIENTES - DADOS DO CONDUTOR | R$ 0,01 | `P` / `A` / `A` | publicado |
+| Não clientes | `94431` | `88589037` | BOM AUTO NAO CLIENTES - DADOS DO CONDUTOR | R$ 0,01 | `P` / `A` / `A` | publicado |
+
+Há uma diferença de classificação na API: o código `94413` vem com `tipo_contrato = DEPENDENTE`, enquanto o `94414` vem com `tipo_contrato = BOM AUTO`. Isso não afeta o wizard, que identifica ambos por `DADOS DO VEÍCULO`.
+
+### 14.2 Destino na jornada e ajuste
+
+Esses produtos aparecem na lista principal de **Produtos / planos**, identificados como Beneficiário e selecionáveis por checkbox. A seleção cria o item sem incluir o titular por padrão:
+
+- os códigos `94413` e `94414` viram o card estruturado de veículo em Beneficiários;
+- os códigos `94430` e `94431` viram o card pareado de condutor somente quando publicados no mesmo contrato e título do veículo;
+- o código `76719` é atribuído automaticamente ao card de pet quando o vendedor escolhe o plano BOM PET SAÚDE.
+
+O catálogo já estava completo. O problema específico do BOM AUTO estava na escolha local: como o título publica dois pares, o wizard usava o primeiro veículo e o primeiro condutor encontrados. O ajuste passou a usar a variante do plano selecionado:
+
+- plano **CLIENTES** → condutor `94430` + veículo `94413`;
+- plano **NÃO CLIENTES** → condutor `94431` + veículo `94414`.
+
+A comparação também normaliza acentos, porque o ERP grava `NÃO CLIENTES` na descrição do veículo e `NAO CLIENTES` na descrição do condutor. O fluxo BOM PET já selecionava corretamente o produto `76719`; para ele, foi necessária apenas a inclusão nesta validação documental.
