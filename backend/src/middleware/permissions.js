@@ -23,6 +23,7 @@ export async function loadAgentMiddleware(req, res, next) {
         online: agent.online,
         capacity: agent.capacity,
         queueIds: agent.queue_ids,
+        permissions: agent.permissions || {},
         allowedSubmenus: []
       };
       req.permissions = getPermissions(agent.agent_type);
