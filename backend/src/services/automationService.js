@@ -249,11 +249,55 @@ export async function executeUpsellChannelLeadCreatedAutomation(lead) {
   }
 }
 
-export async function executeUpsellChannelStageChangeAutomation(lead, fromStage, toStage) {
-  if (!toStage || fromStage === toStage) return;
+async function hasReconciliationCheckpoint(eventKey, automationType, automationId) {
+  if (!eventKey) return false;
+  const result = await query(
+    `SELECT 1 FROM erp_approval_automation_checkpoints
+      WHERE event_key = $1 AND automation_type = $2 AND automation_id = $3`,
+    [eventKey, automationType, automationId]
+  );
+  return result.rows.length > 0;
+}
+
+async function saveReconciliationCheckpoint(eventKey, automationType, automationId) {
+  if (!eventKey) return;
+  await query(
+    `INSERT INTO erp_approval_automation_checkpoints
+       (event_key, automation_type, automation_id)
+     VALUES ($1,$2,$3)
+     ON CONFLICT DO NOTHING`,
+    [eventKey, automationType, automationId]
+  );
+}
+
+export async function executeAutomationBatch(
+  automations,
+  { execute, isCompleted = async () => false, markCompleted = async () => {} }
+) {
+  const failures = [];
+  for (const automation of automations) {
+    try {
+      if (await isCompleted(automation)) continue;
+      const outcome = await execute(automation);
+      if (outcome?.success === false) {
+        failures.push({ automationId: automation.id, error: outcome.error || 'Falha na automação.' });
+        continue;
+      }
+      await markCompleted(automation);
+    } catch (error) {
+      failures.push({ automationId: automation.id, error: error.message });
+    }
+  }
+  return failures.length
+    ? { success: false, errors: failures, error: failures.map((item) => item.error).join('; ') }
+    : { success: true };
+}
+
+export async function executeUpsellChannelStageChangeAutomation(lead, fromStage, toStage, options = {}) {
+  if (!toStage || fromStage === toStage) return { success: true, skipped: true };
   if (!isWithinDispatchWindow()) {
     console.log('[UpsellChannel] stage_change fora da janela de disparo — mensagem não enviada.');
-    return;
+    return { success: true, deferred: true, reason: 'outside_dispatch_window' };
   }
   try {
     const automationsResult = await query(`
@@ -261,7 +305,7 @@ export async function executeUpsellChannelStageChangeAutomation(lead, fromStage,
       WHERE active = true AND trigger_type = 'stage_change'
       ORDER BY priority ASC
     `);
-    if (automationsResult.rows.length === 0) return;
+    if (automationsResult.rows.length === 0) return { success: true, skipped: true };
 
     const agentResult = lead.agent_id 
       ? await query('SELECT name, phone, email FROM agents WHERE id = $1', [lead.agent_id])
@@ -269,6 +313,7 @@ export async function executeUpsellChannelStageChangeAutomation(lead, fromStage,
     const agent = agentResult.rows[0] || null;
     const enrichedLead = { ...lead, agent_name: agent?.name, agent_phone: agent?.phone, agent_email: agent?.email };
 
+    const eligible = [];
     for (const automation of automationsResult.rows) {
       const triggerConfig = typeof automation.trigger_config === 'string' 
         ? JSON.parse(automation.trigger_config) : automation.trigger_config || {};
@@ -279,11 +324,21 @@ export async function executeUpsellChannelStageChangeAutomation(lead, fromStage,
         continue;
       }
       if (triggerConfig.fromStage && triggerConfig.fromStage !== fromStage) continue;
-
-      await executeChannelAutomationAction(automation, enrichedLead, 'upsell_channel', automation.channel_token);
+      eligible.push(automation);
     }
+    return executeAutomationBatch(eligible, {
+      isCompleted: (automation) =>
+        hasReconciliationCheckpoint(options.eventKey, 'upsell_channel', automation.id),
+      execute: (automation) => executeChannelAutomationAction(
+        automation, enrichedLead, 'upsell_channel', automation.channel_token,
+        { eventKey: options.eventKey }
+      ),
+      markCompleted: (automation) =>
+        saveReconciliationCheckpoint(options.eventKey, 'upsell_channel', automation.id),
+    });
   } catch (error) {
     console.error('[UpsellChannel] Error executing stage_change automations:', error);
+    return { success: false, error: error.message };
   }
 }
 
@@ -429,7 +484,7 @@ async function checkInactivityTriggerWithToken(automation, triggerConfig, automa
   }
 }
 
-async function executeChannelAutomationAction(automation, lead, automationType, channelToken) {
+async function executeChannelAutomationAction(automation, lead, automationType, channelToken, executionContext = {}) {
   const actionConfig = typeof automation.action_config === 'string' 
     ? JSON.parse(automation.action_config) 
     : automation.action_config || {};
@@ -508,6 +563,7 @@ async function executeChannelAutomationAction(automation, lead, automationType, 
             message: message,
             errorMessage: sendError.message
           });
+          throw sendError;
         }
       } else {
         await logAutomationExecution({
@@ -557,23 +613,29 @@ async function executeChannelAutomationAction(automation, lead, automationType, 
           
           for (const supervisor of supervisorsResult.rows) {
             await query(`
-              INSERT INTO notifications (user_email, title, message, type, created_at)
-              VALUES ($1, $2, $3, $4, NOW())
+              INSERT INTO notifications (user_email, title, message, type, created_at, dedupe_key)
+              VALUES ($1, $2, $3, $4, NOW(), $5)
+              ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING
             `, [
               supervisor.email,
               `Alerta: ${automation.name}`,
               alertMessage,
-              'automation_alert'
+              'automation_alert',
+              executionContext.eventKey
+                ? `${executionContext.eventKey}:${automation.id}:${supervisor.email}`
+                : null,
             ]);
           }
         } catch (notifError) {
           console.error(`[ChannelAutomation] Failed to create notification:`, notifError.message);
+          throw notifError;
         }
       }
 
       await updateAutomationCount(automation.id, automationType);
       console.log(`[ChannelAutomation] ${automation.name}: Internal alert logged for ${leadName}`);
     }
+    return { success: true };
   } catch (error) {
     console.error(`[ChannelAutomation] ${automation.name}: Error executing action for ${leadName}:`, error);
     await logAutomationExecution({
@@ -590,6 +652,7 @@ async function executeChannelAutomationAction(automation, lead, automationType, 
       message: actionConfig.templateMessage || actionConfig.alertMessage,
       errorMessage: error.message
     });
+    return { success: false, error: error.message };
   }
 }
 
@@ -667,7 +730,13 @@ async function checkInactivityTrigger(automation, triggerConfig, automationType,
   }
 }
 
-async function executeAutomationAction(automation, lead, automationType, pfContext = null) {
+async function executeAutomationAction(
+  automation,
+  lead,
+  automationType,
+  pfContext = null,
+  executionContext = {}
+) {
   const actionConfig = typeof automation.action_config === 'string' 
     ? JSON.parse(automation.action_config) 
     : automation.action_config || {};
@@ -764,6 +833,7 @@ async function executeAutomationAction(automation, lead, automationType, pfConte
             message: message,
             errorMessage: sendError.message
           });
+          throw sendError;
         }
       } else {
         await logAutomationExecution({
@@ -815,24 +885,30 @@ async function executeAutomationAction(automation, lead, automationType, pfConte
           
           for (const supervisor of supervisorsResult.rows) {
             await query(`
-              INSERT INTO notifications (user_email, title, message, type, created_at)
-              VALUES ($1, $2, $3, $4, NOW())
+              INSERT INTO notifications (user_email, title, message, type, created_at, dedupe_key)
+              VALUES ($1, $2, $3, $4, NOW(), $5)
+              ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING
             `, [
               supervisor.email,
               `Alerta: ${automation.name}`,
               alertMessage,
-              'automation_alert'
+              'automation_alert',
+              executionContext.eventKey
+                ? `${executionContext.eventKey}:${automation.id}:${supervisor.email}`
+                : null,
             ]);
             console.log(`[Automation] Notification sent to sales supervisor: ${supervisor.name}`);
           }
         } catch (notifError) {
           console.error(`[Automation] Failed to create notification:`, notifError.message);
+          throw notifError;
         }
       }
 
       await updateAutomationCount(automation.id, automationType);
       console.log(`[Automation] ${automation.name}: Internal alert logged for ${leadName}`);
     }
+    return { success: true };
   } catch (error) {
     console.error(`[Automation] ${automation.name}: Error executing action for ${leadName}:`, error);
     await logAutomationExecution({
@@ -849,6 +925,7 @@ async function executeAutomationAction(automation, lead, automationType, pfConte
       message: actionConfig.templateMessage || actionConfig.alertMessage,
       errorMessage: error.message
     });
+    return { success: false, error: error.message };
   }
 }
 
@@ -951,11 +1028,11 @@ export async function executeLeadCreatedAutomation(lead, leadType = 'lead') {
   }
 }
 
-export async function executeStageChangeAutomation(lead, fromStage, toStage, leadType = 'lead') {
-  if (!toStage || fromStage === toStage) return;
+export async function executeStageChangeAutomation(lead, fromStage, toStage, leadType = 'lead', options = {}) {
+  if (!toStage || fromStage === toStage) return { success: true, skipped: true };
   if (!isWithinDispatchWindow()) {
     console.log(`[Automation] stage_change (${leadType}) fora da janela de disparo — mensagem não enviada.`);
-    return;
+    return { success: true, deferred: true, reason: 'outside_dispatch_window' };
   }
 
   const tableName = leadType === 'lead' ? 'lead_automations' 
@@ -979,7 +1056,7 @@ export async function executeStageChangeAutomation(lead, fromStage, toStage, lea
 
     if (automations.length === 0) {
       console.log(`[Automation] No stage_change automations configured for ${leadType}`);
-      return;
+      return { success: true, skipped: true };
     }
 
     const agentResult = lead.agent_id 
@@ -994,6 +1071,7 @@ export async function executeStageChangeAutomation(lead, fromStage, toStage, lea
       agent_email: agent?.email || ''
     };
 
+    const eligible = [];
     for (const automation of automations) {
       const triggerConfig = typeof automation.trigger_config === 'string' 
         ? JSON.parse(automation.trigger_config) 
@@ -1020,10 +1098,20 @@ export async function executeStageChangeAutomation(lead, fromStage, toStage, lea
       }
 
       console.log(`[Automation] Executing stage_change automation ${automation.name} for ${leadType} (${fromStage} → ${toStage})`);
-      await executeAutomationAction(automation, enrichedLead, leadType);
+      eligible.push(automation);
     }
+    return executeAutomationBatch(eligible, {
+      isCompleted: (automation) =>
+        hasReconciliationCheckpoint(options.eventKey, leadType, automation.id),
+      execute: (automation) => executeAutomationAction(
+        automation, enrichedLead, leadType, null, { eventKey: options.eventKey }
+      ),
+      markCompleted: (automation) =>
+        saveReconciliationCheckpoint(options.eventKey, leadType, automation.id),
+    });
   } catch (error) {
     console.error(`[Automation] Error executing stage_change automations for ${leadType}:`, error);
+    return { success: false, error: error.message };
   }
 }
 

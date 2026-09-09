@@ -1224,7 +1224,19 @@ async function recordBomflowOrcamento(req, { erpPedidoId, erpNumero, modulo, cli
          cliente_nome = EXCLUDED.cliente_nome,
          cliente_cpf  = EXCLUDED.cliente_cpf,
          valor_criacao = EXCLUDED.valor_criacao,
-         lead_id      = COALESCE(EXCLUDED.lead_id, bomflow_orcamentos.lead_id)`,
+          lead_id      = COALESCE(EXCLUDED.lead_id, bomflow_orcamentos.lead_id),
+          erp_approval_sync_status = CASE
+            WHEN EXCLUDED.lead_id IS NOT NULL
+             AND EXCLUDED.lead_id IS DISTINCT FROM bomflow_orcamentos.lead_id
+            THEN 'pending'
+            ELSE bomflow_orcamentos.erp_approval_sync_status
+          END,
+          erp_approval_last_checked_at = CASE
+            WHEN EXCLUDED.lead_id IS NOT NULL
+             AND EXCLUDED.lead_id IS DISTINCT FROM bomflow_orcamentos.lead_id
+            THEN NULL
+            ELSE bomflow_orcamentos.erp_approval_last_checked_at
+          END`,
       [
         Number(erpPedidoId),
         erpNumero != null ? Number(erpNumero) : null,
@@ -1241,6 +1253,39 @@ async function recordBomflowOrcamento(req, { erpPedidoId, erpNumero, modulo, cli
   } catch (e) {
     console.error('[bomflow_orcamentos] falha ao registrar (não crítico):', e.message);
   }
+}
+
+const TRACKED_BUSINESS_TABLES = Object.freeze({
+  sales: { table: 'leads', owners: ['agent_id', 'assigned_agent_id'] },
+  sales_pj: { table: 'leads_pj', owners: ['agent_id'] },
+  sales_upsell: { table: 'leads_upsell', owners: ['agent_id', 'assigned_agent_id'] },
+  referral: { table: 'referrals', owners: ['agent_id'] },
+});
+
+async function validateTrackedBusinessBinding(req, modulo, leadId) {
+  if (!leadId) return { modulo: null, leadId: null };
+  const config = TRACKED_BUSINESS_TABLES[modulo];
+  if (!config) {
+    const error = new Error('Módulo do negócio inválido para rastreio do orçamento.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const columns = ['id', ...config.owners].join(', ');
+  const result = await query(`SELECT ${columns} FROM ${config.table} WHERE id = $1`, [leadId]);
+  const business = result.rows[0];
+  if (!business) {
+    const error = new Error('Negócio informado não existe no módulo selecionado.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const isAdmin = req.user?.role === 'admin';
+  const ownerIds = config.owners.map((column) => business[column]).filter(Boolean);
+  if (!isAdmin && !ownerIds.includes(req.user?.id)) {
+    const error = new Error('Você não pode vincular um orçamento a este negócio.');
+    error.statusCode = 403;
+    throw error;
+  }
+  return { modulo, leadId: business.id };
 }
 
 // POST /api/erp/orcamento
@@ -1264,6 +1309,7 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       contrato_id: contratoId,
       ...headerPayloadFromClient
     } = payload;
+    const trackedBinding = await validateTrackedBusinessBinding(req, moduloOrcamento, _leadId);
 
     // Normaliza os itens: cada item = um produto com seus beneficiários (até 15 por item).
     let itens = Array.isArray(itensRaw)
@@ -1457,11 +1503,11 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
     await recordBomflowOrcamento(req, {
       erpPedidoId: pedidoInternalId,
       erpNumero: numeroPedido,
-      modulo: moduloOrcamento,
+      modulo: trackedBinding.modulo,
       clienteNome: selectTrackedClientName(headerPayload),
       clienteCpf: headerPayload.cpf || headerPayload.contratante_cpf || null,
       valor: data?.valor_total ?? null,
-      leadId: req.body?.lead_id || null,
+      leadId: trackedBinding.leadId,
     });
 
     return res.json({ ...data, numeroPedido, erpId: pedidoInternalId, dbInserted: dbResult, fechamento: fechamentoResult });
@@ -1478,7 +1524,8 @@ router.post('/pre-proposta', authMiddleware, async (req, res) => {
   if (!token) return;
   try {
     // `modulo` é metadado do Bom Flow (rastreio CRM), NÃO deve ser enviado ao ERP.
-    const { modulo: moduloOrcamento, ...payloadFromClient } = { ...req.body };
+    const { modulo: moduloOrcamento, lead_id: leadId, ...payloadFromClient } = { ...req.body };
+    const trackedBinding = await validateTrackedBusinessBinding(req, moduloOrcamento, leadId);
     const authenticatedRequest = await resolveAuthenticatedOrcamentoPayload(req, token, payloadFromClient);
     const payload = authenticatedRequest.payload;
 
@@ -1507,11 +1554,11 @@ router.post('/pre-proposta', authMiddleware, async (req, res) => {
       await recordBomflowOrcamento(req, {
         erpPedidoId: data?.id ?? null,
         erpNumero: data?.pedido ?? data?.numero ?? null,
-        modulo: moduloOrcamento,
+        modulo: trackedBinding.modulo,
         clienteNome: selectTrackedClientName(payload),
         clienteCpf: payload.cpf || payload.contratante_cpf || null,
         valor: data?.valor_total ?? null,
-        leadId: req.body?.lead_id || null,
+        leadId: trackedBinding.leadId,
       });
     }
 

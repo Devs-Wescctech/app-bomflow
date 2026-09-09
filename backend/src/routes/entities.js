@@ -211,6 +211,10 @@ pool.query(`
   ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS adesao_zero_updated_by UUID;
   ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS adesao_zero_updated_at TIMESTAMPTZ;
   ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS lead_id UUID;
+  ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS erp_approval_sync_status VARCHAR(24) NOT NULL DEFAULT 'pending';
+  ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS erp_approval_last_checked_at TIMESTAMPTZ;
+  ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS erp_approval_last_situacao VARCHAR(10);
+  ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS erp_approval_last_error TEXT;
   CREATE INDEX IF NOT EXISTS idx_bomflow_orcamentos_lead ON bomflow_orcamentos(lead_id);
   CREATE TABLE IF NOT EXISTS orcamento_documentos (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

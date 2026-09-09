@@ -2,6 +2,87 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Dependência completa e ordenada da reconciliação. As rotas mantêm CREATE/ALTER
+-- defensivos para bases antigas, mas o boot principal não depende da ordem deles.
+CREATE TABLE IF NOT EXISTS bomflow_orcamentos (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    erp_pedido_id BIGINT NOT NULL UNIQUE,
+    erp_numero BIGINT,
+    modulo VARCHAR(32) NOT NULL,
+    agent_id UUID,
+    agent_name VARCHAR(255),
+    cliente_nome VARCHAR(255),
+    cliente_cpf VARCHAR(32),
+    valor_criacao NUMERIC,
+    lead_id UUID,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS lead_id UUID;
+ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS erp_approval_sync_status VARCHAR(24) NOT NULL DEFAULT 'pending';
+ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS erp_approval_last_checked_at TIMESTAMPTZ;
+ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS erp_approval_last_situacao VARCHAR(10);
+ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS erp_approval_last_error TEXT;
+CREATE INDEX IF NOT EXISTS idx_bomflow_orcamentos_lead ON bomflow_orcamentos(lead_id);
+CREATE INDEX IF NOT EXISTS idx_bomflow_orcamentos_approval_pending
+    ON bomflow_orcamentos(erp_approval_last_checked_at, created_at)
+    WHERE erp_approval_sync_status IN ('pending', 'error');
+
+-- Auditoria operacional da sincronização de aprovação de pedidos ERP.
+CREATE TABLE IF NOT EXISTS erp_approval_reconciliation_runs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    origem VARCHAR(32) NOT NULL,
+    solicitado_por UUID,
+    status VARCHAR(20) NOT NULL,
+    resumo JSONB NOT NULL DEFAULT '{}'::jsonb,
+    erro TEXT,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_erp_approval_runs_started
+    ON erp_approval_reconciliation_runs(started_at DESC);
+
+CREATE TABLE IF NOT EXISTS erp_approval_reconciliation_items (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    run_id UUID NOT NULL REFERENCES erp_approval_reconciliation_runs(id) ON DELETE CASCADE,
+    erp_pedido_id BIGINT,
+    lead_id UUID,
+    modulo VARCHAR(32),
+    erp_situacao VARCHAR(10),
+    resultado VARCHAR(32) NOT NULL,
+    detalhe TEXT,
+    stage_anterior VARCHAR(50),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_erp_approval_items_run
+    ON erp_approval_reconciliation_items(run_id, created_at);
+
+CREATE TABLE IF NOT EXISTS erp_approval_reconciliation_effects (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    run_id UUID NOT NULL REFERENCES erp_approval_reconciliation_runs(id) ON DELETE CASCADE,
+    item_id UUID REFERENCES erp_approval_reconciliation_items(id) ON DELETE SET NULL,
+    effect_key TEXT NOT NULL UNIQUE,
+    effect_type VARCHAR(50) NOT NULL,
+    modulo VARCHAR(32) NOT NULL,
+    lead_id UUID NOT NULL,
+    payload JSONB NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    processed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_erp_approval_effects_pending
+    ON erp_approval_reconciliation_effects(status, created_at);
+
+CREATE TABLE IF NOT EXISTS erp_approval_automation_checkpoints (
+    event_key TEXT NOT NULL,
+    automation_type VARCHAR(50) NOT NULL,
+    automation_id UUID NOT NULL,
+    completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (event_key, automation_type, automation_id)
+);
+
+
 -- =====================
 -- USERS & AUTH
 -- =====================
@@ -606,6 +687,9 @@ CREATE TABLE IF NOT EXISTS notifications (
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS entity_type VARCHAR(100);
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS entity_id UUID;
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'normal';
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedupe_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_dedupe_key
+    ON notifications(dedupe_key) WHERE dedupe_key IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS notification_preferences (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

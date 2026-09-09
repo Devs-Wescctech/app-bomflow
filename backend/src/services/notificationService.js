@@ -8,13 +8,16 @@ export async function createNotification({
   link = null,
   entityType = null,
   entityId = null,
-  priority = 'normal'
+  priority = 'normal',
+  dedupeKey = null,
 }) {
   try {
     await query(`
-      INSERT INTO notifications (user_email, type, title, message, link, entity_type, entity_id, priority, read, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false, NOW())
-    `, [userEmail, type, title, message, link, entityType, entityId, priority]);
+      INSERT INTO notifications
+        (user_email, type, title, message, link, entity_type, entity_id, priority, read, created_at, dedupe_key)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false, NOW(), $9)
+      ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING
+    `, [userEmail, type, title, message, link, entityType, entityId, priority, dedupeKey]);
     
     return { success: true };
   } catch (error) {
@@ -40,7 +43,7 @@ export async function notifyLeadAssigned(lead, agentId) {
   });
 }
 
-export async function notifyLeadStageChanged(lead, oldStage, newStage, changedByAgentId) {
+export async function notifyLeadStageChanged(lead, oldStage, newStage, changedByAgentId, options = {}) {
   const agentResult = await query(`SELECT email, name FROM agents WHERE id = $1`, [lead.assigned_agent_id || lead.agent_id]);
   const agent = agentResult.rows[0];
   
@@ -60,14 +63,15 @@ export async function notifyLeadStageChanged(lead, oldStage, newStage, changedBy
     'closed_lost': 'Fechado (Perdido)'
   };
   
-  await createNotification({
+  return createNotification({
     userEmail: agent.email,
     type: 'lead_stage_changed',
     title: 'Lead movido de estágio',
     message: `O lead "${lead.name}" foi movido de "${stageNames[oldStage] || oldStage}" para "${stageNames[newStage] || newStage}".`,
     link: `/Leads/${lead.id}`,
     entityType: 'lead',
-    entityId: lead.id
+    entityId: lead.id,
+    dedupeKey: options.dedupeKey || null,
   });
 }
 

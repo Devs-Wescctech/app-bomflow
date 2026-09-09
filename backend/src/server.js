@@ -26,6 +26,7 @@ import postsalesRoutes, {
 } from './routes/postsales.js';
 import leadImportsRoutes from './routes/leadImports.js';
 import erpAuditLogsRoutes from './routes/erpAuditLogs.js';
+import erpApprovalReconciliationRoutes from './routes/erpApprovalReconciliation.js';
 import { installErpFetchAudit, erpOriginMiddleware, withErpOrigin, cleanupErpRequestLogs } from './services/erpAuditService.js';
 import { runAllAutomations, checkValidacaoPagamento } from './services/automationService.js';
 import { syncDeliveryStatuses } from './services/deliveryStatusService.js';
@@ -33,6 +34,7 @@ import cron from 'node-cron';
 import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommissionBatch, sendCommissionReport, runPerspectivaBatch, sendPerspectivaReport, runPresalesAjusteAutoCancel, runPresalesAjusteAvisoPrazo } from './routes/functions.js';
 import { recoverStuckQueues } from './services/whatsappQueueService.js';
 import { deactivateInactiveAgents } from './services/inactivityService.js';
+import { runErpApprovalReconciliation } from './services/erpApprovalReconciliationService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -111,6 +113,7 @@ app.use('/api/presales-ajustes', presalesAjustesRoutes);
 app.use('/api/postsales', postsalesRoutes);
 app.use('/api/lead-imports', leadImportsRoutes);
 app.use('/api/erp-audit', erpAuditLogsRoutes);
+app.use('/api/erp-approval-reconciliation', erpApprovalReconciliationRoutes);
 
 app.use(express.static(distPath));
 
@@ -267,6 +270,20 @@ initDatabase()
         .catch((err) => console.error('[DeliverySync] Erro no ciclo periódico:', err.message));
     }, DELIVERY_SYNC_INTERVAL);
     console.log(`[DeliverySync] Rotina periódica agendada a cada ${DELIVERY_SYNC_INTERVAL / 60000} minutos.`);
+
+    const configuredApprovalInterval = Number(process.env.ERP_APPROVAL_SYNC_INTERVAL_MINUTES || 10);
+    const approvalIntervalMinutes = Number.isFinite(configuredApprovalInterval) && configuredApprovalInterval > 0
+      ? Math.max(1, configuredApprovalInterval)
+      : 10;
+    const runApprovalSync = () => withErpOrigin(
+      'cron:erp-approval-reconciliation',
+      () => runErpApprovalReconciliation({ origin: 'scheduled' })
+        .then((result) => console.log('[ErpApprovalSync] Execução concluída:', result))
+        .catch((error) => console.error('[ErpApprovalSync] Erro:', error.message))
+    );
+    setTimeout(runApprovalSync, 45 * 1000);
+    setInterval(runApprovalSync, approvalIntervalMinutes * 60 * 1000);
+    console.log(`[ErpApprovalSync] Rotina agendada a cada ${approvalIntervalMinutes} minutos.`);
 
     // Validação de pagamento (API_VALIDACAO_PAGAMENTO): fora do ciclo horário.
     // Roda apenas 2x/dia — 01:00 e 22:00 no horário de Brasília — porque a
