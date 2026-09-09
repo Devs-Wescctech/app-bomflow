@@ -52,10 +52,12 @@ export default function DashboardFilters({
   showTeamFilter = true,
   showPeriodFilter = true,
   compact = false,
+  children,
+  hasAdditionalFilters = false,
 }) {
   const [isOpen, setIsOpen] = useState(!compact);
 
-  const hasActiveFilters = selectedAgent || selectedStage || selectedTeam || (selectedPeriod && selectedPeriod !== "all");
+  const hasActiveFilters = selectedAgent || selectedStage || selectedTeam || (selectedPeriod && selectedPeriod !== "all") || hasAdditionalFilters;
 
   const handlePeriodChange = (presetId) => {
     const preset = PERIOD_PRESETS.find(p => p.id === presetId);
@@ -215,6 +217,8 @@ export default function DashboardFilters({
               </Select>
             </div>
           )}
+
+          {children}
 
           <div className="flex gap-2 items-center">
             {hasActiveFilters && (
