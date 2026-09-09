@@ -29,6 +29,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { canViewAll, canViewTeam, getVisibleAgents } from "@/components/utils/permissions.jsx";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
+import { getOperationalSourceLabel, normalizeOperationalSource, OPERATIONAL_SOURCE_GROUPS } from "../../shared/operationalSource.js";
 
 const createPageUrl = (pageName) => `/${pageName}`;
 
@@ -115,12 +116,6 @@ export default function SalesWonReport() {
     return map;
   }, [territories]);
 
-  const sources = useMemo(() => {
-    const s = new Set();
-    leads.forEach(l => { if (l.source) s.add(l.source); });
-    return [...s].sort();
-  }, [leads]);
-
   const displayAgents = useMemo(() => {
     if (!selectedTeam) return allAgents;
     return allAgents.filter(a => String(a.teamId || a.team_id) === String(selectedTeam));
@@ -161,7 +156,7 @@ export default function SalesWonReport() {
         if (!teamAgentIds.includes(leadAgentId)) return false;
       }
 
-      if (selectedSource && lead.source !== selectedSource) return false;
+      if (selectedSource && normalizeOperationalSource(lead.source) !== selectedSource) return false;
 
       if (selectedTerritory) {
         const tid = lead.territoryId || lead.territory_id;
@@ -200,7 +195,7 @@ export default function SalesWonReport() {
       [`Período: ${periodLabel}`],
       [`Total: ${totalRegistros} | Valor Total: R$ ${valorTotal.toFixed(2)} | Ticket Médio: R$ ${ticketMedio.toFixed(2)}`],
       [''],
-      ['Nome', 'Telefone', 'Origem', 'Valor', 'Agente', 'Equipe', 'Território', 'Dt. Criação', 'Dt. Conversão'],
+      ['Nome', 'Telefone', 'Origem Operacional', 'Valor', 'Agente', 'Equipe', 'Território', 'Dt. Criação', 'Dt. Conversão'],
       ...filteredLeads.map(lead => {
         const agent = agentMap[lead.agentId || lead.agent_id];
         const team = teamMap[agent?.teamId || agent?.team_id];
@@ -208,7 +203,7 @@ export default function SalesWonReport() {
         return [
           lead.name || '',
           lead.phone || '',
-          lead.source || '',
+          getOperationalSourceLabel(lead.source),
           `R$ ${(parseFloat(lead.value) || 0).toFixed(2)}`,
           agent?.name || '',
           team?.name || '',
@@ -283,6 +278,7 @@ export default function SalesWonReport() {
         showStageFilter={false}
         showTeamFilter={true}
         showPeriodFilter={true}
+        hasAdditionalFilters={Boolean(selectedSource || selectedTerritory || searchText)}
       />
 
       <div className="flex flex-wrap gap-3">
@@ -295,17 +291,17 @@ export default function SalesWonReport() {
             className="pl-10"
           />
         </div>
-        {sources.length > 0 && (
-          <Select value={selectedSource || "all"} onValueChange={(v) => { setSelectedSource(v === "all" ? null : v); setCurrentPage(1); }}>
+        <Select value={selectedSource || "all"} onValueChange={(v) => { setSelectedSource(v === "all" ? null : v); setCurrentPage(1); }}>
             <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Origem" />
+              <SelectValue placeholder="Origem operacional" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas as origens</SelectItem>
-              {sources.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              {OPERATIONAL_SOURCE_GROUPS.map(group => (
+                <SelectItem key={group.key} value={group.key}>{group.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
-        )}
         {territories.length > 0 && (
           <Select value={selectedTerritory || "all"} onValueChange={(v) => { setSelectedTerritory(v === "all" ? null : v); setCurrentPage(1); }}>
             <SelectTrigger className="w-[180px]">
@@ -381,7 +377,7 @@ export default function SalesWonReport() {
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Nome</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Telefone</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Origem</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Origem operacional</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Valor</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Agente</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Equipe</th>
@@ -417,7 +413,7 @@ export default function SalesWonReport() {
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-400">{lead.phone || '-'}</td>
                         <td className="px-4 py-3 whitespace-nowrap">
-                          {lead.source ? <Badge variant="outline">{lead.source}</Badge> : '-'}
+                          <Badge variant="outline">{getOperationalSourceLabel(lead.source)}</Badge>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-right font-semibold text-emerald-600 dark:text-emerald-400">
                           R$ {(parseFloat(lead.value) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}

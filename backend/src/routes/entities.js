@@ -6,6 +6,7 @@ import { loadAgentMiddleware, requireRole } from '../middleware/permissions.js';
 import { query, pool } from '../config/database.js';
 import { hasManagedErpAgentField, sameCpf } from '../services/erpAgentLinking.js';
 import { acquireAgentMutationLock } from '../services/agentMutationLock.js';
+import { buildPfSalesReport, getEffectivePfReportPermissions, getPfSalesVisibility, OPERATIONAL_SOURCE_GROUPS, OPERATIONAL_SOURCE_SQL } from '../utils/pfSalesReport.js';
 import { 
   notifyLeadAssigned, 
   notifyLeadStageChanged, 
@@ -1454,6 +1455,80 @@ function normalizeSort(sort) {
   };
   return { field: aliases[field] || field.replace(/([A-Z])/g, '_$1').toLowerCase(), dir };
 }
+
+router.get('/reports/sales-pf', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const agentType = req.agent?.agentType;
+    const effectivePermissions = getEffectivePfReportPermissions({
+      userRole: req.user?.role,
+      agentType,
+      permissions: req.agent?.permissions,
+    });
+    if (!effectivePermissions.canAccessReports) {
+      return res.status(403).json({ message: 'Acesso negado ao relatório.' });
+    }
+
+    const { start_date, end_date, stage, agent_id, team_id, operational_source } = req.query;
+    const validSources = new Set(OPERATIONAL_SOURCE_GROUPS.map(group => group.key));
+    if (operational_source && !validSources.has(operational_source)) {
+      return res.status(400).json({ message: 'Classificação operacional inválida.' });
+    }
+
+    const conditions = [];
+    const params = [];
+    const add = (condition, value) => {
+      params.push(value);
+      conditions.push(condition.replaceAll('?', `$${params.length}`));
+    };
+
+    const visibility = getPfSalesVisibility({
+      agentId: req.agent?.id,
+      effectivePermissions,
+    });
+    if (visibility.type === 'none') return res.json(buildPfSalesReport([]));
+    if (visibility.type !== 'all') {
+      if (visibility.type === 'supervised') {
+        add(`(
+          l.agent_id = ? OR l.promoter_id = ?
+          OR l.agent_id IN (SELECT id FROM agents WHERE supervisor_id = ?)
+          OR l.promoter_id IN (SELECT id FROM agents WHERE supervisor_id = ?)
+        )`, visibility.agentId);
+      } else {
+        add('(l.agent_id = ? OR l.promoter_id = ?)', visibility.agentId);
+      }
+    }
+
+    if (start_date) add('l.created_at >= ?::date', start_date);
+    if (end_date) add(`l.created_at < (?::date + interval '1 day')`, end_date);
+    if (stage) add('l.stage = ?', stage);
+    if (agent_id) add('(l.agent_id = ? OR l.promoter_id = ?)', agent_id);
+    if (team_id) add('(a.team_id = ? OR pa.team_id = ?)', team_id);
+    if (operational_source) add(`(${OPERATIONAL_SOURCE_SQL}) = ?`, operational_source);
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const result = await query(`
+      SELECT
+        ${OPERATIONAL_SOURCE_SQL} AS operational_source,
+        l.agent_id,
+        COALESCE(a.name, 'Sem agente') AS agent_name,
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE l.stage IS NULL OR l.stage NOT IN ('fechado_ganho', 'fechado_perdido'))::int AS working,
+        COUNT(*) FILTER (WHERE l.stage = 'fechado_ganho')::int AS won,
+        COUNT(*) FILTER (WHERE l.stage = 'fechado_perdido')::int AS lost,
+        COALESCE(SUM(CASE WHEN l.stage = 'fechado_ganho' THEN l.value ELSE 0 END), 0)::numeric AS revenue
+      FROM leads l
+      LEFT JOIN agents a ON a.id = l.agent_id
+      LEFT JOIN agents pa ON pa.id = l.promoter_id
+      ${where}
+      GROUP BY operational_source, l.agent_id, a.name
+    `, params);
+
+    res.json(buildPfSalesReport(result.rows));
+  } catch (error) {
+    console.error('Error fetching PF sales report:', error);
+    res.status(500).json({ message: 'Erro ao carregar relatório de Vendas PF.' });
+  }
+});
 
 router.get('/leads', authMiddleware, async (req, res) => {
   try {

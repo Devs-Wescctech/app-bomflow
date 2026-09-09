@@ -9,6 +9,7 @@ RUN sed -i 's#http://package-firewall.replit.local/npm/#https://registry.npmjs.o
 
 COPY index.html vite.config.js tailwind.config.js postcss.config.js jsconfig.json components.json ./
 COPY src/ ./src/
+COPY shared/ ./shared/
 COPY public/ ./public/
 
 RUN npm run build
@@ -30,6 +31,8 @@ WORKDIR /app
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 COPY backend/ ./backend/
+COPY package.json ./package.json
+COPY shared/ ./shared/
 COPY docs/ ./docs/
 COPY --from=backend-deps /app/backend/node_modules ./backend/node_modules
 COPY --from=frontend-build /app/dist ./dist

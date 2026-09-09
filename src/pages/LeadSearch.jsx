@@ -34,6 +34,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { createPageUrl } from "@/utils";
 import { canViewAll, canViewTeam, getVisibleAgents } from "@/components/utils/permissions.jsx";
+import { getOperationalSourceLabel, normalizeOperationalSource, OPERATIONAL_SOURCE_GROUPS } from "../../shared/operationalSource.js";
 
 export default function LeadSearch() {
   const navigate = useNavigate();
@@ -41,6 +42,7 @@ export default function LeadSearch() {
   const [searchType, setSearchType] = useState("all");
   const [stageFilter, setStageFilter] = useState("all");
   const [agentFilter, setAgentFilter] = useState("all");
+  const [operationalSourceFilter, setOperationalSourceFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -108,6 +110,10 @@ export default function LeadSearch() {
 
     if (agentFilter !== 'all') {
       leads = leads.filter(l => (l.agentId || l.agent_id) === agentFilter);
+    }
+
+    if (operationalSourceFilter !== 'all') {
+      leads = leads.filter(l => normalizeOperationalSource(l.source) === operationalSourceFilter);
     }
 
     if (dateFrom) {
@@ -180,13 +186,14 @@ export default function LeadSearch() {
       return;
     }
 
-    const headers = ['Nome', 'Telefone', 'CPF', 'Email', 'Estágio', 'Valor Mensal', 'Valor Adesão', 'Valor Total', 'Interesse', 'Endereço', 'Cidade', 'UF', 'Agente', 'Data Criação'];
+    const headers = ['Nome', 'Telefone', 'CPF', 'Email', 'Origem Operacional', 'Estágio', 'Valor Mensal', 'Valor Adesão', 'Valor Total', 'Interesse', 'Endereço', 'Cidade', 'UF', 'Agente', 'Data Criação'];
     
     const rows = dataToExport.map(lead => [
       lead.name || '',
       lead.phone || '',
       lead.cpf || '',
       lead.email || '',
+      getOperationalSourceLabel(lead.source),
       getStageLabel(lead.stage),
       lead.monthlyValue || lead.monthly_value || 0,
       lead.adhesionValue || lead.adhesion_value || 0,
@@ -378,6 +385,20 @@ export default function LeadSearch() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="md:col-span-2">
+                <Label>Origem operacional</Label>
+                <Select value={operationalSourceFilter} onValueChange={handleFilterChange(setOperationalSourceFilter)}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as origens</SelectItem>
+                    {OPERATIONAL_SOURCE_GROUPS.map(group => (
+                      <SelectItem key={group.key} value={group.key}>{group.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
@@ -442,13 +463,14 @@ export default function LeadSearch() {
                 <Filter className="w-4 h-4" />
                 <span>{totalResults} lead(s) encontrado(s)</span>
               </div>
-              {(stageFilter !== 'all' || agentFilter !== 'all' || dateFrom || dateTo || searchQuery) && (
+              {(stageFilter !== 'all' || agentFilter !== 'all' || operationalSourceFilter !== 'all' || dateFrom || dateTo || searchQuery) && (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => {
                     setStageFilter('all');
                     setAgentFilter('all');
+                    setOperationalSourceFilter('all');
                     setDateFrom('');
                     setDateTo('');
                     setSearchQuery('');
@@ -491,6 +513,7 @@ export default function LeadSearch() {
                       <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Telefone</th>
                       <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300 hidden lg:table-cell">Email</th>
                       <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Estágio</th>
+                      <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300">Origem operacional</th>
                       <th className="text-right p-3 font-semibold text-gray-700 dark:text-gray-300 hidden md:table-cell">Valor</th>
                       <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300 hidden lg:table-cell">Agente</th>
                       <th className="text-left p-3 font-semibold text-gray-700 dark:text-gray-300 hidden md:table-cell">Data Criação</th>
@@ -517,6 +540,9 @@ export default function LeadSearch() {
                           <Badge className={`${getStageColor(lead.stage)} text-xs`}>
                             {getStageLabel(lead.stage)}
                           </Badge>
+                        </td>
+                        <td className="p-3">
+                          <Badge variant="outline">{getOperationalSourceLabel(lead.source)}</Badge>
                         </td>
                         <td className="p-3 text-right text-gray-700 dark:text-gray-300 hidden md:table-cell">
                           {lead.value ? `R$ ${Number(lead.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '-'}

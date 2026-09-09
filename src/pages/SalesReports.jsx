@@ -4,6 +4,8 @@ import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   FileBarChart, 
   Download, 
@@ -20,7 +22,7 @@ import {
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { canAccessReports, canViewAll, canViewTeam, getVisibleAgents } from "@/components/utils/permissions.jsx";
+import { canAccessReports, canViewAll, getVisibleAgents } from "@/components/utils/permissions.jsx";
 import DashboardFilters from "@/components/dashboard/DashboardFilters";
 import { LEAD_PF_STAGES } from "@/constants/stages";
 
@@ -32,6 +34,7 @@ export default function SalesReports() {
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [selectedStage, setSelectedStage] = useState(null);
   const [selectedTeam, setSelectedTeam] = useState(null);
+  const [selectedOperationalSource, setSelectedOperationalSource] = useState(null);
 
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
@@ -56,36 +59,6 @@ export default function SalesReports() {
     staleTime: 0,
   });
 
-  const { data: leads = [] } = useQuery({
-    queryKey: ['leads-reports', isAdmin ? 'admin' : currentAgent?.id],
-    queryFn: async () => {
-      const allLeads = await base44.entities.Lead.list('-createdDate', 5000);
-      
-      if (isAdmin) {
-        return allLeads;
-      }
-      
-      if (!currentAgent) return [];
-      
-      if (canViewAll(currentAgent, 'leads')) {
-        return allLeads;
-      }
-      
-      if (canViewTeam(currentAgent, 'leads')) {
-        const visibleAgs = getVisibleAgents(allAgents, currentAgent);
-        const visibleIds = new Set(visibleAgs.map(a => a.id));
-        return allLeads.filter(l => 
-          visibleIds.has(l.agentId || l.agent_id) || visibleIds.has(l.promoterId || l.promoter_id)
-        );
-      }
-      
-      return allLeads.filter(l => 
-        (l.agentId || l.agent_id) === currentAgent?.id || (l.promoterId || l.promoter_id) === currentAgent?.id
-      );
-    },
-    enabled: !!user && hasPermission,
-  });
-
   const salesAgents = useMemo(() => {
     return allAgents.filter(a => {
       const agentType = a.agentType || a.agent_type;
@@ -94,72 +67,40 @@ export default function SalesReports() {
   }, [allAgents]);
 
   const displayAgents = useMemo(() => {
-    if (!selectedTeam) return salesAgents;
-    return salesAgents.filter(a => String(a.teamId || a.team_id) === String(selectedTeam));
-  }, [salesAgents, selectedTeam]);
+    const visibleAgents = isAdmin || canViewAll(currentAgent, 'leads')
+      ? salesAgents
+      : getVisibleAgents(salesAgents, currentAgent);
+    if (!selectedTeam) return visibleAgents;
+    return visibleAgents.filter(a => String(a.teamId || a.team_id) === String(selectedTeam));
+  }, [salesAgents, selectedTeam, currentAgent, isAdmin]);
 
-  const filteredLeads = useMemo(() => {
-    const teamAgentIds = selectedTeam ? displayAgents.map(a => String(a.id)) : null;
+  const reportFilters = useMemo(() => ({
+    start_date: dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : null,
+    end_date: dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : null,
+    agent_id: selectedAgent,
+    stage: selectedStage,
+    team_id: selectedTeam,
+    operational_source: selectedOperationalSource,
+  }), [dateRange, selectedAgent, selectedStage, selectedTeam, selectedOperationalSource]);
 
-    return leads.filter(lead => {
-      const leadDate = new Date(lead.createdDate || lead.createdAt || lead.created_at);
-      
-      if (dateRange?.from) {
-        const start = new Date(dateRange.from);
-        start.setHours(0, 0, 0, 0);
-        if (leadDate < start) return false;
-      }
-      
-      if (dateRange?.to) {
-        const end = new Date(dateRange.to);
-        end.setHours(23, 59, 59, 999);
-        if (leadDate > end) return false;
-      }
+  const { data: report, isLoading } = useQuery({
+    queryKey: ['sales-pf-report', reportFilters],
+    queryFn: () => base44.reports.salesPf(reportFilters),
+    enabled: !!user && hasPermission,
+  });
 
-      if (selectedAgent && lead.agentId !== selectedAgent && lead.promoterId !== selectedAgent) return false;
-      if (selectedStage && lead.stage !== selectedStage) return false;
-
-      if (teamAgentIds && !selectedAgent) {
-        const leadAgentId = String(lead.agentId || lead.agent_id);
-        const leadPromoterId = String(lead.promoterId || lead.promoter_id);
-        if (!teamAgentIds.includes(leadAgentId) && !teamAgentIds.includes(leadPromoterId)) return false;
-      }
-
-      return true;
-    });
-  }, [leads, dateRange, selectedAgent, selectedStage, selectedTeam, displayAgents]);
-
-  const totalLeads = filteredLeads.length;
-  const leadsEmAtendimento = filteredLeads.filter(l => l.stage !== 'fechado_ganho' && l.stage !== 'fechado_perdido').length;
-  const leadsGanhos = filteredLeads.filter(l => l.stage === 'fechado_ganho').length;
-  const leadsPerdidos = filteredLeads.filter(l => l.stage === 'fechado_perdido').length;
-  const taxaConversao = totalLeads > 0 ? ((leadsGanhos / totalLeads) * 100).toFixed(1) : 0;
-  const receitaTotal = filteredLeads
-    .filter(l => l.stage === 'fechado_ganho')
-    .reduce((sum, l) => sum + (parseFloat(l.value) || 0), 0);
-
-  const agentStats = useMemo(() => {
-    return salesAgents.map(agent => {
-      const agentLeads = filteredLeads.filter(l => (l.agentId || l.agent_id) === agent.id);
-      const working = agentLeads.filter(l => l.stage !== 'fechado_ganho' && l.stage !== 'fechado_perdido');
-      const won = agentLeads.filter(l => l.stage === 'fechado_ganho');
-      const lost = agentLeads.filter(l => l.stage === 'fechado_perdido');
-      const revenue = won.reduce((sum, l) => sum + (parseFloat(l.value) || 0), 0);
-      const conversionRate = agentLeads.length > 0 ? ((won.length / agentLeads.length) * 100).toFixed(1) : 0;
-
-      return {
-        agent,
-        total: agentLeads.length,
-        working: working.length,
-        won: won.length,
-        lost: lost.length,
-        revenue,
-        conversionRate: parseFloat(conversionRate)
-      };
-    }).filter(stat => stat.total > 0);
-  }, [salesAgents, filteredLeads]);
-
-  const sortedAgentStats = [...agentStats].sort((a, b) => b.won - a.won);
+  const totals = report?.totals || { total: 0, working: 0, won: 0, lost: 0, revenue: 0, conversionRate: 0 };
+  const totalLeads = totals.total;
+  const leadsEmAtendimento = totals.working;
+  const leadsGanhos = totals.won;
+  const leadsPerdidos = totals.lost;
+  const taxaConversao = totals.conversionRate;
+  const receitaTotal = totals.revenue;
+  const sourceStats = report?.bySource || [];
+  const sortedAgentStats = (report?.byAgent || []).map(stat => ({
+    ...stat,
+    agent: { id: stat.agentId || 'unassigned', name: stat.agentName },
+  }));
   const topPerformer = sortedAgentStats[0];
 
   const handleClearFilters = () => {
@@ -168,6 +109,7 @@ export default function SalesReports() {
     setSelectedAgent(null);
     setSelectedStage(null);
     setSelectedTeam(null);
+    setSelectedOperationalSource(null);
   };
 
   const exportToExcel = () => {
@@ -179,6 +121,15 @@ export default function SalesReports() {
       ['RELATÓRIO DE VENDAS PF - PERFORMANCE POR AGENTE'],
       [`Período: ${periodLabel}`],
       [''],
+      [`Origem operacional: ${sourceStats.find(item => item.key === selectedOperationalSource)?.label || 'Todas'}`],
+      [''],
+      ['ORIGEM OPERACIONAL', 'Total Leads', 'Em Atendimento', 'Ganhos', 'Perdidos', 'Taxa Conversão', 'Receita'],
+      ...sourceStats.map(stat => [
+        stat.label, stat.total, stat.working, stat.won, stat.lost,
+        `${stat.conversionRate}%`, `R$ ${stat.revenue.toFixed(2)}`
+      ]),
+      [''],
+      ['PERFORMANCE POR AGENTE'],
       ['Agente', 'Total Leads', 'Em Atendimento', 'Ganhos', 'Perdidos', 'Taxa Conversão', 'Receita'],
       ...sortedAgentStats.map(stat => [
         stat.agent.name,
@@ -263,7 +214,68 @@ export default function SalesReports() {
         showStageFilter={true}
         showTeamFilter={true}
         showPeriodFilter={true}
-      />
+        hasAdditionalFilters={Boolean(selectedOperationalSource)}
+      >
+        <div className="flex flex-col gap-1.5 min-w-[210px]">
+          <Label className="text-xs text-muted-foreground">Origem operacional</Label>
+          <Select
+            value={selectedOperationalSource || "all"}
+            onValueChange={(value) => setSelectedOperationalSource(value === "all" ? null : value)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Todas as origens" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as origens</SelectItem>
+              <SelectItem value="manual">Cadastro manual</SelectItem>
+              <SelectItem value="spreadsheet_import">Importação por planilha</SelectItem>
+              <SelectItem value="unidentified">Não identificado</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </DashboardFilters>
+
+      <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+        <CardHeader className="border-b border-gray-200 dark:border-gray-800">
+          <CardTitle className="flex items-center gap-2 text-gray-900 dark:text-gray-100">
+            <FileBarChart className="w-5 h-5" />
+            Comparação por Origem Operacional
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-gray-800">
+                <tr>
+                  {['Origem', 'Total', 'Em atendimento', 'Ganhos', 'Perdidos', 'Conversão', 'Receita'].map((title, index) => (
+                    <th key={title} className={`px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider ${index === 0 ? 'text-left' : index === 6 ? 'text-right' : 'text-center'}`}>
+                      {title}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                {sourceStats.map(stat => (
+                  <tr key={stat.key} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-100">{stat.label}</td>
+                    <td className="px-6 py-4 text-center">{stat.total}</td>
+                    <td className="px-6 py-4 text-center">{stat.working}</td>
+                    <td className="px-6 py-4 text-center text-green-600 dark:text-green-400">{stat.won}</td>
+                    <td className="px-6 py-4 text-center text-red-600 dark:text-red-400">{stat.lost}</td>
+                    <td className="px-6 py-4 text-center font-semibold">{stat.conversionRate}%</td>
+                    <td className="px-6 py-4 text-right font-semibold text-orange-600 dark:text-orange-400">
+                      R$ {stat.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                ))}
+                {!isLoading && sourceStats.length === 0 && (
+                  <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-500">Nenhum dado disponível</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
         <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-lg transition-shadow">

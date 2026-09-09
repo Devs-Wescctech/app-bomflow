@@ -307,6 +307,7 @@ CREATE TABLE IF NOT EXISTS leads (
     source VARCHAR(100),
     stage VARCHAR(50) DEFAULT 'novo',
     agent_id UUID REFERENCES agents(id),
+    promoter_id UUID REFERENCES agents(id),
     territory_id UUID REFERENCES territories(id),
     value DECIMAL(15,2),
     status VARCHAR(50) DEFAULT 'active',
@@ -687,6 +688,7 @@ ALTER TABLE tickets ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id);
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS assigned_agent_id UUID REFERENCES agents(id);
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS stage_changed_at TIMESTAMP;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS promoter_id UUID REFERENCES agents(id);
 
 ALTER TABLE lead_automations ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 0;
 ALTER TABLE lead_automations ADD COLUMN IF NOT EXISTS stop_on_trigger BOOLEAN DEFAULT FALSE;
@@ -823,6 +825,7 @@ CREATE INDEX IF NOT EXISTS idx_tickets_queue ON tickets(queue_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_created ON tickets(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tickets_assigned_agent_id ON tickets(assigned_agent_id);
 CREATE INDEX IF NOT EXISTS idx_leads_agent ON leads(agent_id);
+CREATE INDEX IF NOT EXISTS idx_leads_promoter ON leads(promoter_id);
 CREATE INDEX IF NOT EXISTS idx_leads_stage ON leads(stage);
 CREATE INDEX IF NOT EXISTS idx_leads_assigned_agent_id ON leads(assigned_agent_id);
 CREATE INDEX IF NOT EXISTS idx_leads_pj_agent ON leads_pj(agent_id);

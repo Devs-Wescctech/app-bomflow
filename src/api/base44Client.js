@@ -76,6 +76,16 @@ function createEntityClient(entityName) {
 }
 
 export const base44 = {
+  reports: {
+    salesPf: async (filters = {}) => {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') params.append(key, value);
+      });
+      const query = params.toString() ? `?${params.toString()}` : '';
+      return fetchAPI(`/reports/sales-pf${query}`);
+    },
+  },
   auth: {
     me: async () => {
       return await fetchAPI('/auth/me');
