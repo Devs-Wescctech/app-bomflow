@@ -144,6 +144,26 @@ export function getErpPool() {
   return getPool();
 }
 
+/**
+ * Consulta em lote apenas a situação dos pedidos rastreados pelo Bom Flow.
+ * Mantém a reconciliação desacoplada das leituras de tela e evita carregar o
+ * relatório completo para uma decisão que depende somente de id + situação.
+ */
+export async function getPedidoSituacoes(pedidoIds = []) {
+  const ids = [...new Set(pedidoIds.map(Number).filter(Number.isFinite))];
+  if (ids.length === 0) return [];
+  const db = getPool();
+  const result = await queryErpDb(
+    db,
+    `SELECT id AS erp_pedido_id, situacao
+       FROM pedidos
+      WHERE id = ANY($1::bigint[])`,
+    [ids],
+    'Erro ao consultar situações dos pedidos para reconciliação'
+  );
+  return result.rows;
+}
+
 export async function findPessoaIdByCpf(cpf) {
   const formatted = formatCpfDigits(cpf);
   if (!formatted) return null;
