@@ -72,7 +72,7 @@ function SkeletonCard() {
 function TrainingCard({ training, index, total, admin, onEdit, onDelete, onMove, onTogglePublish, onOpen, onDownload, onResume, busy }) {
   return (
     <article className="group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-[hsl(174_18%_84%)] bg-white shadow-[0_8px_24px_-20px_hsl(174_45%_20%/.45)] transition duration-200 hover:-translate-y-0.5 hover:border-[hsl(174_38%_65%)] hover:shadow-[0_14px_34px_-22px_hsl(174_45%_20%/.55)]">
-      <button type="button" className="text-left" onClick={() => onOpen(training)} aria-label={`Abrir ${training.title}`}>
+      <button type="button" className="text-left disabled:cursor-default" onClick={() => onOpen(training)} disabled={!training.size_bytes} aria-label={`Abrir ${training.title}`}>
         <Cover training={training} />
       </button>
       <div className="flex flex-1 flex-col p-5">
@@ -169,14 +169,29 @@ export default function ProductTraining() {
   const publish = useMutation({ mutationFn: ({ id, published }) => trainingApi.update(id, { published }), onSuccess: invalidate });
   const openTraining = async (item) => {
     if (item.media_type === "pdf") {
-      try { const data = await trainingApi.access(item.id); const url = data?.url || data?.temporaryUrl || data; window.open(url, "_blank", "noopener,noreferrer"); } catch { setNotice("Não foi possível abrir este PDF."); }
+      const popup = window.open("about:blank", "_blank");
+      if (popup) popup.opener = null;
+      try {
+        const data = await trainingApi.access(item.id);
+        const url = data?.url || data?.temporaryUrl || data;
+        if (popup) popup.location.replace(url);
+        else window.location.assign(url);
+      } catch {
+        popup?.close();
+        setNotice("Não foi possível abrir este PDF.");
+      }
     } else setViewer(item);
   };
   const downloadTraining = async (item) => {
+    const popup = window.open("about:blank", "_blank");
+    if (popup) popup.opener = null;
     try {
       const result = await trainingApi.access(item.id, true);
-      window.open(result?.url || result?.temporaryUrl || result, "_blank", "noopener,noreferrer");
+      const url = result?.url || result?.temporaryUrl || result;
+      if (popup) popup.location.replace(url);
+      else window.location.assign(url);
     } catch {
+      popup?.close();
       setNotice("Não foi possível baixar este arquivo.");
     }
   };

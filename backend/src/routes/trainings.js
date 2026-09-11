@@ -442,6 +442,9 @@ router.get('/:id/access', async (req, res, next) => {
       [req.params.id]
     )).rows[0];
     if (!training) return res.status(404).json({ message: 'Treinamento não encontrado.' });
+    if (!training.media_object_path || training.upload_status !== 'ready') {
+      return res.status(422).json({ message: 'Este treinamento ainda não possui uma mídia pronta.' });
+    }
     if (req.query.download === '1') {
       const token = jwt.sign(
         { purpose: 'training-download', trainingId: training.id },
