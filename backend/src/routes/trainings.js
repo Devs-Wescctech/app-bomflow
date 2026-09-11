@@ -163,12 +163,21 @@ router.get('/', async (req, res, next) => {
   try {
     const isAdmin = isCurrentAdmin(req);
     const result = await query(
-      `SELECT id, title, description, media_type, original_name, mime_type, size_bytes,
-              sort_order, published, upload_status, cover_object_path IS NOT NULL AS has_cover,
-              created_at, updated_at
-         FROM trainings
-        ${isAdmin ? '' : "WHERE published = true AND upload_status = 'ready'"}
-        ORDER BY sort_order ASC, created_at ASC`
+      `SELECT t.id, t.title, t.description, t.media_type, t.original_name, t.mime_type, t.size_bytes,
+              t.sort_order, t.published, t.upload_status, t.cover_object_path IS NOT NULL AS has_cover,
+              t.created_at, t.updated_at,
+              u.id AS pending_upload_id, u.original_name AS pending_original_name,
+              u.mime_type AS pending_mime_type, u.expected_size AS pending_expected_size,
+              u.asset_kind AS pending_asset_kind
+         FROM trainings t
+         LEFT JOIN LATERAL (
+           SELECT id, original_name, mime_type, expected_size, asset_kind
+             FROM training_uploads
+            WHERE training_id=t.id AND completed_at IS NULL AND expires_at > NOW()
+            ORDER BY created_at DESC LIMIT 1
+         ) u ON ${isAdmin ? 'true' : 'false'}
+        ${isAdmin ? '' : "WHERE t.published = true AND t.upload_status = 'ready'"}
+        ORDER BY t.sort_order ASC, t.created_at ASC`
     );
     res.json({ trainings: result.rows, canAdminister: isAdmin, storageConfigured: isTrainingStorageConfigured() });
   } catch (error) {
@@ -271,12 +280,36 @@ router.post('/:id/uploads', adminOnly, async (req, res, next) => {
     const uploadId = randomUUID();
     await query(
       `INSERT INTO training_uploads
-       (id, training_id, asset_kind, object_path, original_name, mime_type, expected_size, expires_at, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,NOW() + INTERVAL '1 hour',$8)`,
-      [uploadId, training.id, kind, signed.objectPath, String(req.body.originalName || 'arquivo'), mimeType, sizeBytes, req.user?.id || null]
+       (id, training_id, asset_kind, object_path, upload_url, original_name, mime_type, expected_size, expires_at, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW() + INTERVAL '7 days',$9)`,
+      [uploadId, training.id, kind, signed.objectPath, signed.uploadUrl, String(req.body.originalName || 'arquivo'), mimeType, sizeBytes, req.user?.id || null]
     );
-    if (kind !== 'cover') await query(`UPDATE trainings SET upload_status = 'uploading', published = false WHERE id = $1`, [training.id]);
+    if (kind !== 'cover' && !training.media_object_path) {
+      await query(`UPDATE trainings SET upload_status = 'uploading' WHERE id = $1`, [training.id]);
+    }
     res.status(201).json({ uploadId, uploadUrl: signed.uploadUrl, expiresIn: signed.expiresIn });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id/uploads/:uploadId/resume', adminOnly, async (req, res, next) => {
+  try {
+    const upload = (await query(
+      `SELECT id, upload_url, original_name, mime_type, expected_size, asset_kind
+         FROM training_uploads
+        WHERE id=$1 AND training_id=$2 AND completed_at IS NULL AND expires_at > NOW()`,
+      [req.params.uploadId, req.params.id]
+    )).rows[0];
+    if (!upload) return res.status(404).json({ message: 'Envio pendente não encontrado ou expirado.' });
+    res.json({
+      uploadId: upload.id,
+      uploadUrl: upload.upload_url,
+      originalName: upload.original_name,
+      mimeType: upload.mime_type,
+      sizeBytes: Number(upload.expected_size),
+      kind: upload.asset_kind,
+    });
   } catch (error) {
     next(error);
   }
@@ -294,7 +327,11 @@ router.delete('/:id/uploads/:uploadId', adminOnly, async (req, res, next) => {
       await query('DELETE FROM training_uploads WHERE id=$1 AND completed_at IS NULL', [req.params.uploadId]);
     }
     if (upload && upload.asset_kind !== 'cover') {
-      await query(`UPDATE trainings SET upload_status='failed', published=false WHERE id=$1`, [req.params.id]);
+      await query(
+        `UPDATE trainings SET upload_status=CASE WHEN media_object_path IS NULL THEN 'failed' ELSE 'ready' END
+          WHERE id=$1`,
+        [req.params.id]
+      );
     }
     res.json({ success: true });
   } catch (error) {
@@ -384,7 +421,13 @@ router.post('/:id/uploads/:uploadId/complete', adminOnly, async (req, res, next)
       await query(`UPDATE training_uploads SET expires_at=NOW() WHERE id=$1`, [upload.id]).catch(() => {});
     }
     if (upload?.id) {
-      if (upload.asset_kind !== 'cover') await query(`UPDATE trainings SET upload_status='failed', published=false WHERE id=$1`, [upload.training_id]).catch(() => {});
+      if (upload.asset_kind !== 'cover') {
+        await query(
+          `UPDATE trainings SET upload_status=CASE WHEN media_object_path IS NULL THEN 'failed' ELSE 'ready' END
+            WHERE id=$1`,
+          [upload.training_id]
+        ).catch(() => {});
+      }
     }
     error.statusCode = error.statusCode || 422;
     next(error);

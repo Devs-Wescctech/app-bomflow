@@ -69,7 +69,7 @@ function SkeletonCard() {
   return <div className="animate-pulse overflow-hidden rounded-2xl border border-[hsl(174_20%_84%)] bg-white"><div className="h-40 bg-[hsl(174_20%_92%)]" /><div className="space-y-3 p-5"><div className="h-4 w-3/4 rounded bg-[hsl(174_20%_90%)]" /><div className="h-3 w-full rounded bg-[hsl(174_20%_93%)]" /><div className="h-3 w-1/2 rounded bg-[hsl(174_20%_93%)]" /></div></div>;
 }
 
-function TrainingCard({ training, index, total, admin, onEdit, onDelete, onMove, onTogglePublish, onOpen, onDownload, busy }) {
+function TrainingCard({ training, index, total, admin, onEdit, onDelete, onMove, onTogglePublish, onOpen, onDownload, onResume, busy }) {
   return (
     <article className="group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-[hsl(174_18%_84%)] bg-white shadow-[0_8px_24px_-20px_hsl(174_45%_20%/.45)] transition duration-200 hover:-translate-y-0.5 hover:border-[hsl(174_38%_65%)] hover:shadow-[0_14px_34px_-22px_hsl(174_45%_20%/.55)]">
       <button type="button" className="text-left" onClick={() => onOpen(training)} aria-label={`Abrir ${training.title}`}>
@@ -96,6 +96,7 @@ function TrainingCard({ training, index, total, admin, onEdit, onDelete, onMove,
             </div>
           ) : <div className="flex items-center gap-1">{training.media_type === "pdf" && <button type="button" onClick={() => onDownload(training)} className="rounded-lg p-2 text-[hsl(174_62%_35%)] hover:bg-[hsl(174_34%_94%)]" title="Baixar PDF"><Download className="h-4 w-4" /></button>}<ChevronRight className="h-4 w-4 text-[hsl(174_62%_35%)] transition-transform group-hover:translate-x-1" /></div>}
         </div>
+        {admin && training.pending_upload_id && <button type="button" onClick={() => onResume(training)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-[hsl(43_65%_72%)] bg-[hsl(43_73%_94%)] px-3 py-2 text-xs font-semibold text-[hsl(33_60%_30%)] hover:bg-[hsl(43_73%_90%)]"><UploadCloud className="h-4 w-4" />Retomar envio de {training.pending_original_name}</button>}
       </div>
     </article>
   );
@@ -159,6 +160,7 @@ export default function ProductTraining() {
   const [editor, setEditor] = useState(null);
   const [viewer, setViewer] = useState(null);
   const [notice, setNotice] = useState("");
+  const [resumeProgress, setResumeProgress] = useState(null);
   const filtered = useMemo(() => catalog.filter((item) => `${item.title} ${item.description || ""}`.toLowerCase().includes(search.toLowerCase())), [catalog, search]);
   const invalidate = () => client.invalidateQueries({ queryKey });
   const save = useMutation({ mutationFn: ({ id, payload }) => id ? trainingApi.update(id, payload) : trainingApi.create(payload), onSuccess: invalidate });
@@ -190,8 +192,8 @@ export default function ProductTraining() {
         await trainingApi.uploadFile(started.url || started.uploadUrl, file, (p) => setProgress(p * (cover ? 0.8 : 1)));
         await trainingApi.completeUpload(id, started.uploadId || started.id);
       } catch (error) {
-        await trainingApi.cancelUpload(id, started.uploadId || started.id).catch(() => {});
-        throw error;
+        await invalidate();
+        throw new Error(`${error.message || "O envio foi interrompido."} O envio pendente foi preservado; feche esta janela e use “Retomar envio” no card.`);
       }
     }
     if (cover) {
@@ -200,11 +202,38 @@ export default function ProductTraining() {
         await trainingApi.uploadFile(started.url || started.uploadUrl, cover, (p) => setProgress(file ? 80 + p * 0.2 : p));
         await trainingApi.completeUpload(id, started.uploadId || started.id);
       } catch (error) {
-        await trainingApi.cancelUpload(id, started.uploadId || started.id).catch(() => {});
-        throw error;
+        await invalidate();
+        throw new Error(`${error.message || "O envio foi interrompido."} O envio pendente foi preservado; feche esta janela e use “Retomar envio” no card.`);
       }
     }
     setProgress(100); await invalidate(); setNotice(editor.editing ? "Conteúdo atualizado." : "Conteúdo criado."); setEditor(null);
+  };
+  const resumeUpload = (training) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = training.pending_mime_type || (training.media_type === "video" ? "video/mp4,video/webm" : "application/pdf");
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      if (file.name !== training.pending_original_name || file.size !== Number(training.pending_expected_size) || (file.type && file.type !== training.pending_mime_type)) {
+        setNotice(`Selecione novamente o mesmo arquivo: ${training.pending_original_name}.`);
+        return;
+      }
+      setResumeProgress({ title: training.title, value: 0 });
+      try {
+        const session = await trainingApi.resumeUpload(training.id, training.pending_upload_id);
+        await trainingApi.uploadFile(session.uploadUrl, file, (value) => setResumeProgress({ title: training.title, value }));
+        await trainingApi.completeUpload(training.id, training.pending_upload_id);
+        await invalidate();
+        setNotice("Envio retomado e finalizado.");
+      } catch (error) {
+        await invalidate();
+        setNotice(error.message || "Não foi possível retomar o envio. Você pode tentar novamente.");
+      } finally {
+        setResumeProgress(null);
+      }
+    };
+    input.click();
   };
   const move = (training, direction) => {
     if (search) return;
@@ -220,10 +249,11 @@ export default function ProductTraining() {
     <div className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8 lg:py-10">
       <header className="mb-8 flex flex-col gap-6 border-b border-[hsl(174_18%_86%)] pb-7 lg:flex-row lg:items-end lg:justify-between"><div><div className="mb-4 flex items-center gap-2 text-[hsl(174_62%_35%)]"><div className="rounded-lg bg-[hsl(174_34%_89%)] p-2"><BookOpen className="h-5 w-5" /></div><span className="font-mono text-xs font-semibold tracking-[.2em]">ELOOM / ACADEMY</span></div><h1 className="font-[Space_Grotesk] text-3xl font-semibold tracking-tight sm:text-4xl">Treinamentos</h1><p className="mt-2 max-w-xl text-sm leading-6 text-[hsl(220_12%_47%)]">Aprenda no seu ritmo. Conteúdos curados para deixar cada atendimento mais seguro e mais humano.</p></div><div className="flex flex-col gap-2 sm:flex-row">{admin && <button onClick={() => setEditor({ value: { title: "", description: "", mediaType: "video" } })} className="action-pill-primary"><Plus className="h-4 w-4" />Novo treinamento</button>}<div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(220_12%_55%)]" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar conteúdo" className="eloom-field min-w-[220px] pl-9" /></div></div></header>
       {notice && <div className="mb-5 flex items-center justify-between rounded-xl border border-[hsl(155_42%_78%)] bg-[hsl(155_45%_94%)] px-4 py-3 text-sm text-[hsl(155_48%_27%)]"><span className="flex items-center gap-2"><Check className="h-4 w-4" />{notice}</span><button onClick={() => setNotice("")} aria-label="Fechar aviso"><X className="h-4 w-4" /></button></div>}
+      {resumeProgress && <div className="mb-5 rounded-xl border border-[hsl(174_38%_75%)] bg-[hsl(174_34%_95%)] p-4"><div className="mb-2 flex justify-between text-xs font-semibold"><span>Retomando {resumeProgress.title}</span><span>{resumeProgress.value}%</span></div><div className="h-2 overflow-hidden rounded-full bg-[hsl(174_20%_87%)]"><div className="h-full bg-[hsl(174_62%_35%)] transition-[width]" style={{ width: `${resumeProgress.value}%` }} /></div></div>}
       {admin && !storageConfigured && <div className="mb-6 flex items-start gap-3 rounded-2xl border border-[hsl(43_65%_72%)] bg-[hsl(43_73%_94%)] p-4 text-sm text-[hsl(33_60%_30%)]"><Cloud className="mt-0.5 h-5 w-5 shrink-0" /><div><strong>Armazenamento indisponível</strong><p className="mt-1">Você pode organizar o catálogo, mas novos uploads ficarão bloqueados até a configuração ser restaurada.</p></div></div>}
       <div className="mb-6 flex flex-wrap items-center gap-3 text-xs text-[hsl(220_12%_50%)]"><span className="rounded-full bg-[hsl(174_34%_91%)] px-3 py-1.5 font-semibold text-[hsl(174_62%_30%)]">{catalog.length} {catalog.length === 1 ? "conteúdo" : "conteúdos"}</span>{admin ? <span className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" />Modo administrador</span> : <span className="flex items-center gap-1.5"><LockKeyhole className="h-3.5 w-3.5" />Biblioteca publicada</span>}</div>
       {admin && search && filtered.length > 0 && <p className="mb-4 text-xs text-[hsl(220_12%_50%)]">Limpe a busca para reordenar os conteúdos.</p>}
-      {isLoading ? <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{[1, 2, 3].map((item) => <SkeletonCard key={item} />)}</div> : isError ? <div className="rounded-2xl border border-[hsl(0_55%_82%)] bg-[hsl(0_70%_97%)] p-8 text-center"><AlertCircle className="mx-auto mb-3 h-8 w-8 text-[hsl(0_60%_47%)]" /><h2 className="font-semibold">Não foi possível carregar os treinamentos</h2><p className="mt-1 text-sm text-[hsl(220_12%_48%)]">Tente novamente em instantes.</p><button onClick={() => refetch()} className="btn-secondary mt-5"><RefreshCw className="h-4 w-4" />Tentar novamente</button></div> : filtered.length ? <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{filtered.map((item, index) => <TrainingCard key={item.id} training={item} index={index} total={filtered.length} admin={admin} onOpen={openTraining} onDownload={downloadTraining} onEdit={(training) => setEditor({ editing: training, value: { title: training.title, description: training.description || "", mediaType: training.media_type } })} onDelete={deleteItem} onTogglePublish={(training) => publish.mutate({ id: training.id, published: !training.published })} onMove={move} busy={Boolean(search) || reorder.isPending || publish.isPending} />)}</div> : <div className="rounded-2xl border border-dashed border-[hsl(174_25%_78%)] bg-[hsl(174_34%_96%)] px-6 py-16 text-center"><MoreHorizontal className="mx-auto mb-3 h-8 w-8 text-[hsl(174_62%_35%)]" /><h2 className="font-[Space_Grotesk] text-xl font-semibold">{search ? "Nenhum resultado" : "A biblioteca está começando"}</h2><p className="mx-auto mt-2 max-w-md text-sm text-[hsl(220_12%_48%)]">{search ? "Tente buscar por outro título ou descrição." : admin ? "Crie o primeiro treinamento para sua equipe." : "Os próximos conteúdos publicados aparecerão aqui."}</p>{admin && !search && <button onClick={() => setEditor({ value: { title: "", description: "", mediaType: "video" } })} className="action-pill-primary mt-5"><Plus className="h-4 w-4" />Adicionar conteúdo</button>}</div>}
+      {isLoading ? <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{[1, 2, 3].map((item) => <SkeletonCard key={item} />)}</div> : isError ? <div className="rounded-2xl border border-[hsl(0_55%_82%)] bg-[hsl(0_70%_97%)] p-8 text-center"><AlertCircle className="mx-auto mb-3 h-8 w-8 text-[hsl(0_60%_47%)]" /><h2 className="font-semibold">Não foi possível carregar os treinamentos</h2><p className="mt-1 text-sm text-[hsl(220_12%_48%)]">Tente novamente em instantes.</p><button onClick={() => refetch()} className="btn-secondary mt-5"><RefreshCw className="h-4 w-4" />Tentar novamente</button></div> : filtered.length ? <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{filtered.map((item, index) => <TrainingCard key={item.id} training={item} index={index} total={filtered.length} admin={admin} onOpen={openTraining} onDownload={downloadTraining} onResume={resumeUpload} onEdit={(training) => setEditor({ editing: training, value: { title: training.title, description: training.description || "", mediaType: training.media_type } })} onDelete={deleteItem} onTogglePublish={(training) => publish.mutate({ id: training.id, published: !training.published })} onMove={move} busy={Boolean(search) || reorder.isPending || publish.isPending || Boolean(resumeProgress)} />)}</div> : <div className="rounded-2xl border border-dashed border-[hsl(174_25%_78%)] bg-[hsl(174_34%_96%)] px-6 py-16 text-center"><MoreHorizontal className="mx-auto mb-3 h-8 w-8 text-[hsl(174_62%_35%)]" /><h2 className="font-[Space_Grotesk] text-xl font-semibold">{search ? "Nenhum resultado" : "A biblioteca está começando"}</h2><p className="mx-auto mt-2 max-w-md text-sm text-[hsl(220_12%_48%)]">{search ? "Tente buscar por outro título ou descrição." : admin ? "Crie o primeiro treinamento para sua equipe." : "Os próximos conteúdos publicados aparecerão aqui."}</p>{admin && !search && <button onClick={() => setEditor({ value: { title: "", description: "", mediaType: "video" } })} className="action-pill-primary mt-5"><Plus className="h-4 w-4" />Adicionar conteúdo</button>}</div>}
     </div>
     {editor && <Editor value={editor.value} onChange={(value) => setEditor({ ...editor, value })} editing={editor.editing} onClose={() => !save.isPending && setEditor(null)} onSave={saveEditor} saving={save.isPending} />}
     {viewer && <Viewer item={viewer} onClose={() => setViewer(null)} />}

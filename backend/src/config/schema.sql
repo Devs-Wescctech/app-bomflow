@@ -402,6 +402,7 @@ CREATE TABLE IF NOT EXISTS training_uploads (
     training_id UUID NOT NULL REFERENCES trainings(id) ON DELETE CASCADE,
     asset_kind VARCHAR(16) NOT NULL,
     object_path TEXT NOT NULL UNIQUE,
+    upload_url TEXT,
     original_name VARCHAR(500) NOT NULL,
     mime_type VARCHAR(128) NOT NULL,
     expected_size BIGINT NOT NULL,
@@ -412,6 +413,7 @@ CREATE TABLE IF NOT EXISTS training_uploads (
 );
 CREATE INDEX IF NOT EXISTS idx_training_uploads_expiry ON training_uploads(expires_at)
   WHERE completed_at IS NULL;
+ALTER TABLE training_uploads ADD COLUMN IF NOT EXISTS upload_url TEXT;
 
 CREATE TABLE IF NOT EXISTS training_object_deletions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

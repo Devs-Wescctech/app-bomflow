@@ -38,6 +38,7 @@ export const trainingApi = {
     method: 'POST',
     body: JSON.stringify({}),
   }),
+  resumeUpload: (id, uploadId) => request(`/${id}/uploads/${uploadId}/resume`),
   cancelUpload: (id, uploadId) => request(`/${id}/uploads/${uploadId}`, { method: 'DELETE' }),
   uploadFile: async (url, file, onProgress) => {
     const probe = () => new Promise((resolve, reject) => {
