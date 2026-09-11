@@ -10,7 +10,6 @@ import {
   Check,
   ChevronRight,
   Cloud,
-  Download,
   FileText,
   Film,
   ImagePlus,
@@ -69,7 +68,7 @@ function SkeletonCard() {
   return <div className="animate-pulse overflow-hidden rounded-2xl border border-[hsl(174_20%_84%)] bg-white"><div className="h-40 bg-[hsl(174_20%_92%)]" /><div className="space-y-3 p-5"><div className="h-4 w-3/4 rounded bg-[hsl(174_20%_90%)]" /><div className="h-3 w-full rounded bg-[hsl(174_20%_93%)]" /><div className="h-3 w-1/2 rounded bg-[hsl(174_20%_93%)]" /></div></div>;
 }
 
-function TrainingCard({ training, index, total, admin, onEdit, onDelete, onMove, onTogglePublish, onOpen, onDownload, onResume, busy }) {
+function TrainingCard({ training, index, total, admin, onEdit, onDelete, onMove, onTogglePublish, onOpen, onResume, busy }) {
   return (
     <article className="group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-[hsl(174_18%_84%)] bg-white shadow-[0_8px_24px_-20px_hsl(174_45%_20%/.45)] transition duration-200 hover:-translate-y-0.5 hover:border-[hsl(174_38%_65%)] hover:shadow-[0_14px_34px_-22px_hsl(174_45%_20%/.55)]">
       <button type="button" className="text-left disabled:cursor-default" onClick={() => onOpen(training)} disabled={!training.size_bytes} aria-label={`Abrir ${training.title}`}>
@@ -94,7 +93,7 @@ function TrainingCard({ training, index, total, admin, onEdit, onDelete, onMove,
               <button type="button" className="rounded-lg p-2 text-[hsl(220_12%_52%)] hover:bg-[hsl(174_34%_94%)] hover:text-[hsl(174_62%_35%)]" onClick={() => onEdit(training)} title="Editar"><Pencil className="h-4 w-4" /></button>
               <button type="button" className="rounded-lg p-2 text-[hsl(0_60%_47%)] hover:bg-[hsl(0_70%_96%)]" onClick={() => onDelete(training)} title="Excluir"><Trash2 className="h-4 w-4" /></button>
             </div>
-          ) : <div className="flex items-center gap-1">{training.media_type === "pdf" && <button type="button" onClick={() => onDownload(training)} className="rounded-lg p-2 text-[hsl(174_62%_35%)] hover:bg-[hsl(174_34%_94%)]" title="Baixar PDF"><Download className="h-4 w-4" /></button>}<ChevronRight className="h-4 w-4 text-[hsl(174_62%_35%)] transition-transform group-hover:translate-x-1" /></div>}
+          ) : <ChevronRight className="h-4 w-4 text-[hsl(174_62%_35%)] transition-transform group-hover:translate-x-1" />}
         </div>
         {admin && training.pending_upload_id && <button type="button" onClick={() => onResume(training)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-[hsl(43_65%_72%)] bg-[hsl(43_73%_94%)] px-3 py-2 text-xs font-semibold text-[hsl(33_60%_30%)] hover:bg-[hsl(43_73%_90%)]"><UploadCloud className="h-4 w-4" />Retomar envio de {training.pending_original_name}</button>}
       </div>
@@ -147,7 +146,8 @@ function Editor({ value, onChange, onClose, onSave, saving, editing }) {
 function Viewer({ item, onClose }) {
   const { data, isLoading, isError } = useQuery({ queryKey: ["training-access", item.id], queryFn: () => trainingApi.access(item.id), staleTime: 0 });
   const url = data?.url || data?.temporaryUrl || data;
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-[hsl(220_24%_16%/.7)] p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="training-view-title"><div className="flex h-[min(90dvh,760px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-[hsl(40_33%_98%)] shadow-2xl"><header className="flex items-center justify-between gap-4 border-b border-[hsl(174_18%_86%)] px-5 py-4"><div className="min-w-0"><p className="font-mono text-[10px] tracking-[.16em] text-[hsl(174_62%_35%)]">{typeLabel(item.media_type)}</p><h2 id="training-view-title" className="truncate font-[Space_Grotesk] font-semibold">{item.title}</h2></div><div className="flex items-center gap-2">{url && <a href={url} target="_blank" rel="noreferrer" download={item.original_name} className="btn-secondary"><Download className="h-4 w-4" />Baixar</a>}<button onClick={onClose} className="rounded-lg p-2 hover:bg-[hsl(174_34%_91%)]" aria-label="Fechar"><X className="h-5 w-5" /></button></div></header><div className="min-h-0 flex-1 bg-[hsl(220_16%_13%)] p-3">{isLoading ? <div className="flex h-full items-center justify-center text-white"><Loader2 className="h-6 w-6 animate-spin" /></div> : isError ? <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-white"><AlertCircle className="h-8 w-8 text-[hsl(43_73%_64%)]" /><p>Não foi possível abrir este arquivo.</p></div> : item.media_type === "video" ? <video src={url} controls autoPlay className="h-full w-full rounded-lg object-contain" /> : <iframe src={url} title={item.title} className="h-full w-full rounded-lg bg-white" />}</div></div></div>;
+  const viewUrl = item.media_type === "pdf" && url ? `${url}#toolbar=0&navpanes=0&scrollbar=1` : url;
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-[hsl(220_24%_16%/.7)] p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="training-view-title"><div className="flex h-[min(90dvh,760px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-[hsl(40_33%_98%)] shadow-2xl"><header className="flex items-center justify-between gap-4 border-b border-[hsl(174_18%_86%)] px-5 py-4"><div className="min-w-0"><p className="font-mono text-[10px] tracking-[.16em] text-[hsl(174_62%_35%)]">{typeLabel(item.media_type)}</p><h2 id="training-view-title" className="truncate font-[Space_Grotesk] font-semibold">{item.title}</h2></div><button onClick={onClose} className="rounded-lg p-2 hover:bg-[hsl(174_34%_91%)]" aria-label="Fechar"><X className="h-5 w-5" /></button></header><div className="min-h-0 flex-1 bg-[hsl(220_16%_13%)] p-3">{isLoading ? <div className="flex h-full items-center justify-center text-white"><Loader2 className="h-6 w-6 animate-spin" /></div> : isError ? <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-white"><AlertCircle className="h-8 w-8 text-[hsl(43_73%_64%)]" /><p>Não foi possível abrir este arquivo.</p></div> : item.media_type === "video" ? <video src={viewUrl} controls controlsList="nodownload noremoteplayback" disablePictureInPicture onContextMenu={(event) => event.preventDefault()} autoPlay className="h-full w-full rounded-lg object-contain" /> : <iframe src={viewUrl} title={item.title} className="h-full w-full rounded-lg bg-white" />}</div></div></div>;
 }
 
 export default function ProductTraining() {
@@ -167,34 +167,7 @@ export default function ProductTraining() {
   const remove = useMutation({ mutationFn: trainingApi.remove, onSuccess: invalidate });
   const reorder = useMutation({ mutationFn: trainingApi.reorder, onSuccess: invalidate });
   const publish = useMutation({ mutationFn: ({ id, published }) => trainingApi.update(id, { published }), onSuccess: invalidate });
-  const openTraining = async (item) => {
-    if (item.media_type === "pdf") {
-      const popup = window.open("about:blank", "_blank");
-      if (popup) popup.opener = null;
-      try {
-        const data = await trainingApi.access(item.id);
-        const url = data?.url || data?.temporaryUrl || data;
-        if (popup) popup.location.replace(url);
-        else window.location.assign(url);
-      } catch {
-        popup?.close();
-        setNotice("Não foi possível abrir este PDF.");
-      }
-    } else setViewer(item);
-  };
-  const downloadTraining = async (item) => {
-    const popup = window.open("about:blank", "_blank");
-    if (popup) popup.opener = null;
-    try {
-      const result = await trainingApi.access(item.id, true);
-      const url = result?.url || result?.temporaryUrl || result;
-      if (popup) popup.location.replace(url);
-      else window.location.assign(url);
-    } catch {
-      popup?.close();
-      setNotice("Não foi possível baixar este arquivo.");
-    }
-  };
+  const openTraining = (item) => setViewer(item);
   const saveEditor = async ({ file, cover, setProgress }) => {
     if (!storageConfigured && (file || cover)) throw new Error("O armazenamento de arquivos está indisponível no momento.");
     const payload = { title: editor.value.title.trim(), description: editor.value.description.trim(), mediaType: editor.value.mediaType };
@@ -268,7 +241,7 @@ export default function ProductTraining() {
       {admin && !storageConfigured && <div className="mb-6 flex items-start gap-3 rounded-2xl border border-[hsl(43_65%_72%)] bg-[hsl(43_73%_94%)] p-4 text-sm text-[hsl(33_60%_30%)]"><Cloud className="mt-0.5 h-5 w-5 shrink-0" /><div><strong>Armazenamento indisponível</strong><p className="mt-1">Você pode organizar o catálogo, mas novos uploads ficarão bloqueados até a configuração ser restaurada.</p></div></div>}
       <div className="mb-6 flex flex-wrap items-center gap-3 text-xs text-[hsl(220_12%_50%)]"><span className="rounded-full bg-[hsl(174_34%_91%)] px-3 py-1.5 font-semibold text-[hsl(174_62%_30%)]">{catalog.length} {catalog.length === 1 ? "conteúdo" : "conteúdos"}</span>{admin ? <span className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" />Modo administrador</span> : <span className="flex items-center gap-1.5"><LockKeyhole className="h-3.5 w-3.5" />Biblioteca publicada</span>}</div>
       {admin && search && filtered.length > 0 && <p className="mb-4 text-xs text-[hsl(220_12%_50%)]">Limpe a busca para reordenar os conteúdos.</p>}
-      {isLoading ? <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{[1, 2, 3].map((item) => <SkeletonCard key={item} />)}</div> : isError ? <div className="rounded-2xl border border-[hsl(0_55%_82%)] bg-[hsl(0_70%_97%)] p-8 text-center"><AlertCircle className="mx-auto mb-3 h-8 w-8 text-[hsl(0_60%_47%)]" /><h2 className="font-semibold">Não foi possível carregar os treinamentos</h2><p className="mt-1 text-sm text-[hsl(220_12%_48%)]">Tente novamente em instantes.</p><button onClick={() => refetch()} className="btn-secondary mt-5"><RefreshCw className="h-4 w-4" />Tentar novamente</button></div> : filtered.length ? <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{filtered.map((item, index) => <TrainingCard key={item.id} training={item} index={index} total={filtered.length} admin={admin} onOpen={openTraining} onDownload={downloadTraining} onResume={resumeUpload} onEdit={(training) => setEditor({ editing: training, value: { title: training.title, description: training.description || "", mediaType: training.media_type } })} onDelete={deleteItem} onTogglePublish={(training) => publish.mutate({ id: training.id, published: !training.published })} onMove={move} busy={Boolean(search) || reorder.isPending || publish.isPending || Boolean(resumeProgress)} />)}</div> : <div className="rounded-2xl border border-dashed border-[hsl(174_25%_78%)] bg-[hsl(174_34%_96%)] px-6 py-16 text-center"><MoreHorizontal className="mx-auto mb-3 h-8 w-8 text-[hsl(174_62%_35%)]" /><h2 className="font-[Space_Grotesk] text-xl font-semibold">{search ? "Nenhum resultado" : "A biblioteca está começando"}</h2><p className="mx-auto mt-2 max-w-md text-sm text-[hsl(220_12%_48%)]">{search ? "Tente buscar por outro título ou descrição." : admin ? "Crie o primeiro treinamento para sua equipe." : "Os próximos conteúdos publicados aparecerão aqui."}</p>{admin && !search && <button onClick={() => setEditor({ value: { title: "", description: "", mediaType: "video" } })} className="action-pill-primary mt-5"><Plus className="h-4 w-4" />Adicionar conteúdo</button>}</div>}
+      {isLoading ? <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{[1, 2, 3].map((item) => <SkeletonCard key={item} />)}</div> : isError ? <div className="rounded-2xl border border-[hsl(0_55%_82%)] bg-[hsl(0_70%_97%)] p-8 text-center"><AlertCircle className="mx-auto mb-3 h-8 w-8 text-[hsl(0_60%_47%)]" /><h2 className="font-semibold">Não foi possível carregar os treinamentos</h2><p className="mt-1 text-sm text-[hsl(220_12%_48%)]">Tente novamente em instantes.</p><button onClick={() => refetch()} className="btn-secondary mt-5"><RefreshCw className="h-4 w-4" />Tentar novamente</button></div> : filtered.length ? <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{filtered.map((item, index) => <TrainingCard key={item.id} training={item} index={index} total={filtered.length} admin={admin} onOpen={openTraining} onResume={resumeUpload} onEdit={(training) => setEditor({ editing: training, value: { title: training.title, description: training.description || "", mediaType: training.media_type } })} onDelete={deleteItem} onTogglePublish={(training) => publish.mutate({ id: training.id, published: !training.published })} onMove={move} busy={Boolean(search) || reorder.isPending || publish.isPending || Boolean(resumeProgress)} />)}</div> : <div className="rounded-2xl border border-dashed border-[hsl(174_25%_78%)] bg-[hsl(174_34%_96%)] px-6 py-16 text-center"><MoreHorizontal className="mx-auto mb-3 h-8 w-8 text-[hsl(174_62%_35%)]" /><h2 className="font-[Space_Grotesk] text-xl font-semibold">{search ? "Nenhum resultado" : "A biblioteca está começando"}</h2><p className="mx-auto mt-2 max-w-md text-sm text-[hsl(220_12%_48%)]">{search ? "Tente buscar por outro título ou descrição." : admin ? "Crie o primeiro treinamento para sua equipe." : "Os próximos conteúdos publicados aparecerão aqui."}</p>{admin && !search && <button onClick={() => setEditor({ value: { title: "", description: "", mediaType: "video" } })} className="action-pill-primary mt-5"><Plus className="h-4 w-4" />Adicionar conteúdo</button>}</div>}
     </div>
     {editor && <Editor value={editor.value} onChange={(value) => setEditor({ ...editor, value })} editing={editor.editing} onClose={() => !save.isPending && setEditor(null)} onSave={saveEditor} saving={save.isPending} />}
     {viewer && <Viewer item={viewer} onClose={() => setViewer(null)} />}

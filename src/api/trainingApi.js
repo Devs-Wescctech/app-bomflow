@@ -23,7 +23,7 @@ export const trainingApi = {
   update: (id, data) => request(`/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   remove: (id) => request(`/${id}`, { method: 'DELETE' }),
   reorder: (ids) => request('/order', { method: 'PUT', body: JSON.stringify({ ids }) }),
-  access: (id, download = false) => request(`/${id}/access${download ? '?download=1' : ''}`),
+  access: (id) => request(`/${id}/access`),
   cover: (id) => request(`/${id}/cover`),
   beginUpload: (id, file, kind = 'media') => request(`/${id}/uploads`, {
     method: 'POST',

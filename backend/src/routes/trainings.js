@@ -1,8 +1,6 @@
 import express from 'express';
 import { randomUUID } from 'crypto';
 import { Buffer } from 'node:buffer';
-import process from 'node:process';
-import jwt from 'jsonwebtoken';
 import { authMiddleware } from '../middleware/auth.js';
 import { loadAgentMiddleware } from '../middleware/permissions.js';
 import { pool, query } from '../config/database.js';
@@ -18,41 +16,6 @@ import { matchesMagicBytes, validateTrainingUpload } from '../utils/trainingVali
 const router = express.Router();
 const MODULE_KEY = 'portal_experience';
 const SUBMENU_KEY = 'ProductTraining';
-
-router.get('/:id/download', async (req, res, next) => {
-  try {
-    const payload = jwt.verify(String(req.query.token || ''), process.env.JWT_SECRET);
-    if (payload.purpose !== 'training-download' || payload.trainingId !== req.params.id) {
-      return res.status(401).json({ message: 'Link de download inválido.' });
-    }
-    const training = (await query(
-      `SELECT media_object_path, original_name, mime_type
-         FROM trainings WHERE id=$1 AND media_object_path IS NOT NULL`,
-      [req.params.id]
-    )).rows[0];
-    if (!training) return res.status(404).json({ message: 'Treinamento não encontrado.' });
-    const file = getTrainingObject(training.media_object_path);
-    const [metadata] = await file.getMetadata();
-    const safeName = String(training.original_name || 'treinamento')
-      .replace(/[\r\n"]/g, '_')
-      .slice(0, 240);
-    res.set({
-      'Content-Type': training.mime_type || metadata.contentType || 'application/octet-stream',
-      'Content-Length': metadata.size,
-      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(safeName)}`,
-      'Cache-Control': 'private, no-store',
-      'X-Content-Type-Options': 'nosniff',
-    });
-    file.createReadStream()
-      .on('error', next)
-      .pipe(res);
-  } catch (error) {
-    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
-      return res.status(401).json({ message: 'Link de download inválido ou expirado.' });
-    }
-    next(error);
-  }
-});
 
 router.use(authMiddleware, loadAgentMiddleware);
 
@@ -444,17 +407,6 @@ router.get('/:id/access', async (req, res, next) => {
     if (!training) return res.status(404).json({ message: 'Treinamento não encontrado.' });
     if (!training.media_object_path || training.upload_status !== 'ready') {
       return res.status(422).json({ message: 'Este treinamento ainda não possui uma mídia pronta.' });
-    }
-    if (req.query.download === '1') {
-      const token = jwt.sign(
-        { purpose: 'training-download', trainingId: training.id },
-        process.env.JWT_SECRET,
-        { expiresIn: '5m' }
-      );
-      return res.json({
-        url: `/api/trainings/${training.id}/download?token=${encodeURIComponent(token)}`,
-        expiresIn: 300,
-      });
     }
     res.json({
       url: await createTrainingReadUrl(training.media_object_path),
