@@ -29,3 +29,10 @@ test('catálogo público não expõe nome original nem tamanho do arquivo', () =
   assert.match(route, /: '';/);
   assert.match(route, /t\.duration_seconds, t\.page_count/);
 });
+
+test('card publicado continua abrindo sem depender de metadados privados', () => {
+  const page = read('src/pages/ProductTraining.jsx');
+  assert.match(page, /disabled=\{training\.upload_status !== "ready"\}/);
+  assert.doesNotMatch(page, /disabled=\{!training\.size_bytes\}/);
+  assert.match(page, /trainingApi\.access\(item\.id\)/);
+});

@@ -100,7 +100,7 @@ function SkeletonCard() {
 function TrainingCard({ training, index, total, admin, onEdit, onDelete, onMove, onTogglePublish, onOpen, onResume, busy }) {
   return (
     <article className="group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-[hsl(174_18%_84%)] bg-white shadow-[0_8px_24px_-20px_hsl(174_45%_20%/.45)] transition duration-200 hover:-translate-y-0.5 hover:border-[hsl(174_38%_65%)] hover:shadow-[0_14px_34px_-22px_hsl(174_45%_20%/.55)]">
-      <button type="button" className="text-left disabled:cursor-default" onClick={() => onOpen(training)} disabled={!training.size_bytes} aria-label={`Abrir ${training.title}`}>
+      <button type="button" className="text-left disabled:cursor-default" onClick={() => onOpen(training)} disabled={training.upload_status !== "ready"} aria-label={`Abrir ${training.title}`}>
         <Cover training={training} />
       </button>
       <div className="flex flex-1 flex-col p-5">
