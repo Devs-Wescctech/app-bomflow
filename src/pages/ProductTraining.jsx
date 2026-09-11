@@ -32,9 +32,38 @@ const mediaTypes = [
   { value: "pdf", label: "PDF", icon: FileText },
 ];
 
-function formatSize(bytes) {
-  if (!bytes) return "Arquivo pendente";
-  return `${(bytes / 1024 / 1024).toFixed(bytes > 1024 * 1024 * 10 ? 0 : 1)} MB`;
+function formatMediaInfo(training) {
+  if (training.media_type === "pdf") {
+    const pages = Number(training.page_count);
+    return pages > 0 ? `${pages} ${pages === 1 ? "página" : "páginas"}` : "Documento PDF";
+  }
+  const seconds = Number(training.duration_seconds);
+  if (!seconds) return "Vídeo";
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return remainder ? `${minutes} min ${remainder} s` : `${minutes} min`;
+}
+
+async function readMediaMetadata(file, mediaType) {
+  if (mediaType === "pdf") {
+    const { PDFDocument } = await import("pdf-lib");
+    const document = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+    return { pageCount: document.getPageCount() };
+  }
+  const url = URL.createObjectURL(file);
+  try {
+    const durationSeconds = await new Promise((resolve, reject) => {
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      video.onloadedmetadata = () => resolve(Math.max(1, Math.round(video.duration)));
+      video.onerror = () => reject(new Error("Não foi possível identificar a duração do vídeo."));
+      video.src = url;
+    });
+    return { durationSeconds };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 function typeLabel(type) {
@@ -84,7 +113,7 @@ function TrainingCard({ training, index, total, admin, onEdit, onDelete, onMove,
         </div>
         <p className="mb-5 line-clamp-3 min-h-[3.75rem] text-sm leading-5 text-[hsl(220_12%_45%)]">{training.description || "Conteúdo de treinamento para apoiar sua próxima conversa."}</p>
         <div className="mt-auto flex items-center justify-between gap-2 border-t border-[hsl(174_18%_91%)] pt-4">
-          <span className="text-xs text-[hsl(220_12%_52%)]">{formatSize(training.size_bytes)}{training.original_name ? ` · ${training.original_name}` : ""}</span>
+          <span className="text-xs text-[hsl(220_12%_52%)]">{formatMediaInfo(training)}</span>
           {admin ? (
             <div className="flex items-center gap-1">
                <button type="button" className="rounded-lg p-2 text-[hsl(220_12%_52%)] hover:bg-[hsl(174_34%_94%)] hover:text-[hsl(174_62%_35%)] disabled:opacity-30" onClick={() => onMove(training, -1)} disabled={index === 0 || busy} title="Mover para cima"><ArrowUp className="h-4 w-4" /></button>
@@ -175,12 +204,13 @@ export default function ProductTraining() {
     const result = await save.mutateAsync({ id: editor.editing?.id, payload });
     const id = result?.training?.id || result?.id || editor.editing?.id;
     if (file) {
+      const mediaMetadata = await readMediaMetadata(file, payload.mediaType);
       const started = await trainingApi.beginUpload(id, file, "media");
       try {
         await trainingApi.uploadFile(started.url || started.uploadUrl, file, (p) => setProgress(p * (cover ? 0.8 : 1)), {
           getConfirmedOffset: async () => (await trainingApi.resumeUpload(id, started.uploadId || started.id)).confirmedOffset,
         });
-        await trainingApi.completeUpload(id, started.uploadId || started.id);
+        await trainingApi.completeUpload(id, started.uploadId || started.id, mediaMetadata);
       } catch (error) {
         await invalidate();
         throw new Error(`${error.message || "O envio foi interrompido."} O envio pendente foi preservado; feche esta janela e use “Retomar envio” no card.`);
@@ -218,7 +248,8 @@ export default function ProductTraining() {
           initialOffset: session.confirmedOffset,
           getConfirmedOffset: async () => (await trainingApi.resumeUpload(training.id, training.pending_upload_id)).confirmedOffset,
         });
-        await trainingApi.completeUpload(training.id, training.pending_upload_id);
+        const mediaMetadata = await readMediaMetadata(file, training.media_type);
+        await trainingApi.completeUpload(training.id, training.pending_upload_id, mediaMetadata);
         await invalidate();
         setNotice("Envio retomado e finalizado.");
       } catch (error) {

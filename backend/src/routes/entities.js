@@ -241,7 +241,8 @@ pool.query(`
     title VARCHAR(255) NOT NULL, description TEXT NOT NULL DEFAULT '',
     media_type VARCHAR(16) NOT NULL CHECK (media_type IN ('video','pdf')),
     media_object_path TEXT, cover_object_path TEXT, original_name VARCHAR(500),
-    mime_type VARCHAR(128), size_bytes BIGINT, sort_order INTEGER NOT NULL DEFAULT 0,
+    mime_type VARCHAR(128), size_bytes BIGINT, duration_seconds INTEGER, page_count INTEGER,
+    sort_order INTEGER NOT NULL DEFAULT 0,
     published BOOLEAN NOT NULL DEFAULT FALSE,
     upload_status VARCHAR(20) NOT NULL DEFAULT 'draft'
       CHECK (upload_status IN ('draft','uploading','ready','failed')),
@@ -249,6 +250,8 @@ pool.query(`
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
   CREATE INDEX IF NOT EXISTS idx_trainings_catalog ON trainings(published, sort_order);
+  ALTER TABLE trainings ADD COLUMN IF NOT EXISTS duration_seconds INTEGER;
+  ALTER TABLE trainings ADD COLUMN IF NOT EXISTS page_count INTEGER;
   CREATE TABLE IF NOT EXISTS training_uploads (
     id UUID PRIMARY KEY, training_id UUID NOT NULL REFERENCES trainings(id) ON DELETE CASCADE,
     asset_kind VARCHAR(16) NOT NULL, object_path TEXT NOT NULL UNIQUE, upload_url TEXT,

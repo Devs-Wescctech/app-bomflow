@@ -386,6 +386,8 @@ CREATE TABLE IF NOT EXISTS trainings (
     original_name VARCHAR(500),
     mime_type VARCHAR(128),
     size_bytes BIGINT,
+    duration_seconds INTEGER,
+    page_count INTEGER,
     sort_order INTEGER NOT NULL DEFAULT 0,
     published BOOLEAN NOT NULL DEFAULT FALSE,
     upload_status VARCHAR(20) NOT NULL DEFAULT 'draft'

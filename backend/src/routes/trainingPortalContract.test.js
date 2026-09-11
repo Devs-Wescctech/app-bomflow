@@ -21,3 +21,11 @@ test('falha de limpeza após commit nunca remove a mídia recém-ativada', () =>
   assert.match(route, /media_object_path=\$2 OR cover_object_path=\$2/);
   assert.match(route, /Limpeza pós-substituição será repetida/);
 });
+
+test('catálogo público não expõe nome original nem tamanho do arquivo', () => {
+  const route = read('backend/src/routes/trainings.js');
+  assert.match(route, /const adminFields = isAdmin/);
+  assert.match(route, /\? 't\.original_name, t\.mime_type, t\.size_bytes,'/);
+  assert.match(route, /: '';/);
+  assert.match(route, /t\.duration_seconds, t\.page_count/);
+});

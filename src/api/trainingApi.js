@@ -34,9 +34,9 @@ export const trainingApi = {
       sizeBytes: file.size,
     }),
   }),
-  completeUpload: (id, uploadId) => request(`/${id}/uploads/${uploadId}/complete`, {
+  completeUpload: (id, uploadId, metadata = {}) => request(`/${id}/uploads/${uploadId}/complete`, {
     method: 'POST',
-    body: JSON.stringify({}),
+    body: JSON.stringify(metadata),
   }),
   resumeUpload: (id, uploadId) => request(`/${id}/uploads/${uploadId}/resume`),
   cancelUpload: (id, uploadId) => request(`/${id}/uploads/${uploadId}`, { method: 'DELETE' }),

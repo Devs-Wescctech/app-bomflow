@@ -126,8 +126,12 @@ router.use(authorize);
 router.get('/', async (req, res, next) => {
   try {
     const isAdmin = isCurrentAdmin(req);
+    const adminFields = isAdmin
+      ? 't.original_name, t.mime_type, t.size_bytes,'
+      : '';
     const result = await query(
-      `SELECT t.id, t.title, t.description, t.media_type, t.original_name, t.mime_type, t.size_bytes,
+      `SELECT t.id, t.title, t.description, t.media_type, ${adminFields}
+              t.duration_seconds, t.page_count,
               t.sort_order, t.published, t.upload_status, t.cover_object_path IS NOT NULL AS has_cover,
               t.created_at, t.updated_at,
               u.id AS pending_upload_id, u.original_name AS pending_original_name,
@@ -337,10 +341,18 @@ router.post('/:id/uploads/:uploadId/complete', adminOnly, async (req, res, next)
       if (upload.asset_kind === 'cover') {
         await client.query('UPDATE trainings SET cover_object_path = $1, updated_at = NOW() WHERE id = $2', [upload.object_path, locked.id]);
       } else {
+        const rawDuration = Number(req.body.durationSeconds);
+        const rawPageCount = Number(req.body.pageCount);
+        const durationSeconds = locked.media_type === 'video' && Number.isFinite(rawDuration) && rawDuration > 0
+          ? Math.round(rawDuration)
+          : null;
+        const pageCount = locked.media_type === 'pdf' && Number.isFinite(rawPageCount) && rawPageCount > 0
+          ? Math.round(rawPageCount)
+          : null;
         await client.query(
           `UPDATE trainings SET media_object_path=$1, original_name=$2, mime_type=$3, size_bytes=$4,
-             upload_status='ready', updated_at=NOW() WHERE id=$5`,
-          [upload.object_path, upload.original_name, upload.mime_type, actualSize, locked.id]
+             duration_seconds=$5, page_count=$6, upload_status='ready', updated_at=NOW() WHERE id=$7`,
+          [upload.object_path, upload.original_name, upload.mime_type, actualSize, durationSeconds, pageCount, locked.id]
         );
       }
       if (previousPath && previousPath !== upload.object_path) {
