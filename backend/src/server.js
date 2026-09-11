@@ -27,6 +27,7 @@ import postsalesRoutes, {
 import leadImportsRoutes from './routes/leadImports.js';
 import erpAuditLogsRoutes from './routes/erpAuditLogs.js';
 import erpApprovalReconciliationRoutes from './routes/erpApprovalReconciliation.js';
+import trainingRoutes from './routes/trainings.js';
 import { installErpFetchAudit, erpOriginMiddleware, withErpOrigin, cleanupErpRequestLogs } from './services/erpAuditService.js';
 import { runAllAutomations, checkValidacaoPagamento } from './services/automationService.js';
 import { syncDeliveryStatuses } from './services/deliveryStatusService.js';
@@ -114,6 +115,7 @@ app.use('/api/postsales', postsalesRoutes);
 app.use('/api/lead-imports', leadImportsRoutes);
 app.use('/api/erp-audit', erpAuditLogsRoutes);
 app.use('/api/erp-approval-reconciliation', erpApprovalReconciliationRoutes);
+app.use('/api/trainings', trainingRoutes);
 
 app.use(express.static(distPath));
 
@@ -181,7 +183,7 @@ app.get('*', (req, res, next) => {
 
 app.use((err, req, res, next) => {
   console.error('Error:', err);
-  res.status(err.status || 500).json({
+  res.status(err.statusCode || err.status || 500).json({
     message: err.message || 'Internal server error',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });

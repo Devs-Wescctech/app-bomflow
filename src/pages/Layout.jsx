@@ -48,6 +48,7 @@ import {
   FileType,
   UserCog,
   BookOpen,
+  GraduationCap,
   TrendingUp,
   MapPin,
   CheckSquare,
@@ -162,6 +163,20 @@ const menuModules = [
       { title: "Dashboard NPS", url: createPageUrl("NPSDashboard"), icon: TrendingUp },
       { title: "Meus Tickets", url: createPageUrl("MyTickets"), icon: CheckSquare },
       { title: "Base de Conhecimento", url: createPageUrl("KnowledgeBase"), icon: BookOpen },
+    ]
+  },
+  {
+    id: "portal_experience",
+    title: "Portal e Experiência do Usuário",
+    icon: GraduationCap,
+    gradient: "from-teal-500 to-emerald-500",
+    items: [
+      {
+        title: "Treinamento Produtos",
+        url: createPageUrl("ProductTraining"),
+        icon: BookOpen,
+        requiredSubmenu: "ProductTraining"
+      },
     ]
   },
   {

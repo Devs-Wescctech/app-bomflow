@@ -375,6 +375,56 @@ CREATE TABLE IF NOT EXISTS kb_feedback (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Portal e Experiência do Usuário: arquivos permanecem no Object Storage privado.
+CREATE TABLE IF NOT EXISTS trainings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    media_type VARCHAR(16) NOT NULL CHECK (media_type IN ('video', 'pdf')),
+    media_object_path TEXT,
+    cover_object_path TEXT,
+    original_name VARCHAR(500),
+    mime_type VARCHAR(128),
+    size_bytes BIGINT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    published BOOLEAN NOT NULL DEFAULT FALSE,
+    upload_status VARCHAR(20) NOT NULL DEFAULT 'draft'
+      CHECK (upload_status IN ('draft', 'uploading', 'ready', 'failed')),
+    published_at TIMESTAMPTZ,
+    created_by UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_trainings_catalog ON trainings(published, sort_order);
+
+CREATE TABLE IF NOT EXISTS training_uploads (
+    id UUID PRIMARY KEY,
+    training_id UUID NOT NULL REFERENCES trainings(id) ON DELETE CASCADE,
+    asset_kind VARCHAR(16) NOT NULL,
+    object_path TEXT NOT NULL UNIQUE,
+    original_name VARCHAR(500) NOT NULL,
+    mime_type VARCHAR(128) NOT NULL,
+    expected_size BIGINT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+    created_by UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_training_uploads_expiry ON training_uploads(expires_at)
+  WHERE completed_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS training_object_deletions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    object_path TEXT NOT NULL UNIQUE,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_training_object_deletions_pending
+  ON training_object_deletions(next_attempt_at) WHERE completed_at IS NULL;
+
 -- =====================
 -- SALES & LEADS (PF)
 -- =====================
