@@ -304,6 +304,7 @@ router.delete('/:id/uploads/:uploadId', adminOnly, async (req, res, next) => {
 
 router.post('/:id/uploads/:uploadId/complete', adminOnly, async (req, res, next) => {
   let upload;
+  let committed = false;
   try {
     upload = (await query(
       `SELECT * FROM training_uploads WHERE id = $1 AND training_id = $2 AND completed_at IS NULL`,
@@ -344,6 +345,7 @@ router.post('/:id/uploads/:uploadId/complete', adminOnly, async (req, res, next)
       }
       await client.query('UPDATE training_uploads SET completed_at = NOW() WHERE id = $1', [upload.id]);
       await client.query('COMMIT');
+      committed = true;
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
       throw error;
@@ -351,14 +353,27 @@ router.post('/:id/uploads/:uploadId/complete', adminOnly, async (req, res, next)
       client.release();
     }
     if (previousPath && previousPath !== upload.object_path) {
-      const deletion = await query(
-        'SELECT id FROM training_object_deletions WHERE object_path=$1 AND completed_at IS NULL',
-        [previousPath]
-      );
-      if (deletion.rows[0]) await processDeletion(deletion.rows[0].id, previousPath);
+      try {
+        const deletion = await query(
+          'SELECT id FROM training_object_deletions WHERE object_path=$1 AND completed_at IS NULL',
+          [previousPath]
+        );
+        if (deletion.rows[0]) await processDeletion(deletion.rows[0].id, previousPath);
+      } catch (cleanupError) {
+        console.error('[Trainings] Limpeza pós-substituição será repetida:', cleanupError.message);
+      }
     }
     res.json({ success: true });
   } catch (error) {
+    if (committed) return next(error);
+    const active = upload?.object_path
+      ? (await query(
+          `SELECT 1 FROM trainings
+            WHERE id=$1 AND (media_object_path=$2 OR cover_object_path=$2)`,
+          [upload.training_id, upload.object_path]
+        ).catch(() => ({ rows: [] }))).rows.length > 0
+      : false;
+    if (active) return next(error);
     let removed = false;
     if (upload?.object_path) {
       removed = await deleteTrainingObject(upload.object_path).then(() => true).catch(() => false);

@@ -65,6 +65,13 @@ const MENU_MODULES = [
     ]
   },
   {
+    id: "portal_experience",
+    title: "Portal e Experiência do Usuário",
+    items: [
+      { id: "ProductTraining", title: "Treinamento Produtos" },
+    ]
+  },
+  {
     id: "presales",
     title: "Pré Vendas / Pós Vendas",
     items: [
