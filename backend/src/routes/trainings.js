@@ -8,6 +8,7 @@ import {
   createTrainingReadUrl,
   createTrainingUploadUrl,
   deleteTrainingObject,
+  getTrainingUploadOffset,
   getTrainingObject,
   isTrainingStorageConfigured,
 } from '../services/trainingObjectStorage.js';
@@ -265,6 +266,7 @@ router.get('/:id/uploads/:uploadId/resume', adminOnly, async (req, res, next) =>
       [req.params.uploadId, req.params.id]
     )).rows[0];
     if (!upload) return res.status(404).json({ message: 'Envio pendente não encontrado ou expirado.' });
+    const confirmedOffset = await getTrainingUploadOffset(upload.upload_url, Number(upload.expected_size));
     res.json({
       uploadId: upload.id,
       uploadUrl: upload.upload_url,
@@ -272,6 +274,7 @@ router.get('/:id/uploads/:uploadId/resume', adminOnly, async (req, res, next) =>
       mimeType: upload.mime_type,
       sizeBytes: Number(upload.expected_size),
       kind: upload.asset_kind,
+      confirmedOffset,
     });
   } catch (error) {
     next(error);

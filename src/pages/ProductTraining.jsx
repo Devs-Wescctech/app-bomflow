@@ -50,13 +50,13 @@ function Cover({ training }) {
   });
   const src = cover?.url || cover?.temporaryUrl || cover;
   return (
-    <div className="relative flex h-40 items-center justify-center overflow-hidden bg-[hsl(174_34%_92%)]">
+    <div className="relative flex h-40 items-center justify-center overflow-hidden bg-[hsl(217_85%_96%)]">
       {src ? (
         <img src={src} alt="" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
       ) : (
-        <div className="relative flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_20%_20%,hsl(174_62%_35%/.18),transparent_45%),linear-gradient(135deg,hsl(174_38%_93%),hsl(43_73%_91%))]">
-          {training.media_type === "video" ? <Film className="h-11 w-11 text-[hsl(174_62%_35%/.65)]" /> : <FileText className="h-11 w-11 text-[hsl(174_62%_35%/.65)]" />}
-          <span className="absolute bottom-3 left-4 font-mono text-[10px] tracking-[.2em] text-[hsl(174_45%_30%/.65)]">ELOOM / LEARN</span>
+        <div className="relative flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_20%_20%,hsl(217_91%_60%/.16),transparent_45%),linear-gradient(135deg,hsl(217_85%_96%),hsl(262_75%_96%))]">
+          {training.media_type === "video" ? <Film className="h-11 w-11 text-[hsl(217_78%_52%/.72)]" /> : <FileText className="h-11 w-11 text-[hsl(262_70%_52%/.72)]" />}
+          <span className="absolute bottom-3 left-4 font-mono text-[10px] tracking-[.2em] text-[hsl(224_35%_38%/.68)]">BOM FLOW / TREINAMENTOS</span>
         </div>
       )}
       <span className="absolute left-3 top-3 rounded-md bg-[hsl(220_24%_16%/.82)] px-2 py-1 font-mono text-[10px] font-semibold tracking-wider text-white">{typeLabel(training.media_type)}</span>
@@ -95,7 +95,7 @@ function TrainingCard({ training, index, total, admin, onEdit, onDelete, onMove,
             </div>
           ) : <ChevronRight className="h-4 w-4 text-[hsl(174_62%_35%)] transition-transform group-hover:translate-x-1" />}
         </div>
-        {admin && training.pending_upload_id && <button type="button" onClick={() => onResume(training)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-[hsl(43_65%_72%)] bg-[hsl(43_73%_94%)] px-3 py-2 text-xs font-semibold text-[hsl(33_60%_30%)] hover:bg-[hsl(43_73%_90%)]"><UploadCloud className="h-4 w-4" />Retomar envio de {training.pending_original_name}</button>}
+        {admin && training.pending_upload_id && <button type="button" onClick={() => onResume(training)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-[hsl(217_68%_82%)] bg-[hsl(217_85%_96%)] px-3 py-2 text-xs font-semibold text-[hsl(224_70%_42%)] hover:bg-[hsl(217_85%_93%)]"><UploadCloud className="h-4 w-4" />Retomar envio de {training.pending_original_name}</button>}
       </div>
     </article>
   );
@@ -177,7 +177,9 @@ export default function ProductTraining() {
     if (file) {
       const started = await trainingApi.beginUpload(id, file, "media");
       try {
-        await trainingApi.uploadFile(started.url || started.uploadUrl, file, (p) => setProgress(p * (cover ? 0.8 : 1)));
+        await trainingApi.uploadFile(started.url || started.uploadUrl, file, (p) => setProgress(p * (cover ? 0.8 : 1)), {
+          getConfirmedOffset: async () => (await trainingApi.resumeUpload(id, started.uploadId || started.id)).confirmedOffset,
+        });
         await trainingApi.completeUpload(id, started.uploadId || started.id);
       } catch (error) {
         await invalidate();
@@ -187,7 +189,9 @@ export default function ProductTraining() {
     if (cover) {
       const started = await trainingApi.beginUpload(id, cover, "cover");
       try {
-        await trainingApi.uploadFile(started.url || started.uploadUrl, cover, (p) => setProgress(file ? 80 + p * 0.2 : p));
+        await trainingApi.uploadFile(started.url || started.uploadUrl, cover, (p) => setProgress(file ? 80 + p * 0.2 : p), {
+          getConfirmedOffset: async () => (await trainingApi.resumeUpload(id, started.uploadId || started.id)).confirmedOffset,
+        });
         await trainingApi.completeUpload(id, started.uploadId || started.id);
       } catch (error) {
         await invalidate();
@@ -210,13 +214,16 @@ export default function ProductTraining() {
       setResumeProgress({ title: training.title, value: 0 });
       try {
         const session = await trainingApi.resumeUpload(training.id, training.pending_upload_id);
-        await trainingApi.uploadFile(session.uploadUrl, file, (value) => setResumeProgress({ title: training.title, value }));
+        await trainingApi.uploadFile(session.uploadUrl, file, (value) => setResumeProgress({ title: training.title, value }), {
+          initialOffset: session.confirmedOffset,
+          getConfirmedOffset: async () => (await trainingApi.resumeUpload(training.id, training.pending_upload_id)).confirmedOffset,
+        });
         await trainingApi.completeUpload(training.id, training.pending_upload_id);
         await invalidate();
         setNotice("Envio retomado e finalizado.");
       } catch (error) {
         await invalidate();
-        setNotice(error.message || "Não foi possível retomar o envio. Você pode tentar novamente.");
+        setNotice({ type: "error", message: error.message || "Não foi possível retomar o envio. Você pode tentar novamente." });
       } finally {
         setResumeProgress(null);
       }
@@ -235,8 +242,8 @@ export default function ProductTraining() {
 
   return <main className="min-h-[100dvh] bg-[hsl(40_33%_97%)] text-[hsl(220_24%_16%)]">
     <div className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8 lg:py-10">
-      <header className="mb-8 flex flex-col gap-6 border-b border-[hsl(174_18%_86%)] pb-7 lg:flex-row lg:items-end lg:justify-between"><div><div className="mb-4 flex items-center gap-2 text-[hsl(174_62%_35%)]"><div className="rounded-lg bg-[hsl(174_34%_89%)] p-2"><BookOpen className="h-5 w-5" /></div><span className="font-mono text-xs font-semibold tracking-[.2em]">ELOOM / ACADEMY</span></div><h1 className="font-[Space_Grotesk] text-3xl font-semibold tracking-tight sm:text-4xl">Treinamentos</h1><p className="mt-2 max-w-xl text-sm leading-6 text-[hsl(220_12%_47%)]">Aprenda no seu ritmo. Conteúdos curados para deixar cada atendimento mais seguro e mais humano.</p></div><div className="flex flex-col gap-2 sm:flex-row">{admin && <button onClick={() => setEditor({ value: { title: "", description: "", mediaType: "video" } })} className="action-pill-primary"><Plus className="h-4 w-4" />Novo treinamento</button>}<div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(220_12%_55%)]" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar conteúdo" className="eloom-field min-w-[220px] pl-9" /></div></div></header>
-      {notice && <div className="mb-5 flex items-center justify-between rounded-xl border border-[hsl(155_42%_78%)] bg-[hsl(155_45%_94%)] px-4 py-3 text-sm text-[hsl(155_48%_27%)]"><span className="flex items-center gap-2"><Check className="h-4 w-4" />{notice}</span><button onClick={() => setNotice("")} aria-label="Fechar aviso"><X className="h-4 w-4" /></button></div>}
+      <header className="mb-8 flex flex-col gap-6 border-b border-[hsl(220_18%_88%)] pb-7 lg:flex-row lg:items-end lg:justify-between"><div><div className="mb-4 flex items-center gap-2 text-[hsl(217_78%_52%)]"><div className="rounded-lg bg-[linear-gradient(140deg,hsl(217_91%_60%),hsl(262_83%_58%))] p-2 text-white shadow-sm"><BookOpen className="h-5 w-5" /></div><span className="font-mono text-xs font-semibold tracking-[.2em]">BOM FLOW / TREINAMENTOS</span></div><h1 className="font-[Space_Grotesk] text-3xl font-semibold tracking-tight sm:text-4xl">Treinamentos</h1><p className="mt-2 max-w-xl text-sm leading-6 text-[hsl(220_12%_47%)]">Aprenda no seu ritmo. Conteúdos curados para deixar cada atendimento mais seguro e mais humano.</p></div><div className="flex flex-col gap-2 sm:flex-row">{admin && <button onClick={() => setEditor({ value: { title: "", description: "", mediaType: "video" } })} className="action-pill-primary"><Plus className="h-4 w-4" />Novo treinamento</button>}<div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(220_12%_55%)]" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar conteúdo" className="eloom-field min-w-[220px] pl-9" /></div></div></header>
+      {notice && <div className={`mb-5 flex items-center justify-between rounded-xl border px-4 py-3 text-sm ${notice?.type === "error" ? "border-[hsl(0_55%_82%)] bg-[hsl(0_70%_97%)] text-[hsl(0_60%_40%)]" : "border-[hsl(217_55%_82%)] bg-[hsl(217_85%_97%)] text-[hsl(224_65%_40%)]"}`}><span className="flex items-center gap-2">{notice?.type === "error" ? <AlertCircle className="h-4 w-4" /> : <Check className="h-4 w-4" />}{notice?.message || notice}</span><button onClick={() => setNotice("")} aria-label="Fechar aviso"><X className="h-4 w-4" /></button></div>}
       {resumeProgress && <div className="mb-5 rounded-xl border border-[hsl(174_38%_75%)] bg-[hsl(174_34%_95%)] p-4"><div className="mb-2 flex justify-between text-xs font-semibold"><span>Retomando {resumeProgress.title}</span><span>{resumeProgress.value}%</span></div><div className="h-2 overflow-hidden rounded-full bg-[hsl(174_20%_87%)]"><div className="h-full bg-[hsl(174_62%_35%)] transition-[width]" style={{ width: `${resumeProgress.value}%` }} /></div></div>}
       {admin && !storageConfigured && <div className="mb-6 flex items-start gap-3 rounded-2xl border border-[hsl(43_65%_72%)] bg-[hsl(43_73%_94%)] p-4 text-sm text-[hsl(33_60%_30%)]"><Cloud className="mt-0.5 h-5 w-5 shrink-0" /><div><strong>Armazenamento indisponível</strong><p className="mt-1">Você pode organizar o catálogo, mas novos uploads ficarão bloqueados até a configuração ser restaurada.</p></div></div>}
       <div className="mb-6 flex flex-wrap items-center gap-3 text-xs text-[hsl(220_12%_50%)]"><span className="rounded-full bg-[hsl(174_34%_91%)] px-3 py-1.5 font-semibold text-[hsl(174_62%_30%)]">{catalog.length} {catalog.length === 1 ? "conteúdo" : "conteúdos"}</span>{admin ? <span className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" />Modo administrador</span> : <span className="flex items-center gap-1.5"><LockKeyhole className="h-3.5 w-3.5" />Biblioteca publicada</span>}</div>

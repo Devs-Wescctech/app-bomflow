@@ -40,22 +40,13 @@ export const trainingApi = {
   }),
   resumeUpload: (id, uploadId) => request(`/${id}/uploads/${uploadId}/resume`),
   cancelUpload: (id, uploadId) => request(`/${id}/uploads/${uploadId}`, { method: 'DELETE' }),
-  uploadFile: async (url, file, onProgress) => {
-    const probe = () => new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('PUT', url);
-      xhr.setRequestHeader('Content-Range', `bytes */${file.size}`);
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) return resolve(file.size);
-        if (xhr.status === 308) {
-          const range = xhr.getResponseHeader('Range');
-          return resolve(range ? Number(range.split('-')[1]) + 1 : 0);
-        }
-        reject(new Error(`Não foi possível retomar o envio (${xhr.status}).`));
-      };
-      xhr.onerror = () => reject(new Error('Não foi possível consultar o ponto de retomada.'));
-      xhr.send();
-    });
+  uploadFile: async (url, file, onProgress, options = {}) => {
+    const probe = async () => {
+      if (!options.getConfirmedOffset) {
+        throw new Error('Não foi possível confirmar o ponto de retomada.');
+      }
+      return options.getConfirmedOffset();
+    };
     const send = (offset) => new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', url);
@@ -74,7 +65,7 @@ export const trainingApi = {
       xhr.onerror = () => reject(new Error('Conexão interrompida durante o envio.'));
       xhr.send(file.slice(offset));
     });
-    let offset = 0;
+    let offset = Number(options.initialOffset || 0);
     let attempts = 0;
     while (offset < file.size) {
       try {

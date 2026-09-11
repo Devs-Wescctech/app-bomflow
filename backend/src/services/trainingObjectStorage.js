@@ -68,6 +68,28 @@ export async function createTrainingReadUrl(objectPath) {
   return sign({ bucket, object, method: 'GET', ttlSec: 900 });
 }
 
+export async function getTrainingUploadOffset(uploadUrl, totalSize) {
+  const response = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Length': '0',
+      'Content-Range': `bytes */${totalSize}`,
+    },
+  });
+  if (response.ok) return totalSize;
+  if (response.status === 308) {
+    const range = response.headers.get('range');
+    return range ? Number(range.split('-')[1]) + 1 : 0;
+  }
+  const error = new Error(
+    response.status === 404 || response.status === 410
+      ? 'A sessão de envio expirou. Exclua o envio pendente e comece novamente.'
+      : `Não foi possível consultar o ponto de retomada (${response.status}).`
+  );
+  error.statusCode = response.status === 404 || response.status === 410 ? 410 : 502;
+  throw error;
+}
+
 export function getTrainingObject(objectPath) {
   const { bucket, object } = parsePath(privatePath(objectPath));
   return storage.bucket(bucket).file(object);
