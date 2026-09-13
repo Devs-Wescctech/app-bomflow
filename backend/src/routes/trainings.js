@@ -10,13 +10,82 @@ import {
   deleteTrainingObject,
   getTrainingUploadOffset,
   getTrainingObject,
+  isTrainingLocalStorage,
   isTrainingStorageConfigured,
+  verifyTrainingReadUrl,
+  writeLocalTrainingUpload,
 } from '../services/trainingObjectStorage.js';
 import { matchesMagicBytes, validateTrainingUpload } from '../utils/trainingValidation.js';
 
 const router = express.Router();
 const MODULE_KEY = 'portal_experience';
 const SUBMENU_KEY = 'ProductTraining';
+
+router.get('/storage/:encodedPath', async (req, res, next) => {
+  try {
+    const objectPath = verifyTrainingReadUrl(
+      req.params.encodedPath,
+      req.query.expires,
+      req.query.signature
+    );
+    const upload = (await query(
+      `SELECT mime_type, original_name
+         FROM training_uploads
+        WHERE object_path=$1 AND completed_at IS NOT NULL
+        ORDER BY completed_at DESC LIMIT 1`,
+      [objectPath]
+    )).rows[0];
+    if (!upload) return res.status(404).json({ message: 'Arquivo não encontrado.' });
+
+    const file = getTrainingObject(objectPath);
+    const [metadata] = await file.getMetadata();
+    const size = Number(metadata.size);
+    const range = req.headers.range;
+    let start = 0;
+    let end = size - 1;
+    let status = 200;
+    if (range) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+      if (!match || (!match[1] && !match[2])) {
+        res.setHeader('Content-Range', `bytes */${size}`);
+        return res.status(416).end();
+      }
+      if (!match[1]) {
+        const suffixLength = Number(match[2]);
+        if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) {
+          res.setHeader('Content-Range', `bytes */${size}`);
+          return res.status(416).end();
+        }
+        start = Math.max(size - suffixLength, 0);
+        end = size - 1;
+      } else {
+        start = Number(match[1]);
+        end = match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+      }
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || start >= size) {
+        res.setHeader('Content-Range', `bytes */${size}`);
+        return res.status(416).end();
+      }
+      status = 206;
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
+    }
+    const safeName = String(upload.original_name || 'arquivo').replace(/[\r\n"]/g, '_');
+    res.status(status);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Type', upload.mime_type || 'application/octet-stream');
+    res.setHeader('Content-Length', String(end - start + 1));
+    res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    file.createReadStream({ start, end })
+      .on('error', (error) => {
+        if (!res.headersSent) next(error);
+        else res.destroy(error);
+      })
+      .pipe(res);
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.use(authMiddleware, loadAgentMiddleware);
 
@@ -244,8 +313,11 @@ router.post('/:id/uploads', adminOnly, async (req, res, next) => {
     if (validationError) return res.status(400).json({ message: validationError });
 
     await cleanupExpiredTrainingUploads();
-    const signed = await createTrainingUploadUrl(kind, mimeType);
     const uploadId = randomUUID();
+    const signed = await createTrainingUploadUrl(kind, mimeType, {
+      trainingId: training.id,
+      uploadId,
+    });
     await query(
       `INSERT INTO training_uploads
        (id, training_id, asset_kind, object_path, upload_url, original_name, mime_type, expected_size, expires_at, created_by)
@@ -261,16 +333,58 @@ router.post('/:id/uploads', adminOnly, async (req, res, next) => {
   }
 });
 
+router.put('/:id/uploads/:uploadId/content', adminOnly, async (req, res, next) => {
+  try {
+    if (!isTrainingLocalStorage()) return res.status(404).json({ message: 'Sessão de envio não encontrada.' });
+    const upload = (await query(
+      `SELECT * FROM training_uploads
+        WHERE id=$1 AND training_id=$2 AND completed_at IS NULL AND expires_at > NOW()`,
+      [req.params.uploadId, req.params.id]
+    )).rows[0];
+    if (!upload) return res.status(410).json({ message: 'A sessão de envio expirou.' });
+    const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(String(req.headers['content-range'] || ''));
+    if (!range) return res.status(400).json({ message: 'Intervalo de envio inválido.' });
+    const start = Number(range[1]);
+    const end = Number(range[2]);
+    const total = Number(range[3]);
+    const contentLength = Number(req.headers['content-length']);
+    const mimeType = String(req.headers['content-type'] || '').split(';')[0].toLowerCase();
+    if (total !== Number(upload.expected_size) || mimeType !== upload.mime_type) {
+      return res.status(400).json({ message: 'Os dados do arquivo não correspondem à sessão iniciada.' });
+    }
+    const confirmedOffset = await writeLocalTrainingUpload(upload.object_path, req, {
+      start,
+      end,
+      total,
+      contentLength,
+    });
+    if (confirmedOffset < total) {
+      res.setHeader('Range', `bytes=0-${confirmedOffset - 1}`);
+      return res.status(308).end();
+    }
+    res.status(200).end();
+  } catch (error) {
+    if (error.confirmedOffset > 0) {
+      res.setHeader('Range', `bytes=0-${error.confirmedOffset - 1}`);
+    }
+    next(error);
+  }
+});
+
 router.get('/:id/uploads/:uploadId/resume', adminOnly, async (req, res, next) => {
   try {
     const upload = (await query(
-      `SELECT id, upload_url, original_name, mime_type, expected_size, asset_kind
+      `SELECT id, upload_url, object_path, original_name, mime_type, expected_size, asset_kind
          FROM training_uploads
         WHERE id=$1 AND training_id=$2 AND completed_at IS NULL AND expires_at > NOW()`,
       [req.params.uploadId, req.params.id]
     )).rows[0];
     if (!upload) return res.status(404).json({ message: 'Envio pendente não encontrado ou expirado.' });
-    const confirmedOffset = await getTrainingUploadOffset(upload.upload_url, Number(upload.expected_size));
+    const confirmedOffset = await getTrainingUploadOffset(
+      upload.upload_url,
+      Number(upload.expected_size),
+      upload.object_path
+    );
     res.json({
       uploadId: upload.id,
       uploadUrl: upload.upload_url,
