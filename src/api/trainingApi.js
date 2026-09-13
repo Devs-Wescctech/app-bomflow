@@ -1,5 +1,8 @@
 import { extractApiError } from '@/utils/apiError';
 
+const INITIAL_UPLOAD_CHUNK_SIZE = 8 * 1024 * 1024;
+const MIN_UPLOAD_CHUNK_SIZE = 256 * 1024;
+
 function authHeaders(json = true) {
   const token = localStorage.getItem('accessToken');
   return {
@@ -47,11 +50,13 @@ export const trainingApi = {
       }
       return options.getConfirmedOffset();
     };
-    const send = (offset) => new Promise((resolve, reject) => {
+    const send = (offset, chunkSize) => new Promise((resolve, reject) => {
+      const endExclusive = Math.min(offset + chunkSize, file.size);
+      const end = endExclusive - 1;
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', url);
       xhr.setRequestHeader('Content-Type', file.type);
-      xhr.setRequestHeader('Content-Range', `bytes ${offset}-${file.size - 1}/${file.size}`);
+      xhr.setRequestHeader('Content-Range', `bytes ${offset}-${end}/${file.size}`);
       const destination = new URL(url, window.location.origin);
       const token = localStorage.getItem('accessToken');
       if (destination.origin === window.location.origin && token) {
@@ -63,23 +68,35 @@ export const trainingApi = {
         }
       };
       xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) return resolve(file.size);
-        if (xhr.status === 308) return resolve(null);
-        reject(new Error(`Falha no envio do arquivo (${xhr.status}).`));
+        if ((xhr.status >= 200 && xhr.status < 300) || xhr.status === 308) {
+          return resolve(endExclusive);
+        }
+        const error = new Error(`Falha no envio do arquivo (${xhr.status}).`);
+        error.status = xhr.status;
+        reject(error);
       };
       xhr.onerror = () => reject(new Error('Conexão interrompida durante o envio.'));
-      xhr.send(file.slice(offset));
+      xhr.send(file.slice(offset, endExclusive));
     });
     let offset = Number(options.initialOffset || 0);
     let attempts = 0;
+    let chunkSize = INITIAL_UPLOAD_CHUNK_SIZE;
     while (offset < file.size) {
       try {
-        const nextOffset = await send(offset);
-        offset = nextOffset === null ? await probe() : nextOffset;
+        offset = await send(offset, chunkSize);
         attempts = 0;
-      } catch {
+      } catch (error) {
+        if (error.status === 413 && chunkSize > MIN_UPLOAD_CHUNK_SIZE) {
+          chunkSize = Math.max(MIN_UPLOAD_CHUNK_SIZE, Math.floor(chunkSize / 2));
+          continue;
+        }
         attempts += 1;
-        if (attempts >= 3) throw new Error('O envio foi interrompido após três tentativas. Tente novamente.');
+        if (attempts >= 3) {
+          if (error.status === 413) {
+            throw new Error('O proxy recusou até mesmo a menor parte do arquivo. Revise o limite de upload do proxy.');
+          }
+          throw new Error('O envio foi interrompido após três tentativas. Tente novamente.');
+        }
         await new Promise((resolve) => setTimeout(resolve, attempts * 1000));
         offset = await probe();
       }

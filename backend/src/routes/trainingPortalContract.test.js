@@ -54,3 +54,11 @@ test('retomada local consulta o caminho físico da sessão', () => {
   assert.match(route, /SELECT id, upload_url, object_path, original_name/);
   assert.match(route, /upload\.object_path\s*\n\s*\)/);
 });
+
+test('upload divide arquivos grandes e reduz o trecho quando o proxy responde 413', () => {
+  const api = read('src/api/trainingApi.js');
+  assert.match(api, /INITIAL_UPLOAD_CHUNK_SIZE = 8 \* 1024 \* 1024/);
+  assert.match(api, /MIN_UPLOAD_CHUNK_SIZE = 256 \* 1024/);
+  assert.match(api, /file\.slice\(offset, endExclusive\)/);
+  assert.match(api, /error\.status === 413 && chunkSize > MIN_UPLOAD_CHUNK_SIZE/);
+});
