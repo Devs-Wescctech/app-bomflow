@@ -27,6 +27,7 @@ Wescctech CRM is a comprehensive, self-hosted Customer Relationship Management s
 - **Database**: PostgreSQL
 - **Authentication**: JWT
 - **File Uploads**: Multer
+- **Portal de Treinamentos**: vídeos, PDFs e capas usam Object Storage privado. Requer `PRIVATE_OBJECT_DIR`; sem ele as APIs de upload/leitura retornam 503. Upload direto usa URLs PUT temporárias e o banco guarda apenas metadados/referências.
 - **API Design**: RESTful API with standardized CRUD operations.
 
 ### Core Features & Technical Implementations

@@ -17,6 +17,7 @@ import Agents from "./Agents";
 import KnowledgeBase from "./KnowledgeBase";
 
 import KBArticle from "./KBArticle";
+import ProductTraining from "./ProductTraining";
 
 import LeadsKanban from "./LeadsKanban";
 
@@ -718,6 +719,7 @@ function PagesContent() {
                 <Route path="/BomPetParceiros" element={<BomPetParceiros />} />
                 
                 <Route path="/SystemsApiDocs" element={<SystemsApiDocs />} />
+                <Route path="/ProductTraining" element={<ProductTraining />} />
 
                 <Route path="/SalesWonReport" element={<SalesWonReport />} />
                 <Route path="/SalesPJWonReport" element={<SalesPJWonReport />} />
