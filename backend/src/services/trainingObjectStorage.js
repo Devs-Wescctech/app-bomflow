@@ -96,6 +96,6 @@ export function getTrainingObject(objectPath) {
 }
 
 export async function deleteTrainingObject(objectPath) {
-  if (!objectPath || !isTrainingStorageConfigured()) return;
+  if (!objectPath) return;
   await getTrainingObject(objectPath).delete({ ignoreNotFound: true });
 }

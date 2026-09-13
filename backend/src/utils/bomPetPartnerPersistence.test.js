@@ -23,22 +23,18 @@ test('histórico mantém uma única vigência atual, sem sobreposição e sem mu
       [partnerId]
     );
 
+    const changedAt = new Date();
     await client.query(
       `UPDATE bom_pet_parceiros_historico
-          SET vigencia_fim = (
-            SELECT MAX(vigencia_inicio) + INTERVAL '1 microsecond'
-              FROM bom_pet_parceiros_historico WHERE parceiro_id = $1
-          )
+          SET vigencia_fim = $2
         WHERE parceiro_id = $1 AND vigencia_fim IS NULL`,
-      [partnerId]
+      [partnerId, changedAt]
     );
     await client.query(
       `INSERT INTO bom_pet_parceiros_historico
         (parceiro_id, valor_servico, vigencia_inicio)
-       SELECT $1, 125.50, MAX(vigencia_fim)
-         FROM bom_pet_parceiros_historico
-        WHERE parceiro_id = $1 AND vigencia_fim IS NOT NULL`,
-      [partnerId]
+       VALUES ($1, 125.50, $2)`,
+      [partnerId, changedAt]
     );
     await client.query(
       'UPDATE bom_pet_parceiros SET valor_servico = 125.50 WHERE id = $1',

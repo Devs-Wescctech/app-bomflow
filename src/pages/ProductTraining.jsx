@@ -233,7 +233,8 @@ export default function ProductTraining() {
   const resumeUpload = (training) => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = training.pending_mime_type || (training.media_type === "video" ? "video/mp4,video/webm" : "application/pdf");
+    const pendingKind = training.pending_asset_kind || training.media_type;
+    input.accept = training.pending_mime_type || (pendingKind === "cover" ? "image/jpeg,image/png,image/webp" : training.media_type === "video" ? "video/mp4,video/webm" : "application/pdf");
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
@@ -248,7 +249,7 @@ export default function ProductTraining() {
           initialOffset: session.confirmedOffset,
           getConfirmedOffset: async () => (await trainingApi.resumeUpload(training.id, training.pending_upload_id)).confirmedOffset,
         });
-        const mediaMetadata = await readMediaMetadata(file, training.media_type);
+        const mediaMetadata = pendingKind === "cover" ? {} : await readMediaMetadata(file, training.media_type);
         await trainingApi.completeUpload(training.id, training.pending_upload_id, mediaMetadata);
         await invalidate();
         setNotice("Envio retomado e finalizado.");

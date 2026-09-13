@@ -36,3 +36,15 @@ test('card publicado continua abrindo sem depender de metadados privados', () =>
   assert.doesNotMatch(page, /disabled=\{!training\.size_bytes\}/);
   assert.match(page, /trainingApi\.access\(item\.id\)/);
 });
+
+test('retomada de capa não tenta extrair metadados de vídeo ou PDF', () => {
+  const page = read('src/pages/ProductTraining.jsx');
+  assert.match(page, /pendingKind === "cover" \? \{\} : await readMediaMetadata/);
+  assert.match(page, /pendingKind === "cover" \? "image\/jpeg,image\/png,image\/webp"/);
+});
+
+test('exclusão não é marcada como concluída sem armazenamento privado', () => {
+  const storage = read('backend/src/services/trainingObjectStorage.js');
+  assert.doesNotMatch(storage, /!objectPath \|\| !isTrainingStorageConfigured\(\)/);
+  assert.match(storage, /getTrainingObject\(objectPath\)\.delete/);
+});
