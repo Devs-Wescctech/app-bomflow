@@ -52,6 +52,11 @@ export const trainingApi = {
       xhr.open('PUT', url);
       xhr.setRequestHeader('Content-Type', file.type);
       xhr.setRequestHeader('Content-Range', `bytes ${offset}-${file.size - 1}/${file.size}`);
+      const destination = new URL(url, window.location.origin);
+      const token = localStorage.getItem('accessToken');
+      if (destination.origin === window.location.origin && token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) {
           onProgress?.(Math.round(((offset + event.loaded) / file.size) * 100));

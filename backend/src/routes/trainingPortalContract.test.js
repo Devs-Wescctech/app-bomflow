@@ -48,3 +48,9 @@ test('exclusão não é marcada como concluída sem armazenamento privado', () =
   assert.doesNotMatch(storage, /!objectPath \|\| !isTrainingStorageConfigured\(\)/);
   assert.match(storage, /getTrainingObject\(objectPath\)\.delete/);
 });
+
+test('retomada local consulta o caminho físico da sessão', () => {
+  const route = read('backend/src/routes/trainings.js');
+  assert.match(route, /SELECT id, upload_url, object_path, original_name/);
+  assert.match(route, /upload\.object_path\s*\n\s*\)/);
+});
