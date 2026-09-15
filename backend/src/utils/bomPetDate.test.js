@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  bomPetDayBoundarySql,
   formatBomPetDateTime,
   getBomPetDateParts,
   getBomPetDeathMarkingConflict,
@@ -9,6 +10,18 @@ import {
   normalizeBomPetDateOnly,
   serializeBomPetTimestamp,
 } from './bomPetDate.js';
+
+test('gera limites SQL na meia-noite de São Paulo sem coerção ambígua de date', () => {
+  assert.equal(
+    bomPetDayBoundarySql('$1'),
+    "($1::date::timestamp AT TIME ZONE 'America/Sao_Paulo')"
+  );
+  assert.equal(
+    bomPetDayBoundarySql('$2', { nextDay: true }),
+    "(($2::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'America/Sao_Paulo')"
+  );
+  assert.throws(() => bomPetDayBoundarySql('data_inicio'), /Placeholder SQL inválido/);
+});
 import {
   formatBomPetDate,
   formatBomPetDateForFile,

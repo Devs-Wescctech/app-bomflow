@@ -1,6 +1,10 @@
 import { Router } from 'express';
-import { query } from '../config/database.js';
+import { query, withTransaction } from '../config/database.js';
 import { authMiddleware } from '../middleware/auth.js';
+import {
+  enqueueErpAtendimento,
+  syncErpAtendimentoOutboxItem,
+} from '../services/erpAtendimentoService.js';
 import multer from 'multer';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -210,28 +214,41 @@ router.post('/atendimentos', authMiddleware, async (req, res) => {
       ? telefone_contato.replace(/\D/g, '').slice(0, 15)
       : null;
 
-    const result = await query(
-      `WITH next_seq AS (
+    const created = await withTransaction(async (client) => {
+      const result = await client.query(
+        `WITH lock AS (SELECT pg_advisory_xact_lock(hashtext('bom_auto_protocolo'))),
+        next_seq AS (
         SELECT COALESCE(MAX(
           CASE WHEN protocolo LIKE 'BA' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || '%'
           THEN CAST(RIGHT(protocolo, 4) AS INTEGER) ELSE 0 END
         ), 0) + 1 AS seq
-        FROM bom_auto_atendimentos
-      )
-      INSERT INTO bom_auto_atendimentos
-       (protocolo, documento_cliente, nome_cliente, placa, descricao_veiculo, tipo_servico, observacoes, usuario, status_atendimento, telefone_contato, contratos_servicos)
-       VALUES (
-         'BA' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || LPAD((SELECT seq FROM next_seq)::text, 4, '0'),
-         $1, $2, $3, $4, $5, $6, $7, 'Pendente', $8, $9
-       )
-       RETURNING *`,
-      [documento_cliente, nome_cliente, placa, descricao_veiculo || null, tipo_servico, sanitizedObs, usuario, sanitizedTelefone, contratos_servicos || null]
-    );
+         FROM bom_auto_atendimentos, lock
+        )
+        INSERT INTO bom_auto_atendimentos
+         (protocolo, documento_cliente, nome_cliente, placa, descricao_veiculo, tipo_servico, observacoes, usuario, status_atendimento, telefone_contato, contratos_servicos)
+         VALUES (
+           'BA' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || LPAD((SELECT seq FROM next_seq)::text, 4, '0'),
+           $1, $2, $3, $4, $5, $6, $7, 'Pendente', $8, $9
+         )
+         RETURNING *`,
+        [documento_cliente, nome_cliente, placa, descricao_veiculo || null, tipo_servico, sanitizedObs, usuario, sanitizedTelefone, contratos_servicos || null]
+      );
+      const atendimento = result.rows[0];
+      const outboxId = await enqueueErpAtendimento(client, 'bom_auto', atendimento);
+      return { atendimento, outboxId };
+    });
+    const erpIntegration = await syncErpAtendimentoOutboxItem(created.outboxId);
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json({
+      ...created.atendimento,
+      erp_integracao_status: erpIntegration.status,
+    });
   } catch (error) {
     console.error('Error in bom-auto create atendimento:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({
+      message: error.statusCode ? error.message : 'Não foi possível registrar o atendimento.',
+      code: error.code,
+    });
   }
 });
 

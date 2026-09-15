@@ -94,6 +94,7 @@ INVERTEXTO_STATE = "SP"
 
 [userenv.development]
 BOM_PET_ERP_DEATH_SYNC_ENABLED = "false"
+ERP_ATENDIMENTO_SYNC_ENABLED = "false"
 
 [userenv.production]
 

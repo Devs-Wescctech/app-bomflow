@@ -2,8 +2,8 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Dependência completa e ordenada da reconciliação. As rotas mantêm CREATE/ALTER
--- defensivos para bases antigas, mas o boot principal não depende da ordem deles.
+-- Dependência completa e ordenada da reconciliação. O boot principal cria estes
+-- objetos antes de registrar as rotas e rotinas que dependem deles.
 CREATE TABLE IF NOT EXISTS bomflow_orcamentos (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     erp_pedido_id BIGINT NOT NULL UNIQUE,
@@ -17,15 +17,38 @@ CREATE TABLE IF NOT EXISTS bomflow_orcamentos (
     lead_id UUID,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS adesao_zero BOOLEAN;
+ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS adesao_zero_updated_by UUID;
+ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS adesao_zero_updated_at TIMESTAMPTZ;
 ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS lead_id UUID;
 ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS erp_approval_sync_status VARCHAR(24) NOT NULL DEFAULT 'pending';
 ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS erp_approval_last_checked_at TIMESTAMPTZ;
 ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS erp_approval_last_situacao VARCHAR(10);
 ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS erp_approval_last_error TEXT;
+CREATE INDEX IF NOT EXISTS idx_bomflow_orcamentos_modulo ON bomflow_orcamentos(modulo);
+CREATE INDEX IF NOT EXISTS idx_bomflow_orcamentos_agent ON bomflow_orcamentos(agent_id);
 CREATE INDEX IF NOT EXISTS idx_bomflow_orcamentos_lead ON bomflow_orcamentos(lead_id);
 CREATE INDEX IF NOT EXISTS idx_bomflow_orcamentos_approval_pending
     ON bomflow_orcamentos(erp_approval_last_checked_at, created_at)
     WHERE erp_approval_sync_status IN ('pending', 'error');
+
+CREATE TABLE IF NOT EXISTS orcamento_documentos (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    erp_pedido_id BIGINT NOT NULL,
+    lead_id VARCHAR(64),
+    modulo VARCHAR(32) NOT NULL,
+    tipo VARCHAR(40) NOT NULL,
+    stored_name VARCHAR(255) NOT NULL,
+    original_name VARCHAR(255),
+    mime_type VARCHAR(128),
+    size_bytes BIGINT,
+    uploaded_by UUID,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_orcamento_documentos_pedido ON orcamento_documentos(erp_pedido_id);
+CREATE INDEX IF NOT EXISTS idx_orcamento_documentos_lead ON orcamento_documentos(lead_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_orcamento_documentos_pedido_tipo
+    ON orcamento_documentos(erp_pedido_id, tipo);
 
 -- Auditoria operacional da sincronização de aprovação de pedidos ERP.
 CREATE TABLE IF NOT EXISTS erp_approval_reconciliation_runs (
@@ -81,6 +104,28 @@ CREATE TABLE IF NOT EXISTS erp_approval_automation_checkpoints (
     completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (event_key, automation_type, automation_id)
 );
+
+-- Fila durável para espelhar atendimentos no ERP sem manter transações locais
+-- abertas durante I/O remoto. O protocolo torna cada escrita idempotente no ERP.
+CREATE TABLE IF NOT EXISTS erp_atendimento_outbox (
+    id BIGSERIAL PRIMARY KEY,
+    modulo VARCHAR(20) NOT NULL CHECK (modulo IN ('bom_auto', 'bom_pet')),
+    atendimento_id BIGINT NOT NULL,
+    protocolo VARCHAR(20) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'processing', 'completed', 'error')),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_retry_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMPTZ,
+    UNIQUE (modulo, atendimento_id),
+    UNIQUE (modulo, protocolo)
+);
+CREATE INDEX IF NOT EXISTS idx_erp_atendimento_outbox_pending
+    ON erp_atendimento_outbox(next_retry_at, id)
+    WHERE status IN ('pending', 'error');
 
 
 -- =====================
@@ -397,6 +442,8 @@ CREATE TABLE IF NOT EXISTS trainings (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE trainings ADD COLUMN IF NOT EXISTS duration_seconds INTEGER;
+ALTER TABLE trainings ADD COLUMN IF NOT EXISTS page_count INTEGER;
 CREATE INDEX IF NOT EXISTS idx_trainings_catalog ON trainings(published, sort_order);
 
 CREATE TABLE IF NOT EXISTS training_uploads (
