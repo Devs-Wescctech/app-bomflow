@@ -49,18 +49,7 @@ export async function upsertBomAutoAtendimentoWithDb(db, atendimento) {
           $10::timestamptz AT TIME ZONE 'America/Sao_Paulo',
           $11, $12, CURRENT_TIMESTAMP)
        ON CONFLICT (protocolo) DO UPDATE SET
-         documento_cliente = EXCLUDED.documento_cliente,
-         placa = EXCLUDED.placa,
-         nome_cliente = EXCLUDED.nome_cliente,
-         descricao_veiculo = EXCLUDED.descricao_veiculo,
-         tipo_servico = EXCLUDED.tipo_servico,
-         contratos_servicos = EXCLUDED.contratos_servicos,
-         telefone_contato = EXCLUDED.telefone_contato,
-         observacoes = EXCLUDED.observacoes,
-         data_hora = EXCLUDED.data_hora,
-         usuario = EXCLUDED.usuario,
-         status_atendimento = EXCLUDED.status_atendimento,
-         data_integracao = CURRENT_TIMESTAMP
+         data_integracao = public.x_atendimentos_bom_auto.data_integracao
         WHERE public.x_atendimentos_bom_auto.documento_cliente
                 IS NOT DISTINCT FROM EXCLUDED.documento_cliente
           AND public.x_atendimentos_bom_auto.placa
@@ -107,29 +96,7 @@ export async function upsertBomPetAtendimentoWithDb(db, atendimento) {
           $15, $16, $17::timestamptz AT TIME ZONE 'America/Sao_Paulo',
           $18, $19, $20, $21, $22, $23, CURRENT_TIMESTAMP)
        ON CONFLICT (protocolo) DO UPDATE SET
-         pet_contrato_id = EXCLUDED.pet_contrato_id,
-         documento_cliente = EXCLUDED.documento_cliente,
-         nome_cliente = EXCLUDED.nome_cliente,
-         pet_nome = EXCLUDED.pet_nome,
-         pet_descricao = EXCLUDED.pet_descricao,
-         contratos_servicos = EXCLUDED.contratos_servicos,
-         situacao_financeira = EXCLUDED.situacao_financeira,
-         comprovante_pagamento_recebido = EXCLUDED.comprovante_pagamento_recebido,
-         comprovante_pagamento_obs = EXCLUDED.comprovante_pagamento_obs,
-         remocao_local = EXCLUDED.remocao_local,
-         remocao_endereco = EXCLUDED.remocao_endereco,
-         clinica_nome = EXCLUDED.clinica_nome,
-         parceiro_nome = EXCLUDED.parceiro_nome,
-         telefone_contato = EXCLUDED.telefone_contato,
-         observacoes = EXCLUDED.observacoes,
-         data_hora = EXCLUDED.data_hora,
-         usuario = EXCLUDED.usuario,
-         status_atendimento = EXCLUDED.status_atendimento,
-         pet_falecido_marcado = EXCLUDED.pet_falecido_marcado,
-         origem = EXCLUDED.origem,
-         valor_particular = EXCLUDED.valor_particular,
-         pet_data_falecimento = EXCLUDED.pet_data_falecimento,
-         data_integracao = CURRENT_TIMESTAMP
+         data_integracao = public.x_atendimentos_bom_pet.data_integracao
         WHERE public.x_atendimentos_bom_pet.documento_cliente
                 IS NOT DISTINCT FROM EXCLUDED.documento_cliente
           AND public.x_atendimentos_bom_pet.pet_contrato_id
