@@ -107,7 +107,9 @@ export default function BomPetPainel() {
   const [allAtendimentos, setAllAtendimentos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [counts, setCounts] = useState({ pendentes: 0, solucionados: 0, cancelados: 0, total: 0 });
+  const [counts, setCounts] = useState({
+    pendentes: 0, solucionados: 0, cancelados: 0, total: 0, erpSyncPendentes: 0,
+  });
 
   const [filterStatus, setFilterStatus] = useState("Pendente");
   const [filterDataInicio, setFilterDataInicio] = useState("");
@@ -115,6 +117,7 @@ export default function BomPetPainel() {
   const [filterCliente, setFilterCliente] = useState("");
   const [filterPet, setFilterPet] = useState("");
   const [filterAtendente, setFilterAtendente] = useState("");
+  const [filterErpSyncPending, setFilterErpSyncPending] = useState(false);
 
   const [universalSearch, setUniversalSearch] = useState("");
 
@@ -174,7 +177,10 @@ export default function BomPetPainel() {
   useEffect(() => {
     refreshTimerRef.current = setInterval(() => fetchAtendimentos(true), AUTO_REFRESH_INTERVAL);
     return () => { if (refreshTimerRef.current) clearInterval(refreshTimerRef.current); };
-  }, [filterStatus, filterDataInicio, filterDataFim, filterCliente, filterPet, filterAtendente]);
+  }, [
+    filterStatus, filterDataInicio, filterDataFim, filterCliente, filterPet,
+    filterAtendente, filterErpSyncPending,
+  ]);
 
   useEffect(() => {
     return () => { imagePreviews.forEach(url => URL.revokeObjectURL(url)); };
@@ -187,13 +193,17 @@ export default function BomPetPainel() {
     } catch (e) { /* silencioso */ }
   }
 
-  async function fetchAtendimentos(silent = false, statusOverride) {
+  async function fetchAtendimentos(silent = false, statusOverride, erpSyncPendingOverride) {
     if (!silent) setLoading(true);
     fetchContadores();
     try {
       const params = new URLSearchParams();
       const effectiveStatus = statusOverride !== undefined ? statusOverride : filterStatus;
+      const effectiveErpSyncPending = erpSyncPendingOverride !== undefined
+        ? erpSyncPendingOverride
+        : filterErpSyncPending;
       if (effectiveStatus && effectiveStatus !== "todos") params.set('status', effectiveStatus);
+      if (effectiveErpSyncPending) params.set('erp_sync_pendente', 'true');
       if (filterDataInicio) params.set('data_inicio', filterDataInicio);
       if (filterDataFim) params.set('data_fim', filterDataFim);
       if (filterCliente) {
@@ -222,6 +232,7 @@ export default function BomPetPainel() {
   }
 
   const userAgentType = currentUser?.agent?.agentType || currentUser?.agentType || '';
+  const isAdminMaster = currentUser?.role === 'admin' || userAgentType === 'admin';
   const isRestrictedAgent = userAgentType === 'bom_pet_atendente';
   const currentUserIdentifier = currentUser?.agent?.email || currentUser?.email || '';
 
@@ -251,6 +262,7 @@ export default function BomPetPainel() {
     setFilterDataInicio(""); setFilterDataFim("");
     setFilterCliente(""); setFilterPet(""); setFilterAtendente("");
     setUniversalSearch("");
+    setFilterErpSyncPending(false);
   }
 
   const alertCounts = {
@@ -260,8 +272,15 @@ export default function BomPetPainel() {
 
   function handleCounterClick(status) {
     const newStatus = status === filterStatus ? "todos" : status;
+    setFilterErpSyncPending(false);
     setFilterStatus(newStatus);
-    fetchAtendimentos(false, newStatus);
+    fetchAtendimentos(false, newStatus, false);
+  }
+
+  function handleErpSyncPendingFilter(enabled = !filterErpSyncPending) {
+    setFilterStatus("Solucionado");
+    setFilterErpSyncPending(enabled);
+    fetchAtendimentos(false, "Solucionado", enabled);
   }
 
   async function openDetail(atendimento) {
@@ -634,11 +653,27 @@ export default function BomPetPainel() {
         )}
       </Card>
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           {loading ? 'Carregando...' : `${sortedAtendimentos.length} atendimento${sortedAtendimentos.length !== 1 ? 's' : ''}`}
           {universalSearch && ` para "${universalSearch}"`}
         </p>
+        {isAdminMaster
+          && filterStatus === 'Solucionado'
+          && (counts.erpSyncPendentes > 0 || filterErpSyncPending) && (
+          <Button
+            type="button"
+            className={`action-pill-ghost h-9 gap-2 px-3 text-xs ${
+              filterErpSyncPending ? 'border-amber-400 text-amber-700 dark:text-amber-300' : ''
+            }`}
+            onClick={() => handleErpSyncPendingFilter()}
+            aria-pressed={filterErpSyncPending}
+          >
+            <AlertTriangle className="h-4 w-4 text-amber-500" />
+            {counts.erpSyncPendentes} caso{counts.erpSyncPendentes !== 1 ? 's' : ''} pendente{counts.erpSyncPendentes !== 1 ? 's' : ''} de sincronização com o ERP
+            {filterErpSyncPending && <X className="h-3.5 w-3.5" />}
+          </Button>
+        )}
       </div>
 
       {loading && (
@@ -669,6 +704,9 @@ export default function BomPetPainel() {
             const isPendente = status === 'pendente';
             const isSolucionado = status === 'solucionado';
             const isCancelado = status === 'cancelado';
+            const hasPendingErpSync = isSolucionado
+              && at.pet_falecido_marcado
+              && at.erp_falecimento_sync_status !== 'confirmed';
 
             let cardBorder = 'border-gray-200 dark:border-gray-800';
             let cardBg = '';
@@ -714,6 +752,12 @@ export default function BomPetPainel() {
                         </Badge>
                       )}
                       <StatusBadge status={at.status_atendimento} />
+                      {isAdminMaster && hasPendingErpSync && (
+                        <Badge variant="outline" className="border-amber-400 text-amber-700 dark:text-amber-300 text-[10px] px-1.5 py-0">
+                          <AlertTriangle className="mr-0.5 inline h-2.5 w-2.5" />
+                          ERP pendente
+                        </Badge>
+                      )}
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                         {at.origem || 'Plano'}
                       </Badge>
@@ -977,7 +1021,8 @@ export default function BomPetPainel() {
                 </div>
               </div>
 
-              {selectedAtendimento.origem !== 'Particular'
+              {isAdminMaster
+                && selectedAtendimento.origem !== 'Particular'
                 && selectedAtendimento.pet_falecido_marcado
                 && selectedAtendimento.erp_falecimento_sync_status !== 'confirmed' && (
                 <div className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50/70 p-4 dark:border-amber-800 dark:bg-amber-950/30 sm:flex-row sm:items-center sm:justify-between">
