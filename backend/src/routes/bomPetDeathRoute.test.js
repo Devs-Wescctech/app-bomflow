@@ -87,7 +87,7 @@ test('início e reenvio da sincronização exigem solucionado e comprovante no U
 });
 
 test('endpoint de reenvio valida as pré-condições antes de chamar o ERP', () => {
-  const retryStart = source.indexOf("router.post('/atendimentos/:id/sincronizar-falecimento'");
+  const retryStart = source.indexOf("'/atendimentos/:id/sincronizar-falecimento'");
   const retryEnd = source.indexOf("router.patch('/atendimentos/:id/termo'", retryStart);
   const retryBlock = source.slice(retryStart, retryEnd);
 
@@ -95,6 +95,27 @@ test('endpoint de reenvio valida as pré-condições antes de chamar o ERP', () 
   const syncCall = retryBlock.indexOf('await synchronizePetDeathWithErp');
   assert.ok(prerequisiteCheck >= 0);
   assert.ok(syncCall > prerequisiteCheck);
+});
+
+test('contador e filtro de pendências ERP ficam restritos ao administrador master', () => {
+  assert.match(source, /function requireBomPetAdmin\(req, res, next\)/);
+  assert.match(
+    source,
+    /erp_sync_pendente === 'true'[\s\S]*?!isBomPetAdmin\(req\)[\s\S]*?Acesso restrito ao administrador master/
+  );
+  assert.match(
+    source,
+    /'\/atendimentos\/:id\/sincronizar-falecimento'[\s\S]*?requireBomPetAdmin/
+  );
+  assert.match(panelSource, /isAdminMaster[\s\S]*?counts\.erpSyncPendentes/);
+  assert.match(panelSource, /params\.set\('erp_sync_pendente', 'true'\)/);
+});
+
+test('falhas conhecidas de sincronização são convertidas em mensagens amigáveis', () => {
+  assert.match(source, /function userFriendlyErpSyncError\(error\)/);
+  assert.match(source, /O ERP já possui uma Data de Falecimento diferente/);
+  assert.match(source, /O ERP está temporariamente indisponível/);
+  assert.match(source, /const safeError = userFriendlyErpSyncError\(error\)/);
 });
 
 test('criação Plano bloqueia pet sem vínculo ativo e único no ERP', () => {

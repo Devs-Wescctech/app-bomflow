@@ -179,6 +179,17 @@ function isBomPetSupervisor(req) {
   return t === 'admin' || t === 'bom_pet_supervisor' || req.user?.role === 'admin';
 }
 
+function isBomPetAdmin(req) {
+  return req.bomPetAgent?.agent_type === 'admin' || req.user?.role === 'admin';
+}
+
+function requireBomPetAdmin(req, res, next) {
+  if (!isBomPetAdmin(req)) {
+    return res.status(403).json({ message: 'Acesso restrito ao administrador master.' });
+  }
+  next();
+}
+
 // Usuário SEMPRE extraído do token/banco, nunca do body.
 function currentUsuario(req) {
   return req.bomPetAgent?.email || req.user?.email || '';
@@ -752,6 +763,27 @@ function sanitizeErpSyncError(error) {
     .slice(0, 500);
 }
 
+function userFriendlyErpSyncError(error) {
+  const messages = {
+    erp_pet_identity_ambiguous: 'Não foi possível identificar o pet de forma única no contrato do ERP. Revise o cadastro antes de tentar novamente.',
+    erp_pet_identity_weak_match: 'Os dados do pet não correspondem exatamente ao cadastro do ERP. Revise o cadastro antes de tentar novamente.',
+    erp_pet_identity_changed: 'O vínculo do pet no ERP mudou desde a criação do atendimento. O caso precisa de revisão manual.',
+    erp_pet_identity_not_found: 'Não foi possível localizar o pet entre os dependentes ativos deste contrato no ERP.',
+    erp_pet_person_not_found: 'O cadastro individual do pet não foi encontrado no ERP.',
+    erp_pet_death_characteristic_not_found: 'O campo Data de Falecimento não está disponível no cadastro do pet no ERP.',
+    erp_pet_death_characteristic_ambiguous: 'O cadastro do pet possui mais de um campo Data de Falecimento no ERP. O caso precisa de revisão manual.',
+    erp_pet_death_value_invalid: 'O ERP possui uma Data de Falecimento inválida para este pet. O caso precisa de revisão manual.',
+    erp_pet_death_date_conflict: 'O ERP já possui uma Data de Falecimento diferente para este pet. A informação não foi sobrescrita.',
+    erp_pet_death_author_unavailable: 'O usuário técnico da integração está indisponível no ERP. Acione o administrador do sistema.',
+    erp_pet_death_date_not_confirmed: 'O ERP não confirmou a gravação da Data de Falecimento. Tente novamente em alguns minutos.',
+  };
+  if (messages[error?.code]) return messages[error.code];
+  if (Number(error?.statusCode) >= 400 && Number(error?.statusCode) < 500) {
+    return sanitizeErpSyncError(error);
+  }
+  return 'O ERP está temporariamente indisponível. Tente sincronizar novamente em alguns minutos.';
+}
+
 function getErpIdentityErrorStatus(error) {
   if ([
     'erp_pet_identity_ambiguous',
@@ -906,7 +938,7 @@ async function synchronizePetDeathWithErp(atendimento, usuario) {
     return { status: 'confirmed', alreadyApplied: result.alreadyApplied };
   } catch (error) {
     const status = getErpSyncErrorStatus(error);
-    const safeError = sanitizeErpSyncError(error);
+    const safeError = userFriendlyErpSyncError(error);
     const errorUpdateResult = await query(
       `UPDATE bom_pet_atendimentos
           SET erp_falecimento_sync_status = $2,
@@ -1205,18 +1237,29 @@ router.get('/atendimentos/contadores', authMiddleware, bomPetAuth, async (req, r
         COUNT(*) FILTER (WHERE status_atendimento = 'Pendente') AS pendentes,
         COUNT(*) FILTER (WHERE status_atendimento = 'Solucionado') AS solucionados,
         COUNT(*) FILTER (WHERE status_atendimento = 'Cancelado') AS cancelados,
+        COUNT(*) FILTER (
+          WHERE status_atendimento = 'Solucionado'
+            AND pet_falecido_marcado = TRUE
+            AND erp_falecimento_sync_status IN (
+              'pending', 'processing', 'retryable_error', 'manual_review', 'pending_homologation'
+            )
+        ) AS erp_sync_pendentes,
         COUNT(*) AS total
        FROM bom_pet_atendimentos
        ${scoped ? 'WHERE LOWER(usuario) = LOWER($1)' : ''}`,
       scoped ? [currentUsuario(req)] : []
     );
     const row = result.rows[0];
-    res.json({
+    const response = {
       pendentes: parseInt(row.pendentes, 10),
       solucionados: parseInt(row.solucionados, 10),
       cancelados: parseInt(row.cancelados, 10),
       total: parseInt(row.total, 10),
-    });
+    };
+    if (isBomPetAdmin(req)) {
+      response.erpSyncPendentes = parseInt(row.erp_sync_pendentes, 10);
+    }
+    res.json(response);
   } catch (error) {
     console.error('Error fetching bom-pet contadores:', error);
     res.status(500).json({ message: error.message });
@@ -1272,7 +1315,10 @@ router.get('/atendimentos/:id(\\d+)', authMiddleware, bomPetAuth, async (req, re
 
 router.get('/atendimentos', authMiddleware, bomPetAuth, async (req, res) => {
   try {
-    const { documento, status, data_inicio, data_fim, nome, pet, atendente, origem } = req.query;
+    const {
+      documento, status, data_inicio, data_fim, nome, pet, atendente, origem,
+      erp_sync_pendente,
+    } = req.query;
 
     let sql = 'SELECT * FROM bom_pet_atendimentos WHERE 1=1';
     const params = [];
@@ -1291,6 +1337,16 @@ router.get('/atendimentos', authMiddleware, bomPetAuth, async (req, res) => {
       }
       sql += ` AND status_atendimento = $${paramIndex++}`;
       params.push(status);
+    }
+    if (erp_sync_pendente === 'true') {
+      if (!isBomPetAdmin(req)) {
+        return res.status(403).json({ message: 'Acesso restrito ao administrador master.' });
+      }
+      sql += ` AND status_atendimento = 'Solucionado'
+        AND pet_falecido_marcado = TRUE
+        AND erp_falecimento_sync_status IN (
+          'pending', 'processing', 'retryable_error', 'manual_review', 'pending_homologation'
+        )`;
     }
     if (origem) {
       if (!['Plano', 'Particular'].includes(origem)) {
@@ -1575,7 +1631,12 @@ router.put('/atendimentos/:id', authMiddleware, bomPetAuth, async (req, res) => 
 });
 
 // POST /api/bom-pet/atendimentos/:id/sincronizar-falecimento — reenvio manual seguro.
-router.post('/atendimentos/:id/sincronizar-falecimento', authMiddleware, bomPetAuth, async (req, res) => {
+router.post(
+  '/atendimentos/:id/sincronizar-falecimento',
+  authMiddleware,
+  bomPetAuth,
+  requireBomPetAdmin,
+  async (req, res) => {
   try {
     const atendimento = await loadAuthorizedAtendimento(req, res, req.params.id);
     if (!atendimento) return;
@@ -1600,7 +1661,8 @@ router.post('/atendimentos/:id/sincronizar-falecimento', authMiddleware, bomPetA
     console.error('Error retrying bom-pet ERP death sync:', error);
     res.status(error.statusCode || 500).json({ message: error.message });
   }
-});
+  }
+);
 
 router.patch('/atendimentos/:id/termo', authMiddleware, bomPetAuth, async (req, res) => {
   try {
