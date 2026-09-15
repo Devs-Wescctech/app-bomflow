@@ -25,6 +25,22 @@ completo do pet e bloqueia resultados ausentes ou ambíguos.
 A implementação foi preparada com chave de ativação desabilitada por padrão. O registro
 local continua funcionando, e a escrita no ERP somente será ativada durante a homologação.
 
+Há duas ativações independentes, ambas exigindo o valor literal `true`:
+
+- `BOM_PET_ERP_DEATH_SYNC_ENABLED`: autoriza a escrita da Data de Falecimento na
+  característica `55435402`;
+- `ERP_ATENDIMENTO_SYNC_ENABLED`: autoriza o espelhamento da fila local para
+  `x_atendimentos_bom_auto` e `x_atendimentos_bom_pet`.
+
+Sem `ERP_ATENDIMENTO_SYNC_ENABLED=true`, o envio imediato e o reconciliador não
+reivindicam itens da outbox, não incrementam tentativas e não abrem conexão de escrita com
+o ERP. A chave só deve ser habilitada depois de aplicar e validar as constraints do script
+SQL no ambiente correspondente.
+
+Para atendimentos de origem Plano, a Pessoa do pet precisa possuir vínculo ativo e único
+com o contrato. Vínculos inativos ou ambíguos ficam em revisão cadastral e não autorizam
+novo atendimento nem escrita de falecimento.
+
 ## 2. Evidências
 
 ### 2.1 Leitura usada pelo Bom Flow

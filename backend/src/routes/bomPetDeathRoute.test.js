@@ -3,6 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const source = fs.readFileSync(new URL('./bomPet.js', import.meta.url), 'utf8');
+const consultationSource = fs.readFileSync(
+  new URL('../../../src/pages/BomPetConsulta.jsx', import.meta.url),
+  'utf8'
+);
+const panelSource = fs.readFileSync(
+  new URL('../../../src/pages/BomPetPainel.jsx', import.meta.url),
+  'utf8'
+);
 
 test('PUT protege atomicamente a primeira marcação contra requisições concorrentes', () => {
   assert.match(
@@ -87,4 +95,47 @@ test('endpoint de reenvio valida as pré-condições antes de chamar o ERP', () 
   const syncCall = retryBlock.indexOf('await synchronizePetDeathWithErp');
   assert.ok(prerequisiteCheck >= 0);
   assert.ok(syncCall > prerequisiteCheck);
+});
+
+test('criação Plano bloqueia pet sem vínculo ativo e único no ERP', () => {
+  const creationStart = source.indexOf("router.post('/atendimentos'");
+  const creationEnd = source.indexOf("router.get('/atendimentos/atendentes'", creationStart);
+  const creationBlock = source.slice(creationStart, creationEnd);
+
+  assert.match(
+    creationBlock,
+    /getBomPetPlanIdentityBlock\(erpPetIdentityStatus\)/
+  );
+  assert.match(
+    creationBlock,
+    /throw partnerError\(identityBlock\.message, identityBlock\.statusCode\)/
+  );
+});
+
+test('consulta sinaliza pet sem identidade resolvida como revisão cadastral', () => {
+  const consultationStart = source.indexOf("router.get('/consulta'");
+  const consultationEnd = source.indexOf("router.get('/particulares/cliente'", consultationStart);
+  const consultationBlock = source.slice(consultationStart, consultationEnd);
+
+  assert.match(consultationBlock, /if \(!shouldExposeBomPetPlanPet\(identityStatus\)\) continue/);
+  assert.match(consultationBlock, /getBomPetPlanAvailability\(\{ falecido, identityStatus \}\)/);
+  assert.match(consultationBlock, /atendimento_elegivel: availability\.atendimentoElegivel/);
+});
+
+test('interface exclui pets que exigem revisão cadastral da seleção de atendimento', () => {
+  assert.match(
+    consultationSource,
+    /!p\.erp_identity_status \|\| p\.erp_identity_status === 'resolved'/
+  );
+  assert.match(consultationSource, /petsVisiveis\.map/);
+  assert.match(consultationSource, /Revisão cadastral necessária/);
+});
+
+test('reenvio com integração desativada informa espera de homologação sem erro destrutivo', () => {
+  assert.match(panelSource, /syncStatus === 'pending_homologation'/);
+  assert.match(panelSource, /A integração com o ERP está desativada neste ambiente/);
+  assert.match(
+    panelSource,
+    /syncStatus === 'pending_homologation' \|\| syncStatus === 'confirmed'/
+  );
 });

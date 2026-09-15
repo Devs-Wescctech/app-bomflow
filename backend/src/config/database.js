@@ -29,6 +29,7 @@ export async function initDatabase() {
     console.log('Database schema initialized successfully');
   } catch (error) {
     console.error('Error initializing database:', error.message);
+    throw error;
   }
 }
 

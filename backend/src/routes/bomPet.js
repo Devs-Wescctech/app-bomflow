@@ -10,6 +10,7 @@ import fs from 'fs';
 import process from 'node:process';
 import { fileURLToPath } from 'url';
 import {
+  bomPetDayBoundarySql,
   getBomPetDeathMarkingConflict,
   isValidBomPetDateOnly,
   serializeBomPetRow,
@@ -38,6 +39,15 @@ import {
   markBomPetPessoaFalecida,
   resolveBomPetPessoa,
 } from '../services/bomPetErpDeathService.js';
+import {
+  getBomPetPlanAvailability,
+  getBomPetPlanIdentityBlock,
+  shouldExposeBomPetPlanPet,
+} from '../utils/bomPetPlanEligibility.js';
+import {
+  enqueueErpAtendimento,
+  syncErpAtendimentoOutboxItem,
+} from '../services/erpAtendimentoService.js';
 
 const router = Router();
 
@@ -582,6 +592,8 @@ router.get('/consulta', authMiddleware, bomPetAuth, async (req, res) => {
         falecidosLegadosPorNome.has(`${r.contrato_id}::${normalizeName(nome)}`) ||
         falecidosSemNome.has(String(r.contrato_id));
       const falecido = Boolean(identity?.dataFalecimento) || falecidoLocal;
+      if (!shouldExposeBomPetPlanPet(identityStatus)) continue;
+      const availability = getBomPetPlanAvailability({ falecido, identityStatus });
       pets.push({
         nome,
         descricao: r.texto_original_veiculo || '',
@@ -592,7 +604,9 @@ router.get('/consulta', authMiddleware, bomPetAuth, async (req, res) => {
         data_falecimento: identity?.dataFalecimento || null,
         contrato_servicos: r.contrato_servicos,
         situacao_contrato: mapSituacaoContrato(r.situacao_contrato),
-        status: falecido ? 'Falecido' : 'Ativo',
+        atendimento_elegivel: availability.atendimentoElegivel,
+        motivo_bloqueio: availability.motivoBloqueio,
+        status: availability.status,
       });
     }
 
@@ -1029,6 +1043,8 @@ router.post('/atendimentos', authMiddleware, bomPetAuth, (req, res, next) => {
         console.warn(
           `[BomPet] Identidade ERP do pet pendente no contrato ${petRow.contrato_id}: ${identityError.code || identityError.message}`
         );
+        const identityBlock = getBomPetPlanIdentityBlock(erpPetIdentityStatus);
+        throw partnerError(identityBlock.message, identityBlock.statusCode);
       }
       if (erpPetIdentity?.dataFalecimento) {
         throw partnerError(`Este pet já possui Data de Falecimento registrada no ERP (${erpPetIdentity.dataFalecimento}).`);
@@ -1120,6 +1136,12 @@ router.post('/atendimentos', authMiddleware, bomPetAuth, (req, res, next) => {
         ]
       );
       const atendimento = inserted.rows[0];
+      await client.query(
+        `INSERT INTO bom_pet_historico_alteracoes
+         (atendimento_id, status_anterior, status_novo, usuario, observacao)
+         VALUES ($1, NULL, 'Pendente', $2, $3)`,
+        [atendimento.id, usuario, `Atendimento ${origem} criado.`]
+      );
       for (const file of paymentFiles) {
         const url = `/api/bom-pet/comprovantes-pagamento/${file.filename}`;
         await client.query(
@@ -1137,17 +1159,28 @@ router.post('/atendimentos', authMiddleware, bomPetAuth, (req, res, next) => {
           [atendimento.id, usuario, `Comprovante de pagamento recebido (cliente inadimplente): ${comprovanteObs}`]
         );
       }
-      return atendimento;
+      const outboxId = await enqueueErpAtendimento(client, 'bom_pet', atendimento);
+      return { atendimento, outboxId };
     });
+    const erpIntegration = await syncErpAtendimentoOutboxItem(result.outboxId);
 
-    res.status(201).json(serializeBomPetRow(result));
+    res.status(201).json({
+      ...serializeBomPetRow(result.atendimento),
+      erp_integracao_status: erpIntegration.status,
+    });
   } catch (error) {
     removeUploadedFiles(paymentFiles);
     console.error('Error in bom-pet create atendimento:', {
       code: error.code || null,
       status: error.statusCode || error.status || 500,
     });
-    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
+    const isErpFailure = error instanceof ErpUpstreamError || error.isErpUpstream === true;
+    res.status(isErpFailure ? 502 : (error.statusCode || 500)).json({
+      message: isErpFailure
+        ? 'Não foi possível consultar o ERP neste momento. Tente novamente.'
+        : error.message,
+      code: isErpFailure ? 'erp_indisponivel' : error.code,
+    });
   }
 });
 
@@ -1283,14 +1316,14 @@ router.get('/atendimentos', authMiddleware, bomPetAuth, async (req, res) => {
       if (!isValidBomPetDateOnly(data_inicio)) {
         return res.status(400).json({ message: 'data_inicio inválida. Use o formato YYYY-MM-DD.' });
       }
-      sql += ` AND data_hora >= ($${paramIndex++}::date AT TIME ZONE 'America/Sao_Paulo')`;
+      sql += ` AND data_hora >= ${bomPetDayBoundarySql(`$${paramIndex++}`)}`;
       params.push(data_inicio);
     }
     if (data_fim) {
       if (!isValidBomPetDateOnly(data_fim)) {
         return res.status(400).json({ message: 'data_fim inválida. Use o formato YYYY-MM-DD.' });
       }
-      sql += ` AND data_hora < (($${paramIndex++}::date + INTERVAL '1 day') AT TIME ZONE 'America/Sao_Paulo')`;
+      sql += ` AND data_hora < ${bomPetDayBoundarySql(`$${paramIndex++}`, { nextDay: true })}`;
       params.push(data_fim);
     }
     if (atendente && isBomPetSupervisor(req)) {

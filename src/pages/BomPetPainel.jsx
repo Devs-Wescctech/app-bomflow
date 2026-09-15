@@ -448,11 +448,19 @@ export default function BomPetPainel() {
       await fetchAtendimentos(true);
 
       toast({
-        title: syncStatus === 'confirmed' ? 'Sincronização confirmada' : 'Sincronização pendente',
+        title: syncStatus === 'confirmed'
+          ? 'Sincronização confirmada'
+          : syncStatus === 'pending_homologation'
+            ? 'Aguardando homologação'
+            : 'Sincronização pendente',
         description: syncStatus === 'confirmed'
           ? 'A Data de Falecimento foi preenchida e confirmada no ERP.'
+          : syncStatus === 'pending_homologation'
+            ? 'A integração com o ERP está desativada neste ambiente. O registro permanece salvo no Bom Flow.'
           : (updated.erp_falecimento_sync_error || 'O ERP não confirmou a alteração; consulte o detalhe para revisar.'),
-        variant: syncStatus === 'confirmed' ? undefined : 'destructive',
+        variant: syncStatus === 'pending_homologation' || syncStatus === 'confirmed'
+          ? undefined
+          : 'destructive',
       });
     } catch (err) {
       toast({ title: 'Erro', description: err.message, variant: 'destructive' });

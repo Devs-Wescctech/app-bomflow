@@ -133,7 +133,12 @@ export default function BomPetConsulta() {
 
   const isParticular = origem === 'Particular';
   const pets = clientData?.pets || [];
-  const petsAtivos = pets.filter(p => p.status !== 'Falecido');
+  const petsVisiveis = pets.filter(
+    p => !p.erp_identity_status || p.erp_identity_status === 'resolved'
+  );
+  const petsAtivos = petsVisiveis.filter(
+    p => p.status !== 'Falecido' && p.atendimento_elegivel !== false
+  );
   const selectedParceiro = parceiros.find(p => String(p.id) === String(selectedParceiroId));
   const isInadimplente = (clientData?.situacao_financeira || '').toUpperCase().includes('INADIMPLENTE');
   const bloqueadoPorInadimplencia = isInadimplente && !comprovanteRecebido;
@@ -287,6 +292,14 @@ export default function BomPetConsulta() {
     }
     if (pet.status === 'Falecido') {
       toast({ title: "Erro", description: "Este pet já está marcado como Falecido.", variant: "destructive" });
+      return;
+    }
+    if (pet.atendimento_elegivel === false) {
+      toast({
+        title: "Revisão cadastral necessária",
+        description: pet.motivo_bloqueio || "Este pet não possui vínculo ativo e único no ERP.",
+        variant: "destructive",
+      });
       return;
     }
     const telefoneDigits = telefoneContato.replace(/\D/g, '');
@@ -619,29 +632,32 @@ export default function BomPetConsulta() {
             <div className="mt-5 pt-4 border-t border-gray-200 dark:border-gray-700">
               <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
                 <PawPrint className="w-3.5 h-3.5" />
-                Pets do Plano ({pets.length})
+                Pets do Plano ({petsVisiveis.length})
               </p>
-              {pets.length === 0 ? (
+              {petsVisiveis.length === 0 ? (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm font-semibold">
                   <XCircle className="w-4 h-4 flex-shrink-0" />
-                  Atendimento negado: nenhum pet incluído no plano deste cliente.
+                  Atendimento negado: nenhum pet elegível para atendimento neste plano.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {pets.map((p, i) => (
+                  {petsVisiveis.map((p, i) => (
                     <div key={i} className={`flex items-center gap-3 p-3 rounded-xl border ${
-                      p.status === 'Falecido'
+                      p.status !== 'Ativo'
                         ? 'bg-gray-100 dark:bg-gray-800/60 border-gray-300 dark:border-gray-600 opacity-70'
                         : 'bg-teal-50 dark:bg-teal-950/40 border-teal-200 dark:border-teal-800'
                     }`}>
-                      <div className={`p-2 rounded-lg ${p.status === 'Falecido' ? 'bg-gray-200 dark:bg-gray-700' : 'bg-teal-100 dark:bg-teal-900'}`}>
-                        <PawPrint className={`w-4 h-4 ${p.status === 'Falecido' ? 'text-gray-500' : 'text-teal-600 dark:text-teal-400'}`} />
+                      <div className={`p-2 rounded-lg ${p.status !== 'Ativo' ? 'bg-gray-200 dark:bg-gray-700' : 'bg-teal-100 dark:bg-teal-900'}`}>
+                        <PawPrint className={`w-4 h-4 ${p.status !== 'Ativo' ? 'text-gray-500' : 'text-teal-600 dark:text-teal-400'}`} />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className={`text-sm font-bold tracking-wide ${p.status === 'Falecido' ? 'text-gray-500 dark:text-gray-400' : 'text-teal-700 dark:text-teal-300'}`}>{p.nome}</p>
+                        <p className={`text-sm font-bold tracking-wide ${p.status !== 'Ativo' ? 'text-gray-500 dark:text-gray-400' : 'text-teal-700 dark:text-teal-300'}`}>{p.nome}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{p.descricao}</p>
+                        {p.motivo_bloqueio && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{p.motivo_bloqueio}</p>
+                        )}
                       </div>
-                      <Badge variant="outline" className={p.status === 'Falecido'
+                      <Badge variant="outline" className={p.status !== 'Ativo'
                         ? 'bg-gray-200 text-gray-600 border-gray-400 dark:bg-gray-700 dark:text-gray-300'
                         : 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/50 dark:text-emerald-300'}>
                         {p.status}

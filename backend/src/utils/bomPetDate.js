@@ -66,6 +66,16 @@ export function isValidBomPetDateOnly(value) {
     date.getUTCDate() === day;
 }
 
+export function bomPetDayBoundarySql(placeholder, { nextDay = false } = {}) {
+  if (!/^\$\d+$/.test(String(placeholder || ''))) {
+    throw new Error('Placeholder SQL inválido para limite de data do Bom Pet.');
+  }
+  const dateExpression = nextDay
+    ? `(${placeholder}::date + INTERVAL '1 day')::timestamp`
+    : `${placeholder}::date::timestamp`;
+  return `(${dateExpression} AT TIME ZONE '${BOM_PET_TIME_ZONE}')`;
+}
+
 export function normalizeBomPetDateOnly(value) {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value.toISOString().slice(0, 10);

@@ -36,6 +36,7 @@ import { runLeadGeneratorAudit, runCommissionReconciliation, runWeeklyCommission
 import { recoverStuckQueues } from './services/whatsappQueueService.js';
 import { deactivateInactiveAgents } from './services/inactivityService.js';
 import { runErpApprovalReconciliation } from './services/erpApprovalReconciliationService.js';
+import { reconcilePendingErpAtendimentos } from './services/erpAtendimentoService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -69,9 +70,11 @@ app.get('/api/health', (req, res) => {
   // smoke: 'ok' | 'stale' | 'pending' — 'stale' indica processo rodando código
   // desatualizado (rota crítica ausente). Consultável para monitoramento.
   const stale = smokeCheckState.failures.length > 0;
-  res.status(stale ? 500 : 200).json({
-    status: stale ? 'stale' : 'ok',
+  const ready = databaseReady && !stale;
+  res.status(stale ? 500 : (ready ? 200 : 503)).json({
+    status: stale ? 'stale' : (ready ? 'ok' : 'starting'),
     smoke: smokeCheckState.done ? (stale ? 'stale' : 'ok') : 'pending',
+    database: databaseReady ? 'ready' : 'pending',
     ...(stale && { smoke_failures: smokeCheckState.failures }),
     started_at: smokeCheckState.startedAt,
   });
@@ -200,6 +203,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 // processo em execução) — causa do incidente "Bom Pet 404". Uma rota crítica
 // respondendo 404 no próprio processo indica build/deploy defasado.
 const smokeCheckState = { done: false, failures: [], startedAt: new Date().toISOString() };
+let databaseReady = false;
 
 const SMOKE_ROUTES = [
   '/api/health',
@@ -230,10 +234,30 @@ async function runBootSmokeCheck() {
 
 initDatabase()
   .then(async () => {
+    databaseReady = true;
     console.log('Database schema initialized successfully');
 
     await cleanupBomPetOrphanFiles();
     setInterval(() => cleanupBomPetOrphanFiles(), 60 * 60 * 1000);
+
+    const reconcileAtendimentos = () => withErpOrigin(
+      'cron:erp-atendimento-outbox',
+      async () => {
+        try {
+          const result = await reconcilePendingErpAtendimentos();
+          if (result.checked > 0) {
+            console.log(
+              `[ERP Atendimento] Reconciliação: verificados=${result.checked} ` +
+              `concluídos=${result.completed} pendentes=${result.pending} ignorados=${result.skipped}`
+            );
+          }
+        } catch (error) {
+          console.error('[ERP Atendimento] Falha na reconciliação:', error.message);
+        }
+      }
+    );
+    reconcileAtendimentos();
+    setInterval(reconcileAtendimentos, 60 * 1000);
 
     try {
       const reconciliation = await runPostsalesReconciliarResolvidas();
@@ -425,5 +449,9 @@ initDatabase()
     }
   })
   .catch((error) => {
+    databaseReady = false;
     console.error('Database initialization failed:', error);
+    server.close(() => {
+      process.exitCode = 1;
+    });
   });
