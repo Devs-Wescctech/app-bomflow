@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS erp_atendimento_outbox (
     atendimento_id BIGINT NOT NULL,
     protocolo VARCHAR(20) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending', 'processing', 'completed', 'error')),
+        CHECK (status IN ('held', 'pending', 'processing', 'completed', 'error')),
     attempts INTEGER NOT NULL DEFAULT 0,
     next_retry_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_error TEXT,
@@ -123,6 +123,12 @@ CREATE TABLE IF NOT EXISTS erp_atendimento_outbox (
     UNIQUE (modulo, atendimento_id),
     UNIQUE (modulo, protocolo)
 );
+-- Backfills entram como held: o worker normal ignora essas linhas até uma
+-- liberação explícita e limitada.
+ALTER TABLE erp_atendimento_outbox DROP CONSTRAINT IF EXISTS erp_atendimento_outbox_status_check;
+ALTER TABLE erp_atendimento_outbox
+  ADD CONSTRAINT erp_atendimento_outbox_status_check
+  CHECK (status IN ('held', 'pending', 'processing', 'completed', 'error'));
 CREATE INDEX IF NOT EXISTS idx_erp_atendimento_outbox_pending
     ON erp_atendimento_outbox(next_retry_at, id)
     WHERE status IN ('pending', 'error');
