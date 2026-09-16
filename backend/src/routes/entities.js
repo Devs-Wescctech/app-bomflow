@@ -17,6 +17,9 @@ import {
   notifyProposalStatus
 } from '../services/notificationService.js';
 import { executeLeadCreatedAutomation, executeStageChangeAutomation, executeUpsellChannelLeadCreatedAutomation, executeUpsellChannelStageChangeAutomation } from '../services/automationService.js';
+import {
+  normalizeValidBrazilPhoneNational,
+} from '../utils/phone.js';
 
 const router = Router();
 
@@ -446,6 +449,25 @@ function convertKeysToSnake(obj) {
     acc[snakeKey] = convertKeysToSnake(obj[key]);
     return acc;
   }, {});
+}
+
+// All phone-like fields owned by Bom Flow are persisted as national digits.
+// ERP/WHU payloads use their own representation and never pass through this
+// helper.
+const MANAGED_PHONE_FIELDS = new Set([
+  'phone', 'phone_2', 'phone_secondary', 'whatsapp', 'whatsapp_phone',
+  'telefone', 'telefone_2', 'telefone_contato',
+  'celular', 'cell', 'cellphone', 'cell_phone',
+  'mobile', 'mobile_phone', 'contact_phone', 'referrer_phone', 'referred_phone',
+]);
+
+function normalizeManagedPhoneFields(data) {
+  for (const field of MANAGED_PHONE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(data, field)) {
+      data[field] = normalizeValidBrazilPhoneNational(data[field]);
+    }
+  }
+  return data;
 }
 
 const entities = {
@@ -1123,7 +1145,7 @@ function rejectManagedErpAgentFields(req, res) {
 router.post('/agents', authMiddleware, requireAgentManager, async (req, res) => {
   try {
     if (rejectManagedErpAgentFields(req, res)) return;
-    const data = convertKeysToSnake(req.body);
+    const data = normalizeManagedPhoneFields(convertKeysToSnake(req.body));
     
     if (!data.email) {
       return res.status(400).json({ message: 'Email is required' });
@@ -1167,7 +1189,7 @@ router.post('/agents', authMiddleware, requireAgentManager, async (req, res) => 
     res.status(201).json(convertKeysToCamel(agent));
   } catch (error) {
     console.error('Error creating agent:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
   }
 });
 
@@ -1176,7 +1198,7 @@ router.put('/agents/:id', authMiddleware, async (req, res) => {
   try {
     if (rejectManagedErpAgentFields(req, res)) return;
     const { id } = req.params;
-    const data = convertKeysToSnake(req.body);
+    const data = normalizeManagedPhoneFields(convertKeysToSnake(req.body));
     
     // Convert empty strings to null for UUID fields
     const uuidFields = ['team_id', 'supervisor_id'];
@@ -1301,7 +1323,7 @@ router.put('/agents/:id', authMiddleware, async (req, res) => {
     res.json(convertKeysToCamel(agent));
   } catch (error) {
     console.error('Error updating agent:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
   } finally {
     if (agentMutationLock) {
       await agentMutationLock.release().catch((error) => {
@@ -1529,7 +1551,7 @@ router.post('/leads/filter', authMiddleware, async (req, res) => {
 
 router.post('/leads', authMiddleware, async (req, res) => {
   try {
-    const data = convertKeysToSnake(req.body);
+    const data = normalizeManagedPhoneFields(convertKeysToSnake(req.body));
     const dateFields = ['birth_date', 'first_contact_date', 'next_contact_date', 'scheduled_visit_date', 'created_at', 'updated_at'];
     dateFields.forEach(field => {
       if (data[field] === '' || data[field] === 'Invalid Date') {
@@ -1605,14 +1627,14 @@ router.post('/leads', authMiddleware, async (req, res) => {
     res.status(201).json(convertKeysToCamel(lead));
   } catch (error) {
     console.error('Error creating lead:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
   }
 });
 
 router.put('/leads/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const data = convertKeysToSnake(req.body);
+    const data = normalizeManagedPhoneFields(convertKeysToSnake(req.body));
     
     const oldLeadResult = await query('SELECT * FROM leads WHERE id = $1', [id]);
     const oldLead = oldLeadResult.rows[0];
@@ -1666,7 +1688,7 @@ router.put('/leads/:id', authMiddleware, async (req, res) => {
     res.json(convertKeysToCamel(lead));
   } catch (error) {
     console.error('Error updating lead:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
   }
 });
 
@@ -1772,7 +1794,7 @@ router.post('/leads-pj/filter', authMiddleware, async (req, res) => {
 
 router.post('/leads-pj', authMiddleware, async (req, res) => {
   try {
-    const data = convertKeysToSnake(req.body);
+    const data = normalizeManagedPhoneFields(convertKeysToSnake(req.body));
     const dateFields = ['foundation_date', 'first_contact_date', 'next_contact_date', 'scheduled_visit_date', 'created_at', 'updated_at'];
     dateFields.forEach(field => {
       if (data[field] === '' || data[field] === 'Invalid Date') {
@@ -1848,14 +1870,14 @@ router.post('/leads-pj', authMiddleware, async (req, res) => {
     res.status(201).json(convertKeysToCamel(lead));
   } catch (error) {
     console.error('Error creating lead PJ:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
   }
 });
 
 router.put('/leads-pj/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const data = convertKeysToSnake(req.body);
+    const data = normalizeManagedPhoneFields(convertKeysToSnake(req.body));
     
     const oldLeadResult = await query('SELECT * FROM leads_pj WHERE id = $1', [id]);
     const oldLead = oldLeadResult.rows[0];
@@ -1895,7 +1917,7 @@ router.put('/leads-pj/:id', authMiddleware, async (req, res) => {
     res.json(convertKeysToCamel(lead));
   } catch (error) {
     console.error('Error updating lead PJ:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
   }
 });
 
@@ -2002,7 +2024,7 @@ router.post('/leads-upsell/filter', authMiddleware, async (req, res) => {
 
 router.post('/leads-upsell', authMiddleware, async (req, res) => {
   try {
-    const data = convertKeysToSnake(req.body);
+    const data = normalizeManagedPhoneFields(convertKeysToSnake(req.body));
     const dateFields = ['birth_date', 'first_contact_date', 'next_contact_date', 'scheduled_visit_date', 'created_at', 'updated_at', 'last_contact_at', 'converted_at', 'lost_at'];
     dateFields.forEach(field => {
       if (data[field] === '' || data[field] === 'Invalid Date') {
@@ -2075,14 +2097,14 @@ router.post('/leads-upsell', authMiddleware, async (req, res) => {
     res.status(201).json(convertKeysToCamel(lead));
   } catch (error) {
     console.error('Error creating lead upsell:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
   }
 });
 
 router.put('/leads-upsell/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const data = convertKeysToSnake(req.body);
+    const data = normalizeManagedPhoneFields(convertKeysToSnake(req.body));
 
     const oldLeadResult = await query('SELECT * FROM leads_upsell WHERE id = $1', [id]);
     const oldLead = oldLeadResult.rows[0];
@@ -2126,7 +2148,7 @@ router.put('/leads-upsell/:id', authMiddleware, async (req, res) => {
     res.json(convertKeysToCamel(lead));
   } catch (error) {
     console.error('Error updating lead upsell:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
   }
 });
 
@@ -2293,7 +2315,7 @@ router.post('/referrals/reactivations', authMiddleware, loadAgentMiddleware, asy
       resolvedAtendenteId = atendente_id;
     }
 
-    const cleanTelefone = (telefone || '').replace(/\D/g, '') || null;
+    const cleanTelefone = normalizeValidBrazilPhoneNational(telefone) || null;
 
     const result = await query(
       `INSERT INTO referral_reactivations (cpf, nome_completo_cliente, telefone, atendente_id, observacoes)
@@ -2304,7 +2326,10 @@ router.post('/referrals/reactivations', authMiddleware, loadAgentMiddleware, asy
     res.status(201).json({ success: true, data: convertKeysToCamel(result.rows[0]) });
   } catch (error) {
     console.error('Error creating reactivation:', error);
-    res.status(500).json({ message: 'Erro interno ao registrar reativação.' });
+    res.status(error.statusCode || 500).json({
+      message: error.statusCode ? error.message : 'Erro interno ao registrar reativação.',
+      code: error.code,
+    });
   }
 });
 
@@ -2378,7 +2403,9 @@ router.put('/referrals/reactivations/:id', authMiddleware, loadAgentMiddleware, 
       newCpf = cleanCpf || null;
     }
 
-    const cleanTelefone = telefone ? (telefone.replace(/\D/g, '') || null) : record.telefone;
+    const cleanTelefone = telefone !== undefined
+      ? (normalizeValidBrazilPhoneNational(telefone) || null)
+      : record.telefone;
     const newNome = nome_completo_cliente?.trim() || record.nome_completo_cliente;
     const newObs = observacoes !== undefined ? (observacoes?.trim() || null) : record.observacoes;
 
@@ -2393,7 +2420,10 @@ router.put('/referrals/reactivations/:id', authMiddleware, loadAgentMiddleware, 
     res.json({ success: true, data: convertKeysToCamel(result.rows[0]) });
   } catch (error) {
     console.error('Error updating reactivation:', error);
-    res.status(500).json({ message: 'Erro interno ao atualizar reativação.' });
+    res.status(error.statusCode || 500).json({
+      message: error.statusCode ? error.message : 'Erro interno ao atualizar reativação.',
+      code: error.code,
+    });
   }
 });
 
@@ -2500,7 +2530,7 @@ router.post('/referrals/filter', authMiddleware, async (req, res) => {
 
 router.post('/referrals', authMiddleware, async (req, res) => {
   try {
-    const data = convertKeysToSnake(req.body);
+    const data = normalizeManagedPhoneFields(convertKeysToSnake(req.body));
     const dateFields = ['birth_date', 'referred_birth_date', 'created_at', 'updated_at', 'converted_at', 'commission_paid_at'];
     dateFields.forEach(field => {
       if (data[field] === '' || data[field] === 'Invalid Date') {
@@ -2563,14 +2593,14 @@ router.post('/referrals', authMiddleware, async (req, res) => {
     res.status(201).json(convertKeysToCamel(referral));
   } catch (error) {
     console.error('Error creating referral:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
   }
 });
 
 router.put('/referrals/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const data = convertKeysToSnake(req.body);
+    const data = normalizeManagedPhoneFields(convertKeysToSnake(req.body));
     
     const oldResult = await query('SELECT * FROM referrals WHERE id = $1', [id]);
     const oldReferral = oldResult.rows[0];
@@ -2693,7 +2723,7 @@ router.put('/referrals/:id', authMiddleware, async (req, res) => {
     res.json(convertKeysToCamel(referral));
   } catch (error) {
     console.error('Error updating referral:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
   }
 });
 
@@ -2917,7 +2947,7 @@ router.post('/activities/filter', authMiddleware, async (req, res) => {
 router.put('/activities/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const data = convertKeysToSnake(req.body);
+    const data = normalizeManagedPhoneFields(convertKeysToSnake(req.body));
     const keys = Object.keys(data);
     const values = keys.map(k => {
       const val = data[k];
@@ -2931,13 +2961,13 @@ router.put('/activities/:id', authMiddleware, async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ message: 'Not found' });
     res.json(convertKeysToCamel(result.rows[0]));
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
   }
 });
 
 router.post('/activities', authMiddleware, async (req, res) => {
   try {
-    const data = convertKeysToSnake(req.body);
+    const data = normalizeManagedPhoneFields(convertKeysToSnake(req.body));
     const keys = Object.keys(data).filter(k => data[k] !== null && data[k] !== undefined);
     const values = keys.map(k => {
       const val = data[k];
@@ -2963,7 +2993,7 @@ router.post('/activities', authMiddleware, async (req, res) => {
     res.status(201).json(convertKeysToCamel(activity));
   } catch (error) {
     console.error('Error creating activity:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
   }
 });
 
@@ -3027,7 +3057,7 @@ router.post('/visits/filter', authMiddleware, async (req, res) => {
 router.put('/visits/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const data = convertKeysToSnake(req.body);
+    const data = normalizeManagedPhoneFields(convertKeysToSnake(req.body));
     const keys = Object.keys(data);
     const values = keys.map(k => {
       const val = data[k];
@@ -3041,13 +3071,13 @@ router.put('/visits/:id', authMiddleware, async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ message: 'Not found' });
     res.json(convertKeysToCamel(result.rows[0]));
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
   }
 });
 
 router.post('/visits', authMiddleware, async (req, res) => {
   try {
-    const data = convertKeysToSnake(req.body);
+    const data = normalizeManagedPhoneFields(convertKeysToSnake(req.body));
     const currentUserId = req.user?.id;
     
     const keys = Object.keys(data).filter(k => data[k] !== null && data[k] !== undefined);
@@ -3073,7 +3103,7 @@ router.post('/visits', authMiddleware, async (req, res) => {
     res.status(201).json(convertKeysToCamel(visit));
   } catch (error) {
     console.error('Error creating visit:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
   }
 });
 
@@ -3191,7 +3221,7 @@ router.post('/lead-pool/claim', authMiddleware, loadAgentMiddleware, async (req,
 
     const agentId = req.agent.id;
     const name  = lead.name  || 'Lead importado';
-    const phone = lead.phone || '';
+    const phone = normalizeValidBrazilPhoneNational(lead.phone, { allowEmpty: false });
     const email = lead.email || null;
     const cpf   = lead.cpf   || null;
 
@@ -3243,7 +3273,7 @@ router.post('/lead-pool/claim', authMiddleware, loadAgentMiddleware, async (req,
     res.json({ success: true, newLeadId });
   } catch (error) {
     console.error('[Lead Pool] Claim error:', error);
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
   }
 });
 

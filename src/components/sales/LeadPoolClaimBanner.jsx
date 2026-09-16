@@ -5,6 +5,7 @@ import { AlertTriangle, Clock, Loader2, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { extractApiError } from "@/utils/apiError";
+import { normalizePhone } from "@/utils/phone";
 
 const MODULE_ROUTES = {
   leads: 'LeadDetail',
@@ -27,7 +28,7 @@ export default function LeadPoolClaimBanner({ phone, currentModule }) {
   const [claiming, setClaiming] = useState(false);
 
   useEffect(() => {
-    const digits = (phone || '').replace(/\D/g, '');
+    const digits = normalizePhone(phone);
     if (digits.length < 10) {
       setCheckResult(null);
       return;

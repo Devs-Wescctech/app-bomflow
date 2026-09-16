@@ -43,14 +43,7 @@ import {
   isVeiculoProduto,
   normalizeIncluirTitular,
 } from "@/utils/orcamentoProductClassification";
-
-// Formata um número como celular brasileiro: (XX) 9XXXX-XXXX
-const formatMobilePhone = (v) => {
-  const d = (v || "").replace(/\D/g, "").slice(0, 11);
-  if (d.length <= 2) return d.length ? `(${d}` : "";
-  if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
-  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
-};
+import { formatBrazilPhone, normalizeBrazilPhoneE164, normalizePhone } from "@/utils/phone";
 
 // Valida celular brasileiro: DDD (2 dígitos) + 9 dígitos começando com 9.
 const isMobilePhone = (v) => {
@@ -346,9 +339,9 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       // ERP rejeitar o orçamento (espera código numérico) e deixa o "Nome completo" vazio.
       pessoa_contato: initialLead.nome || f.pessoa_contato,
       cpf: initialLead.cpf ? formatCpf(initialLead.cpf) : f.cpf,
-      telefone: initialLead.telefone || f.telefone,
+      telefone: formatBrazilPhone(initialLead.telefone || f.telefone),
       email_contato: initialLead.email || f.email_contato,
-      whatsapp_do_cliente: initialLead.whatsapp || initialLead.telefone || f.whatsapp_do_cliente,
+      whatsapp_do_cliente: formatBrazilPhone(initialLead.whatsapp || initialLead.telefone || f.whatsapp_do_cliente),
     }));
   }, [initialLead]);
 
@@ -911,7 +904,7 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
           dataNascimento: b.usua_data_nascimento || null,
           sexo: b.usua_sexo || null,
           parentesco: b.usua_parentesco || null,
-          telefone: b.usua_telefone || null,
+          telefone: normalizePhone(b.usua_telefone) || null,
           registrarPessoa: ehDependente,
         }));
       return {
@@ -929,10 +922,10 @@ export default function UpsellNovoOrcamento({ embedded = false, initialLead = nu
       cpf: form.cpf || undefined,
       pessoa_contato: form.pessoa_contato || undefined,
       un_rg: form.un_rg || undefined,
-      telefone: form.telefone || undefined,
-      celular: form.celular || undefined,
+      telefone: normalizePhone(form.telefone) || undefined,
+      celular: normalizePhone(form.celular) || undefined,
       email_contato: form.email_contato || undefined,
-      whatsapp_do_cliente: form.whatsapp_do_cliente || undefined,
+      whatsapp_do_cliente: normalizeBrazilPhoneE164(form.whatsapp_do_cliente) || undefined,
       sexo: form.sexo || undefined,
       estado_civil: form.estado_civil || undefined,
       profissao: form.profissao || undefined,
@@ -1507,7 +1500,7 @@ function Step1({ form, set, cpfLookup, setCpfLookup, lookupCpfMutation }) {
           <Label>Telefone <span className="text-red-500">*</span></Label>
           <Input
             value={form.telefone}
-            onChange={(e) => set("telefone", e.target.value)}
+            onChange={(e) => set("telefone", formatBrazilPhone(e.target.value))}
             placeholder="(51) 99999-9999"
           />
         </div>
@@ -1526,7 +1519,7 @@ function Step1({ form, set, cpfLookup, setCpfLookup, lookupCpfMutation }) {
           <Label>Celular</Label>
           <Input
             value={form.celular}
-            onChange={(e) => set("celular", formatMobilePhone(e.target.value))}
+            onChange={(e) => set("celular", formatBrazilPhone(e.target.value))}
             placeholder="(51) 99999-9999"
             maxLength={15}
           />
@@ -1536,7 +1529,7 @@ function Step1({ form, set, cpfLookup, setCpfLookup, lookupCpfMutation }) {
           <Label>Telefone</Label>
           <Input
             value={form.telefone}
-            onChange={(e) => set("telefone", e.target.value)}
+            onChange={(e) => set("telefone", formatBrazilPhone(e.target.value))}
             placeholder="(51) 3333-3333"
           />
         </div>
@@ -1598,7 +1591,7 @@ function Step1({ form, set, cpfLookup, setCpfLookup, lookupCpfMutation }) {
           <Label>WhatsApp</Label>
           <Input
             value={form.whatsapp_do_cliente}
-            onChange={(e) => set("whatsapp_do_cliente", e.target.value)}
+            onChange={(e) => set("whatsapp_do_cliente", formatBrazilPhone(e.target.value))}
             placeholder="(51) 99999-9999"
           />
         </div>
@@ -2254,7 +2247,7 @@ function Step5({ beneficiarios, openBenef, produtosResumo, opcoesBenefProduto, o
                     <Label className="text-xs">Telefone</Label>
                     <Input
                       value={b.usua_telefone}
-                      onChange={(e) => setBenef(i, "usua_telefone", e.target.value)}
+                      onChange={(e) => setBenef(i, "usua_telefone", formatBrazilPhone(e.target.value))}
                       placeholder="(51) 99999-9999"
                     />
                   </div>

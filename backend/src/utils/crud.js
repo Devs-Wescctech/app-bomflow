@@ -1,4 +1,5 @@
 import { query } from '../config/database.js';
+import { normalizeValidBrazilPhoneNational } from './phone.js';
 
 function camelToSnake(str) {
   return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
@@ -22,6 +23,12 @@ function snakeToCamel(str) {
 
 const JSONB_FIELDS = ['stage_history', 'photos', 'metadata', 'history', 'address_components', 'permissions', 'capacity', 'working_hours', 'settings', 'options', 'config', 'data', 'features', 'terms', 'variables', 'trigger_config', 'action_config', 'action_result'];
 const POSTGRES_ARRAY_FIELDS = ['queue_ids', 'skills', 'modules', 'territories', 'tags', 'categories', 'allowed_submenus', 'supervisor_emails'];
+const MANAGED_PHONE_FIELDS = new Set([
+  'phone', 'phone_2', 'phone_secondary', 'whatsapp', 'whatsapp_phone',
+  'telefone', 'telefone_2', 'telefone_contato',
+  'celular', 'cell', 'cellphone', 'cell_phone',
+  'mobile', 'mobile_phone', 'contact_phone', 'referrer_phone', 'referred_phone',
+]);
 
 function convertKeysToSnake(obj) {
   if (obj === null || typeof obj !== 'object') return obj;
@@ -67,6 +74,10 @@ function convertKeysToCamel(obj) {
 function sanitizeValue(key, value) {
   if (value === '' || value === undefined) {
     return null;
+  }
+
+  if (MANAGED_PHONE_FIELDS.has(key)) {
+    return normalizeValidBrazilPhoneNational(value) || null;
   }
   
   if (POSTGRES_ARRAY_FIELDS.includes(key) && Array.isArray(value)) {
@@ -142,7 +153,7 @@ export function createCrudRouter(tableName, options = {}) {
         res.json(result.rows.map(convertKeysToCamel));
       } catch (error) {
         console.error(`Error listing ${tableName}:`, error);
-        res.status(500).json({ message: error.message });
+        res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
       }
     },
 
@@ -158,7 +169,7 @@ export function createCrudRouter(tableName, options = {}) {
         res.json(convertKeysToCamel(result.rows[0]));
       } catch (error) {
         console.error(`Error getting ${tableName}:`, error);
-        res.status(500).json({ message: error.message });
+        res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
       }
     },
 
@@ -180,7 +191,7 @@ export function createCrudRouter(tableName, options = {}) {
         res.status(201).json(convertKeysToCamel(result.rows[0]));
       } catch (error) {
         console.error(`Error creating ${tableName}:`, error);
-        res.status(500).json({ message: error.message });
+        res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
       }
     },
 
@@ -209,7 +220,7 @@ export function createCrudRouter(tableName, options = {}) {
         res.json(convertKeysToCamel(result.rows[0]));
       } catch (error) {
         console.error(`Error updating ${tableName}:`, error);
-        res.status(500).json({ message: error.message });
+        res.status(error.statusCode || 500).json({ message: error.message, code: error.code });
       }
     },
 

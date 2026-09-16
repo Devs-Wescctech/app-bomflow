@@ -45,6 +45,7 @@ import { format, parseISO, startOfDay, endOfDay, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { createPageUrl } from "@/utils";
 import { extractApiError } from "@/utils/apiError";
+import { formatBrazilPhone, normalizePhone } from "@/utils/phone";
 
 const ITEMS_PER_PAGE = 25;
 
@@ -62,20 +63,8 @@ const formatCPFInput = (value) => {
   return `${clean.slice(0, 3)}.${clean.slice(3, 6)}.${clean.slice(6, 9)}-${clean.slice(9)}`;
 };
 
-const formatPhoneInput = (value) => {
-  const clean = String(value || '').replace(/\D/g, '').slice(0, 11);
-  if (clean.length <= 2) return clean;
-  if (clean.length <= 6) return `(${clean.slice(0, 2)}) ${clean.slice(2)}`;
-  if (clean.length <= 10) return `(${clean.slice(0, 2)}) ${clean.slice(2, 6)}-${clean.slice(6)}`;
-  return `(${clean.slice(0, 2)}) ${clean.slice(2, 7)}-${clean.slice(7)}`;
-};
-
 const formatPhone = (phone) => {
-  if (!phone) return "-";
-  const clean = String(phone).replace(/\D/g, '');
-  if (clean.length === 11) return clean.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
-  if (clean.length === 10) return clean.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
-  return phone;
+  return phone ? formatBrazilPhone(phone) : "-";
 };
 
 const formatDateTime = (value) => {
@@ -267,7 +256,7 @@ export default function ReferralReactivationReport() {
     setEditForm({
       cpf: row.cpf ? formatCPF(row.cpf) : "",
       nome_completo_cliente: row.nomeCompletoCliente || "",
-      telefone: row.telefone ? formatPhoneInput(row.telefone) : "",
+      telefone: row.telefone ? formatBrazilPhone(row.telefone) : "",
       atendente_id: row.atendenteId || "",
       observacoes: row.observacoes || "",
     });
@@ -289,7 +278,7 @@ export default function ReferralReactivationReport() {
         setEditForm((f) => ({
           ...f,
           nome_completo_cliente: nome,
-          telefone: fone ? formatPhoneInput(fone) : f.telefone,
+          telefone: fone ? formatBrazilPhone(fone) : f.telefone,
         }));
         setErpFound(true);
         toast.success(`Cliente encontrado: ${nome}`);
@@ -315,7 +304,7 @@ export default function ReferralReactivationReport() {
       setEditError("CPF inválido. Informe 11 dígitos ou deixe em branco.");
       return;
     }
-    const cleanPhone = (editForm.telefone || '').replace(/\D/g, '');
+    const cleanPhone = normalizePhone(editForm.telefone);
     const payload = {
       cpf: cleanCpf || null,
       nome_completo_cliente: editForm.nome_completo_cliente.trim(),
@@ -641,7 +630,7 @@ export default function ReferralReactivationReport() {
                 <Label className="text-xs font-medium text-gray-600 dark:text-gray-400">Telefone</Label>
                 <Input
                   value={editForm.telefone || ""}
-                  onChange={(e) => setEditForm((f) => ({ ...f, telefone: formatPhoneInput(e.target.value) }))}
+                          onChange={(e) => setEditForm((f) => ({ ...f, telefone: formatBrazilPhone(e.target.value) }))}
                   placeholder="(00) 00000-0000"
                   className="h-9"
                 />

@@ -33,6 +33,28 @@ test('normaliza valor brasileiro, telefone e opcionais', () => {
   });
 });
 
+test('normaliza telefone do parceiro para armazenamento nacional', () => {
+  const result = validatePartnerPayload({
+    nome: 'Parceiro',
+    valor_servico: 10,
+    data_cadastro: '2026-08-31',
+    telefone: '+55 (51) 98153-2008',
+  });
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.normalized.telefone, '51981532008');
+});
+
+test('rejeita telefone preenchido com menos de 10 ou mais de 11 dígitos', () => {
+  assert.match(
+    validatePartnerPayload({ telefone: '519912065' }, { partial: true }).errors.join(' '),
+    /10 ou 11 dígitos/,
+  );
+  assert.match(
+    validatePartnerPayload({ telefone: '519912065740' }, { partial: true }).errors.join(' '),
+    /10 ou 11 dígitos/,
+  );
+});
+
 test('inativação exige data de exclusão e status conhecido', () => {
   const result = validatePartnerPayload({
     status: 'Suspenso',

@@ -24,6 +24,7 @@ import {
   getBomPetDateParts,
 } from "@/utils/bomPetDate";
 import termoTemplateImg from "@/assets/bompet-autorizacao-template.png";
+import { formatBrazilPhone, normalizePhone } from "@/utils/phone";
 
 const API_BASE = '/api';
 
@@ -302,7 +303,7 @@ export default function BomPetConsulta() {
       });
       return;
     }
-    const telefoneDigits = telefoneContato.replace(/\D/g, '');
+    const telefoneDigits = normalizePhone(telefoneContato);
     if (!telefoneDigits || telefoneDigits.length < 10) {
       toast({ title: "Erro", description: "Informe um telefone de contato válido (mínimo 10 dígitos).", variant: "destructive" });
       return;
@@ -417,7 +418,7 @@ export default function BomPetConsulta() {
     };
 
     const tel = at?.telefone_contato
-      ? at.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : '';
+      ? formatBrazilPhone(at.telefone_contato) : '';
 
     // ── Campos sobre as linhas do formulario ─────────────────────────────────
     fill(at?.protocolo, 155, 78.5, 42, 9);                                   // Nº de Processo
@@ -496,7 +497,7 @@ export default function BomPetConsulta() {
     const at = atendimentoFinalizado;
     if (!at) return '';
     const tel = at.telefone_contato
-      ? at.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : '';
+      ? formatBrazilPhone(at.telefone_contato) : '';
     return `Autorização de Cremação — Bom Pet\nProtocolo: ${at.protocolo}\nOrigem: ${at.origem || 'Plano'}\n\nTitular: ${at.nome_cliente}\nCPF: ${at.documento_cliente}\nTelefone de Contato: ${tel}\nPet: ${at.pet_descricao || at.pet_nome}\nLocal da Remoção: ${at.remocao_local || '-'}\nEndereço da Remoção: ${at.remocao_endereco || '-'}\nClínica Veterinária: ${at.clinica_nome || '-'}\nData da solicitação: ${formatDateTime(at.data_hora || at.created_at)}${at.observacoes ? `\nObservações: ${at.observacoes}` : ''}`;
   }
 
@@ -603,7 +604,7 @@ export default function BomPetConsulta() {
                   <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Celular</p>
                   <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
                     <Phone className="w-3.5 h-3.5 text-gray-400" />
-                    {clientData.celular}
+                    {formatBrazilPhone(clientData.celular)}
                   </p>
                 </div>
               )}
@@ -706,7 +707,7 @@ export default function BomPetConsulta() {
               </div>
               <div className="space-y-2">
                 <Label>Telefone de contato *</Label>
-                <Input value={telefoneContato} onChange={(e) => setTelefoneContato(e.target.value.replace(/\D/g, '').slice(0, 15))} placeholder="DDD + número" />
+                <Input value={telefoneContato} onChange={(e) => setTelefoneContato(formatBrazilPhone(e.target.value))} placeholder="DDD + número" maxLength={15} />
               </div>
               <div className="space-y-2">
                 <Label>E-mail</Label>
@@ -1046,11 +1047,7 @@ export default function BomPetConsulta() {
                   placeholder="(DDD) Telefone"
                   value={telefoneContato}
                   onChange={(e) => {
-                    const digits = e.target.value.replace(/\D/g, '').slice(0, 11);
-                    let formatted = digits;
-                    if (digits.length > 2) formatted = `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-                    else if (digits.length > 0) formatted = `(${digits}`;
-                    setTelefoneContato(formatted);
+                    setTelefoneContato(formatBrazilPhone(e.target.value));
                   }}
                   maxLength={15}
                 />
@@ -1155,7 +1152,7 @@ export default function BomPetConsulta() {
                     ...(atendimentoFinalizado.origem === 'Particular'
                       ? [['Valor pago pelo cliente', atendimentoFinalizado.valor_pago_particular == null ? 'Não informado' : formatMoney(atendimentoFinalizado.valor_pago_particular)]]
                       : []),
-                    ['Telefone de Contato', atendimentoFinalizado.telefone_contato ? atendimentoFinalizado.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : '-'],
+                    ['Telefone de Contato', atendimentoFinalizado.telefone_contato ? formatBrazilPhone(atendimentoFinalizado.telefone_contato) : '-'],
                     ['Contrato(s) do Plano', atendimentoFinalizado.origem === 'Particular' ? 'Não se aplica' : (atendimentoFinalizado.contratos_servicos || 'Não informado')],
                     ['Situação Financeira', atendimentoFinalizado.origem === 'Particular' ? 'Não se aplica' : (atendimentoFinalizado.situacao_financeira || 'Não informado')],
                     ['Registrado por', atendimentoFinalizado.usuario],
@@ -1221,10 +1218,10 @@ export default function BomPetConsulta() {
                   {[
                     ['Empresa Contratada:', 'Bom Pet'],
                     ['Cidade:', termoLocal || atendimentoFinalizado.termo_local],
-                    ['Fone:', atendimentoFinalizado.telefone_contato ? atendimentoFinalizado.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : ''],
+                    ['Fone:', atendimentoFinalizado.telefone_contato ? formatBrazilPhone(atendimentoFinalizado.telefone_contato) : ''],
                     ['Atendente Resp.:', atendimentoFinalizado.usuario],
                     ['Data e Hora:', formatDateTime(atendimentoFinalizado.data_hora || atendimentoFinalizado.created_at)],
-                    ['Fone para Contato com Familiares:', atendimentoFinalizado.telefone_contato ? atendimentoFinalizado.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : ''],
+                    ['Fone para Contato com Familiares:', atendimentoFinalizado.telefone_contato ? formatBrazilPhone(atendimentoFinalizado.telefone_contato) : ''],
                     ['Número do Contrato:', atendimentoFinalizado.origem === 'Particular' ? 'Não se aplica' : (atendimentoFinalizado.contratos_servicos || 'Não informado')],
                     ['Nome do Titular:', [atendimentoFinalizado.nome_cliente, atendimentoFinalizado.documento_cliente ? `CPF ${atendimentoFinalizado.documento_cliente}` : ''].filter(Boolean).join(' — ')],
                     ['Nome do PET:', atendimentoFinalizado.pet_descricao || atendimentoFinalizado.pet_nome],

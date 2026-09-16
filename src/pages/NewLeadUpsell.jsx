@@ -18,6 +18,7 @@ import { createPageUrl } from "@/utils";
 import { toast } from "sonner";
 import { debounce } from "lodash";
 import { extractApiError } from "@/utils/apiError";
+import { formatBrazilPhone, normalizePhone } from "@/utils/phone";
 
 const INTERESTS = [
   "Essencial",
@@ -180,12 +181,6 @@ export default function NewLeadUpsell() {
 
   const debouncedValidatePhone = debounce(validatePhoneDuplicate, 1000);
 
-  const formatPhone = (value) => {
-    const n = value.replace(/\D/g, "");
-    if (n.length <= 11) return n.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
-    return value;
-  };
-
   const formatCPF = (value) => {
     const n = value.replace(/\D/g, "");
     if (n.length <= 11) return n.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
@@ -199,7 +194,7 @@ export default function NewLeadUpsell() {
   };
 
   const handlePhoneChange = (e) => {
-    const formatted = formatPhone(e.target.value);
+    const formatted = formatBrazilPhone(e.target.value);
     setFormData({ ...formData, phone: formatted });
     setDuplicateError(null);
     debouncedValidatePhone(formatted);
@@ -303,8 +298,8 @@ export default function NewLeadUpsell() {
       cpf: primary.cpf || prev.cpf,
       name: primary.nome_titular || "",
       birth_date: primary.data_titular ? primary.data_titular.substring(0, 10) : "",
-      phone: primary.telefone || "",
-      phone_2: primary.telefone_2 || "",
+      phone: formatBrazilPhone(primary.telefone || ""),
+      phone_2: formatBrazilPhone(primary.telefone_2 || ""),
       street: primary.rua || "",
       number: primary.numero || "",
       complement: primary.complemento || "",
@@ -386,6 +381,8 @@ export default function NewLeadUpsell() {
 
     const leadData = {
       ...formData,
+      phone: normalizePhone(formData.phone),
+      phone_2: normalizePhone(formData.phone_2),
       value: formData.value ? parseFloat(formData.value) : null,
       monthly_value: formData.monthly_value ? parseFloat(formData.monthly_value) : null,
       adhesion_value: formData.adhesion_value ? parseFloat(formData.adhesion_value) : null,
@@ -643,7 +640,7 @@ export default function NewLeadUpsell() {
                     <Label>Telefone 2</Label>
                     <Input
                       value={formData.phone_2}
-                      onChange={(e) => setFormData({ ...formData, phone_2: e.target.value })}
+                      onChange={(e) => setFormData({ ...formData, phone_2: formatBrazilPhone(e.target.value) })}
                       placeholder="(11) 99999-9999"
                       className={`mt-1 ${fromErp ? "bg-violet-50 dark:bg-violet-950/20" : ""}`}
                     />

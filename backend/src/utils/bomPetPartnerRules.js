@@ -1,3 +1,8 @@
+import {
+  isValidBrazilPhoneNational,
+  normalizeBrazilPhoneNational,
+} from './phone.js';
+
 export const BOM_PET_PARTNER_STATUSES = ['Ativo', 'Inativo'];
 
 export function isValidPartnerDate(value) {
@@ -47,8 +52,12 @@ export function validatePartnerPayload(payload = {}, { partial = false } = {}) {
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, 'telefone')) {
-    const telefone = String(payload.telefone ?? '').replace(/\D/g, '').slice(0, 20);
-    normalized.telefone = telefone || null;
+    const telefone = normalizeBrazilPhoneNational(payload.telefone);
+    if (!isValidBrazilPhoneNational(payload.telefone)) {
+      errors.push('Telefone deve conter DDD e 10 ou 11 dígitos.');
+    } else {
+      normalized.telefone = telefone || null;
+    }
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, 'status')) {

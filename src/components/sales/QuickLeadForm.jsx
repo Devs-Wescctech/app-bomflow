@@ -12,6 +12,12 @@ import { MapPin, Camera, Loader2, X, Navigation, CheckCircle2, XCircle } from "l
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import { debounce } from "lodash";
+import {
+  brazilPhoneValidationMessage,
+  formatBrazilPhone,
+  isValidBrazilPhone,
+  normalizePhone,
+} from "@/utils/phone";
 
 const INTERESTS = [
   "Essencial",
@@ -186,14 +192,6 @@ export default function QuickLeadForm({ onSuccess, onCancel }) {
     setUploading(false);
   };
 
-  const formatPhone = (value) => {
-    const numbers = value.replace(/\D/g, '');
-    if (numbers.length <= 11) {
-      return numbers.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
-    }
-    return value;
-  };
-
   const formatCPF = (value) => {
     const numbers = value.replace(/\D/g, '');
     if (numbers.length <= 11) {
@@ -211,7 +209,7 @@ export default function QuickLeadForm({ onSuccess, onCancel }) {
   };
 
   const handlePhoneChange = (e) => {
-    const formatted = formatPhone(e.target.value);
+    const formatted = formatBrazilPhone(e.target.value);
     setFormData({ ...formData, phone: formatted });
     setDuplicateError(null);
 
@@ -229,8 +227,13 @@ export default function QuickLeadForm({ onSuccess, onCancel }) {
   };
 
   const handleSubmit = async () => {
-    if (!formData.phone || !formData.lgpd_consent) {
-      toast.error("Telefone e consentimento LGPD são obrigatórios!");
+    if (!isValidBrazilPhone(formData.phone, { allowEmpty: false })) {
+      toast.error(brazilPhoneValidationMessage(formData.phone, { allowEmpty: false }));
+      return;
+    }
+
+    if (!formData.lgpd_consent) {
+      toast.error("O consentimento LGPD é obrigatório!");
       return;
     }
 
@@ -264,6 +267,7 @@ export default function QuickLeadForm({ onSuccess, onCancel }) {
 
     const leadData = {
       ...formData,
+      phone: normalizePhone(formData.phone),
       value: finalEstimatedValue > 0 ? finalEstimatedValue : null,
       monthly_value: monthlyValue > 0 ? monthlyValue : null,
       adhesion_value: adhesionValue > 0 ? adhesionValue : null,

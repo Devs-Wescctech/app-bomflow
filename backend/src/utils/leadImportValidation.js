@@ -1,5 +1,6 @@
 // Validação e normalização puras usadas pela importação de leads PF.
 // Mantidas separadas da rota para poderem ser testadas sem tocar no banco.
+import { normalizeBrazilPhoneNational } from './phone.js';
 
 export const UFS = new Set([
   'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG',
@@ -7,13 +8,7 @@ export const UFS = new Set([
 ]);
 
 export function normalizePhone(raw) {
-  if (raw === null || raw === undefined) return '';
-  let digits = String(raw).replace(/\D/g, '');
-  // remove código do país 55 quando presente
-  if ((digits.length === 12 || digits.length === 13) && digits.startsWith('55')) {
-    digits = digits.slice(2);
-  }
-  return digits;
+  return normalizeBrazilPhoneNational(raw);
 }
 
 export function isValidPhone(digits) {

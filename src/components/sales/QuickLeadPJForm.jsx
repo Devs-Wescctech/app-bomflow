@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, Search, Building2, CheckCircle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { formatBrazilPhone, normalizePhone } from "@/utils/phone";
 
 const INTEREST_OPTIONS = [
   "Plano Funeral Empresarial",
@@ -166,8 +167,8 @@ export default function QuickLeadPJForm({ onSuccess, onCancel }) {
           state: data.state || prev.state,
           cep: data.cep || prev.cep,
           address: fullAddress || prev.address,
-          phone: data.phone || prev.phone,
-          phoneSecondary: data.phone_secondary || prev.phoneSecondary,
+           phone: formatBrazilPhone(data.phone || prev.phone),
+           phoneSecondary: formatBrazilPhone(data.phone_secondary || prev.phoneSecondary),
           email: data.email || prev.email,
           website: websiteValue || prev.website,
           contactRole: raw.socios?.[0]?.qualificacao_socio?.descricao || prev.contactRole,
@@ -195,6 +196,8 @@ export default function QuickLeadPJForm({ onSuccess, onCancel }) {
 
     const dataToSave = {
       ...formData,
+      phone: normalizePhone(formData.phone),
+      phoneSecondary: normalizePhone(formData.phoneSecondary),
       agentId: currentAgentId || null,
       stage: 'novo',
       numEmployees: formData.numEmployees ? parseInt(formData.numEmployees) : null,
@@ -341,7 +344,7 @@ export default function QuickLeadPJForm({ onSuccess, onCancel }) {
             <Label>Telefone Principal</Label>
             <Input
               value={formData.phone}
-              onChange={(e) => { setFormData({...formData, phone: e.target.value}); setDuplicateError(null); }}
+              onChange={(e) => { setFormData({...formData, phone: formatBrazilPhone(e.target.value)}); setDuplicateError(null); }}
               placeholder="(00) 00000-0000"
               className="mt-1"
             />
@@ -360,7 +363,7 @@ export default function QuickLeadPJForm({ onSuccess, onCancel }) {
             <Label>Telefone Secundário</Label>
             <Input
               value={formData.phoneSecondary}
-              onChange={(e) => setFormData({...formData, phoneSecondary: e.target.value})}
+              onChange={(e) => setFormData({...formData, phoneSecondary: formatBrazilPhone(e.target.value)})}
               placeholder="(00) 00000-0000"
               className="mt-1"
             />

@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowLeft, Save, Loader2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
+import { formatBrazilPhone, normalizePhone } from "@/utils/phone";
 
 const INTERESTS = [
   "Essencial",
@@ -35,7 +36,7 @@ export default function WhatsAppQuickLead() {
 
   const [formData, setFormData] = useState({
     name: nameFromWhatsApp,
-    phone: phoneFromWhatsApp,
+    phone: formatBrazilPhone(phoneFromWhatsApp),
     email: "",
     interest: "",
     value: "",
@@ -116,6 +117,7 @@ export default function WhatsAppQuickLead() {
     
     const leadData = {
       ...formData,
+      phone: normalizePhone(formData.phone),
       value: formData.value ? parseFloat(formData.value) : null,
       monthly_value: formData.monthly_value ? parseFloat(formData.monthly_value) : null,
       stage: "novo",
@@ -179,7 +181,7 @@ export default function WhatsAppQuickLead() {
                 <Label className="text-sm">Telefone/WhatsApp *</Label>
                 <Input
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, phone: formatBrazilPhone(e.target.value) })}
                   placeholder="(11) 99999-9999"
                   className="mt-1 h-9"
                   required

@@ -2352,3 +2352,141 @@ ALTER TABLE leads ADD COLUMN IF NOT EXISTS automation_cycle_started_at TIMESTAMP
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS automation_cooldown_until TIMESTAMP DEFAULT NULL;
 CREATE INDEX IF NOT EXISTS idx_leads_automation_whu_chat_id ON leads (automation_whu_chat_id);
 CREATE INDEX IF NOT EXISTS idx_leads_automation_cooldown ON leads (automation_cooldown_until);
+
+-- =====================
+-- BOM FLOW PHONE DATA INTEGRITY
+-- =====================
+-- Phone values owned by Bom Flow are stored as national digits only. Keep
+-- NULL and the empty string distinct. Until the batched legacy sanitation is
+-- complete, use column-specific triggers instead of CHECK constraints:
+-- legacy masked rows must remain editable when an unrelated column changes.
+CREATE OR REPLACE FUNCTION enforce_bom_flow_phone_national()
+RETURNS TRIGGER AS $$
+DECLARE
+  phone_value TEXT;
+BEGIN
+  IF TG_OP = 'UPDATE'
+     AND (to_jsonb(NEW) -> TG_ARGV[0]) IS NOT DISTINCT FROM
+         (to_jsonb(OLD) -> TG_ARGV[0]) THEN
+    RETURN NEW;
+  END IF;
+
+  phone_value := to_jsonb(NEW) ->> TG_ARGV[0];
+  IF phone_value IS NULL
+     OR phone_value = ''
+     OR phone_value ~ '^[0-9]{10,11}$' THEN
+    RETURN NEW;
+  END IF;
+
+  RAISE EXCEPTION 'Telefone deve conter somente 10 ou 11 dígitos nacionais.'
+    USING ERRCODE = 'check_violation';
+END;
+$$ LANGUAGE plpgsql;
+
+DO $$
+DECLARE
+  phone_field RECORD;
+  constraint_name TEXT;
+  trigger_name TEXT;
+BEGIN
+  FOR phone_field IN
+    SELECT *
+    FROM (VALUES
+      ('accounts', 'phone'),
+      ('contacts', 'phone'),
+      ('contacts', 'whatsapp'),
+      ('agents', 'phone'),
+      ('leads', 'phone'),
+      ('leads', 'whatsapp'),
+      ('leads_pj', 'phone'),
+      ('leads_pj', 'contact_phone'),
+      ('leads_pj', 'phone_secondary'),
+      ('leads_upsell', 'phone'),
+      ('leads_upsell', 'phone_2'),
+      ('leads_upsell', 'whatsapp'),
+      ('referrals', 'referrer_phone'),
+      ('referrals', 'referred_phone'),
+      ('quick_services', 'contact_phone'),
+      ('bom_auto_atendimentos', 'telefone_contato'),
+      ('bom_pet_atendimentos', 'telefone_contato'),
+      ('bom_pet_parceiros', 'telefone'),
+      ('referral_reactivations', 'telefone')
+    ) AS fields(table_name, column_name)
+  LOOP
+    IF EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = phone_field.table_name
+        AND column_name = phone_field.column_name
+    ) THEN
+      constraint_name := phone_field.table_name
+        || '_' || phone_field.column_name
+        || '_national_digits_check';
+      trigger_name := phone_field.table_name
+        || '_' || phone_field.column_name
+        || '_national_digits_trigger';
+
+      -- Remove constraints from earlier revisions once. They reject unrelated
+      -- updates to legacy rows whose phone has not yet been sanitized.
+      IF EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE connamespace = current_schema()::regnamespace
+          AND conname = constraint_name
+      ) THEN
+        EXECUTE format(
+          'ALTER TABLE %I.%I DROP CONSTRAINT %I',
+          current_schema(),
+          phone_field.table_name,
+          constraint_name
+        );
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgrelid = format('%I.%I', current_schema(), phone_field.table_name)::regclass
+          AND tgname = trigger_name
+          AND NOT tgisinternal
+      ) THEN
+        EXECUTE format(
+          'CREATE TRIGGER %I
+             BEFORE INSERT OR UPDATE OF %I ON %I.%I
+             FOR EACH ROW
+             EXECUTE FUNCTION enforce_bom_flow_phone_national(%L)',
+          trigger_name,
+          phone_field.column_name,
+          current_schema(),
+          phone_field.table_name,
+          phone_field.column_name
+        );
+      END IF;
+    END IF;
+  END LOOP;
+END
+$$;
+
+-- referrals already had a normalized functional index.  Since its persisted
+-- values are now protected as digits-only, retain that index for existing
+-- normalized-expression queries and add the one corresponding raw index.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE schemaname = current_schema()
+      AND tablename = 'referrals'
+      AND indexname = 'idx_referrals_referrer_phone_digits'
+  ) AND EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND table_name = 'referrals'
+      AND column_name = 'referrer_phone'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_referrals_referrer_phone_raw
+      ON referrals (referrer_phone);
+  END IF;
+END
+$$;

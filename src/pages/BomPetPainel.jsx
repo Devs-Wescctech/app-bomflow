@@ -15,6 +15,7 @@ import {
   AlertTriangle, RefreshCw, Zap, PawPrint, MapPin
 } from "lucide-react";
 import { extractApiError } from "@/utils/apiError";
+import { formatBrazilPhone } from "@/utils/phone";
 import {
   formatBomPetDateTime as formatDateTime,
   formatBomPetTime,
@@ -828,7 +829,7 @@ export default function BomPetPainel() {
                   ['Endereço da Remoção', selectedAtendimento.remocao_endereco],
                   ['Clínica Veterinária', selectedAtendimento.clinica_nome],
                   ['Parceiro Operacional', selectedAtendimento.parceiro_nome],
-                  ['Telefone de Contato', selectedAtendimento.telefone_contato ? selectedAtendimento.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : '-'],
+                  ['Telefone de Contato', selectedAtendimento.telefone_contato ? formatBrazilPhone(selectedAtendimento.telefone_contato) : '-'],
                   ['Contrato do Plano', selectedAtendimento.origem === 'Particular' ? 'Não se aplica' : (selectedAtendimento.contratos_servicos || 'Não informado')],
                   ['Situação Financeira', selectedAtendimento.origem === 'Particular' ? 'Não se aplica' : (selectedAtendimento.situacao_financeira || 'Não informado')],
                   ...(selectedAtendimento.origem === 'Particular'

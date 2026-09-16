@@ -38,6 +38,7 @@ import {
   Clock,
 } from "lucide-react";
 import { toast } from "sonner";
+import { formatBrazilPhone } from "@/utils/phone";
 
 // ---------- helpers ----------
 
@@ -54,14 +55,7 @@ const STATUS_BADGE = {
   fechada: { label: "Fechada", className: "bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300" },
 };
 
-function formatPhone(phone) {
-  const d = String(phone || "").replace(/\D/g, "");
-  if (d.length === 13) return `+${d.slice(0, 2)} (${d.slice(2, 4)}) ${d.slice(4, 9)}-${d.slice(9)}`;
-  if (d.length === 12) return `+${d.slice(0, 2)} (${d.slice(2, 4)}) ${d.slice(4, 8)}-${d.slice(8)}`;
-  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
-  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
-  return phone || "";
-}
+const formatPhone = (phone) => formatBrazilPhone(phone);
 
 function timeLabel(iso) {
   const d = new Date(iso);

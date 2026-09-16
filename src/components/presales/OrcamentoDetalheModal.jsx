@@ -8,6 +8,7 @@ import {
   Lock, ShieldQuestion,
 } from "lucide-react";
 import { extractApiError } from "@/utils/apiError";
+import { formatBrazilPhone } from "@/utils/phone";
 import { DOC_TIPOS, getRequiredDocTipos } from "@/utils/orcamentoDocumentos";
 import {
   AlertDialog,
@@ -627,7 +628,7 @@ export default function OrcamentoDetalheModal({ orcamento, situacaoBadge, canalL
             <InfoRow icon={CreditCard} label="CPF" value={formatCpf(titular?.cpf || rastreio.cpf)} />
             <InfoRow icon={Calendar} label="Nascimento" value={formatDateOnly(titular?.data_nascimento)} />
             <InfoRow icon={User} label="Sexo" value={titular ? (SEXO_LABEL[titular.sexo] || titular.sexo) : null} />
-            <InfoRow icon={Phone} label="Telefone" value={titular?.telefone} />
+            <InfoRow icon={Phone} label="Telefone" value={formatBrazilPhone(titular?.telefone)} />
             <InfoRow icon={Mail} label="E-mail" value={titular?.email || detalhe?.email} />
             <InfoRow icon={MapPin} label="Endereço" value={formatEndereco(titular?.endereco || detalhe?.endereco)} />
           </div>

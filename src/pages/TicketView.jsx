@@ -42,6 +42,7 @@ import { ptBR } from "date-fns/locale";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { toast } from "sonner";
+import { formatBrazilPhone, normalizeBrazilPhoneE164, normalizePhone } from "@/utils/phone";
 
 import SmartReplyBox from "@/components/ai/SmartReplyBox";
 import SLATimers from "../components/ticket/SLATimers";
@@ -368,7 +369,7 @@ export default function TicketView() {
         const signatureUrl = `${window.location.origin}${createPageUrl('PublicSignature')}?token=${token}`;
         
         const message = `Olá! Para finalizar seu atendimento, precisamos da sua assinatura digital. Clique no link: ${signatureUrl}`;
-        const whatsappUrl = `https://wa.me/${signatureWhatsapp.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
+        const whatsappUrl = `https://wa.me/${normalizeBrazilPhoneE164(signatureWhatsapp)}?text=${encodeURIComponent(message)}`;
         
         window.open(whatsappUrl, '_blank');
         toast.success('Link de assinatura gerado! Envie via WhatsApp.');
@@ -873,7 +874,7 @@ export default function TicketView() {
                             <Label>WhatsApp do Cliente</Label>
                             <Input
                               value={signatureWhatsapp}
-                              onChange={(e) => setSignatureWhatsapp(e.target.value)}
+                              onChange={(e) => setSignatureWhatsapp(formatBrazilPhone(e.target.value))}
                               placeholder="(00) 00000-0000"
                               className="mt-1"
                             />

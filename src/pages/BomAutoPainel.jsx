@@ -15,6 +15,7 @@ import {
   AlertTriangle, RefreshCw, Zap
 } from "lucide-react";
 import { extractApiError } from "@/utils/apiError";
+import { formatBrazilPhone } from "@/utils/phone";
 
 const API_BASE = '/api';
 const AUTO_REFRESH_INTERVAL = 60000;
@@ -851,7 +852,7 @@ export default function BomAutoPainel() {
                   <div className="space-y-1">
                     <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Telefone de Contato</p>
                     <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                      {selectedAtendimento.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3')}
+                      {formatBrazilPhone(selectedAtendimento.telefone_contato)}
                     </p>
                   </div>
                 )}

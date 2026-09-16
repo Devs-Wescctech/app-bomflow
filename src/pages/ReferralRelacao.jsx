@@ -18,6 +18,7 @@ import { ptBR } from "date-fns/locale";
 import { REFERRAL_STAGES } from "@/constants/stages";
 import { base44 } from "@/api/base44Client";
 import { extractApiError } from "@/utils/apiError";
+import { formatBrazilPhone, normalizePhone } from "@/utils/phone";
 
 const PRIVILEGED_AGENT_TYPES = new Set(['admin', 'indicacoes_supervisor', 'indicacoes_admin']);
 
@@ -60,8 +61,8 @@ export default function ReferralRelacao() {
     params.set('page', page);
     params.set('limit', limit);
     if (appliedFilters.cpfIndicador) params.set('cpfIndicador', appliedFilters.cpfIndicador);
-    if (appliedFilters.telefoneIndicador) params.set('telefoneIndicador', appliedFilters.telefoneIndicador);
-    if (appliedFilters.telefoneIndicado) params.set('telefoneIndicado', appliedFilters.telefoneIndicado);
+    if (appliedFilters.telefoneIndicador) params.set('telefoneIndicador', normalizePhone(appliedFilters.telefoneIndicador));
+    if (appliedFilters.telefoneIndicado) params.set('telefoneIndicado', normalizePhone(appliedFilters.telefoneIndicado));
     if (appliedFilters.nomeIndicado) params.set('nomeIndicado', appliedFilters.nomeIndicado);
     if (appliedFilters.vendedorId) params.set('vendedorId', appliedFilters.vendedorId);
     return params.toString();
@@ -387,7 +388,7 @@ export default function ReferralRelacao() {
                 placeholder="(00) 00000-0000"
                 inputMode="tel"
                 value={filters.telefoneIndicador}
-                onChange={e => setFilters({ ...filters, telefoneIndicador: e.target.value })}
+                onChange={e => setFilters({ ...filters, telefoneIndicador: formatBrazilPhone(e.target.value) })}
                 className="mt-1"
                 onKeyDown={e => e.key === 'Enter' && handleSearch()}
               />
@@ -398,7 +399,7 @@ export default function ReferralRelacao() {
                 placeholder="(00) 00000-0000"
                 inputMode="tel"
                 value={filters.telefoneIndicado}
-                onChange={e => setFilters({ ...filters, telefoneIndicado: e.target.value })}
+                onChange={e => setFilters({ ...filters, telefoneIndicado: formatBrazilPhone(e.target.value) })}
                 className="mt-1"
                 onKeyDown={e => e.key === 'Enter' && handleSearch()}
               />

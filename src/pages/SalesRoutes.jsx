@@ -28,6 +28,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { normalizeBrazilPhoneE164 } from "@/utils/phone";
 import { format, isValid, parseISO, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
@@ -636,7 +637,7 @@ export default function SalesRoutes() {
                               variant="outline"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                window.open(`https://wa.me/55${lead.phone.replace(/\D/g, '')}`, '_blank');
+                                window.open(`https://wa.me/${normalizeBrazilPhoneE164(lead.phone)}`, '_blank');
                               }}
                               className="text-xs rounded-lg border-green-200 text-green-600 hover:bg-green-50 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-900/20"
                             >

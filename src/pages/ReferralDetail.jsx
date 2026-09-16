@@ -72,6 +72,7 @@ import { toast } from "sonner";
 import ReferralTimeline from "../components/referral/ReferralTimeline";
 import ReferralPipelineHistory from "../components/sales/ReferralPipelineHistory";
 import { extractApiError } from "@/utils/apiError";
+import { formatBrazilPhone, normalizeBrazilPhoneE164, normalizePhone } from "@/utils/phone";
 
 const STAGES = [
   { value: "novo", label: "Novo", color: "bg-gray-500", badge: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100" },
@@ -411,6 +412,8 @@ export default function ReferralDetail() {
 
   const handleSave = () => {
     const dataToSave = { ...editedData };
+    if (dataToSave.referredPhone !== undefined) dataToSave.referredPhone = normalizePhone(dataToSave.referredPhone);
+    if (dataToSave.referrerPhone !== undefined) dataToSave.referrerPhone = normalizePhone(dataToSave.referrerPhone);
 
     if (editedData.monthlyValue !== undefined || editedData.adhesionValue !== undefined) {
       const monthly = parseFloat(editedData.monthlyValue ?? referral.monthlyValue ?? 0);
@@ -1588,7 +1591,7 @@ export default function ReferralDetail() {
                   {referral.referrerPhone && (
                     <div>
                       <Label className="text-xs text-purple-700 dark:text-purple-400">Telefone</Label>
-                      <p className="font-semibold text-purple-900 dark:text-purple-200 text-sm">{referral.referrerPhone}</p>
+                      <p className="font-semibold text-purple-900 dark:text-purple-200 text-sm">{formatBrazilPhone(referral.referrerPhone)}</p>
                     </div>
                   )}
                   {referral.referrerContractId && (
@@ -1701,15 +1704,15 @@ export default function ReferralDetail() {
                   <Label className="text-gray-900 dark:text-gray-100">Telefone</Label>
                   <div className="flex gap-2 mt-1">
                     <Input
-                      value={editedData.referredPhone !== undefined ? editedData.referredPhone : (referral.referredPhone || "")}
-                      onChange={(e) => handleFieldChange('referredPhone', e.target.value)}
+                      value={formatBrazilPhone(editedData.referredPhone !== undefined ? editedData.referredPhone : (referral.referredPhone || ""))}
+                      onChange={(e) => handleFieldChange('referredPhone', formatBrazilPhone(e.target.value))}
                       className="flex-1 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                     />
                     {referral.referredPhone && (
                       <Button
                         variant="outline"
                         size="icon"
-                        onClick={() => window.open(`https://wa.me/55${referral.referredPhone.replace(/\D/g, '')}`, '_blank')}
+                        onClick={() => window.open(`https://wa.me/${normalizeBrazilPhoneE164(referral.referredPhone)}`, '_blank')}
                       >
                         <Phone className="w-4 h-4" />
                       </Button>

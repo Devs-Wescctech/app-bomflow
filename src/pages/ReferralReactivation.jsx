@@ -13,6 +13,7 @@ import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { toast } from "sonner";
 import { extractApiError } from "@/utils/apiError";
+import { formatBrazilPhone, normalizePhone } from "@/utils/phone";
 
 const formatCPF = (value) => {
   const clean = value.replace(/\D/g, '').slice(0, 11);
@@ -20,18 +21,6 @@ const formatCPF = (value) => {
     .replace(/(\d{3})(\d)/, '$1.$2')
     .replace(/(\d{3})(\d)/, '$1.$2')
     .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-};
-
-const formatPhone = (value) => {
-  const clean = value.replace(/\D/g, '').slice(0, 11);
-  if (clean.length <= 10) {
-    return clean
-      .replace(/(\d{2})(\d)/, '($1) $2')
-      .replace(/(\d{4})(\d{1,4})$/, '$1-$2');
-  }
-  return clean
-    .replace(/(\d{2})(\d)/, '($1) $2')
-    .replace(/(\d{5})(\d{1,4})$/, '$1-$2');
 };
 
 const INITIAL_FORM = {
@@ -121,7 +110,7 @@ export default function ReferralReactivation() {
         setForm((f) => ({
           ...f,
           nomeCompletoCliente: nome,
-          telefone: fone ? formatPhone(fone) : f.telefone,
+          telefone: fone ? formatBrazilPhone(fone) : f.telefone,
         }));
         setErpFound(true);
         toast.success(`Cliente encontrado: ${nome}`);
@@ -164,7 +153,7 @@ export default function ReferralReactivation() {
     const payload = {
       cpf: cleanCpf || null,
       nome_completo_cliente: form.nomeCompletoCliente.trim(),
-      telefone: (form.telefone || '').replace(/\D/g, '') || null,
+      telefone: normalizePhone(form.telefone) || null,
       observacoes: (form.observacoes || '').trim() || null,
       atendente_id: resolvedAtendenteId,
     };
@@ -274,7 +263,7 @@ export default function ReferralReactivation() {
                   id="telefone"
                   placeholder="(00) 00000-0000"
                   value={form.telefone}
-                  onChange={(e) => setForm((f) => ({ ...f, telefone: formatPhone(e.target.value) }))}
+                  onChange={(e) => setForm((f) => ({ ...f, telefone: formatBrazilPhone(e.target.value) }))}
                   className="font-mono"
                   maxLength={15}
                 />

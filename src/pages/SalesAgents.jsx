@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { formatBrazilPhone, normalizePhone } from "@/utils/phone";
 
 export default function SalesAgents() {
   const queryClient = useQueryClient();
@@ -84,7 +85,7 @@ export default function SalesAgents() {
     setEditingAgent(agent);
     setFormData({
       name: agent.name || "",
-      phone: agent.phone || "",
+       phone: formatBrazilPhone(agent.phone || ""),
       email: agent.email || "",
       user_email: agent.user_email || "",
       region: agent.region || "",
@@ -99,10 +100,10 @@ export default function SalesAgents() {
     if (editingAgent) {
       updateAgentMutation.mutate({
         id: editingAgent.id,
-        data: formData
+        data: { ...formData, phone: normalizePhone(formData.phone) }
       });
     } else {
-      createAgentMutation.mutate(formData);
+      createAgentMutation.mutate({ ...formData, phone: normalizePhone(formData.phone) });
     }
   };
 
@@ -340,7 +341,7 @@ export default function SalesAgents() {
                 <Label className="text-gray-900 dark:text-gray-100">Telefone/WhatsApp *</Label>
                 <Input
                   value={formData.phone}
-                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                   onChange={(e) => setFormData({...formData, phone: formatBrazilPhone(e.target.value)})}
                   placeholder="(00) 00000-0000"
                   className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                 />

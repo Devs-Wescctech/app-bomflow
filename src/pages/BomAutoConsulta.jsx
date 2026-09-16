@@ -15,6 +15,7 @@ import {
   Copy, RefreshCw, Clock, Download, Save
 } from "lucide-react";
 import { extractApiError } from "@/utils/apiError";
+import { formatBrazilPhone, normalizePhone } from "@/utils/phone";
 
 const API_BASE = '/api';
 
@@ -257,7 +258,7 @@ export default function BomAutoConsulta() {
       toast({ title: "Erro", description: "Selecione o tipo de serviço.", variant: "destructive" });
       return;
     }
-    const telefoneDigits = telefoneContato.replace(/\D/g, '');
+    const telefoneDigits = normalizePhone(telefoneContato);
     if (!telefoneDigits || telefoneDigits.length < 10) {
       toast({ title: "Erro", description: "Informe um telefone de contato válido (mínimo 10 dígitos).", variant: "destructive" });
       return;
@@ -468,7 +469,7 @@ export default function BomAutoConsulta() {
 
     // Fone | Contrato
     const tel = at?.telefone_contato
-      ? at.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3')
+      ? formatBrazilPhone(at.telefone_contato)
       : '';
     labelValue('Fone para Contato do Condutor', tel, margin, y, halfW);
     labelValue('Número do Contrato', at?.contratos_servicos || '', margin + halfW + 6, y, halfW);
@@ -653,7 +654,7 @@ export default function BomAutoConsulta() {
     const protocolo = atendimentoFinalizado.protocolo || '';
 
     const telefone = atendimentoFinalizado.telefone_contato
-      ? atendimentoFinalizado.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3')
+      ? formatBrazilPhone(atendimentoFinalizado.telefone_contato)
       : '';
 
     return `Solicitação de Serviço\nProtocolo: ${protocolo}\n\nNome Completo: ${cliente}\nCPF: ${documento}\nTelefone de Contato: ${telefone}\nPlaca: ${placa}\nDescrição Veículo: ${descricaoVeiculo}\nTipo Serviço: ${tipoServ}\nData solicitação: ${dataHora}`;
@@ -773,7 +774,7 @@ export default function BomAutoConsulta() {
                   <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Celular</p>
                   <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
                     <Phone className="w-3.5 h-3.5 text-gray-400" />
-                    {clientCelular}
+                    {formatBrazilPhone(clientCelular)}
                   </p>
                 </div>
               )}
@@ -1203,14 +1204,7 @@ export default function BomAutoConsulta() {
                   placeholder="(DDD) Telefone"
                   value={telefoneContato}
                   onChange={(e) => {
-                    const digits = e.target.value.replace(/\D/g, '').slice(0, 11);
-                    let formatted = digits;
-                    if (digits.length > 2) {
-                      formatted = `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-                    } else if (digits.length > 0) {
-                      formatted = `(${digits}`;
-                    }
-                    setTelefoneContato(formatted);
+                    setTelefoneContato(formatBrazilPhone(e.target.value));
                   }}
                   maxLength={15}
                   className="border-blue-200 dark:border-blue-800 focus:ring-blue-500"
@@ -1317,7 +1311,7 @@ export default function BomAutoConsulta() {
                       <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400 dark:text-gray-500">Telefone de Contato</p>
                       <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
                         <Phone className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                        {atendimentoFinalizado.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3')}
+                        {formatBrazilPhone(atendimentoFinalizado.telefone_contato)}
                       </p>
                     </div>
                   )}
@@ -1376,7 +1370,7 @@ export default function BomAutoConsulta() {
                   { label: 'Empresa Contratada', value: 'Bom Auto' },
                   { label: 'Atendente Resp.', value: atendimentoFinalizado?.usuario || '-' },
                   { label: 'Data e Hora', value: formatDateTime(atendimentoFinalizado?.data_hora || atendimentoFinalizado?.created_at) },
-                  { label: 'Fone para Contato do Condutor', value: atendimentoFinalizado?.telefone_contato ? atendimentoFinalizado.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : '-' },
+                  { label: 'Fone para Contato do Condutor', value: atendimentoFinalizado?.telefone_contato ? formatBrazilPhone(atendimentoFinalizado.telefone_contato) : '-' },
                   { label: 'Número do Contrato', value: atendimentoFinalizado?.contratos_servicos || '-' },
                   { label: 'Nome do Titular', value: clientData?.contratante || clientData?.data?.contratante || '-' },
                   { label: 'Veículo Modelo', value: atendimentoFinalizado?.descricao_veiculo || '-' },
@@ -1561,7 +1555,7 @@ export default function BomAutoConsulta() {
                   { label: 'Empresa Contratada', value: 'Bom Auto' },
                   { label: 'Atendente Resp.', value: termoModalAt.usuario },
                   { label: 'Data e Hora', value: formatDateTime(termoModalAt.data_hora || termoModalAt.created_at) },
-                  { label: 'Fone para Contato', value: termoModalAt.telefone_contato ? termoModalAt.telefone_contato.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : '-' },
+                  { label: 'Fone para Contato', value: termoModalAt.telefone_contato ? formatBrazilPhone(termoModalAt.telefone_contato) : '-' },
                   { label: 'Número do Contrato', value: termoModalAt.contratos_servicos },
                   { label: 'Nome do Titular', value: termoModalAt.nome_cliente },
                   { label: 'Veículo Modelo', value: termoModalAt.descricao_veiculo },

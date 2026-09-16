@@ -16,6 +16,7 @@ import { createPageUrl } from "@/utils";
 import { useToast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { getCommissionFromConversions, calculateCommissionValue, getLevelDescription, getNextLevelInfo, COMMISSION_RULES } from "@/utils/commissionRules";
+import { formatBrazilPhone, normalizePhone } from "@/utils/phone";
 
 const INTERESTS = [
   "Essencial",
@@ -40,15 +41,6 @@ const formatCPF = (value) => {
       .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
   }
   return value;
-};
-
-// Formata telefone BR como (00) 00000-0000 ou (00) 0000-0000
-const formatPhone = (value) => {
-  const v = value.replace(/\D/g, '').slice(0, 11);
-  if (v.length <= 2) return v;
-  if (v.length <= 6) return `(${v.slice(0, 2)}) ${v.slice(2)}`;
-  if (v.length <= 10) return `(${v.slice(0, 2)}) ${v.slice(2, 6)}-${v.slice(6)}`;
-  return `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`;
 };
 
 export default function ReferralCreate() {
@@ -318,7 +310,7 @@ export default function ReferralCreate() {
         referrerIsCorretor: referrerIsCorretor === true,
         referredName: formData.referred_name,
         referredCpf: formData.referred_cpf ? formData.referred_cpf.replace(/\D/g, '') : null,
-        referredPhone: formData.referred_phone.replace(/\D/g, ''),
+        referredPhone: normalizePhone(formData.referred_phone),
         referredEmail: formData.referred_email || null,
         referredAddress: formData.referred_address || null,
         referredBirthDate: formData.referred_birth_date || null,
@@ -465,7 +457,7 @@ export default function ReferralCreate() {
                     <div className="flex gap-2 mt-2">
                       <Input
                         value={referrerPhone}
-                        onChange={(e) => setReferrerPhone(formatPhone(e.target.value))}
+                        onChange={(e) => setReferrerPhone(formatBrazilPhone(e.target.value))}
                         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSearchByPhone(); } }}
                         placeholder="(00) 00000-0000"
                         className="bg-white"
@@ -650,7 +642,7 @@ export default function ReferralCreate() {
                         <Label>Telefone/WhatsApp *</Label>
                         <Input
                           value={formData.referred_phone}
-                          onChange={(e) => setFormData({...formData, referred_phone: e.target.value})}
+                          onChange={(e) => setFormData({...formData, referred_phone: formatBrazilPhone(e.target.value)})}
                           placeholder="(00) 00000-0000"
                           required
                           className="mt-1"
