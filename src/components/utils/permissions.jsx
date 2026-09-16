@@ -406,8 +406,9 @@ export function filterMenuItems(agent, menuItems, user = null) {
       return true;
     })
     .map(item => {
-      // Admin or any *_admin module-admin sees all sub-items within their accessible modules
-      if (isAdmin || agentType?.endsWith('_admin')) return item;
+      // Apenas o administrador master ignora a configuração de submenus.
+      // Administradores de módulo continuam sujeitos às concessões explícitas.
+      if (isAdmin) return item;
       
       // If no sub-items, return as-is
       if (!item.items || item.items.length === 0) return item;
@@ -433,8 +434,15 @@ export function filterMenuItems(agent, menuItems, user = null) {
         // adminOnly nunca pode ser liberado por allowedSubmenus ou outras flags.
         if (subItem.adminOnly && !isAdmin) return false;
 
-        // alwaysVisible: visível a qualquer agente com acesso ao módulo,
-        // ignorando restrições de submenu (allowedSubmenus) do tipo de agente.
+        // Restrições de papel são avaliadas antes do bypass de allowedSubmenus.
+        const hasElevatedAccess = isSupervisor || isAdmin || agentType?.endsWith('_admin');
+        if (subItem.supervisorOnly && !hasElevatedAccess) return false;
+
+        // Administradores de módulo mantêm o acesso padrão aos itens comuns,
+        // mas itens explicitamente configuráveis ainda exigem concessão.
+        if (agentType?.endsWith('_admin') && !subItem.requiresExplicitSubmenu) return true;
+
+        // alwaysVisible ignora apenas allowedSubmenus; não ignora autorização por papel.
         if (subItem.alwaysVisible) return true;
 
         // Extract page name from URL (remove leading slash)
@@ -475,7 +483,6 @@ export function filterMenuItems(agent, menuItems, user = null) {
         }
 
         // supervisorOnly: only visible to supervisors, admins, and module admins (_admin types)
-        const hasElevatedAccess = isSupervisor || isAdmin || agentType?.endsWith('_admin');
         if (subItem.supervisorOnly && !hasElevatedAccess) {
           return false;
         }

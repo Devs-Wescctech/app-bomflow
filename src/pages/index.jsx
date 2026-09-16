@@ -241,6 +241,7 @@ import PostSalesFila from "./PostSalesFila";
 import ReferralWonReport from "./ReferralWonReport";
 import UpsellLeadRedesignDemo from "./UpsellLeadRedesignDemo";
 import OrcamentoDocumentosRedesignDemo from "./OrcamentoDocumentosRedesignDemo";
+import LeadRedistribution from "./LeadRedistribution";
 
 import Login from "./Login";
 
@@ -483,6 +484,7 @@ const PAGES = {
     ReferralWonReport: ReferralWonReport,
     UpsellLeadRedesignDemo: UpsellLeadRedesignDemo,
     OrcamentoDocumentosRedesignDemo: OrcamentoDocumentosRedesignDemo,
+    LeadRedistribution: LeadRedistribution,
     
 }
 
@@ -529,6 +531,7 @@ function PagesContent() {
                 <Route path="/TicketTypes" element={<TicketTypes />} />
                 
                 <Route path="/Agents" element={<Agents />} />
+                <Route path="/LeadRedistribution" element={<LeadRedistribution />} />
                 
                 <Route path="/KnowledgeBase" element={<KnowledgeBase />} />
                 

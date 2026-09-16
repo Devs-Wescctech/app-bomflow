@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
 import { extractApiError } from "@/utils/apiError";
+import { formatBrazilPhone } from "@/utils/phone";
 import {
   AlertCircle,
   Building2,
@@ -80,14 +81,6 @@ function formatPeriodDateTime(value) {
     minute: "2-digit",
     timeZone: "America/Sao_Paulo",
   }).format(date);
-}
-
-function formatPhone(value) {
-  const digits = String(value || "").replace(/\D/g, "").slice(0, 11);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
-  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 }
 
 export default function BomPetParceiros() {
@@ -170,7 +163,7 @@ export default function BomPetParceiros() {
       valor_servico: String(partner.valor_servico ?? ""),
       data_cadastro: String(partner.data_cadastro || "").slice(0, 10),
       email: partner.email || "",
-      telefone: formatPhone(partner.telefone),
+      telefone: formatBrazilPhone(partner.telefone),
       status: partner.status || "Ativo",
       data_exclusao: String(partner.data_exclusao || "").slice(0, 10),
     });
@@ -363,7 +356,7 @@ export default function BomPetParceiros() {
                           </span>
                           <span className="flex items-center gap-1.5">
                             <Phone className="h-3.5 w-3.5" />
-                            {partner.telefone ? formatPhone(partner.telefone) : "Não informado"}
+                            {partner.telefone ? formatBrazilPhone(partner.telefone) : "Não informado"}
                           </span>
                         </div>
                       </td>
@@ -474,7 +467,7 @@ export default function BomPetParceiros() {
                     <Input
                       id="partner-phone"
                       value={form.telefone}
-                      onChange={(event) => setForm({ ...form, telefone: formatPhone(event.target.value) })}
+                      onChange={(event) => setForm({ ...form, telefone: formatBrazilPhone(event.target.value) })}
                       placeholder="(00) 00000-0000"
                       maxLength={15}
                     />

@@ -45,6 +45,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { extractApiError } from "@/utils/apiError";
+import { formatBrazilPhone, normalizeBrazilPhoneE164, normalizePhone } from "@/utils/phone";
 
 const TITULO_CONTRATO_OPTIONS = [
   "BOM CORP",
@@ -345,9 +346,9 @@ export default function ErpOrcamentoForm() {
       cpf: form.cpf || undefined,
       pessoa_contato: form.pessoa_contato || undefined,
       un_rg: form.un_rg || undefined,
-      telefone: form.telefone || undefined,
+      telefone: normalizePhone(form.telefone) || undefined,
       email_contato: form.email_contato || undefined,
-      whatsapp_do_cliente: form.whatsapp_do_cliente || undefined,
+      whatsapp_do_cliente: normalizeBrazilPhoneE164(form.whatsapp_do_cliente) || undefined,
       // Endereço
       un_codigo_postal: form.un_codigo_postal ? form.un_codigo_postal.replace(/\D/g, "") : undefined,
       un_lougradouro: form.un_lougradouro || undefined,
@@ -373,7 +374,7 @@ export default function ErpOrcamentoForm() {
       usua_data_nascimento: form.usua_data_nascimento || undefined,
       usua_sexo: form.usua_sexo || undefined,
       usua_parentesco: form.usua_parentesco || undefined,
-      usua_telefone: form.usua_telefone || undefined,
+      usua_telefone: normalizePhone(form.usua_telefone) || undefined,
       // usua_produtos: ID numérico do produto para o beneficiário (auto-preenchido, editável)
       usua_produtos: form.usua_produtos
         ? (isNaN(Number(form.usua_produtos)) ? form.usua_produtos : Number(form.usua_produtos))
@@ -710,7 +711,7 @@ export default function ErpOrcamentoForm() {
               <FieldRow label="Telefone" required>
                 <Input
                   value={form.telefone}
-                  onChange={(e) => set("telefone", e.target.value)}
+                  onChange={(e) => set("telefone", formatBrazilPhone(e.target.value))}
                   placeholder="(19) 99999-0000"
                   className="text-sm"
                 />
@@ -720,18 +721,18 @@ export default function ErpOrcamentoForm() {
                   <Input
                     value={form.whatsapp_do_cliente}
                     onChange={(e) => {
-                      const raw = e.target.value.replace(/\D/g, "");
-                      set("whatsapp_do_cliente", raw);
+                      const raw = normalizePhone(e.target.value);
+                      set("whatsapp_do_cliente", formatBrazilPhone(raw));
                       if (raw.length === 0) {
                         setWhatsAppError("");
                       } else if (!isValidCelularBR(raw)) {
-                        setWhatsAppError("Número inválido — informe um celular (ex: 5519912345678)");
+                        setWhatsAppError("Número inválido — informe um celular (ex: (19) 99999-0000)");
                       } else {
                         setWhatsAppError("");
                       }
                     }}
-                    placeholder="5519912345678"
-                    maxLength={13}
+                    placeholder="(19) 99999-0000"
+                    maxLength={15}
                     className={cn("text-sm font-mono", whatsAppError ? "border-red-400 focus-visible:ring-red-400" : "")}
                   />
                   {whatsAppError && (
@@ -1148,7 +1149,7 @@ export default function ErpOrcamentoForm() {
               <FieldRow label="Telefone do Beneficiário">
                 <Input
                   value={form.usua_telefone}
-                  onChange={(e) => set("usua_telefone", e.target.value)}
+                  onChange={(e) => set("usua_telefone", formatBrazilPhone(e.target.value))}
                   placeholder="(19) 99999-0000"
                   className="text-sm"
                 />

@@ -45,6 +45,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { formatBrazilPhone, normalizePhone } from "@/utils/phone";
 import WhatsAppTemplateSelectorByToken from "@/components/whatsapp/WhatsAppTemplateSelectorByToken";
 import AutomationLogsPanel from "@/components/whatsapp/AutomationLogsPanel";
 import { extractApiError } from "@/utils/apiError";
@@ -521,7 +522,7 @@ export default function ReferralChannelAutomations() {
   };
 
   const handleTestSend = async () => {
-    const cleaned = testPhone.replace(/[\s\-\(\)\+]/g, '');
+    const cleaned = normalizePhone(testPhone);
     const error = validatePhone(cleaned);
     if (error) {
       setTestPhoneError(error);
@@ -1196,7 +1197,7 @@ export default function ReferralChannelAutomations() {
                             <Input
                               value={testPhone}
                               onChange={(e) => {
-                                setTestPhone(e.target.value);
+                                setTestPhone(formatBrazilPhone(e.target.value));
                                 setTestPhoneError('');
                               }}
                               placeholder="Ex: 5511999999999"

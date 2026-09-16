@@ -21,6 +21,10 @@ import ExcelJS from 'exceljs';
 import { enqueueLeads, processQueue, retryFailed, getQueueStatus, getDashboardMetrics, getLogsWithPagination, normalizePhone, checkConversions, getConversionMetrics, getConversionsList } from '../services/whatsappQueueService.js';
 import { validateNumbers as validateWhatsappNumbers } from '../services/whatsappValidationService.js';
 import { startValidationJob, getValidationJob, cancelValidationJob } from '../services/whatsappValidationJobService.js';
+import {
+  normalizeBrazilPhoneNational,
+  normalizeValidBrazilPhoneNational,
+} from '../utils/phone.js';
 import { getEnvioRegulamentoConfig } from '../services/automationService.js';
 import { getAgentByErpId, getErpAgentMap, resolveAgentFromErp } from '../services/erpIntegrationService.js';
 import OpenAI from 'openai';
@@ -462,7 +466,7 @@ router.post('/upsell-lead-generator-import', authMiddleware, async (req, res) =>
 
     for (const lead of leads) {
       try {
-        const phone = (lead.telefone || lead.phone || '').replace(/\D/g, '');
+        const phone = normalizeValidBrazilPhoneNational(lead.telefone || lead.phone, { allowEmpty: false });
         if (phone.length >= 8) {
           const phoneSuffix = phone.slice(-8);
           const dupCheck = await query(
@@ -499,8 +503,8 @@ router.post('/upsell-lead-generator-import', authMiddleware, async (req, res) =>
         const leadData = {
           name: lead.nome_titular || lead.name || '',
           cpf: lead.cpf || '',
-          phone: lead.telefone || lead.phone || '',
-          phone_2: lead.telefone_2 || lead.phone_2 || '',
+          phone: normalizeValidBrazilPhoneNational(lead.telefone || lead.phone, { allowEmpty: false }),
+          phone_2: normalizeValidBrazilPhoneNational(lead.telefone_2 || lead.phone_2),
           birth_date: birth_date || null,
           interest: lead.descricao || lead.interest || '',
           contract_number: lead.contrato ? String(lead.contrato) : '',
@@ -587,7 +591,9 @@ router.post('/validate-whatsapp', authMiddleware, async (req, res) => {
       return res.status(400).json({ valid: false, message: 'Número de telefone é obrigatório' });
     }
 
-    const cleaned = phone.trim().replace(/\D/g, '');
+    // This is a WhatsApp duplicate lookup, not a Bom Flow storage boundary.
+    // Accept provider/E.164 input and wait until typing reaches national length.
+    const cleaned = normalizeBrazilPhoneNational(phone);
     if (cleaned.length < 10) {
       return res.json({ valid: true, message: '' });
     }

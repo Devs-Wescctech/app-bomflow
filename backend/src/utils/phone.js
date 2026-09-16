@@ -9,6 +9,56 @@
 
 const DIGIT_RE = /\D/g;
 
+/**
+ * Normalizes a phone number for storage in Bom Flow's local tables.
+ *
+ * Storage deliberately uses the national Brazilian representation (DDD plus
+ * subscriber), rather than the E.164 representation used by WHU.  Formatting
+ * is discarded and a leading country code is removed only when it is
+ * unambiguously a Brazilian 12/13 digit number.  Values are bounded to the
+ * 11 digits that a Brazilian national number can contain; this also prevents
+ * accidental persistence of provider prefixes or extensions.
+ *
+ * @param {string|number} phone telefone em qualquer formato
+ * @returns {string} no máximo 11 dígitos nacionais, ou '' se vazio
+ */
+export function normalizeBrazilPhoneNational(phone) {
+  let digits = String(phone ?? '').replace(DIGIT_RE, '');
+  if (!digits) return '';
+
+  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+    digits = digits.slice(2);
+  }
+
+  return digits.slice(0, 11);
+}
+
+/**
+ * Checks whether a supplied Bom Flow phone is empty or has exactly the
+ * Brazilian national length (DDD + 8/9 subscriber digits).
+ */
+export function isValidBrazilPhoneNational(phone, { allowEmpty = true } = {}) {
+  const raw = String(phone ?? '').replace(DIGIT_RE, '');
+  if (!raw) return allowEmpty && String(phone ?? '').trim() === '';
+  const national = stripCountryCode(raw);
+  return national.length === 10 || national.length === 11;
+}
+
+/**
+ * Normalizes and validates a phone before writing to a Bom Flow-owned column.
+ * Empty values remain allowed for optional fields; any supplied value must
+ * contain 10 or 11 national digits.
+ */
+export function normalizeValidBrazilPhoneNational(phone, { allowEmpty = true } = {}) {
+  if (!isValidBrazilPhoneNational(phone, { allowEmpty })) {
+    const error = new Error('Informe um telefone válido com DDD e 10 ou 11 dígitos.');
+    error.statusCode = 400;
+    error.code = 'INVALID_BRAZIL_PHONE';
+    throw error;
+  }
+  return normalizeBrazilPhoneNational(phone);
+}
+
 // Extrai o número nacional (DDD + assinante) removendo o código do país 55 quando
 // o comprimento indica que ele está presente (12 = fixo com país, 13 = celular com país).
 function stripCountryCode(digits) {

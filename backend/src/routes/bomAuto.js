@@ -10,6 +10,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { normalizeValidBrazilPhoneNational } from '../utils/phone.js';
 
 const router = Router();
 
@@ -210,9 +211,7 @@ router.post('/atendimentos', authMiddleware, async (req, res) => {
       ? observacoes.replace(/<[^>]*>/g, '').trim()
       : null;
 
-    const sanitizedTelefone = telefone_contato
-      ? telefone_contato.replace(/\D/g, '').slice(0, 15)
-      : null;
+    const sanitizedTelefone = normalizeValidBrazilPhoneNational(telefone_contato) || null;
 
     const created = await withTransaction(async (client) => {
       const result = await client.query(

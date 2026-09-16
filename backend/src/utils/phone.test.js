@@ -7,7 +7,62 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { normalizeBrazilPhone, alternateBrazilPhone } from './phone.js';
+import {
+  alternateBrazilPhone,
+  isValidBrazilPhoneNational,
+  normalizeBrazilPhone,
+  normalizeBrazilPhoneNational,
+  normalizeValidBrazilPhoneNational,
+} from './phone.js';
+
+test('normalização nacional preserva telefone fixo apenas com DDD', () => {
+  assert.equal(normalizeBrazilPhoneNational('(11) 3255-4000'), '1132554000');
+  assert.equal(normalizeBrazilPhoneNational('(51) 3081-9311'), '5130819311');
+});
+
+test('normalização nacional preserva celular com o nono dígito', () => {
+  assert.equal(normalizeBrazilPhoneNational('(51) 98153-2008'), '51981532008');
+  assert.equal(normalizeBrazilPhoneNational('(51) 99120-6574'), '51991206574');
+});
+
+test('normalização nacional remove o código 55 de colagens com país', () => {
+  assert.equal(normalizeBrazilPhoneNational('+55 (51) 98153-2008'), '51981532008');
+  assert.equal(normalizeBrazilPhoneNational('551132554000'), '1132554000');
+});
+
+test('normalização nacional retorna vazio para entrada inválida', () => {
+  assert.equal(normalizeBrazilPhoneNational('abc'), '');
+  assert.equal(normalizeBrazilPhoneNational(null), '');
+  assert.equal(normalizeBrazilPhoneNational(undefined), '');
+});
+
+test('normalização nacional limita a onze dígitos', () => {
+  assert.equal(normalizeBrazilPhoneNational('123456789012345'), '12345678901');
+});
+
+test('normalização nacional é idempotente', () => {
+  const once = normalizeBrazilPhoneNational('+55 (51) 98153-2008');
+  assert.equal(normalizeBrazilPhoneNational(once), once);
+});
+
+test('validação nacional exige 10 ou 11 dígitos quando preenchido', () => {
+  assert.equal(isValidBrazilPhoneNational('5130819311'), true);
+  assert.equal(isValidBrazilPhoneNational('51991206574'), true);
+  assert.equal(isValidBrazilPhoneNational('513081931'), false);
+  assert.equal(isValidBrazilPhoneNational('519912065740'), false);
+  assert.equal(isValidBrazilPhoneNational('+55 (51) 99120-6574'), true);
+  assert.equal(isValidBrazilPhoneNational(''), true);
+  assert.equal(isValidBrazilPhoneNational('', { allowEmpty: false }), false);
+  assert.throws(
+    () => normalizeValidBrazilPhoneNational('513081931'),
+    (error) => error.code === 'INVALID_BRAZIL_PHONE' && error.statusCode === 400,
+  );
+});
+
+test('número nacional continua compatível com a normalização E.164 do WhatsApp', () => {
+  const national = normalizeBrazilPhoneNational('(51) 8153-2008');
+  assert.equal(normalizeBrazilPhone(national), '5551981532008');
+});
 
 test('celular sem o nono dígito recebe o 9 (caso do bug reportado)', () => {
   assert.equal(normalizeBrazilPhone('(51) 8153-2008'), '5551981532008');

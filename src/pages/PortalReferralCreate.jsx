@@ -14,6 +14,7 @@ import { createPageUrl } from "@/utils";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { calculateCommissionValue, getCommissionFromConversions, getLevelDescription, getNextLevelInfo } from "@/utils/commissionRules";
+import { formatBrazilPhone, normalizePhone } from "@/utils/phone";
 
 const INTERESTS = [
   "Essencial",
@@ -139,7 +140,7 @@ export default function PortalReferralCreate() {
       referrer_total_conversions: totalConversions,
       ...formData,
       referred_cpf: formData.referred_cpf ? formData.referred_cpf.replace(/\D/g, '') : '',
-      referred_phone: formData.referred_phone.replace(/\D/g, ''),
+      referred_phone: normalizePhone(formData.referred_phone),
       total_dependents: formData.total_dependents ? parseInt(formData.total_dependents) : null,
       monthly_value: monthlyValue > 0 ? monthlyValue : null,
       adhesion_value: adhesionValue > 0 ? adhesionValue : null,
@@ -294,7 +295,7 @@ export default function PortalReferralCreate() {
                       <Label>Telefone/WhatsApp *</Label>
                       <Input
                         value={formData.referred_phone}
-                        onChange={(e) => setFormData({...formData, referred_phone: e.target.value})}
+                        onChange={(e) => setFormData({...formData, referred_phone: formatBrazilPhone(e.target.value)})}
                         placeholder="(00) 00000-0000"
                         required
                         className="mt-1"

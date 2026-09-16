@@ -20,6 +20,12 @@ import { toast } from "sonner";
 import { debounce } from "lodash";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import {
+  brazilPhoneValidationMessage,
+  formatBrazilPhone,
+  isValidBrazilPhone,
+  normalizePhone,
+} from "@/utils/phone";
 
 const INTERESTS = [
   "Essencial",
@@ -212,14 +218,6 @@ export default function NewLead() {
   };
 
 
-  const formatPhone = (value) => {
-    const numbers = value.replace(/\D/g, '');
-    if (numbers.length <= 11) {
-      return numbers.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
-    }
-    return value;
-  };
-
   const formatCPF = (value) => {
     const numbers = value.replace(/\D/g, '');
     if (numbers.length <= 11) {
@@ -237,7 +235,7 @@ export default function NewLead() {
   };
 
   const handlePhoneChange = (e) => {
-    const formatted = formatPhone(e.target.value);
+    const formatted = formatBrazilPhone(e.target.value);
     setFormData({ ...formData, phone: formatted });
     setDuplicateError(null);
     
@@ -335,8 +333,8 @@ export default function NewLead() {
       return;
     }
 
-    if (!formData.phone) {
-      toast.error('Telefone é obrigatório!');
+    if (!isValidBrazilPhone(formData.phone, { allowEmpty: false })) {
+      toast.error(brazilPhoneValidationMessage(formData.phone, { allowEmpty: false }));
       return;
     }
 
@@ -365,6 +363,7 @@ export default function NewLead() {
     
     const leadData = {
       ...formData,
+      phone: normalizePhone(formData.phone),
       value: formData.value ? parseFloat(formData.value) : null,
       monthly_value: formData.monthly_value ? parseFloat(formData.monthly_value) : null,
       adhesion_value: formData.adhesion_value ? parseFloat(formData.adhesion_value) : null,

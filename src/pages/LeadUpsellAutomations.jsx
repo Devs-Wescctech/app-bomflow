@@ -42,6 +42,7 @@ import { toast } from "sonner";
 import WhatsAppTemplateSelectorByToken from "@/components/whatsapp/WhatsAppTemplateSelectorByToken";
 import AutomationLogsPanel from "@/components/whatsapp/AutomationLogsPanel";
 import { extractApiError } from "@/utils/apiError";
+import { formatBrazilPhone, normalizePhone } from "@/utils/phone";
 
 const STAGES = [
   { value: "novo", label: "Novo" },
@@ -426,14 +427,14 @@ export default function LeadUpsellAutomations() {
   };
 
   const validatePhone = (raw) => {
-    const cleaned = raw.replace(/[\s\-\(\)\+]/g, '');
+    const cleaned = normalizePhone(raw);
     if (!/^\d+$/.test(cleaned)) return 'Número deve conter apenas dígitos';
     if (cleaned.length < 10 || cleaned.length > 15) return 'Número deve ter entre 10 e 15 dígitos (formato E.164)';
     return '';
   };
 
   const handleTestSend = async () => {
-    const cleaned = testPhone.replace(/[\s\-\(\)\+]/g, '');
+    const cleaned = normalizePhone(testPhone);
     const error = validatePhone(cleaned);
     if (error) {
       setTestPhoneError(error);
@@ -969,7 +970,7 @@ export default function LeadUpsellAutomations() {
                             <Input
                               value={testPhone}
                               onChange={(e) => {
-                                setTestPhone(e.target.value);
+                                setTestPhone(formatBrazilPhone(e.target.value));
                                 setTestPhoneError('');
                               }}
                               placeholder="Ex: 5511999999999"

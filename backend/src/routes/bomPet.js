@@ -48,6 +48,7 @@ import {
   enqueueErpAtendimento,
   syncErpAtendimentoOutboxItem,
 } from '../services/erpAtendimentoService.js';
+import { normalizeValidBrazilPhoneNational } from '../utils/phone.js';
 
 const router = Router();
 
@@ -1005,8 +1006,7 @@ router.post('/atendimentos', authMiddleware, bomPetAuth, (req, res, next) => {
     const docDigits = String(documento_cliente || '').replace(/\D/g, '');
     if (docDigits.length !== 11) throw partnerError('CPF inválido. Deve conter 11 dígitos.');
     const cpfFormatted = formatCpf(docDigits);
-    const sanitizedTelefone = String(telefone_contato || '').replace(/\D/g, '').slice(0, 15);
-    if (sanitizedTelefone.length < 10) throw partnerError('Informe um telefone de contato válido.');
+    const sanitizedTelefone = normalizeValidBrazilPhoneNational(telefone_contato, { allowEmpty: false });
     if (!stripHtml(remocao_local) || !stripHtml(remocao_endereco)) {
       throw partnerError('Informe o local e o endereço da remoção.');
     }

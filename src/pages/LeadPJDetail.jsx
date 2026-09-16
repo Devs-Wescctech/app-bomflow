@@ -58,6 +58,7 @@ import { toast } from "sonner";
 import LeadPJTimeline from "@/components/sales/LeadPJTimeline";
 import LeadPJPipelineHistory from "@/components/sales/LeadPJPipelineHistory";
 import { extractApiError } from "@/utils/apiError";
+import { formatBrazilPhone, normalizeBrazilPhoneE164, normalizePhone } from "@/utils/phone";
 
 const STAGES_PJ = [
   { value: "novo", label: "Novo", color: "bg-gray-500", badge: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100" },
@@ -328,7 +329,11 @@ export default function LeadPJDetail() {
   };
 
   const handleSaveChanges = () => {
-    updateLeadMutation.mutate(editedLead);
+    updateLeadMutation.mutate({
+      ...editedLead,
+      ...(editedLead.phone !== undefined ? { phone: normalizePhone(editedLead.phone) } : {}),
+      ...(editedLead.phoneSecondary !== undefined ? { phoneSecondary: normalizePhone(editedLead.phoneSecondary) } : {}),
+    });
   };
 
   const handleAddNote = () => {
@@ -398,7 +403,7 @@ export default function LeadPJDetail() {
       const response = await base44.functions.invoke('generateProposal', {
         lead_id: leadId,
         lead_type: 'pj',
-        proposal_data: proposalForm,
+        proposal_data: { ...proposalForm, clientPhone: normalizePhone(proposalForm.clientPhone) },
       });
 
       if (response.data.success) {
@@ -866,11 +871,11 @@ export default function LeadPJDetail() {
                 {lead.contact_phone && (
                   <Button
                     size="sm"
-                    onClick={() => window.open(`https://wa.me/55${lead.contact_phone.replace(/\D/g, '')}`, '_blank')}
+                    onClick={() => window.open(`https://wa.me/${normalizeBrazilPhoneE164(lead.contact_phone)}`, '_blank')}
                     className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm"
                   >
                     <Phone className="w-4 h-4 mr-2" />
-                    {lead.contact_phone}
+                    {formatBrazilPhone(lead.contact_phone)}
                   </Button>
                 )}
                 {lead.contact_phone && (
@@ -1225,8 +1230,8 @@ export default function LeadPJDetail() {
                           <Label htmlFor="prop-clientPhone">Telefone</Label>
                           <Input
                             id="prop-clientPhone"
-                            value={proposalForm.clientPhone}
-                            onChange={(e) => handleProposalFieldChange('clientPhone', e.target.value)}
+                            value={formatBrazilPhone(proposalForm.clientPhone)}
+                            onChange={(e) => handleProposalFieldChange('clientPhone', formatBrazilPhone(e.target.value))}
                             placeholder="Telefone do cliente"
                           />
                         </div>
@@ -1659,7 +1664,7 @@ export default function LeadPJDetail() {
                           <div className="space-y-1 mt-2">
                             <p className="text-sm text-indigo-800 dark:text-indigo-200 flex items-center gap-1">
                               <Phone className="w-3 h-3" />
-                              {agent.phone}
+                              {formatBrazilPhone(agent.phone)}
                             </p>
                             {agent.email && (
                               <p className="text-sm text-indigo-800 dark:text-indigo-200 flex items-center gap-1 truncate">
@@ -1712,15 +1717,15 @@ export default function LeadPJDetail() {
                   <Label className="text-gray-900 dark:text-gray-100">Telefone Principal</Label>
                   <div className="flex gap-3 mt-1">
                     <Input
-                      value={editedLead.phone !== undefined ? editedLead.phone : (lead.phone || "")}
-                      onChange={(e) => handleFieldChange('phone', e.target.value)}
+                      value={formatBrazilPhone(editedLead.phone !== undefined ? editedLead.phone : (lead.phone || ""))}
+                      onChange={(e) => handleFieldChange('phone', formatBrazilPhone(e.target.value))}
                       className="flex-1 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                     />
                     {lead.phone && (
                       <Button
                         variant="outline"
                         size="icon"
-                        onClick={() => window.open(`https://wa.me/55${lead.phone.replace(/\D/g, '')}`, '_blank')}
+                        onClick={() => window.open(`https://wa.me/${normalizeBrazilPhoneE164(lead.phone)}`, '_blank')}
                       >
                         <Phone className="w-4 h-4" />
                       </Button>

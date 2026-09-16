@@ -4,6 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { upsell } from "@/api/upsellClient";
 import { useNavigate, useLocation } from "react-router-dom";
 import { extractApiError } from "@/utils/apiError";
+import { formatBrazilPhone, normalizeBrazilPhoneE164, normalizePhone } from "@/utils/phone";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -452,6 +453,7 @@ export default function LeadUpsellDetail() {
 
   const handleSaveChanges = () => {
     const dataToSave = { ...editedLead };
+    if (dataToSave.phone !== undefined) dataToSave.phone = normalizePhone(dataToSave.phone);
     
     // Auto-assign current agent if lead has no agent and user is a salesperson (not admin/supervisor)
     if (!leadAgentId && userAgent?.id && !isAdmin && !isSupervisor) {
@@ -747,7 +749,7 @@ export default function LeadUpsellDetail() {
                 </p>
                 {lead.phone && (
                   <p className="text-sm text-orange-900 dark:text-orange-300 mt-2">
-                    <strong>Telefone:</strong> {lead.phone}
+                    <strong>Telefone:</strong> {formatBrazilPhone(lead.phone)}
                   </p>
                 )}
               </div>
@@ -1022,11 +1024,11 @@ export default function LeadUpsellDetail() {
                 {lead.phone && (
                   <Button
                     size="sm"
-                    onClick={() => window.open(`https://wa.me/55${lead.phone.replace(/\D/g, '')}`, '_blank')}
+                    onClick={() => window.open(`https://wa.me/${normalizeBrazilPhoneE164(lead.phone)}`, '_blank')}
                     className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm"
                   >
                     <Phone className="w-4 h-4 mr-2" />
-                    {lead.phone}
+                    {formatBrazilPhone(lead.phone)}
                   </Button>
                 )}
                 {lead.phone && (
@@ -1792,15 +1794,15 @@ export default function LeadUpsellDetail() {
                   <Label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Telefone</Label>
                   <div className="flex gap-2 mt-1.5">
                     <Input
-                      value={editedLead.phone !== undefined ? editedLead.phone : (lead.phone || "")}
-                      onChange={(e) => handleFieldChange('phone', e.target.value)}
+                      value={formatBrazilPhone(editedLead.phone !== undefined ? editedLead.phone : (lead.phone || ""))}
+                      onChange={(e) => handleFieldChange('phone', formatBrazilPhone(e.target.value))}
                       className="flex-1 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
                     {(editedLead.phone ?? lead.phone) && (
                       <Button
                         variant="outline"
                         size="icon"
-                        onClick={() => window.open(`https://wa.me/55${(editedLead.phone ?? lead.phone).replace(/\D/g, '')}`, '_blank')}
+                        onClick={() => window.open(`https://wa.me/${normalizeBrazilPhoneE164(editedLead.phone ?? lead.phone)}`, '_blank')}
                         className="rounded-lg hover:bg-green-50 hover:border-green-300 hover:text-green-600"
                       >
                         <Phone className="w-4 h-4" />

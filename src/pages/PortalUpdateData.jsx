@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { User, Phone, Mail, MapPin, ArrowLeft, Save, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { createPageUrl } from "@/utils";
 import { toast } from "sonner";
+import { formatBrazilPhone, normalizePhone } from "@/utils/phone";
 
 export default function PortalUpdateData() {
   const navigate = useNavigate();
@@ -47,8 +48,8 @@ export default function PortalUpdateData() {
       // Preencher formulário com dados existentes
       setFormData({
         email: parsedContact.email || '',
-        phone: parsedContact.phone || '',
-        phone2: parsedContact.phones?.[1] || '',
+         phone: formatBrazilPhone(parsedContact.phone || ''),
+         phone2: formatBrazilPhone(parsedContact.phones?.[1] || ''),
         address: parsedContact.metadata?.endereco_completo || '',
         number: '',
         complement: '',
@@ -73,22 +74,14 @@ export default function PortalUpdateData() {
     return value;
   };
 
-  const formatPhone = (value) => {
-    const numbers = value.replace(/\D/g, '');
-    if (numbers.length <= 11) {
-      return numbers.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
-    }
-    return value;
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSaving(true);
     setSuccess(false);
 
     try {
-      const phones = [formData.phone];
-      if (formData.phone2) phones.push(formData.phone2);
+       const phones = [normalizePhone(formData.phone)];
+       if (formData.phone2) phones.push(normalizePhone(formData.phone2));
 
       const emails = [];
       if (formData.email) emails.push(formData.email);
@@ -222,7 +215,7 @@ export default function PortalUpdateData() {
                   <Input
                     type="tel"
                     value={formData.phone}
-                    onChange={(e) => handleChange('phone', formatPhone(e.target.value))}
+                     onChange={(e) => handleChange('phone', formatBrazilPhone(e.target.value))}
                     placeholder="(00) 00000-0000"
                     className="mt-1"
                     required
@@ -233,7 +226,7 @@ export default function PortalUpdateData() {
                   <Input
                     type="tel"
                     value={formData.phone2}
-                    onChange={(e) => handleChange('phone2', formatPhone(e.target.value))}
+                     onChange={(e) => handleChange('phone2', formatBrazilPhone(e.target.value))}
                     placeholder="(00) 00000-0000"
                     className="mt-1"
                   />

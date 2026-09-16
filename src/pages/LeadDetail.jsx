@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { useNavigate } from "react-router-dom";
+import { formatBrazilPhone, normalizeBrazilPhoneE164, normalizePhone } from "@/utils/phone";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -380,6 +381,7 @@ export default function LeadDetail() {
 
   const handleSaveChanges = () => {
     const dataToSave = { ...editedLead };
+    if (dataToSave.phone !== undefined) dataToSave.phone = normalizePhone(dataToSave.phone);
     
     const monthlyValue = editedLead.monthlyValue !== undefined && editedLead.monthlyValue !== null && editedLead.monthlyValue !== ""
       ? parseFloat(editedLead.monthlyValue)
@@ -462,7 +464,7 @@ export default function LeadDetail() {
       const response = await base44.functions.invoke('generateProposal', {
         lead_id: leadId,
         lead_type: 'pf',
-        proposal_data: proposalForm,
+        proposal_data: { ...proposalForm, clientPhone: normalizePhone(proposalForm.clientPhone) },
       });
 
       if (response.data.success) {
@@ -715,7 +717,7 @@ export default function LeadDetail() {
                 </p>
                 {lead.phone && (
                   <p className="text-sm text-orange-900 dark:text-orange-300 mt-2">
-                    <strong>Telefone:</strong> {lead.phone}
+                    <strong>Telefone:</strong> {formatBrazilPhone(lead.phone)}
                   </p>
                 )}
               </div>
@@ -928,11 +930,11 @@ export default function LeadDetail() {
                 {lead.phone && (
                   <Button
                     size="sm"
-                    onClick={() => window.open(`https://wa.me/55${lead.phone.replace(/\D/g, '')}`, '_blank')}
+                    onClick={() => window.open(`https://wa.me/${normalizeBrazilPhoneE164(lead.phone)}`, '_blank')}
                     className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm"
                   >
                     <Phone className="w-4 h-4 mr-2" />
-                    {lead.phone}
+                    {formatBrazilPhone(lead.phone)}
                   </Button>
                 )}
                 {lead.phone && (
@@ -1302,8 +1304,8 @@ export default function LeadDetail() {
                           <Label htmlFor="pf-prop-clientPhone">Telefone</Label>
                           <Input
                             id="pf-prop-clientPhone"
-                            value={proposalForm.clientPhone}
-                            onChange={(e) => handleProposalFieldChange('clientPhone', e.target.value)}
+                            value={formatBrazilPhone(proposalForm.clientPhone)}
+                            onChange={(e) => handleProposalFieldChange('clientPhone', formatBrazilPhone(e.target.value))}
                             placeholder="Telefone do cliente"
                           />
                         </div>
@@ -1736,7 +1738,7 @@ export default function LeadDetail() {
                           <div className="space-y-1 mt-2">
                             <p className="text-sm text-blue-800 dark:text-blue-200 flex items-center gap-1">
                               <Phone className="w-3 h-3" />
-                              {agent.phone}
+                              {formatBrazilPhone(agent.phone)}
                             </p>
                             {agent.email && (
                               <p className="text-sm text-blue-800 dark:text-blue-200 flex items-center gap-1 truncate">
@@ -1788,7 +1790,7 @@ export default function LeadDetail() {
                       <Button
                         variant="outline"
                         size="icon"
-                        onClick={() => window.open(`https://wa.me/55${lead.phone.replace(/\D/g, '')}`, '_blank')}
+                        onClick={() => window.open(`https://wa.me/${normalizeBrazilPhoneE164(lead.phone)}`, '_blank')}
                         className="rounded-lg hover:bg-green-50 hover:border-green-300 hover:text-green-600"
                       >
                         <Phone className="w-4 h-4" />

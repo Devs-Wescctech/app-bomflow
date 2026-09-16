@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { extractApiError } from "@/utils/apiError";
+import { formatBrazilPhone, normalizePhone } from "@/utils/phone";
 
 const API_BASE_URL = '/api';
 
@@ -76,20 +77,13 @@ export default function AutomationTestDialog({
     testMutation.mutate({
       automationType,
       automationId,
-      testPhone: testPhone.replace(/\D/g, ''),
+      testPhone: normalizePhone(testPhone),
       templateId,
       sampleData: {
         name: testName,
         email: 'teste@exemplo.com',
       },
     });
-  };
-
-  const formatPhone = (value) => {
-    const digits = value.replace(/\D/g, '');
-    if (digits.length <= 2) return digits;
-    if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
   };
 
   const accentClasses = {
@@ -138,7 +132,7 @@ export default function AutomationTestDialog({
               id="testPhone"
               placeholder="(11) 99999-9999"
               value={testPhone}
-              onChange={(e) => setTestPhone(formatPhone(e.target.value))}
+               onChange={(e) => setTestPhone(formatBrazilPhone(e.target.value))}
               maxLength={15}
             />
             <p className="text-xs text-gray-500">
