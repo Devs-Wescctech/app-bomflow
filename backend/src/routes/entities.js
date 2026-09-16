@@ -1733,7 +1733,7 @@ router.get('/leads/:id/reassignment-log', authMiddleware, loadAgentMiddleware, a
        LEFT JOIN agents fa ON fa.id = r.from_agent_id
        LEFT JOIN agents ta ON ta.id = r.to_agent_id
        LEFT JOIN agents ra ON ra.id = r.reassigned_by
-       WHERE r.lead_id = $1 AND r.module = 'leads'
+       WHERE r.lead_id = $1 AND r.module = ANY(ARRAY['leads', 'sales'])
        ORDER BY r.created_at DESC`,
       [id]
     );
@@ -1962,7 +1962,7 @@ router.get('/leads-pj/:id/reassignment-log', authMiddleware, loadAgentMiddleware
        LEFT JOIN agents fa ON fa.id = r.from_agent_id
        LEFT JOIN agents ta ON ta.id = r.to_agent_id
        LEFT JOIN agents ra ON ra.id = r.reassigned_by
-       WHERE r.lead_id = $1 AND r.module = 'leads-pj'
+       WHERE r.lead_id = $1 AND r.module = ANY(ARRAY['leads-pj', 'sales_pj'])
        ORDER BY r.created_at DESC`,
       [id]
     );
@@ -2193,7 +2193,7 @@ router.get('/leads-upsell/:id/reassignment-log', authMiddleware, loadAgentMiddle
        LEFT JOIN agents fa ON fa.id = r.from_agent_id
        LEFT JOIN agents ta ON ta.id = r.to_agent_id
        LEFT JOIN agents ra ON ra.id = r.reassigned_by
-       WHERE r.lead_id = $1 AND r.module = 'leads-upsell'
+       WHERE r.lead_id = $1 AND r.module = ANY(ARRAY['leads-upsell', 'sales_upsell'])
        ORDER BY r.created_at DESC`,
       [id]
     );
@@ -2768,7 +2768,7 @@ router.get('/referrals/:id/reassignment-log', authMiddleware, loadAgentMiddlewar
        LEFT JOIN agents fa ON fa.id = r.from_agent_id
        LEFT JOIN agents ta ON ta.id = r.to_agent_id
        LEFT JOIN agents ra ON ra.id = r.reassigned_by
-       WHERE r.lead_id = $1 AND r.module = 'referrals'
+       WHERE r.lead_id = $1 AND r.module = ANY(ARRAY['referrals', 'referral'])
        ORDER BY r.created_at DESC`,
       [id]
     );

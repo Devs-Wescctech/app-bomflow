@@ -20,6 +20,16 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -45,6 +55,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { saveAgentThenReconcile } from "@/utils/agentErpEditSync";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useNavigate } from "react-router-dom";
 
 const MENU_MODULES = [
   {
@@ -88,6 +99,7 @@ const MENU_MODULES = [
       { id: "SalesAgentsDashboard", title: "Dashboard Vendedores" },
       { id: "NewLead", title: "Novo Lead" },
       { id: "LeadsKanban", title: "Pipeline" },
+      { id: "LeadRedistributionSales", title: "Redistribuição de leads" },
       { id: "SalesAgenda", title: "Agenda" },
       { id: "LeadSearch", title: "Busca de Leads" },
       { id: "LeadsMap", title: "Mapa de Leads" },
@@ -109,6 +121,7 @@ const MENU_MODULES = [
       { id: "SalesPJAgentsDashboard", title: "Dashboard Vendedores" },
       { id: "NewLeadPJ", title: "Novo Lead PJ" },
       { id: "LeadsPJKanban", title: "Pipeline B2B" },
+      { id: "LeadRedistributionSalesPJ", title: "Redistribuição de leads" },
       { id: "SalesAgenda", title: "Agenda" },
       { id: "LeadPJSearch", title: "Busca de Leads" },
       { id: "SalesPJReports", title: "Relatórios" },
@@ -129,6 +142,7 @@ const MENU_MODULES = [
       { id: "ReferralReactivation", title: "Nova Reativação" },
       { id: "ReferralReactivationReport", title: "Rel. de Reativações" },
       { id: "ReferralPipeline", title: "Pipeline" },
+      { id: "LeadRedistributionReferral", title: "Redistribuição de leads" },
       { id: "ReferralReports", title: "Relatórios" },
       { id: "ReferralOrcamentoRelatorio", title: "Rel. de Orçamentos" },
       { id: "ReferralCommissions", title: "Comissões" },
@@ -152,6 +166,7 @@ const MENU_MODULES = [
       { id: "SalesUpsellAgentsDashboard", title: "Dashboard Vendedores" },
       { id: "NewLeadUpsell", title: "Novo Lead Upsell" },
       { id: "LeadsUpsellKanban", title: "Pipeline Upsell" },
+      { id: "LeadRedistributionUpsell", title: "Redistribuição de leads" },
       { id: "SalesAgenda", title: "Agenda" },
       { id: "LeadUpsellSearch", title: "Busca de Leads" },
       { id: "SalesUpsellReports", title: "Relatórios" },
@@ -274,6 +289,7 @@ function getErpSyncAuditStatusLabel(status, kind) {
 }
 
 export default function Agents() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("agents");
   
@@ -318,6 +334,8 @@ export default function Agents() {
   const [erpSyncAudit, setErpSyncAudit] = useState(null);
   const [loadingErpSyncAudit, setLoadingErpSyncAudit] = useState(false);
   const [editSaveState, setEditSaveState] = useState(null);
+  const [redistributionPrompt, setRedistributionPrompt] = useState(null);
+  const redistributionPromptResolver = useRef(null);
   const activeEditAgentIdRef = useRef(null);
   const editRequestGenerationRef = useRef(0);
   // Controla se o usuário editou o Login ERP manualmente. Enquanto false, o
@@ -1240,6 +1258,40 @@ export default function Agents() {
     };
     
     if (editingAgent) {
+      let redistributionChoice = false;
+      let redistributionModules = [];
+      const redistributionSubmenus = new Set([
+        'LeadRedistributionSales',
+        'LeadRedistributionSalesPJ',
+        'LeadRedistributionUpsell',
+        'LeadRedistributionReferral',
+      ]);
+      const canUseLeadRedistribution = isAdmin ||
+        (currentAgent?.allowedSubmenus || []).some(submenu => redistributionSubmenus.has(submenu));
+      if (editingAgent.active !== false && dataToSend.active === false && canUseLeadRedistribution) {
+        try {
+          const response = await fetch(`/api/lead-redistribution/counts?agentId=${editingAgent.id}`, {
+            headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
+          });
+          if (!response.ok) {
+            throw new Error(await extractApiError(response, 'Não foi possível consultar a carteira antes da desativação.'));
+          }
+          const portfolio = await response.json();
+          if (portfolio.total > 0) {
+            redistributionChoice = await new Promise(resolve => {
+              redistributionPromptResolver.current = resolve;
+              setRedistributionPrompt({
+                agentName: editingAgent.name,
+                total: portfolio.total,
+              });
+            });
+            redistributionModules = portfolio.counts.map(item => item.module);
+          }
+        } catch (error) {
+          toast.error(error.message);
+          return;
+        }
+      }
       const agentId = editingAgent.id;
       const shouldReconcileErp = String(formData.cpf || '').replace(/\D/g, '').length === 11;
       if (!dataToSend.password) {
@@ -1272,6 +1324,12 @@ export default function Agents() {
           },
           reconcileAgent: (id) => reconcileEditedAgent(id),
         });
+
+        if (redistributionChoice) {
+          setIsDialogOpen(false);
+          navigate(`/LeadRedistribution?module=${redistributionModules[0] || 'sales'}&sourceId=${agentId}&modules=${redistributionModules.join(',')}&context=deactivation`);
+          return;
+        }
 
         if (!outcome.reconciliationAttempted) {
           toast.success('Agente atualizado no Bom Flow. Não há Usuário ERP validado para reconciliar.');
@@ -3800,6 +3858,59 @@ export default function Agents() {
           queryClient.invalidateQueries({ queryKey: ['currentUser'] });
         }}
       />
+
+      <AlertDialog
+        open={Boolean(redistributionPrompt)}
+        onOpenChange={(open) => {
+          if (!open && redistributionPromptResolver.current) {
+            const resolve = redistributionPromptResolver.current;
+            redistributionPromptResolver.current = null;
+            setRedistributionPrompt(null);
+            resolve(false);
+          }
+        }}
+      >
+        <AlertDialogContent className="max-w-md rounded-2xl border-slate-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+          <AlertDialogHeader>
+            <div className="mb-1 flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300">
+                <Users className="h-5 w-5" />
+              </span>
+              <div>
+                <AlertDialogTitle className="font-display text-[17px] font-semibold text-gray-900 dark:text-gray-100">
+                  Redistribuir carteira antes de sair?
+                </AlertDialogTitle>
+                <AlertDialogDescription className="mt-1 text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
+                  {redistributionPrompt?.agentName} possui {redistributionPrompt?.total} lead(s) em carteira.
+                </AlertDialogDescription>
+              </div>
+            </div>
+          </AlertDialogHeader>
+
+          <div className="rounded-xl border border-teal-100 bg-teal-50/70 px-3.5 py-3 text-[12.5px] leading-relaxed text-teal-900 dark:border-teal-900/60 dark:bg-teal-950/20 dark:text-teal-200">
+            O agente será desativado nas duas opções. Você pode abrir a redistribuição agora ou manter a carteira como está.
+          </div>
+
+          <AlertDialogFooter className="mt-1 gap-2 sm:space-x-0">
+            <AlertDialogCancel className="action-pill-ghost mt-0">
+              Apenas desativar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="action-pill-primary mt-0"
+              onClick={(event) => {
+                event.preventDefault();
+                const resolve = redistributionPromptResolver.current;
+                redistributionPromptResolver.current = null;
+                setRedistributionPrompt(null);
+                resolve?.(true);
+              }}
+            >
+              <Users className="h-4 w-4" />
+              Desativar e redistribuir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

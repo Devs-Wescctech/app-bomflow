@@ -515,6 +515,7 @@ CREATE TABLE IF NOT EXISTS leads (
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_leads_agent_id ON leads(agent_id);
 
 CREATE TABLE IF NOT EXISTS activities (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -603,6 +604,7 @@ CREATE TABLE IF NOT EXISTS leads_pj (
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_leads_pj_agent_id ON leads_pj(agent_id);
 
 CREATE TABLE IF NOT EXISTS activities_pj (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -711,6 +713,7 @@ CREATE TABLE IF NOT EXISTS referrals (
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_referrals_agent_id ON referrals(agent_id);
 
 CREATE TABLE IF NOT EXISTS referral_activities (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1565,6 +1568,50 @@ CREATE TABLE IF NOT EXISTS leads_upsell (
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_leads_upsell_agent_id ON leads_upsell(agent_id);
+
+CREATE TABLE IF NOT EXISTS lead_reassignment_log (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    module VARCHAR(50) NOT NULL,
+    lead_id UUID NOT NULL,
+    from_agent_id UUID REFERENCES agents(id),
+    to_agent_id UUID REFERENCES agents(id),
+    reassigned_by UUID REFERENCES agents(id),
+    notes TEXT,
+    context VARCHAR(30) NOT NULL DEFAULT 'management',
+    batch_id UUID DEFAULT uuid_generate_v4(),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+ALTER TABLE lead_reassignment_log ADD COLUMN IF NOT EXISTS context VARCHAR(30) NOT NULL DEFAULT 'management';
+ALTER TABLE lead_reassignment_log ADD COLUMN IF NOT EXISTS batch_id UUID DEFAULT uuid_generate_v4();
+CREATE INDEX IF NOT EXISTS idx_lead_reassignment_log_module_created
+  ON lead_reassignment_log(module, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS lead_redistribution_previews (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    module VARCHAR(50) NOT NULL,
+    executor_id UUID REFERENCES agents(id),
+    executor_key VARCHAR(255) NOT NULL,
+    request JSONB NOT NULL,
+    destination_ids UUID[] NOT NULL,
+    lead_count INTEGER NOT NULL DEFAULT 0,
+    consumed_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '15 minutes',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE lead_redistribution_previews ADD COLUMN IF NOT EXISTS executor_key VARCHAR(255);
+UPDATE lead_redistribution_previews SET executor_key = COALESCE(executor_id::text, id::text) WHERE executor_key IS NULL;
+ALTER TABLE lead_redistribution_previews ALTER COLUMN executor_key SET NOT NULL;
+ALTER TABLE lead_reassignment_log ADD COLUMN IF NOT EXISTS executor_email VARCHAR(255);
+CREATE TABLE IF NOT EXISTS lead_redistribution_preview_leads (
+    preview_id UUID NOT NULL REFERENCES lead_redistribution_previews(id) ON DELETE CASCADE,
+    lead_id UUID NOT NULL,
+    from_agent_id UUID,
+    sequence_no BIGINT NOT NULL,
+    PRIMARY KEY (preview_id, lead_id)
+);
+CREATE INDEX IF NOT EXISTS idx_lead_redistribution_previews_expiry
+  ON lead_redistribution_previews(expires_at) WHERE consumed_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS activities_upsell (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
