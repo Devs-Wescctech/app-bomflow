@@ -469,7 +469,7 @@ export function validateContractData(data) {
     }
     if (!driver?.nome) errors.push(`${prefix}: nome do condutor ausente.`);
     if (!String(driver?.cpf || '').trim()) {
-      errors.push(`${prefix}: CPF do condutor ausente.`);
+      errors.push(`${prefix}: o condutor não possui CPF cadastrado no ERP. A emissão do contrato permanece bloqueada até a correção do cadastro.`);
     } else if (!isValidCpf(driver.cpf)) {
       errors.push(`${prefix}: CPF do condutor inválido.`);
     }

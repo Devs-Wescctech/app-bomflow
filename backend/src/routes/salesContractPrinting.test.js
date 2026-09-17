@@ -24,7 +24,6 @@ import {
   isBomAutoDriverProduct,
   canUseHolderAsLegacyDriver,
   applyHolderContactFallbacks,
-  applyDriverIdentityFallbacks,
   parseBomAutoVehicle,
   calculateBomAutoMonthlyFee,
   pairBomAutoPeople,
@@ -169,30 +168,6 @@ test('uses the canonical holder as legacy driver only when inherited identity fi
   assert.equal(canUseHolderAsLegacyDriver({
     data_nascimento: '1990-01-01', telefone: '11999999999', sexo: 'M',
   }, holderWithoutPhone), true);
-});
-
-test('recovers a linked driver CPF only from the official ERP person identity', () => {
-  const driver = { cpf: null, estado_civil: null, profissao: null };
-  applyDriverIdentityFallbacks(driver, {
-    cpf: '529.982.247-25',
-    estado_civil: 'CASADO',
-    profissao: 'MOTORISTA',
-  });
-  assert.deepEqual(driver, {
-    cpf: '529.982.247-25',
-    estado_civil: 'CASADO',
-    profissao: 'MOTORISTA',
-  });
-
-  const existing = { cpf: '111.222.333-44', estado_civil: 'SOLTEIRO', profissao: 'VENDEDOR' };
-  applyDriverIdentityFallbacks(existing, {
-    cpf: '529.982.247-25',
-    estado_civil: 'CASADO',
-    profissao: 'MOTORISTA',
-  });
-  assert.equal(existing.cpf, '111.222.333-44');
-  assert.equal(existing.estado_civil, 'SOLTEIRO');
-  assert.equal(existing.profissao, 'VENDEDOR');
 });
 
 test('selects the canonical holder even when its denormalized CPF is absent', () => {
@@ -933,7 +908,7 @@ test('distinguishes an absent driver CPF from an invalid one', () => {
   const vehicle = { modelo: 'ONIX', cor: 'PRETO', placa: 'ABC1D23', ano: '2020' };
   assert.deepEqual(
     validateContractData({ ...base, vehicles: [{ ...vehicle, driver }] }),
-    ['Veículo 1: CPF do condutor ausente.'],
+    ['Veículo 1: o condutor não possui CPF cadastrado no ERP. A emissão do contrato permanece bloqueada até a correção do cadastro.'],
   );
   assert.deepEqual(
     validateContractData({ ...base, vehicles: [{ ...vehicle, driver: { ...driver, cpf: '12345678901' } }] }),
