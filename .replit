@@ -101,3 +101,6 @@ ERP_ATENDIMENTO_SYNC_ENABLED = "false"
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 180000
+
+[objectStorage]
+defaultBucketID = "replit-objstore-d5cb2441-d483-4b04-9aaa-acba3d44bd21"
