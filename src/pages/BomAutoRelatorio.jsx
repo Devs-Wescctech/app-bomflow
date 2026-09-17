@@ -106,7 +106,13 @@ export default function BomAutoRelatorio() {
           setCurrentUser(data);
           const tipo = (data.agent?.agentType || data.agentType || '').toLowerCase();
           const role = (data.role || '').toLowerCase();
-          setAuthorized(tipo === 'admin' || tipo === 'sales_supervisor' || tipo === 'bom_auto_supervisor' || role === 'admin');
+          setAuthorized(
+            tipo === 'admin'
+            || tipo === 'sales_supervisor'
+            || tipo === 'bom_auto_supervisor'
+            || tipo === 'post_sales'
+            || role === 'admin'
+          );
         } else {
           setAuthorized(false);
         }
