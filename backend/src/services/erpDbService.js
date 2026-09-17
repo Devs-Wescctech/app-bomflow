@@ -74,6 +74,13 @@ export const applyHolderContactFallbacks = (holder, { email, endereco, telefone 
   if (!holder.telefone && telefone) holder.telefone = telefone;
   return holder;
 };
+export const applyDriverIdentityFallbacks = (driver, identity = {}) => {
+  if (!driver) return driver;
+  if (!driver.cpf && identity.cpf) driver.cpf = identity.cpf;
+  if (!driver.estado_civil && identity.estado_civil) driver.estado_civil = identity.estado_civil;
+  if (!driver.profissao && identity.profissao) driver.profissao = identity.profissao;
+  return driver;
+};
 export const selectOrderHolder = (rows = []) => {
   const canonical = rows.find((row) => row.is_canonical_holder === true);
   if (canonical) return { row: canonical, isCanonical: true };
@@ -654,13 +661,17 @@ export async function getOrcamentoDetalhe(pedidoId) {
     if (relatedId) {
       try {
         const characteristics = await db.query(
-          `SELECT estado_civil, profissao
-             FROM vw_caracteristicas
-            WHERE pessoa_id = $1
+          `SELECT vc.estado_civil, vc.profissao,
+                  MAX(CASE WHEN dp.tipo_documento_id = 580 THEN dp.documento END) AS cpf
+             FROM pessoas p
+             LEFT JOIN vw_caracteristicas vc ON vc.pessoa_id = p.id
+             LEFT JOIN documentos_pessoas dp ON dp.pessoa_id = p.id
+            WHERE p.id = $1
+            GROUP BY p.id, vc.estado_civil, vc.profissao
             LIMIT 1`,
           [relatedId]
         );
-        Object.assign(driver, characteristics.rows[0] || {});
+        applyDriverIdentityFallbacks(driver, characteristics.rows[0] || {});
       } catch (error) {
         console.warn('[erpDbService] Características do condutor indisponíveis:', error.message);
       }
