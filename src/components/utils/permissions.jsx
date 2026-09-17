@@ -394,6 +394,11 @@ export function filterMenuItems(agent, menuItems, user = null) {
         // elegível, deixa o módulo passar mesmo sem acesso operacional a ele.
         const hasAuditItem = (item.items || []).some(si => si.auditReport);
         if (hasAuditItem && isAuditEligible) return true;
+        // Pós-Vendas pode acessar os relatórios de utilizações de Bom Pet e
+        // Bom Auto sem receber acesso às demais telas operacionais dos módulos.
+        const hasPostSalesReport = (item.items || []).some(si => si.postSalesReport);
+        const isPostSales = agentType === 'post_sales';
+        if (hasPostSalesReport && isPostSales) return true;
         return false;
       }
       
@@ -422,6 +427,10 @@ export function filterMenuItems(agent, menuItems, user = null) {
         // Relatório de auditoria: visível somente a usuários elegíveis
         // (admin / tipo auditoria / supervisor do time Auditoria).
         if (subItem.auditReport) return isAuditEligible;
+        // Relatórios de utilizações liberados ao perfil Pós-Vendas. A regra é
+        // avaliada antes das restrições de submenu para garantir o acesso do
+        // perfil sem liberar outras páginas dos módulos Bom Pet/Bom Auto.
+        if (subItem.postSalesReport && agentType === 'post_sales') return true;
         // Itens do Pós-Vendas (flag `postSales`): admin, tipo "post_sales" ou
         // tipos dinâmicos cujos módulos incluam 'post_sales'.
         if (subItem.postSales) {
