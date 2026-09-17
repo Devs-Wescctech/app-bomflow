@@ -1097,4 +1097,8 @@ test('Bom Pet PDF uses the seven official JPEG pages', async () => {
     erpSource,
     /tipo_endereco_id = 566 AND ativo = 'S'[\s\S]*ORDER BY id ASC LIMIT 1/,
   );
+  assert.match(
+    erpSource,
+    /tipo_endereco_id = 577 AND en\.ativo = 'S'[\s\S]*ORDER BY en\.sequencia ASC NULLS LAST, en\.id ASC/,
+  );
 });

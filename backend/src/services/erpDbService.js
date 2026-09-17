@@ -497,9 +497,23 @@ export async function getOrcamentoDetalhe(pedidoId) {
   }
   if (!email) email = header.email_contato || null;
 
-  // Endereço físico: pelo endereco_id do pedido; fallback para o residencial (tipo 577) do contratante.
+  // O gerador oficial usa o endereço residencial principal da Pessoa (menor sequência).
+  // O endereço vinculado ao pedido permanece como fallback para cadastros sem residencial ativo.
   let enderecoRow = null;
-  if (header.endereco_id) {
+  if (contratantePessoaId) {
+    const r = await db.query(
+      `SELECT en.codigo_postal, en.endereco, en.numero, en.complemento, en.bairro,
+              c.cidade
+         FROM enderecos en
+         LEFT JOIN cidades c ON c.id = en.cidade_id
+        WHERE en.pessoa_id = $1 AND en.tipo_endereco_id = 577 AND en.ativo = 'S'
+        ORDER BY en.sequencia ASC NULLS LAST, en.id ASC
+        LIMIT 1`,
+      [contratantePessoaId]
+    );
+    enderecoRow = r.rows[0] || null;
+  }
+  if (!enderecoRow && header.endereco_id) {
     const r = await db.query(
       `SELECT en.codigo_postal, en.endereco, en.numero, en.complemento, en.bairro,
               c.cidade
@@ -507,18 +521,6 @@ export async function getOrcamentoDetalhe(pedidoId) {
          LEFT JOIN cidades c ON c.id = en.cidade_id
         WHERE en.id = $1 LIMIT 1`,
       [Number(header.endereco_id)]
-    );
-    enderecoRow = r.rows[0] || null;
-  }
-  if (!enderecoRow && contratantePessoaId) {
-    const r = await db.query(
-      `SELECT en.codigo_postal, en.endereco, en.numero, en.complemento, en.bairro,
-             c.cidade
-         FROM enderecos en
-         LEFT JOIN cidades c ON c.id = en.cidade_id
-        WHERE en.pessoa_id = $1 AND en.tipo_endereco_id = 577 AND en.ativo = 'S'
-        ORDER BY en.id DESC LIMIT 1`,
-      [contratantePessoaId]
     );
     enderecoRow = r.rows[0] || null;
   }
