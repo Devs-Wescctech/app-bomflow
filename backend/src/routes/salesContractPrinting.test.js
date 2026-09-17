@@ -38,6 +38,7 @@ import {
 import { normalizeMediaExtension } from '../services/attendanceWhuClient.js';
 import {
   BOM_PET_BASE_PRODUCT_IDS,
+  BOM_PET_PET_LAYOUT,
   CONTRACT_PRODUCTS,
   ESSENTIAL_BASE_PRODUCT_IDS,
   bomPetPaymentCategory,
@@ -1075,4 +1076,11 @@ test('Bom Pet PDF uses the seven official JPEG pages', async () => {
   assert.ok(pdf.length > 5000000);
   assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 7);
   assert.ok((pdf.toString('latin1').match(/\/Subtype\s*\/Image/g) || []).length >= 7);
+  assert.deepEqual(BOM_PET_PET_LAYOUT, {
+    firstRowY: 135.8,
+    rowGap: 21.5,
+    nameSize: 8.5,
+    detailsOffsetY: 8.7,
+    detailsSize: 8,
+  });
 });

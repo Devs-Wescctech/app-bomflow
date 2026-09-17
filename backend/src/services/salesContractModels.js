@@ -13,6 +13,14 @@ export const CONTRACT_PRODUCTS = Object.freeze({
   BOM_PET: 'bom_pet',
 });
 
+export const BOM_PET_PET_LAYOUT = Object.freeze({
+  firstRowY: 135.8,
+  rowGap: 21.5,
+  nameSize: 8.5,
+  detailsOffsetY: 8.7,
+  detailsSize: 8,
+});
+
 export const ESSENTIAL_BASE_PRODUCT_IDS = Object.freeze([
   47843569,
   47843600,
@@ -778,15 +786,19 @@ export function renderBomPetPdf(data) {
           write(data.profession || 'Outros', 25, 108, { width: 75 });
           write(data.email, 107, 108, { width: 95 });
           (data.pets || []).slice(0, 3).forEach((pet, index) => {
-            const y = 135 + index * 21.5;
-            write(pet.name, 25, y, { width: 118 });
-            write('X', normalizeText(pet.sex).startsWith('F') ? 157 : 153, y);
-            write(pet.breed, 25, y + 7.5, { width: 65 });
-            write(pet.color, 95, y + 7.5, { width: 48 });
-            write(petAge(pet.birth_date, data.generated_at), 148, y + 7.5, { width: 38 });
+            const y = BOM_PET_PET_LAYOUT.firstRowY + index * BOM_PET_PET_LAYOUT.rowGap;
+            write(pet.name, 25, y, { size: BOM_PET_PET_LAYOUT.nameSize, width: 118 });
+            write('X', normalizeText(pet.sex).startsWith('F') ? 157 : 153, y, { size: 9 });
+            const detailsY = y + BOM_PET_PET_LAYOUT.detailsOffsetY;
+            write(pet.breed, 25, detailsY, { size: BOM_PET_PET_LAYOUT.detailsSize, width: 65 });
+            write(pet.color, 95, detailsY, { size: BOM_PET_PET_LAYOUT.detailsSize, width: 48 });
+            write(petAge(pet.birth_date, data.generated_at), 148, detailsY, {
+              size: BOM_PET_PET_LAYOUT.detailsSize,
+              width: 38,
+            });
             const size = normalizeText(pet.size);
             const sizeX = size.startsWith('P') ? 180 : (size.startsWith('M') ? 186 : (size.startsWith('G') ? 192 : null));
-            if (sizeX) write('X', sizeX, y + 7.5);
+            if (sizeX) write('X', sizeX, y + 8.5, { size: 9 });
           });
           write(money(data.monthly_value), 175, 210, { width: 25 });
           if (generated) {
