@@ -351,6 +351,7 @@ test('builds Bom Pet data from the base plan and linked pet rows only', () => {
       cep: '13026002',
     },
     email: 'titular@example.com',
+    telefone_secundario: '1933334444',
     plano_pagamento: 'BOLETO - DIGITAL',
     produtos: [
       { id: BOM_PET_BASE_PRODUCT_IDS[0], descricao: 'BOM PET (3 PETS)', quantidade: 1, preco: 21.9, valor_total: 21.9 },
@@ -379,6 +380,8 @@ test('builds Bom Pet data from the base plan and linked pet rows only', () => {
   const data = buildBomPetContractData(detail, new Date('2026-09-16T12:00:00-03:00'));
   assert.equal(data.monthly_value, 21.9);
   assert.equal(data.marital_status, 'SOLTEIRO');
+  assert.equal(data.phone, '35910022144');
+  assert.equal(data.phone2, '35910022144');
   assert.deepEqual(data.pets, [{
     name: 'LUIZA',
     type: 'CACHORRO',
@@ -1082,10 +1085,16 @@ test('Bom Pet PDF uses the seven official JPEG pages', async () => {
     nameSize: 8.5,
     detailsOffsetY: 8.7,
     detailsSize: 8,
+    sexOffsetY: [0, -0.35, -0.7],
   });
   const modelSource = readFileSync(new URL('../services/salesContractModels.js', import.meta.url), 'utf8');
   assert.match(
     modelSource,
     /page === 7 && generated[\s\S]*write\(generated\.year\.slice\(-2\), 173, 221/,
+  );
+  const erpSource = readFileSync(new URL('../services/erpDbService.js', import.meta.url), 'utf8');
+  assert.match(
+    erpSource,
+    /tipo_endereco_id = 566 AND ativo = 'S'[\s\S]*ORDER BY id ASC LIMIT 1/,
   );
 });

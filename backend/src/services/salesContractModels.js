@@ -19,6 +19,7 @@ export const BOM_PET_PET_LAYOUT = Object.freeze({
   nameSize: 8.5,
   detailsOffsetY: 8.7,
   detailsSize: 8,
+  sexOffsetY: Object.freeze([0, -0.35, -0.7]),
 });
 
 export const ESSENTIAL_BASE_PRODUCT_IDS = Object.freeze([
@@ -184,7 +185,9 @@ export function buildBomPetContractData(detail, generatedAt = new Date()) {
     state: detail?.endereco?.uf || holder?.endereco?.uf || null,
     cep: detail?.endereco?.cep || holder?.endereco?.cep || null,
     phone: holder?.telefone || null,
-    phone2: detail?.telefone_secundario || null,
+    // O modelo legado repete o telefone do pedido em Comercial/Recado.
+    // Não associe um segundo contato genérico do cadastro a esse campo.
+    phone2: holder?.telefone || null,
     email: detail?.email || holder?.email || null,
     payment_plan: detail?.plano_pagamento || null,
     generated_at: saoPauloDate(generatedAt),
@@ -788,7 +791,8 @@ export function renderBomPetPdf(data) {
           (data.pets || []).slice(0, 3).forEach((pet, index) => {
             const y = BOM_PET_PET_LAYOUT.firstRowY + index * BOM_PET_PET_LAYOUT.rowGap;
             write(pet.name, 25, y, { size: BOM_PET_PET_LAYOUT.nameSize, width: 118 });
-            write('X', normalizeText(pet.sex).startsWith('F') ? 157 : 153, y, { size: 9 });
+            const sexY = y + BOM_PET_PET_LAYOUT.sexOffsetY[index];
+            write('X', normalizeText(pet.sex).startsWith('F') ? 157 : 153, sexY, { size: 9 });
             const detailsY = y + BOM_PET_PET_LAYOUT.detailsOffsetY;
             write(pet.breed, 25, detailsY, { size: BOM_PET_PET_LAYOUT.detailsSize, width: 65 });
             write(pet.color, 95, detailsY, { size: BOM_PET_PET_LAYOUT.detailsSize, width: 48 });

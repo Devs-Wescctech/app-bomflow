@@ -490,7 +490,7 @@ export async function getOrcamentoDetalhe(pedidoId) {
     const r = await db.query(
       `SELECT endereco FROM enderecos
         WHERE pessoa_id = $1 AND tipo_endereco_id = 566 AND ativo = 'S'
-        ORDER BY id DESC LIMIT 1`,
+        ORDER BY id ASC LIMIT 1`,
       [contratantePessoaId]
     );
     email = r.rows[0]?.endereco || null;
