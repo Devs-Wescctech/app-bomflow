@@ -140,7 +140,7 @@ export async function cleanupBomPetOrphanFiles({ minAgeMs = 60 * 60 * 1000 } = {
 
 // ── Autorização por perfil no BACKEND (não só na UI) ──────────────────────
 // O JWT carrega apenas id/email/role; o tipo de agente vem do banco.
-const ALLOWED_AGENT_TYPES = ['admin', 'bom_pet_supervisor', 'bom_pet_atendente'];
+const ALLOWED_AGENT_TYPES = ['admin', 'bom_pet_supervisor', 'bom_pet_atendente', 'post_sales'];
 
 async function bomPetAuth(req, res, next) {
   try {
@@ -196,6 +196,7 @@ function isBomPetSupervisor(req) {
   const t = req.bomPetAgent?.agent_type;
   return t === 'admin'
     || t === 'bom_pet_supervisor'
+    || t === 'post_sales'
     || t?.endsWith('_supervisor')
     || req.bomPetAgent?.role === 'supervisor'
     || req.bomPetAgent?.is_team_supervisor === true

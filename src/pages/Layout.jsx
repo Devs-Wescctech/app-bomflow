@@ -339,7 +339,7 @@ const menuModules = [
     items: [
       { title: "Consulta Cliente", url: createPageUrl("BomAutoConsulta"), icon: Search },
       { title: "Painel Operacional", url: createPageUrl("BomAutoPainel"), icon: ClipboardList },
-      { title: "Relatório de Utilizações", url: createPageUrl("BomAutoRelatorio"), icon: FileBarChart },
+      { title: "Relatório de Utilizações", url: createPageUrl("BomAutoRelatorio"), icon: FileBarChart, postSalesReport: true },
     ]
   },
   {
@@ -350,7 +350,7 @@ const menuModules = [
     items: [
       { title: "Consulta Cliente", url: createPageUrl("BomPetConsulta"), icon: Search },
       { title: "Painel Operacional", url: createPageUrl("BomPetPainel"), icon: ClipboardList },
-      { title: "Relatório de Utilizações", url: createPageUrl("BomPetRelatorio"), icon: FileBarChart },
+      { title: "Relatório de Utilizações", url: createPageUrl("BomPetRelatorio"), icon: FileBarChart, postSalesReport: true },
       {
         title: "Cadastro Parceiros",
         url: createPageUrl("BomPetParceiros"),
