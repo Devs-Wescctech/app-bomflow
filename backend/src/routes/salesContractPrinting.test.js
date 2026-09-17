@@ -842,6 +842,9 @@ test('WhatsApp contract sending is authenticated, regenerated and sent as tempor
   assert.match(routeSource, /waitForWhatsAppDelivery\(externalMessageId,\s*\{\s*channelToken\s*\}\)/);
   assert.match(routeSource, /deliveryStatus: delivery\.state/);
   assert.match(pageSource, /Enviar WhatsApp/);
+  assert.match(routeSource, /router\.post\('\/contracts\/validate'/);
+  assert.match(pageSource, /contracts\/validate/);
+  assert.match(pageSource, /checkingGenerationId/);
   assert.match(pageSource, /contracts\/send-whatsapp/);
   assert.doesNotMatch(pageSource, /whatsapp\.ddd/);
   assert.match(pageSource, /minLength=\{10\}/);

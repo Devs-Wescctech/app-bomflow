@@ -20,7 +20,7 @@ export default function SalesContractPrinting() {
   });
   const [whatsapp, setWhatsapp] = useState({
     open: false, row: null, phone: "", sending: false, error: "", sent: false,
-    successMessage: "", deliveryStatus: "",
+    successMessage: "", deliveryStatus: "", checkingGenerationId: "",
   });
   const searchPage = async (page = 1) => {
     setState((current) => ({ ...current, loading: true, error: "", results: [] }));
@@ -82,10 +82,33 @@ export default function SalesContractPrinting() {
       setState((current) => ({ ...current, error: [error.message, ...(error.details || [])] }));
     }
   };
-  const openWhatsapp = (row) => setWhatsapp({
-    open: true, row, phone: "", sending: false, error: "", sent: false,
-    successMessage: "", deliveryStatus: "",
-  });
+  const openWhatsapp = async (row) => {
+    setState((current) => ({ ...current, error: "" }));
+    setWhatsapp((current) => ({ ...current, checkingGenerationId: row.generationId }));
+    try {
+      const response = await fetch("/api/sales-pf/contracts/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ generationId: row.generationId }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const failure = new Error(body.message || "Não foi possível validar o contrato.");
+        failure.details = Array.isArray(body.errors) ? body.errors : [];
+        throw failure;
+      }
+      setWhatsapp({
+        open: true, row, phone: "", sending: false, error: "", sent: false,
+        successMessage: "", deliveryStatus: "", checkingGenerationId: "",
+      });
+    } catch (error) {
+      setWhatsapp((current) => ({ ...current, checkingGenerationId: "" }));
+      setState((current) => ({
+        ...current,
+        error: error.details?.length ? [error.message, ...error.details] : error.message,
+      }));
+    }
+  };
   const sendWhatsapp = async (event) => {
     event.preventDefault();
     const phone = whatsapp.phone;
@@ -167,9 +190,13 @@ export default function SalesContractPrinting() {
                <button
                  type="button"
                  className="action-pill-primary h-10 px-4"
+                  disabled={whatsapp.checkingGenerationId === row.generationId}
                  onClick={() => openWhatsapp(row)}
                >
-                <Send className="h-4 w-4" />Enviar WhatsApp
+                 {whatsapp.checkingGenerationId === row.generationId
+                   ? <Loader2 className="h-4 w-4 animate-spin" />
+                   : <Send className="h-4 w-4" />}
+                 {whatsapp.checkingGenerationId === row.generationId ? "Validando..." : "Enviar WhatsApp"}
               </button>
            </div>
         </div>)}

@@ -679,6 +679,56 @@ const contractFileProduct = (productKey) => ({
   [CONTRACT_PRODUCTS.BOM_PET]: 'bom-pet',
 })[productKey];
 
+router.post('/contracts/validate', async (req, res) => {
+  const token = String(req.body?.generationId || '');
+  let claims;
+  try {
+    claims = jwt.verify(token, secret());
+    if (claims.purpose !== SUBMENU || claims.uid !== String(req.user.id)) throw new Error('invalid');
+  } catch {
+    await audit(req, 'hash:invalid-generation', null, 'invalid_identifier', 'validation');
+    return res.status(422).json({ message: 'Identificador de geração inválido ou expirado. Faça uma nova busca.' });
+  }
+  try {
+    const productKey = normalizeContractProduct(claims.productKey);
+    if (!productKey) {
+      await audit(req, `hash:${claims.cpf}`, claims, 'invalid_product', 'validation');
+      return res.status(422).json({
+        message: 'Identificador de produto inválido ou expirado. Faça uma nova busca.',
+      });
+    }
+    const detail = await getOrcamentoDetalhe(Number(claims.pedido));
+    const titular = detail?.titular;
+    if (!detail?.titular_is_canonical
+      || !titular
+      || protectCpf(normalizeCpf(titular.cpf) || '') !== claims.cpf) {
+      await audit(req, `hash:${claims.cpf}`, claims, 'cpf_mismatch', 'validation');
+      return res.status(422).json({ message: 'O titular do pedido não corresponde ao CPF consultado.' });
+    }
+    if (!detailMatchesContractProduct(detail, productKey)) {
+      await audit(req, `hash:${claims.cpf}`, claims, 'product_mismatch', 'validation');
+      return res.status(422).json({
+        message: 'Os produtos atuais do pedido não correspondem ao modelo de contrato selecionado.',
+      });
+    }
+    const data = buildProductContractData(detail, productKey);
+    const errors = validateProductContractData(data, productKey);
+    if (normalizeCpf(data.cpf) && protectCpf(normalizeCpf(data.cpf)) !== claims.cpf) {
+      errors.push('CPF do titular não corresponde à busca autenticada.');
+    }
+    if (errors.length) {
+      await audit(req, `hash:${claims.cpf}`, claims, 'validation_error', 'validation');
+      return res.status(422).json({ message: 'Dados do ERP incompletos ou inconsistentes.', errors });
+    }
+    return res.json({ valid: true });
+  } catch (error) {
+    await audit(req, `hash:${claims.cpf}`, claims, 'error', 'validation');
+    return res.status(error.statusCode || 503).json({
+      message: 'Não foi possível carregar os dados completos do ERP.',
+    });
+  }
+});
+
 router.post('/contracts/generate', async (req, res) => {
   const token = String(req.body?.generationId || '');
   let claims;
