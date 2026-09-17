@@ -1085,7 +1085,8 @@ test('Bom Pet PDF uses the seven official JPEG pages', async () => {
     nameSize: 8.5,
     detailsOffsetY: 8.7,
     detailsSize: 8,
-    sexOffsetY: [0, -0.35, -0.7],
+    rowOffsetY: [0, 0.7, 1.3],
+    detailsRowOffsetY: [0, 0.3, 0.6],
   });
   const modelSource = readFileSync(new URL('../services/salesContractModels.js', import.meta.url), 'utf8');
   assert.match(

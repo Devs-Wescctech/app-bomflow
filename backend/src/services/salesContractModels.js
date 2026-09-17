@@ -19,7 +19,8 @@ export const BOM_PET_PET_LAYOUT = Object.freeze({
   nameSize: 8.5,
   detailsOffsetY: 8.7,
   detailsSize: 8,
-  sexOffsetY: Object.freeze([0, -0.35, -0.7]),
+  rowOffsetY: Object.freeze([0, 0.7, 1.3]),
+  detailsRowOffsetY: Object.freeze([0, 0.3, 0.6]),
 });
 
 export const ESSENTIAL_BASE_PRODUCT_IDS = Object.freeze([
@@ -789,11 +790,13 @@ export function renderBomPetPdf(data) {
           write(data.profession || 'Outros', 25, 108, { width: 75 });
           write(data.email, 107, 108, { width: 95 });
           (data.pets || []).slice(0, 3).forEach((pet, index) => {
-            const y = BOM_PET_PET_LAYOUT.firstRowY + index * BOM_PET_PET_LAYOUT.rowGap;
+            const baseY = BOM_PET_PET_LAYOUT.firstRowY + index * BOM_PET_PET_LAYOUT.rowGap;
+            const y = baseY + BOM_PET_PET_LAYOUT.rowOffsetY[index];
             write(pet.name, 25, y, { size: BOM_PET_PET_LAYOUT.nameSize, width: 118 });
-            const sexY = y + BOM_PET_PET_LAYOUT.sexOffsetY[index];
-            write('X', normalizeText(pet.sex).startsWith('F') ? 157 : 153, sexY, { size: 9 });
-            const detailsY = y + BOM_PET_PET_LAYOUT.detailsOffsetY;
+            write('X', normalizeText(pet.sex).startsWith('F') ? 159.5 : 154.5, y, { size: 9 });
+            const detailsY = baseY
+              + BOM_PET_PET_LAYOUT.detailsOffsetY
+              + BOM_PET_PET_LAYOUT.detailsRowOffsetY[index];
             write(pet.breed, 25, detailsY, { size: BOM_PET_PET_LAYOUT.detailsSize, width: 65 });
             write(pet.color, 95, detailsY, { size: BOM_PET_PET_LAYOUT.detailsSize, width: 48 });
             write(petAge(pet.birth_date, data.generated_at), 148, detailsY, {
