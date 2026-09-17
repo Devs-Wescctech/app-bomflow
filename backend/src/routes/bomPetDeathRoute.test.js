@@ -111,10 +111,14 @@ test('contador e filtro de pendências ERP ficam restritos ao administrador mast
   assert.match(panelSource, /params\.set\('erp_sync_pendente', 'true'\)/);
 });
 
-test('supervisor multi assistências recebe visão ampla no Bom Pet', () => {
+test('supervisor multi assistências recebe visão ampla no Bom Pet pelo perfil ou vínculo da equipe', () => {
   assert.match(
     source,
-    /function isBomPetSupervisor\(req\)[\s\S]*?t\?\.endsWith\('_supervisor'\)[\s\S]*?req\.user\?\.role === 'supervisor'/
+    /FROM teams t[\s\S]*?t\.supervisor_email[\s\S]*?unnest\(COALESCE\(t\.supervisor_emails/
+  );
+  assert.match(
+    source,
+    /function isBomPetSupervisor\(req\)[\s\S]*?t\?\.endsWith\('_supervisor'\)[\s\S]*?req\.bomPetAgent\?\.is_team_supervisor === true[\s\S]*?agentTypeLabel[\s\S]*?includes\('supervisor'\)[\s\S]*?req\.user\?\.role === 'supervisor'/
   );
   assert.match(
     source,
