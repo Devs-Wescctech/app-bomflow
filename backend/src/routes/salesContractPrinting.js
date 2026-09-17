@@ -103,6 +103,12 @@ export const isValidWhatsappRecipient = (value) => {
 };
 export const legacyCivilStatus = (value) => String(value || '').trim() || 'OUTROS';
 export const legacyProfession = (value) => String(value || '').trim() || 'Outros';
+export const bomAutoPaymentCategory = (value) => {
+  const payment = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  if (/BOLETO|CARNE|BANCARI/.test(payment)) return 'bank';
+  if (/CARTAO.*CREDITO/.test(payment)) return 'credit_card';
+  return null;
+};
 export const classifyDocument = (row) => {
   const kind = row.contrato ? 'contrato' : 'pedido';
   const displayNumber = row.contrato || row.numero_pedido || row.pedido;
@@ -1061,19 +1067,11 @@ export function renderPdf(data, pedido) {
           legacyText(vehicle.ano, 80, y + 7);
           legacyText(String(vehicle.placa || '').toUpperCase(), 115, y + 7);
           if (vehicle.driver?.nome) {
-            const driverMaritalStatus = legacyCivilStatus(vehicle.driver.estado_civil);
             legacyText(vehicle.driver.nome, 25, y + 14.5, { width: mm(117) });
             const driverBirth = dateParts(vehicle.driver.data_nascimento);
             if (driverBirth) legacyText(`${driverBirth.day}    ${driverBirth.month}    ${driverBirth.year}`, 179, y + 14.5);
             legacyText(vehicle.driver.cpf, 25, y + 21.5, {}, 10);
             legacyText(vehicle.driver.telefone, 117, y + 21.5);
-            if (/M/i.test(vehicle.driver.sexo || '')) legacyText('X', 147, y + 14.5);
-            if (/F/i.test(vehicle.driver.sexo || '')) legacyText('X', 152, y + 14.5);
-            if (/SOLTEIR/i.test(driverMaritalStatus)) legacyText('X', 159, y + 14.5);
-            if (/CASAD/i.test(driverMaritalStatus)) legacyText('X', 164, y + 14.5);
-            if (!/SOLTEIR|CASAD/i.test(driverMaritalStatus)) {
-              legacyText('X', 169, y + 14.5);
-            }
           }
         });
         const money = (value) => value == null ? '' : Number(value).toLocaleString('pt-BR', {
@@ -1082,8 +1080,9 @@ export function renderPdf(data, pedido) {
         });
         legacyText(money(data.adesao), 48, 218);
         legacyText(money(data.total_valor), 110, 218);
-        if (/BOLETO|CARN[EÊ]/i.test(data.payment_plan || '')) legacyText('X', 161, 218);
-        else legacyText('X', 177.5, 218);
+        const paymentCategory = bomAutoPaymentCategory(data.payment_plan);
+        if (paymentCategory === 'bank') legacyText('X', 161, 218);
+        if (paymentCategory === 'credit_card') legacyText('X', 177.5, 218);
         legacyText(generated.day, 132, 262.5);
         legacyText(generated.month, 149, 262.5);
         legacyText(generated.year.slice(-2), 190, 262.5);

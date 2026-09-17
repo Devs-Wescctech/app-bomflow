@@ -635,6 +635,19 @@ export async function getOrcamentoDetalhe(pedidoId) {
         profissao: identity.rows[0]?.profissao || null,
          renda: identity.rows[0]?.renda_mensal ?? null,
       });
+      if (!titularObj.estado_civil && titularObj.cpf) {
+        const legacyCivil = await db.query(
+          `SELECT estado_civil
+             FROM atletas
+            WHERE regexp_replace(COALESCE(cpf, ''), '[^0-9]', '', 'g')
+                  = regexp_replace($1, '[^0-9]', '', 'g')
+              AND NULLIF(TRIM(estado_civil), '') IS NOT NULL
+            ORDER BY id DESC
+            LIMIT 1`,
+          [titularObj.cpf]
+        );
+        titularObj.estado_civil = legacyCivil.rows[0]?.estado_civil || null;
+      }
     } catch (error) {
       console.warn('[erpDbService] Campos cadastrais opcionais indisponíveis:', error.message);
     }

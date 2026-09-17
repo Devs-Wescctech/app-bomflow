@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import express from 'express';
 import salesContractPrintingRouter from './salesContractPrinting.js';
 import {
+  bomAutoPaymentCategory,
   classifyDocument,
   buildBomAutoWhatsAppMessage,
   buildBomPetWhatsAppMessage,
@@ -884,6 +885,19 @@ test('formats media extensions as required by WHU', () => {
   assert.equal(normalizeMediaExtension(undefined, 'Contrato.PDF'), '.pdf');
 });
 
+test('classifies Bom Auto carnê as bank payment without inventing card data', () => {
+  assert.equal(bomAutoPaymentCategory('CARNE - GALAX'), 'bank');
+  assert.equal(bomAutoPaymentCategory('BOLETO - DIGITAL'), 'bank');
+  assert.equal(bomAutoPaymentCategory('CARTÃO DE CRÉDITO - GALAX'), 'credit_card');
+  assert.equal(bomAutoPaymentCategory('DESCONHECIDO'), null);
+});
+
+test('does not mark sex or civil status in Bom Auto vehicle-dependent rows', () => {
+  const renderer = renderPdf.toString();
+  assert.doesNotMatch(renderer, /vehicle\.driver\.sexo/);
+  assert.doesNotMatch(renderer, /vehicle\.driver\.estado_civil/);
+});
+
 test('keeps WhatsApp mirror columns compatible with existing databases', () => {
   const schema = readFileSync(new URL('../config/schema.sql', import.meta.url), 'utf8');
   assert.match(schema, /ALTER TABLE bom_auto_contract_whatsapp_sends[\s\S]*ADD COLUMN IF NOT EXISTS mirror_status/);
@@ -1101,5 +1115,9 @@ test('Bom Pet PDF uses the seven official JPEG pages', async () => {
   assert.match(
     erpSource,
     /tipo_endereco_id = 577 AND en\.ativo = 'S'[\s\S]*ORDER BY en\.sequencia ASC NULLS LAST, en\.id ASC/,
+  );
+  assert.match(
+    erpSource,
+    /FROM atletas[\s\S]*regexp_replace\(COALESCE\(cpf, ''\)[\s\S]*estado_civil/,
   );
 });
