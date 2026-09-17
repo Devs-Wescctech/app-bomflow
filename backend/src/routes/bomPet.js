@@ -149,16 +149,33 @@ async function bomPetAuth(req, res, next) {
       return next();
     }
     const result = await query(
-      'SELECT id, email, name, agent_type FROM agents WHERE id = $1 AND active = true',
+      `SELECT a.id, a.email, a.name, a.agent_type, a.role,
+              EXISTS (
+                SELECT 1
+                  FROM teams t
+                 WHERE t.active = TRUE
+                   AND (
+                     LOWER(COALESCE(t.supervisor_email, '')) = LOWER(a.email)
+                     OR EXISTS (
+                       SELECT 1
+                         FROM unnest(COALESCE(t.supervisor_emails, ARRAY[]::TEXT[])) AS supervisor(email)
+                        WHERE LOWER(supervisor.email) = LOWER(a.email)
+                     )
+                   )
+              ) AS is_team_supervisor
+         FROM agents a
+        WHERE a.id = $1
+          AND a.active = true`,
       [req.user.id]
     );
     const agent = result.rows[0];
     if (!agent) return res.status(403).json({ message: 'Acesso negado ao módulo Bom Pet.' });
 
     const typeResult = await query(
-      'SELECT modules, allowed_submenus FROM agent_types WHERE key = $1',
+      'SELECT label, modules, allowed_submenus FROM agent_types WHERE key = $1',
       [agent.agent_type]
     );
+    const agentTypeLabel = typeResult.rows[0]?.label || '';
     const modules = typeResult.rows[0]?.modules || [];
     const allowedSubmenus = typeResult.rows[0]?.allowed_submenus || [];
     const hasModule = ALLOWED_AGENT_TYPES.includes(agent.agent_type);
@@ -167,7 +184,7 @@ async function bomPetAuth(req, res, next) {
     if (!hasModule && !hasDynamicModule) {
       return res.status(403).json({ message: 'Acesso negado ao módulo Bom Pet.' });
     }
-    req.bomPetAgent = { ...agent, modules, allowedSubmenus };
+    req.bomPetAgent = { ...agent, agentTypeLabel, modules, allowedSubmenus };
     next();
   } catch (err) {
     console.error('[BomPet] Erro na autorização:', err.message);
@@ -180,6 +197,9 @@ function isBomPetSupervisor(req) {
   return t === 'admin'
     || t === 'bom_pet_supervisor'
     || t?.endsWith('_supervisor')
+    || req.bomPetAgent?.role === 'supervisor'
+    || req.bomPetAgent?.is_team_supervisor === true
+    || String(req.bomPetAgent?.agentTypeLabel || '').toLowerCase().includes('supervisor')
     || req.user?.role === 'admin'
     || req.user?.role === 'supervisor';
 }
