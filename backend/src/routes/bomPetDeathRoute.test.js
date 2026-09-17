@@ -111,6 +111,21 @@ test('contador e filtro de pendências ERP ficam restritos ao administrador mast
   assert.match(panelSource, /params\.set\('erp_sync_pendente', 'true'\)/);
 });
 
+test('supervisor multi assistências recebe visão ampla no Bom Pet', () => {
+  assert.match(
+    source,
+    /function isBomPetSupervisor\(req\)[\s\S]*?t\?\.endsWith\('_supervisor'\)[\s\S]*?req\.user\?\.role === 'supervisor'/
+  );
+  assert.match(
+    source,
+    /const scoped = !isBomPetSupervisor\(req\)[\s\S]*?scoped \? 'WHERE LOWER\(usuario\) = LOWER\(\$1\)' : ''/
+  );
+  assert.match(
+    source,
+    /if \(!isBomPetSupervisor\(req\)\) \{[\s\S]*?AND LOWER\(usuario\) = LOWER\(\$\$\{paramIndex\+\+\}\)/
+  );
+});
+
 test('falhas conhecidas de sincronização são convertidas em mensagens amigáveis', () => {
   assert.match(source, /function userFriendlyErpSyncError\(error\)/);
   assert.match(source, /O ERP já possui uma Data de Falecimento diferente/);

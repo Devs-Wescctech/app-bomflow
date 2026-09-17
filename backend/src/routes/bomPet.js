@@ -177,7 +177,11 @@ async function bomPetAuth(req, res, next) {
 
 function isBomPetSupervisor(req) {
   const t = req.bomPetAgent?.agent_type;
-  return t === 'admin' || t === 'bom_pet_supervisor' || req.user?.role === 'admin';
+  return t === 'admin'
+    || t === 'bom_pet_supervisor'
+    || t?.endsWith('_supervisor')
+    || req.user?.role === 'admin'
+    || req.user?.role === 'supervisor';
 }
 
 function isBomPetAdmin(req) {
