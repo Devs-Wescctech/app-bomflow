@@ -811,7 +811,7 @@ export function renderBomPetPdf(data) {
         if (page === 7 && generated) {
           write(generated.day, 115, 221, { size: 12 });
           write(generated.month, 131, 221, { size: 12, width: 40 });
-          write(generated.year, 173, 221, { size: 12 });
+          write(generated.year.slice(-2), 173, 221, { size: 12 });
         }
       }
       doc.end();
