@@ -1009,7 +1009,14 @@ export function renderBomPetHealthPdf(data, variant = 'individual') {
       write([data.address, data.complement].filter(Boolean).join(' - '), 25, y + 16, { width: 157 });
       write(data.number, 185, y + 16, { width: 18 });
       write(data.district, 25, y + 24, { width: 78 }); write(data.city, 108, y + 24, { width: 93 });
-      write(data.state, 25, y + 31); write(data.cep, 36, y + 31, { width: 38 });
+      write(data.state, 25, y + 31);
+      if (variant === 'three') {
+        const cep = String(data.cep || '').replace(/\D/g, '').slice(0, 8);
+        [36, 41, 46, 51, 56, 63, 68, 73]
+          .forEach((x, index) => write(cep[index], x, y + 31, { size: 9 }));
+      } else {
+        write(data.cep, 36, y + 31, { width: 38 });
+      }
       write(String(data.phone || '').replace(/\D/g, ''), 78, y + 31, { width: 52 });
       write(String(data.phone2 || '').replace(/\D/g, ''), 133, y + 31, { width: 67 });
       write(data.profession || 'Outros', 25, y + 39, { width: 75 }); write(data.email, 107, y + 39, { width: 95 });
@@ -1019,7 +1026,7 @@ export function renderBomPetHealthPdf(data, variant = 'individual') {
       const pagePets = pets.slice(start, pageIndex === 0 ? 3 : start + 2);
       // PDFKit posiciona o topo da fonte, enquanto o PHP legado posicionava
       // a linha-base. O deslocamento evita sobrepor os rótulos impressos.
-      const animalTextOffsetY = pageIndex === 0 ? 3 : 1;
+      const animalTextOffsetY = pageIndex === 0 ? 0 : -3;
       let y = (pageIndex === 0 ? (variant === 'three' ? 133 : 149.5) : 163)
         + animalTextOffsetY;
       pagePets.forEach((pet, index) => {
