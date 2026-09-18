@@ -1013,7 +1013,7 @@ export function renderBomPetHealthPdf(data, variant = 'individual') {
       if (variant === 'three') {
         const cep = String(data.cep || '').replace(/\D/g, '').slice(0, 8);
         [36, 41, 46, 51, 56, 63, 68, 73]
-          .forEach((x, index) => write(cep[index], x, y + 31, { size: 9 }));
+          .forEach((x, index) => write(cep[index], x, y + 31.5, { size: 10 }));
       } else {
         write(data.cep, 36, y + 31, { width: 38 });
       }
@@ -1028,7 +1028,7 @@ export function renderBomPetHealthPdf(data, variant = 'individual') {
       // a linha-base. O deslocamento evita sobrepor os rótulos impressos.
       const animalTextOffsetY = pageIndex === 0
         ? (variant === 'three' ? 0 : 2)
-        : -3;
+        : -2;
       let y = (pageIndex === 0 ? (variant === 'three' ? 133 : 149.5) : 163)
         + animalTextOffsetY;
       pagePets.forEach((pet, index) => {
@@ -1039,7 +1039,7 @@ export function renderBomPetHealthPdf(data, variant = 'individual') {
         write(pet.color, 95, detailY, { size: 9, width: 48 });
         write(petAge(pet.birth_date, data.generated_at), 148, detailY, { size: 9, width: 38 });
         y += pageIndex === 0
-          ? (index === 0 ? 28 : 19)
+          ? (index === 0 ? 28 : 18)
           : 18;
       });
     };
