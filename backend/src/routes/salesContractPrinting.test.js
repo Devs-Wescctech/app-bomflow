@@ -309,9 +309,9 @@ test('search uses only the canonical pedido holder and UI renders validation det
   assert.match(pageSource, /Serviço de impressão indisponível \(HTTP \$\{response\.status\}\)/);
   assert.match(pageSource, /generatingId === row\.generationId \? "Gerando PDF\.\.\." : "Gerar PDF"/);
   assert.match(pageSource, /logo-bomflow\.png/);
-  assert.match(pageSource, /logo-bomflow-icon\.png/);
+  assert.match(pageSource, /popup\.location\.replace\(viewerUrl\)/);
   assert.match(pageSource, /#toolbar=0/);
-  assert.match(pageSource, /download\.download = fileName/);
+  assert.match(pageSource, /download="\$\{fileName\}"/);
   assert.match(pageSource, /contrato_\$\{product\}_\$\{order\}\.pdf/);
   assert.match(routeSource, /contrato_\$\{fileProduct\}_\$\{claims\.pedido\}\.pdf/);
   assert.match(routeSource, /p\.id::text = \$1 OR p\.pedido::text = \$1/);
@@ -456,7 +456,8 @@ test('classifies and builds both Bom Pet Saúde products with PHP-compatible val
     });
     assert.equal(delivery.templateId, '69ed0d552e1d23a0987f4330');
     assert.equal(delivery.templateName, 'boas_vindas_bom_pet_saude');
-    assert.match(delivery.fileName, /^Contrato Bom Pet Saúde/);
+    assert.match(delivery.fileName, /^Contrato Bom Pet Saude/);
+    assert.doesNotMatch(delivery.fileName, /[^\x00-\x7F]/);
     assert.equal(delivery.components[1].parameters[0].text, 'CLIENTE TESTE');
   }
   assert.match(buildBomPetHealthWhatsAppMessage('CLIENTE TESTE'), /^Olá, CLIENTE TESTE,/);
@@ -926,7 +927,7 @@ test('WhatsApp contract sending is authenticated, regenerated and sent as tempor
     routeSource,
     /WHERE bom_auto_contract_whatsapp_sends\.status IN \('failed_before_send', 'failed'\)/,
   );
-  assert.match(routeSource, /deliveryStarted && !rejectedBeforeSend \? 'unknown' : 'failed_before_send'/);
+  assert.match(routeSource, /error\.statusCode[\s\S]*\? 'failed_before_send'/);
   assert.match(routeSource, /waitForWhatsAppDelivery\(externalMessageId,\s*\{\s*channelToken\s*\}\)/);
   assert.match(routeSource, /deliveryStatus: delivery\.state/);
   assert.match(pageSource, /Enviar WhatsApp/);

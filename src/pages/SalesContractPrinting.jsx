@@ -59,27 +59,46 @@ const preparePdfTab = (popup) => {
 };
 
 const showPdfInTab = (popup, pdfUrl, fileName) => {
-  const doc = popup.document;
-  doc.title = fileName;
-  doc.body.innerHTML = "";
-  doc.body.style.cssText = "margin:0;height:100vh;overflow:hidden;background:#525659";
-
-  const toolbar = doc.createElement("div");
-  toolbar.style.cssText = "height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:#263238;color:#fff;font:500 13px 'Plus Jakarta Sans',system-ui,sans-serif";
-  const title = doc.createElement("span");
-  title.textContent = fileName;
-  const download = doc.createElement("a");
-  download.href = pdfUrl;
-  download.download = fileName;
-  download.textContent = "Baixar PDF";
-  download.style.cssText = "color:#fff;text-decoration:none;background:#0f766e;border-radius:999px;padding:8px 14px";
-  toolbar.append(title, download);
-
-  const viewer = doc.createElement("iframe");
-  viewer.src = `${pdfUrl}#toolbar=0`;
-  viewer.title = fileName;
-  viewer.style.cssText = "display:block;width:100%;height:calc(100vh - 48px);border:0";
-  doc.body.append(toolbar, viewer);
+  const html = `<!doctype html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>${fileName}</title>
+        <link rel="icon" type="image/svg+xml" href="${window.location.origin}/favicon.svg" />
+        <link rel="shortcut icon" type="image/svg+xml" href="${window.location.origin}/favicon.svg" />
+        <style>
+          * { box-sizing: border-box; }
+          body { margin: 0; height: 100vh; overflow: hidden; background: #525659; }
+          header { height: 64px; display: flex; align-items: center; justify-content: space-between;
+            gap: 48px; padding: 0 28px; background: #263238; color: #fff;
+            font-family: "Plus Jakarta Sans", system-ui, sans-serif; }
+          .file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; font-size: 14px; font-weight: 600; letter-spacing: .01em; }
+          .download { flex: none; display: inline-flex; align-items: center; gap: 9px;
+            min-height: 42px; padding: 0 20px; border: 1px solid transparent; border-radius: 999px;
+            background: #0f766e; color: #fff; font-size: 14px; font-weight: 700;
+            text-decoration: none; box-shadow: 0 6px 18px rgba(15, 118, 110, .38);
+            transition: background 180ms ease, transform 180ms ease, box-shadow 180ms ease; }
+          .download:hover { background: #0b5f59; transform: translateY(-1px);
+            box-shadow: 0 8px 22px rgba(15, 118, 110, .48); }
+          .download:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(45, 212, 191, .28); }
+          iframe { display: block; width: 100%; height: calc(100vh - 64px); border: 0; }
+        </style>
+      </head>
+      <body>
+        <header>
+          <span class="file-name">${fileName}</span>
+          <a class="download" href="${pdfUrl}" download="${fileName}">
+            <span aria-hidden="true">↓</span>
+            Baixar PDF
+          </a>
+        </header>
+        <iframe src="${pdfUrl}#toolbar=0" title="${fileName}"></iframe>
+      </body>
+    </html>`;
+  const viewerUrl = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+  popup.location.replace(viewerUrl);
 };
 
 export default function SalesContractPrinting() {

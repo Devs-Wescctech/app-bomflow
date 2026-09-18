@@ -286,7 +286,10 @@ export function buildContractWhatsAppDelivery({
     || productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS;
   const productName = isEssential ? 'Essencial' : isBomPet ? 'Bom Pet'
     : isBomPetHealth ? 'Bom Pet Saúde' : 'Bom Auto';
-  const fileName = `Contrato ${productName} ${displayNumber}.pdf`;
+  const fileName = `Contrato ${productName} ${displayNumber}.pdf`
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._ -]/g, '');
   return {
     templateId: template.id,
     templateName: template.name,
@@ -1081,13 +1084,16 @@ router.post('/contracts/send-whatsapp', async (req, res) => {
       messageId: response?.messageSentId || response?.message_sent_id || response?.id || null,
     });
   } catch (error) {
-    const rejectedBeforeSend =
-      Number(error.statusCode) >= 400 && Number(error.statusCode) < 500;
     if (temporaryObject) {
       if (deliveryStarted) scheduleContractDeletion(temporaryObject);
       else await deleteContractFromStorage(temporaryObject).catch(() => {});
     }
     if (sendId) {
+      const failedStatus = error.deliveryFailed
+        ? 'failed'
+        : (error.statusCode
+          ? 'failed_before_send'
+          : (deliveryStarted ? 'unknown' : 'failed_before_send'));
       await query(
         `UPDATE bom_auto_contract_whatsapp_sends
             SET status = $2,
@@ -1099,13 +1105,16 @@ router.post('/contracts/send-whatsapp', async (req, res) => {
           WHERE id = $1`,
         [
           sendId,
-          error.deliveryFailed
-            ? 'failed'
-            : (deliveryStarted && !rejectedBeforeSend ? 'unknown' : 'failed_before_send'),
+          failedStatus,
           String(error.message || 'Falha no envio').slice(0, 1000),
           externalMessageId ? String(externalMessageId) : null,
         ],
-      ).catch(() => {});
+      ).catch((persistenceError) => {
+        console.error(
+          '[SalesContractPrinting] Falha ao registrar erro do envio:',
+          persistenceError.message,
+        );
+      });
     }
     await audit(req, `hash:${claims.cpf}`, claims, 'error', 'whatsapp', { recipientHash });
     console.error('[SalesContractPrinting] Falha no envio WhatsApp:', error.message);
