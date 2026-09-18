@@ -307,7 +307,12 @@ test('search uses only the canonical pedido holder and UI renders validation det
   assert.match(pageSource, /params\.set\("reference", reference\)/);
   assert.doesNotMatch(pageSource, /searchType/);
   assert.match(pageSource, /Serviço de impressão indisponível \(HTTP \$\{response\.status\}\)/);
-  assert.match(pageSource, /className="action-pill-primary h-10 px-4"[^>]*>[\s\S]*?action-pill-icon h-4 w-4[\s\S]*?Gerar PDF/);
+  assert.match(pageSource, /generatingId === row\.generationId \? "Gerando PDF\.\.\." : "Gerar PDF"/);
+  assert.match(pageSource, /logo-bomflow\.png/);
+  assert.match(pageSource, /favicon\.svg/);
+  assert.match(pageSource, /download\.download = fileName/);
+  assert.match(pageSource, /contrato_\$\{product\}_\$\{order\}\.pdf/);
+  assert.match(routeSource, /contrato_\$\{fileProduct\}_\$\{claims\.pedido\}\.pdf/);
   assert.match(routeSource, /p\.id::text = \$1 OR p\.pedido::text = \$1/);
   assert.match(routeSource, /\(\$2::text IS NULL OR p\.id::text = \$2 OR p\.pedido::text = \$2\)/);
   assert.match(routeSource, /cpfOwner: normalizeCpf\(r\.cpf_owner\)/);

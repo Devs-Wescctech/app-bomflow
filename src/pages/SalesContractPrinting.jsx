@@ -11,6 +11,75 @@ const cpfMask = (value) => value.replace(/\D/g, "").slice(0, 11)
   .replace(/^(\d{3})(\d)/, "$1.$2").replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
   .replace(/\.(\d{3})(\d)/, ".$1-$2");
 const PAGE_SIZE = 20;
+const contractFileName = (row) => {
+  const product = String(row.product || "contrato")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
+  const order = String(row.pedido || row.order || row.reference || row.label || "")
+    .match(/\d+/g)?.join("") || "sem_numero";
+  return `contrato_${product}_${order}.pdf`;
+};
+
+const preparePdfTab = (popup) => {
+  popup.document.open();
+  popup.document.write(`<!doctype html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Gerando contrato...</title>
+        <link rel="icon" type="image/svg+xml" href="${window.location.origin}/favicon.svg" />
+        <style>
+          * { box-sizing: border-box; }
+          body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f3f5f7;
+            color: #252931; font-family: "Plus Jakarta Sans", system-ui, sans-serif; }
+          main { display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }
+          img { width: 176px; height: auto; }
+          .spinner { width: 34px; height: 34px; border: 3px solid #dbe4e3; border-top-color: #0f766e;
+            border-radius: 50%; animation: spin .8s linear infinite; }
+          strong { font-size: 16px; }
+          p { margin: -8px 0 0; color: #737983; font-size: 13px; }
+          @keyframes spin { to { transform: rotate(360deg); } }
+        </style>
+      </head>
+      <body>
+        <main>
+          <img src="${window.location.origin}/logo-bomflow.png" alt="Bom Flow" />
+          <span class="spinner" aria-hidden="true"></span>
+          <strong>Preparando seu contrato</strong>
+          <p>O PDF será exibido assim que estiver pronto.</p>
+        </main>
+      </body>
+    </html>`);
+  popup.document.close();
+};
+
+const showPdfInTab = (popup, pdfUrl, fileName) => {
+  const doc = popup.document;
+  doc.title = fileName;
+  doc.body.innerHTML = "";
+  doc.body.style.cssText = "margin:0;height:100vh;overflow:hidden;background:#525659";
+
+  const toolbar = doc.createElement("div");
+  toolbar.style.cssText = "height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:#263238;color:#fff;font:500 13px 'Plus Jakarta Sans',system-ui,sans-serif";
+  const title = doc.createElement("span");
+  title.textContent = fileName;
+  const download = doc.createElement("a");
+  download.href = pdfUrl;
+  download.download = fileName;
+  download.textContent = "Baixar PDF";
+  download.style.cssText = "color:#fff;text-decoration:none;background:#0f766e;border-radius:999px;padding:8px 14px";
+  toolbar.append(title, download);
+
+  const viewer = doc.createElement("iframe");
+  viewer.src = pdfUrl;
+  viewer.title = fileName;
+  viewer.style.cssText = "display:block;width:100%;height:calc(100vh - 48px);border:0";
+  doc.body.append(toolbar, viewer);
+};
 
 export default function SalesContractPrinting() {
   const [cpf, setCpf] = useState("");
@@ -56,18 +125,21 @@ export default function SalesContractPrinting() {
     searchPage(1);
   };
   const totalPages = Math.max(1, Math.ceil(state.total / state.pageSize));
-  const generate = async (generationId) => {
+  const [generatingId, setGeneratingId] = useState("");
+  const generate = async (row) => {
     const popup = window.open("", "_blank");
     if (!popup) {
       setState((current) => ({ ...current, error: "Permita pop-ups para visualizar o PDF." }));
       return;
     }
-    popup.document.title = "Gerando contrato...";
+    preparePdfTab(popup);
+    setGeneratingId(row.generationId);
+    setState((current) => ({ ...current, error: "" }));
     try {
       const response = await fetch("/api/sales-pf/contracts/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
-      body: JSON.stringify({ generationId }),
+      body: JSON.stringify({ generationId: row.generationId }),
       });
         if (!response.ok) {
         const body = await response.json().catch(() => ({}));
@@ -76,10 +148,15 @@ export default function SalesContractPrinting() {
           throw failure;
       }
       const blob = await response.blob();
-      popup.location.href = URL.createObjectURL(blob);
+      const fileName = contractFileName(row);
+      const file = new File([blob], fileName, { type: "application/pdf" });
+      const pdfUrl = URL.createObjectURL(file);
+      showPdfInTab(popup, pdfUrl, fileName);
     } catch (error) {
       popup.close();
       setState((current) => ({ ...current, error: [error.message, ...(error.details || [])] }));
+    } finally {
+      setGeneratingId("");
     }
   };
   const openWhatsapp = async (row) => {
@@ -183,9 +260,17 @@ export default function SalesContractPrinting() {
              <div className="text-sm text-muted-foreground">{row.name || "Titular não informado"} · {row.date ? new Date(row.date).toLocaleDateString("pt-BR") : "Data não informada"}</div>
            </div>
            <div className="flex flex-wrap items-center justify-end gap-2">
-               <button type="button" className="action-pill-primary h-10 px-4" onClick={() => generate(row.generationId)}>
+                <button
+                  type="button"
+                  className="action-pill-primary h-10 px-4"
+                  disabled={generatingId === row.generationId}
+                  onClick={() => generate(row)}
+                >
                  <span className="action-pill-shine" aria-hidden="true" />
-                 <FileText className="action-pill-icon h-4 w-4" />Gerar PDF
+                  {generatingId === row.generationId
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <FileText className="action-pill-icon h-4 w-4" />}
+                  {generatingId === row.generationId ? "Gerando PDF..." : "Gerar PDF"}
               </button>
                <button
                  type="button"

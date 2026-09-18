@@ -783,11 +783,11 @@ const renderProductContract = (
 };
 
 const contractFileProduct = (productKey) => ({
-  [CONTRACT_PRODUCTS.BOM_AUTO]: 'bom-auto',
+  [CONTRACT_PRODUCTS.BOM_AUTO]: 'bom_auto',
   [CONTRACT_PRODUCTS.ESSENCIAL]: 'essencial',
-  [CONTRACT_PRODUCTS.BOM_PET]: 'bom-pet',
-  [CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL]: 'bom-pet-saude-individual',
-  [CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS]: 'bom-pet-saude-3pets',
+  [CONTRACT_PRODUCTS.BOM_PET]: 'bom_pet',
+  [CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL]: 'bom_pet_saude_individual',
+  [CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS]: 'bom_pet_saude_3pets',
 })[productKey];
 
 router.post('/contracts/validate', async (req, res) => {
@@ -894,7 +894,7 @@ router.post('/contracts/generate', async (req, res) => {
     await audit(req, `hash:${claims.cpf}`, claims, 'success', 'generation', { required: true });
     const fileProduct = contractFileProduct(productKey);
     res.type('application/pdf')
-      .set('Content-Disposition', `inline; filename="contrato-${fileProduct}-${claims.pedido}.pdf"`)
+      .set('Content-Disposition', `inline; filename="contrato_${fileProduct}_${claims.pedido}.pdf"`)
       .send(pdf);
   } catch (error) {
     await audit(req, `hash:${claims.cpf}`, claims, 'error', 'generation');
