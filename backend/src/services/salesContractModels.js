@@ -49,9 +49,9 @@ export const BOM_PET_BASE_PRODUCT_IDS = Object.freeze([
   58947899, // CAMPINAS - BOM PET 4
 ]);
 
-// A view legada do ERP (vw_report_api_com_quilometragem), usada pelo gerador
-// oficial, define a adesão do Essencial como um valor fixo de R$ 50,00.
-export const ESSENTIAL_ADHESION_VALUE = 50;
+// Valor homologado pelo PDF original. O gerador legado lia este campo por
+// pedido; substituir a constante quando o acesso à API de totais for retomado.
+export const ESSENTIAL_ADHESION_VALUE = 60;
 
 const ESSENTIAL_PAYMENT_PLAN_IDS = Object.freeze({
   cpfl: new Set([32922780]),

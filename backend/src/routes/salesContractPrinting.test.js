@@ -97,6 +97,7 @@ test('mounts the protected contract search under the public API path', async () 
 
 test('distinguishes linked Bom Auto vehicle and conductor products', () => {
   assert.equal(isBomAutoVehicleProduct('BOM AUTO CLIENTES - DADOS DO VEÍCULO'), true);
+  assert.equal(isBomAutoVehicleProduct('BOM AUTO CLIENTES - DADOS DO VEICULO'), true);
   assert.equal(isBomAutoVehicleProduct('BOM AUTO CLIENTES - DADOS DO CONDUTOR'), false);
   assert.equal(isBomAutoDriverProduct('BOM AUTO CLIENTES - DADOS DO CONDUTOR'), true);
   assert.equal(isBomAutoDriverProduct('BOM PET - NOME DO PET'), false);
@@ -287,7 +288,7 @@ test('search uses only the canonical pedido holder and UI renders validation det
   assert.match(routeSource, /dp\.pessoa_id\s*=\s*p\.cliente_id/);
   assert.doesNotMatch(routeSource, /pedidos_pessoas[^;]*regexp_replace\(pp\.cpf/s);
   const searchSql = routeSource.match(/const sql = `WITH docs AS \([\s\S]*?const result = await db\.query/)?.[0] || '';
-  assert.match(searchSql, /BOM AUTO% DADOS DO VEÍCULO/);
+  assert.match(searchSql, /translate\([\s\S]*BOM AUTO% DADOS DO VEICULO/);
   assert.match(routeSource, /SELECT 'bom_pet'::text/);
   assert.match(routeSource, /BOM_PET_BASE_PRODUCT_IDS/);
   assert.doesNotMatch(searchSql, /DADOS DO CONDUTOR/);
@@ -542,7 +543,7 @@ test('builds and validates Essencial data from linked ERP products and dependent
   assert.equal(detailMatchesContractProduct(detail, CONTRACT_PRODUCTS.BOM_AUTO), false);
   const data = buildEssentialContractData(detail);
   assert.equal(data.base_value, 19.9);
-  assert.equal(data.adhesion, 50);
+  assert.equal(data.adhesion, 60);
   assert.equal(data.dependent_value, 51);
   assert.equal(data.flowers_value, 15);
   assert.equal(data.total_value, 85.9);

@@ -516,7 +516,11 @@ export async function findOrders(cpf, page, pageSize, reference = null) {
          WHERE EXISTS (
            SELECT 1 FROM itens_pedidos ip LEFT JOIN produtos pr ON pr.id=ip.produto_id
             WHERE ip.pedido_id=p.id
-              AND UPPER(COALESCE(pr.descricao,ip.descricao,'')) LIKE '%BOM AUTO% DADOS DO VEÍCULO%'
+              AND UPPER(translate(
+                COALESCE(pr.descricao,ip.descricao,''),
+                'ÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇÑ',
+                'AAAAEEEIIOOOOUCN'
+              )) LIKE '%BOM AUTO% DADOS DO VEICULO%'
          )
         UNION ALL
         SELECT 'essencial'::text
@@ -585,7 +589,11 @@ export async function findOrdersByReference(reference, page, pageSize) {
          WHERE EXISTS (
            SELECT 1 FROM itens_pedidos ip LEFT JOIN produtos pr ON pr.id=ip.produto_id
             WHERE ip.pedido_id=p.id
-              AND UPPER(COALESCE(pr.descricao,ip.descricao,'')) LIKE '%BOM AUTO% DADOS DO VEÍCULO%'
+              AND UPPER(translate(
+                COALESCE(pr.descricao,ip.descricao,''),
+                'ÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇÑ',
+                'AAAAEEEIIOOOOUCN'
+              )) LIKE '%BOM AUTO% DADOS DO VEICULO%'
          )
         UNION ALL
         SELECT 'essencial'::text
