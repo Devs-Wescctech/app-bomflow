@@ -10,6 +10,16 @@ const token = () => localStorage.getItem("accessToken") || localStorage.getItem(
 const cpfMask = (value) => value.replace(/\D/g, "").slice(0, 11)
   .replace(/^(\d{3})(\d)/, "$1.$2").replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
   .replace(/\.(\d{3})(\d)/, ".$1-$2");
+const hasWhatsAppTemplate = (row) => {
+  const productKey = String(row?.productKey || row?.product_key || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  const productName = String(row?.product || "").trim().toLowerCase();
+  return productKey !== "bom_corp" && productName !== "bom corp";
+};
+const BOM_CORP_WHATSAPP_UNAVAILABLE =
+  "Não há template de envio cadastrado para o Bom Corp no WHU.";
 const PAGE_SIZE = 20;
 const contractFileName = (row) => {
   const product = String(row.product || "contrato")
@@ -292,17 +302,28 @@ export default function SalesContractPrinting() {
                     : <FileText className="action-pill-icon h-4 w-4" />}
                   {generatingId === row.generationId ? "Gerando PDF..." : "Gerar PDF"}
               </button>
-               <button
-                 type="button"
-                 className="action-pill-primary h-10 px-4"
-                  disabled={whatsapp.checkingGenerationId === row.generationId}
-                 onClick={() => openWhatsapp(row)}
-               >
-                 {whatsapp.checkingGenerationId === row.generationId
-                   ? <Loader2 className="h-4 w-4 animate-spin" />
-                   : <Send className="h-4 w-4" />}
-                 {whatsapp.checkingGenerationId === row.generationId ? "Validando..." : "Enviar WhatsApp"}
-              </button>
+                <span
+                  className="inline-flex"
+                  title={hasWhatsAppTemplate(row) ? undefined : BOM_CORP_WHATSAPP_UNAVAILABLE}
+                >
+                  <button
+                    type="button"
+                    className={hasWhatsAppTemplate(row)
+                      ? "action-pill-primary h-10 px-4"
+                      : "action-pill-ghost h-10 cursor-not-allowed border-border bg-muted px-4 text-muted-foreground opacity-100 shadow-none"}
+                    disabled={!hasWhatsAppTemplate(row)
+                      || whatsapp.checkingGenerationId === row.generationId}
+                    aria-label={hasWhatsAppTemplate(row)
+                      ? "Enviar contrato pelo WhatsApp"
+                      : `Enviar contrato pelo WhatsApp indisponível. ${BOM_CORP_WHATSAPP_UNAVAILABLE}`}
+                    onClick={() => openWhatsapp(row)}
+                  >
+                    {whatsapp.checkingGenerationId === row.generationId
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <Send className="h-4 w-4" />}
+                    {whatsapp.checkingGenerationId === row.generationId ? "Validando..." : "Enviar WhatsApp"}
+                  </button>
+                </span>
            </div>
         </div>)}
          {totalPages > 1 && (
