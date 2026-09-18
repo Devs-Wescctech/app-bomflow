@@ -763,14 +763,21 @@ const validateProductContractData = (data, productKey) => {
   return validateContractData(data);
 };
 
-const renderProductContract = (data, productKey, pedido) => {
+const renderProductContract = (
+  data,
+  productKey,
+  pedido,
+  { optimizeForWhatsapp = false } = {},
+) => {
   if (productKey === CONTRACT_PRODUCTS.ESSENCIAL) return renderEssentialPdf(data);
-  if (productKey === CONTRACT_PRODUCTS.BOM_PET) return renderBomPetPdf(data);
+  if (productKey === CONTRACT_PRODUCTS.BOM_PET) {
+    return renderBomPetPdf(data, { optimizeForWhatsapp });
+  }
   if (productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL) {
-    return renderBomPetHealthPdf(data, 'individual');
+    return renderBomPetHealthPdf(data, 'individual', { optimizeForWhatsapp });
   }
   if (productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS) {
-    return renderBomPetHealthPdf(data, 'three');
+    return renderBomPetHealthPdf(data, 'three', { optimizeForWhatsapp });
   }
   return renderPdf(data, pedido);
 };
@@ -981,7 +988,12 @@ router.post('/contracts/send-whatsapp', async (req, res) => {
       });
     }
     sendId = claimed.rows[0].id;
-    const pdf = await renderProductContract(data, productKey, claims.pedido);
+    const pdf = await renderProductContract(
+      data,
+      productKey,
+      claims.pedido,
+      { optimizeForWhatsapp: true },
+    );
     temporaryObject = createContractObjectPath();
     await query(
       `UPDATE bom_auto_contract_whatsapp_sends

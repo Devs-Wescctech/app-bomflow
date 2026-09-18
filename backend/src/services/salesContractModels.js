@@ -1,13 +1,61 @@
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
+import { execFile } from 'child_process';
 import { fileURLToPath } from 'url';
+import { promisify } from 'util';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const essentialPages = path.resolve(__dirname, '../../public/essential-contract');
 const bomPetPages = path.resolve(__dirname, '../../public/bom-pet-contract');
 const bomPetHealthIndividualPages = path.resolve(__dirname, '../../public/bom-pet-health-individual-contract');
 const bomPetHealthThreePages = path.resolve(__dirname, '../../public/bom-pet-health-three-contract');
+const execFileAsync = promisify(execFile);
+const optimizedBackgrounds = new Map();
+
+async function contractBackground(source, optimizeForWhatsapp) {
+  if (!optimizeForWhatsapp) return source;
+  if (optimizedBackgrounds.has(source)) return optimizedBackgrounds.get(source);
+  const pending = (async () => {
+    const outputDir = path.join(os.tmpdir(), 'bomflow-whatsapp-contract-pages');
+    await fs.promises.mkdir(outputDir, { recursive: true });
+    const output = path.join(
+      outputDir,
+      `whatsapp-150dpi-q72-${path.basename(path.dirname(source))}-${path.basename(source)}`,
+    );
+    const sourceStat = await fs.promises.stat(source);
+    const outputStat = await fs.promises.stat(output).catch(() => null);
+    if (!outputStat || outputStat.mtimeMs < sourceStat.mtimeMs) {
+      const temporary = `${output}.${process.pid}.tmp.jpg`;
+      try {
+        await execFileAsync('magick', [
+          source,
+          '-strip',
+          '-resize', '1400x1979>',
+          '-sampling-factor', '4:2:0',
+          '-quality', '72',
+          temporary,
+        ]);
+        await fs.promises.rename(temporary, output);
+      } catch (error) {
+        await fs.promises.rm(temporary, { force: true }).catch(() => {});
+        throw new Error(`Não foi possível otimizar o contrato para WhatsApp: ${error.message}`);
+      }
+    }
+    return output;
+  })();
+  optimizedBackgrounds.set(source, pending);
+  return pending;
+}
+
+async function prepareContractBackgrounds(pagesDir, pages, optimizeForWhatsapp) {
+  return new Map(await Promise.all(pages.map(async (page) => {
+    const source = path.join(pagesDir, `page-${page}.jpg`);
+    if (!fs.existsSync(source)) throw new Error(`Página ${page} do modelo de contrato não encontrada.`);
+    return [page, await contractBackground(source, optimizeForWhatsapp)];
+  })));
+}
 
 export const CONTRACT_PRODUCTS = Object.freeze({
   BOM_AUTO: 'bom_auto',
@@ -879,7 +927,12 @@ const petAge = (birthDate, referenceDate) => {
   return `${Math.max(0, years)} anos ${String(Math.max(0, months)).padStart(2, '0')} meses`;
 };
 
-export function renderBomPetPdf(data) {
+export async function renderBomPetPdf(data, { optimizeForWhatsapp = false } = {}) {
+  const backgrounds = await prepareContractBackgrounds(
+    bomPetPages,
+    [1, 2, 3, 4, 5, 6, 7],
+    optimizeForWhatsapp,
+  );
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: false });
     const chunks = [];
@@ -903,8 +956,7 @@ export function renderBomPetPdf(data) {
     };
     const addBackgroundPage = (page) => {
       doc.addPage();
-      const background = path.join(bomPetPages, `page-${page}.jpg`);
-      if (!fs.existsSync(background)) throw new Error(`Página ${page} do modelo Bom Pet não encontrada.`);
+      const background = backgrounds.get(page);
       doc.image(background, 0, 0, { width: 595.28, height: 841.89 });
       doc.fillColor('#111');
     };
@@ -971,8 +1023,17 @@ export function renderBomPetPdf(data) {
   });
 }
 
-export function renderBomPetHealthPdf(data, variant = 'individual') {
+export async function renderBomPetHealthPdf(
+  data,
+  variant = 'individual',
+  { optimizeForWhatsapp = false } = {},
+) {
   const pagesDir = variant === 'three' ? bomPetHealthThreePages : bomPetHealthIndividualPages;
+  const backgrounds = await prepareContractBackgrounds(
+    pagesDir,
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    optimizeForWhatsapp,
+  );
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: false });
     const chunks = [];
@@ -992,8 +1053,7 @@ export function renderBomPetHealthPdf(data, variant = 'individual') {
     };
     const addPage = (page) => {
       doc.addPage();
-      const background = path.join(pagesDir, `page-${page}.jpg`);
-      if (!fs.existsSync(background)) throw new Error(`Página ${page} do modelo Bom Pet Saúde não encontrada.`);
+      const background = backgrounds.get(page);
       doc.image(background, 0, 0, { width: 595.28, height: 841.89 });
       doc.fillColor('#111');
     };

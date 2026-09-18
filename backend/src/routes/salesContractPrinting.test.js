@@ -899,6 +899,7 @@ test('WhatsApp contract sending is authenticated, regenerated and sent as tempor
   assert.match(routeSource, /router\.use\(authMiddleware, loadAgentMiddleware, requireSalesContractPrinting\)/);
   assert.match(routeSource, /router\.post\('\/contracts\/send-whatsapp'/);
   assert.match(routeSource, /storeContractForWhatsApp\(pdf, temporaryObject, \{ baseUrl \}\)/);
+  assert.match(routeSource, /\{ optimizeForWhatsapp: true \}/);
   assert.match(routeSource, /sendTemplate\(/);
   assert.match(routeSource, /BOM_AUTO_CONTRACT_WHATSAPP_TOKEN/);
   assert.doesNotMatch(routeSource, /RUDO_WHATSAPP_TOKEN/);
