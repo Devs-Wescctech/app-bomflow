@@ -123,6 +123,26 @@ export function requireSubmenuAccess(submenuId) {
   };
 }
 
+// Recursos gerenciais sensíveis: somente o administrador master herda acesso.
+// Qualquer outro perfil precisa de concessão explícita no tipo de agente.
+export function requireExplicitSubmenuAccess(submenuId) {
+  return (req, res, next) => {
+    if (!req.agent) {
+      return res.status(403).json({ message: 'Agent profile required' });
+    }
+
+    if (req.agent.agentType === 'admin' || req.user?.role === 'admin') {
+      return next();
+    }
+
+    if ((req.agent.allowedSubmenus || []).includes(submenuId)) {
+      return next();
+    }
+
+    return res.status(403).json({ message: `Access denied: ${submenuId}` });
+  };
+}
+
 // Proteção explícita para recursos sensíveis que não podem herdar o fallback
 // permissivo de supervisores. A concessão precisa existir no tipo do agente.
 export function requireSalesContractPrinting(req, res, next) {

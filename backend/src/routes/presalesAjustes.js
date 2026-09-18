@@ -1,5 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
+import { loadAgentMiddleware, requireExplicitSubmenuAccess } from '../middleware/permissions.js';
 import { pool, query } from '../config/database.js';
 import { createNotification } from '../services/notificationService.js';
 import { addBusinessDays, brtDateStr, preloadHolidays } from '../services/businessDaysService.js';
@@ -25,6 +26,12 @@ import {
   applyPostsalesCompleteCorrection,
   getPostsalesCorrectionContext,
 } from '../services/postsalesCorrectionService.js';
+import {
+  buildPresalesDashboard,
+  PRESALES_DASHBOARD_STATUSES,
+  validatePresalesDashboardFilters,
+} from '../services/presalesDashboardService.js';
+import { buildPresalesDashboardDemoRows } from '../services/presalesDashboardDemoData.js';
 
 const router = express.Router();
 
@@ -73,6 +80,7 @@ const MODULO_LEAD_MAP = {
 // Mesma regra de elegibilidade da Fila Pré Vendas (relatório consolidado):
 // admin, agente do tipo "auditoria" ou supervisor do time "Auditoria".
 async function resolveAuditor(req) {
+  const role = (req.user.role || '').toLowerCase();
   const agentRes = await query(
     `SELECT a.id, a.name, a.email, a.agent_type, t.name AS team_name
        FROM agents a
@@ -81,10 +89,17 @@ async function resolveAuditor(req) {
     [req.user.id]
   );
   const agent = agentRes.rows[0];
-  if (!agent) return { eligible: false, agent: null };
+  if (!agent) {
+    return {
+      eligible: role === 'admin',
+      agent: role === 'admin'
+        ? { id: req.user.id, name: req.user.full_name || 'Admin', email: req.user.email }
+        : null,
+    };
+  }
 
   const agentType = (agent.agent_type || '').toLowerCase();
-  const isAdmin = agentType === 'admin' || (req.user.role || '').toLowerCase() === 'admin';
+  const isAdmin = agentType === 'admin' || role === 'admin';
   const isAuditoria = agentType === 'auditoria';
   const isSupervisor = agentType.includes('supervisor');
   const teamName = (agent.team_name || '').trim().toLowerCase();
@@ -581,6 +596,73 @@ router.get('/pos-vendas', authMiddleware, async (req, res) => {
     return res.status(500).json({ error: 'Falha ao carregar a fila do Pós-Vendas.' });
   }
 });
+
+// GET /dashboard — visão gerencial da auditoria de Pré-Vendas.
+router.get(
+  '/dashboard',
+  authMiddleware,
+  loadAgentMiddleware,
+  requireExplicitSubmenuAccess('PreSalesDashboard'),
+  async (req, res) => {
+  try {
+    const { eligible } = await resolveAuditor(req);
+    if (!eligible) return res.status(403).json({ error: 'Acesso restrito à auditoria da Fila Pré Vendas.' });
+
+    const startDate = req.query.start_date ? String(req.query.start_date) : null;
+    const endDate = req.query.end_date ? String(req.query.end_date) : null;
+    const dateError = validateDateRange(startDate, endDate);
+    if (dateError) return res.status(400).json({ error: dateError });
+    const filterError = validatePresalesDashboardFilters(req.query);
+    if (filterError) return res.status(400).json({ error: filterError });
+
+    const result = await query(
+      `SELECT pa.erp_pedido_id AS id, pa.erp_pedido_id, bo.erp_numero,
+              pa.auditor_id, pa.auditor_nome, pa.status, pa.resultado,
+              pa.assumido_at, pa.concluida_at, pa.created_at, pa.updated_at,
+              bo.cliente_nome, bo.created_at AS orcamento_criado_at,
+              ajuste.status AS adjustment_status,
+              COALESCE(ajuste.ajustado_at, ajuste.created_at) AS adjustment_updated_at
+         FROM presales_auditorias pa
+         LEFT JOIN bomflow_orcamentos bo ON bo.erp_pedido_id = pa.erp_pedido_id
+         LEFT JOIN LATERAL (
+           SELECT status, created_at, ajustado_at
+             FROM presales_ajustes
+            WHERE erp_pedido_id = pa.erp_pedido_id
+            ORDER BY created_at DESC
+            LIMIT 1
+         ) ajuste ON TRUE
+        ORDER BY pa.assumido_at DESC`
+    );
+
+    const isDemo = process.env.NODE_ENV !== 'production';
+    const sourceRows = isDemo ? [...result.rows, ...buildPresalesDashboardDemoRows()] : result.rows;
+    const dashboard = buildPresalesDashboard(sourceRows, {
+      granularity: req.query.granularity || 'day',
+      startDate,
+      endDate,
+      attendantId: req.query.attendant_id ? String(req.query.attendant_id) : null,
+      status: req.query.status ? String(req.query.status) : null,
+      client: req.query.client ? String(req.query.client) : null,
+    });
+    const attendants = [...new Map(sourceRows
+      .filter((row) => row.auditor_id && row.auditor_nome)
+      .map((row) => [String(row.auditor_id), { id: row.auditor_id, name: row.auditor_nome }])).values()]
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+    return res.json({
+      ...dashboard,
+      demo: isDemo,
+      filters: {
+        attendants,
+        statuses: PRESALES_DASHBOARD_STATUSES,
+      },
+    });
+  } catch (e) {
+    console.error('[presales-ajustes] GET /dashboard error:', e.message);
+    return res.status(500).json({ error: 'Falha ao carregar o dashboard do Pré-Vendas.' });
+  }
+  },
+);
 
 // GET /monitor — painel admin/auditoria: lista os ajustes com prazo final calculado,
 // situação do aviso antecipado (aviso_prazo_info) e do cancelamento/simulação

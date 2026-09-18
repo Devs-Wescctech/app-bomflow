@@ -1,5 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
+import { loadAgentMiddleware, requireExplicitSubmenuAccess } from '../middleware/permissions.js';
 import { pool, query } from '../config/database.js';
 import { createNotification } from '../services/notificationService.js';
 import { addBusinessDays, brtDateStr } from '../services/businessDaysService.js';
@@ -34,6 +35,10 @@ import {
   postsalesCorrectionType,
   withPostsalesCorrectionLock,
 } from '../services/postsalesCorrectionService.js';
+import {
+  buildPostsalesDashboard,
+  validatePostsalesDashboardFilters,
+} from '../services/postsalesDashboardService.js';
 
 const router = express.Router();
 
@@ -876,6 +881,100 @@ router.get('/monitor', authMiddleware, async (req, res) => {
     return res.status(500).json({ error: 'Falha ao carregar o monitor do Pós-Vendas.' });
   }
 });
+
+// GET /dashboard — métricas gerenciais e detalhe derivados do mesmo recorte.
+router.get(
+  '/dashboard',
+  authMiddleware,
+  loadAgentMiddleware,
+  requireExplicitSubmenuAccess('PosVendasDashboard'),
+  async (req, res) => {
+  try {
+    const { eligible } = await resolveLeitura(req);
+    if (!eligible) return res.status(403).json({ error: 'Acesso restrito à liderança e à equipe de Pós-Vendas.' });
+
+    const startDate = req.query.start_date ? String(req.query.start_date) : null;
+    const endDate = req.query.end_date ? String(req.query.end_date) : null;
+    const dateError = validateDateRange(startDate, endDate);
+    if (dateError) return res.status(400).json({ error: dateError });
+    const filterError = validatePostsalesDashboardFilters(req.query, POSTSALES_STATUS_LIST);
+    if (filterError) return res.status(400).json({ error: filterError });
+
+    await ingestAprovados();
+    const params = [];
+    const conditions = [];
+    const add = (value) => { params.push(value); return `$${params.length}`; };
+    if (startDate || endDate) {
+      const entryRange = [];
+      const completionRange = [];
+      if (startDate) {
+        const param = add(startDate);
+        entryRange.push(`COALESCE(ev.entry_at, v.created_at) >= ${param}::date`);
+        completionRange.push(`v.concluida_at >= ${param}::date`);
+      }
+      if (endDate) {
+        const param = add(endDate);
+        entryRange.push(`COALESCE(ev.entry_at, v.created_at) < (${param}::date + interval '1 day')`);
+        completionRange.push(`v.concluida_at < (${param}::date + interval '1 day')`);
+      }
+      conditions.push(`((${entryRange.join(' AND ')}) OR (${completionRange.join(' AND ')}))`);
+    }
+    if (req.query.attendant_id) conditions.push(`v.auditor_id = ${add(String(req.query.attendant_id))}::uuid`);
+    if (req.query.status && req.query.status !== 'todos') conditions.push(`v.status = ${add(String(req.query.status))}`);
+    if (req.query.client) conditions.push(`v.cliente_nome ILIKE ${add(`%${String(req.query.client).trim()}%`)}`);
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const result = await query(
+      `SELECT v.id, v.erp_pedido_id, v.erp_numero, v.modulo,
+              v.vendedor_nome, v.cliente_nome, v.status,
+              v.auditor_id, v.auditor_nome, v.concluida_at, v.cancelada_at,
+              v.created_at, v.updated_at,
+              COALESCE(ev.entry_at, v.created_at) AS entry_at,
+              COALESCE(ev.last_movement_at, v.updated_at, v.created_at) AS last_movement_at
+         FROM postsales_verificacoes v
+         LEFT JOIN (
+           SELECT verificacao_id,
+                  MIN(created_at) FILTER (WHERE tipo = 'entrada_fila') AS entry_at,
+                  MAX(created_at) AS last_movement_at
+             FROM postsales_eventos
+            GROUP BY verificacao_id
+         ) ev ON ev.verificacao_id = v.id
+        ${where}
+        ORDER BY v.created_at DESC`,
+      params
+    );
+    const dashboard = buildPostsalesDashboard(result.rows, {
+      granularity: req.query.granularity || 'day',
+      startDate,
+      endDate,
+    });
+    const attendants = await query(
+      `SELECT DISTINCT auditor_id AS id, auditor_nome AS name
+         FROM postsales_verificacoes
+        WHERE auditor_id IS NOT NULL AND auditor_nome IS NOT NULL
+        ORDER BY auditor_nome`
+    );
+    const clients = await query(
+      `SELECT DISTINCT cliente_nome AS name
+         FROM postsales_verificacoes
+        WHERE cliente_nome IS NOT NULL AND cliente_nome <> ''
+        ORDER BY cliente_nome
+        LIMIT 500`
+    );
+    return res.json({
+      ...dashboard,
+      filters: {
+        attendants: attendants.rows,
+        clients: clients.rows.map((row) => row.name),
+        statuses: POSTSALES_STATUS_LIST,
+      },
+    });
+  } catch (e) {
+    console.error('[postsales] GET /dashboard error:', e.message);
+    return res.status(500).json({ error: 'Falha ao carregar o dashboard do Pós-Vendas.' });
+  }
+  },
+);
 
 // GET /:id/detalhe — dados vivos do ERP + documentos de uma verificação.
 // O id da verificação é obrigatório no caminho: não expõe uma consulta genérica
