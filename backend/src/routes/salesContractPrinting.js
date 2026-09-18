@@ -97,6 +97,10 @@ export const normalizeCpf = (value) => {
   const cpf = cpfDigits(value);
   return cpf.length === 11 ? cpf : null;
 };
+export const normalizeCnpj = (value) => {
+  const cnpj = cpfDigits(value);
+  return cnpj.length === 14 ? cnpj : null;
+};
 export const protectCpf = (cpf) => crypto.createHash('sha256')
   .update(`${process.env.CPF_AUDIT_PEPPER || secret()}:${cpf}`)
   .digest('hex');
@@ -111,6 +115,21 @@ export const isValidCpf = (value) => {
     return rest === 10 ? 0 : rest;
   };
   return calc(9) === digits[9] && calc(10) === digits[10];
+};
+export const isValidCnpj = (value) => {
+  const cnpj = normalizeCnpj(value);
+  if (!cnpj || /^(\d)\1{13}$/.test(cnpj)) return false;
+  const calculateDigit = (length) => {
+    const weights = length === 12
+      ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+      : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    const sum = weights.reduce((total, weight, index) =>
+      total + Number(cnpj[index]) * weight, 0);
+    const remainder = sum % 11;
+    return remainder < 2 ? 0 : 11 - remainder;
+  };
+  return calculateDigit(12) === Number(cnpj[12])
+    && calculateDigit(13) === Number(cnpj[13]);
 };
 export const isValidWhatsappRecipient = (value) => {
   return /^\d{10,11}$/.test(String(value ?? ''));
@@ -710,29 +729,101 @@ export async function findOrdersByReference(reference, page, pageSize) {
   };
 }
 
+export async function findBomCorpContracts(cnpj, page, pageSize, reference = null) {
+  const token = process.env.ERP_AUTH_TOKEN;
+  if (!token) {
+    const error = new Error('ERP_AUTH_TOKEN não configurado.');
+    error.statusCode = 503;
+    throw error;
+  }
+  const url = new URL(
+    'http://erp.wescctech.com.br:8080/BOMPASTOR/api/api_super_login_bom_corp',
+  );
+  url.searchParams.set('cnpj', cnpj);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  let response;
+  try {
+    response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const failure = new Error(error.name === 'AbortError'
+      ? 'Tempo excedido ao consultar contratos Bom Corp.'
+      : `Falha ao consultar contratos Bom Corp: ${error.message}`);
+    failure.statusCode = 503;
+    throw failure;
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!response.ok) {
+    const error = new Error(`ERP retornou HTTP ${response.status} na consulta Bom Corp.`);
+    error.statusCode = 502;
+    throw error;
+  }
+  const records = await response.json();
+  if (!Array.isArray(records)) {
+    const error = new Error('ERP retornou uma resposta inválida na consulta Bom Corp.');
+    error.statusCode = 502;
+    throw error;
+  }
+  const contracts = new Map();
+  for (const record of records) {
+    const contract = String(record?.numero_contrato || '').replace(/\D/g, '');
+    if (!contract || (reference && contract !== reference)) continue;
+    const existing = contracts.get(contract);
+    if (existing) {
+      existing.lifeCount += 1;
+      continue;
+    }
+    contracts.set(contract, {
+      contrato: contract,
+      product_key: CONTRACT_PRODUCTS.BOM_CORP,
+      name: String(record?.empresa_razao_social || '').trim() || null,
+      issue_date: record?.data_contrato || null,
+      lifeCount: 1,
+      contractValue: Number(record?.valor_contrato || 0),
+      pdfAvailable: false,
+    });
+  }
+  const sorted = [...contracts.values()].sort((a, b) =>
+    String(b.issue_date || '').localeCompare(String(a.issue_date || '')));
+  const offset = (page - 1) * pageSize;
+  return {
+    rows: sorted.slice(offset, offset + pageSize).map((row) => classifyDocument(row)),
+    total: sorted.length,
+  };
+}
+
 router.use(authMiddleware, loadAgentMiddleware, requireSalesContractPrinting);
 
 router.get('/contracts/search', async (req, res) => {
-  const rawCpf = String(req.query.cpf || '').trim();
-  const cpf = normalizeCpf(rawCpf);
+  const rawDocument = String(req.query.document || req.query.cpf || '').trim();
+  const cpf = normalizeCpf(rawDocument);
+  const cnpj = normalizeCnpj(rawDocument);
   const reference = String(req.query.reference || '').replace(/\D/g, '').slice(0, 18);
-  if (!rawCpf && !reference) {
-    return res.status(422).json({ message: 'Informe um CPF ou número de pedido/orçamento.' });
+  if (!rawDocument && !reference) {
+    return res.status(422).json({ message: 'Informe um CPF, CNPJ ou número de pedido/orçamento.' });
   }
-  if (rawCpf && !isValidCpf(rawCpf)) return res.status(422).json({ message: 'Informe um CPF válido.' });
+  if (rawDocument && !isValidCpf(rawDocument) && !isValidCnpj(rawDocument)) {
+    return res.status(422).json({ message: 'Informe um CPF ou CNPJ válido.' });
+  }
   if (reference && !/^\d{1,18}$/.test(reference)) {
     return res.status(422).json({ message: 'Informe um pedido/orçamento válido.' });
   }
   const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
   const pageSize = Math.min(50, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 20));
-  const auditKey = cpf || `hash:${protectCpf(`pedido:${reference}`)}`;
+  const auditKey = cpf || cnpj || `hash:${protectCpf(`pedido:${reference}`)}`;
   try {
-    const found = cpf
-      ? await findOrders(cpf, page, pageSize, reference || null)
-      : await findOrdersByReference(reference, page, pageSize);
+    const found = cnpj
+      ? await findBomCorpContracts(cnpj, page, pageSize, reference || null)
+      : cpf
+        ? await findOrders(cpf, page, pageSize, reference || null)
+        : await findOrdersByReference(reference, page, pageSize);
     found.rows = found.rows.map(({ cpfOwner, ...row }) => ({
       ...row,
-      generationId: issueId(req, cpf || cpfOwner, row),
+      generationId: issueId(req, cpf || cnpj || cpfOwner, row),
     }));
     await audit(req, auditKey, null, found.rows.length ? 'success' : 'empty', 'lookup', { required: true });
     res.json({ ...found, page, pageSize });

@@ -15,6 +15,7 @@ import {
   legacyCivilStatus,
   legacyProfession,
   isValidCpf,
+  isValidCnpj,
   isValidWhatsappRecipient,
   waitForWhatsAppDelivery,
   validateContractData,
@@ -70,6 +71,12 @@ test('validates CPF check digits before consulting ERP', () => {
   assert.equal(isValidCpf('529.982.247-25'), true);
   assert.equal(isValidCpf('529.982.247-24'), false);
   assert.equal(isValidCpf('111.111.111-11'), false);
+});
+
+test('validates CNPJ check digits before consulting ERP', () => {
+  assert.equal(isValidCnpj('19.367.986/0001-60'), true);
+  assert.equal(isValidCnpj('19.367.986/0001-61'), false);
+  assert.equal(isValidCnpj('11.111.111/1111-11'), false);
 });
 
 test('validates Brazilian WhatsApp recipients without comparing them to the ERP phone', () => {
@@ -303,7 +310,7 @@ test('search uses only the canonical pedido holder and UI renders validation det
   assert.match(pageSource, /Array\.isArray\(body\.errors\)/);
   assert.match(pageSource, /list-disc/);
   assert.match(pageSource, /Pedido\/orçamento/);
-  assert.match(pageSource, /params\.set\("cpf", cpf\)/);
+  assert.match(pageSource, /params\.set\("document", document\)/);
   assert.match(pageSource, /params\.set\("reference", reference\)/);
   assert.doesNotMatch(pageSource, /searchType/);
   assert.match(pageSource, /Serviço de impressão indisponível \(HTTP \$\{response\.status\}\)/);

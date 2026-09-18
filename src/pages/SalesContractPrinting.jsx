@@ -7,9 +7,48 @@ import {
 import { Loader2, FileText, Search, AlertCircle, Send, CheckCircle2 } from "lucide-react";
 
 const token = () => localStorage.getItem("accessToken") || localStorage.getItem("auth_token");
-const cpfMask = (value) => value.replace(/\D/g, "").slice(0, 11)
-  .replace(/^(\d{3})(\d)/, "$1.$2").replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
-  .replace(/\.(\d{3})(\d)/, ".$1-$2");
+const documentMask = (value) => {
+  const digits = value.replace(/\D/g, "").slice(0, 14);
+  if (digits.length <= 11) {
+    return digits
+      .replace(/^(\d{3})(\d)/, "$1.$2")
+      .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+      .replace(/\.(\d{3})(\d)/, ".$1-$2");
+  }
+  return digits
+    .replace(/^(\d{2})(\d)/, "$1.$2")
+    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/\.(\d{3})(\d)/, ".$1/$2")
+    .replace(/(\d{4})(\d)/, "$1-$2");
+};
+const documentDigits = (value) => String(value || "").replace(/\D/g, "");
+const isValidCpf = (value) => {
+  const cpf = documentDigits(value);
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+  const digits = cpf.split("").map(Number);
+  const calculate = (length) => {
+    const sum = digits.slice(0, length)
+      .reduce((total, digit, index) => total + digit * (length + 1 - index), 0);
+    const remainder = (sum * 10) % 11;
+    return remainder === 10 ? 0 : remainder;
+  };
+  return calculate(9) === digits[9] && calculate(10) === digits[10];
+};
+const isValidCnpj = (value) => {
+  const cnpj = documentDigits(value);
+  if (cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
+  const calculate = (length) => {
+    const weights = length === 12
+      ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+      : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    const sum = weights.reduce((total, weight, index) =>
+      total + Number(cnpj[index]) * weight, 0);
+    const remainder = sum % 11;
+    return remainder < 2 ? 0 : 11 - remainder;
+  };
+  return calculate(12) === Number(cnpj[12])
+    && calculate(13) === Number(cnpj[13]);
+};
 const hasWhatsAppTemplate = (row) => {
   const productKey = String(row?.productKey || row?.product_key || "")
     .trim()
@@ -112,7 +151,7 @@ const showPdfInTab = (popup, pdfUrl, fileName) => {
 };
 
 export default function SalesContractPrinting() {
-  const [cpf, setCpf] = useState("");
+  const [document, setDocument] = useState("");
   const [reference, setReference] = useState("");
   const [state, setState] = useState({
     loading: false, error: "", results: [], total: 0, page: 1, pageSize: PAGE_SIZE,
@@ -125,7 +164,7 @@ export default function SalesContractPrinting() {
     setState((current) => ({ ...current, loading: true, error: "", results: [] }));
     try {
       const params = new URLSearchParams();
-      if (cpf) params.set("cpf", cpf);
+      if (document) params.set("document", document);
       if (reference) params.set("reference", reference);
       params.set("page", String(page));
       params.set("pageSize", String(PAGE_SIZE));
@@ -152,6 +191,16 @@ export default function SalesContractPrinting() {
   };
   const search = (event) => {
     event.preventDefault();
+    if (document && !isValidCpf(document) && !isValidCnpj(document)) {
+      setState((current) => ({
+        ...current,
+        loading: false,
+        error: "Informe um CPF ou CNPJ válido.",
+        results: [],
+        total: 0,
+      }));
+      return;
+    }
     searchPage(1);
   };
   const totalPages = Math.max(1, Math.ceil(state.total / state.pageSize));
@@ -260,23 +309,24 @@ export default function SalesContractPrinting() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div><h1 className="text-2xl font-semibold">Impressão de Contratos - Recepção</h1>
-        <p className="text-muted-foreground">Consulte contratos Bom Auto, Essencial e Bom Pet pelo CPF ou pelo pedido/orçamento.</p></div>
+        <p className="text-muted-foreground">Consulte contratos Bom Auto, Bom Corp, Essencial e Bom Pet pelo documento ou pelo pedido/orçamento.</p></div>
       <Card><CardHeader><CardTitle className="flex items-center gap-2"><Search className="w-5 h-5" />Buscar titular</CardTitle></CardHeader>
         <CardContent><form onSubmit={search} className="space-y-4 max-w-xl">
           <div className="space-y-2">
             <label htmlFor="contract-document" className="block text-sm font-semibold">Documento</label>
-            <Input id="contract-document" className="eloom-field" value={cpf} onChange={(e) => setCpf(cpfMask(e.target.value))} placeholder="CPF do titular" inputMode="numeric" />
+            <Input id="contract-document" className="eloom-field" value={document} onChange={(e) => setDocument(documentMask(e.target.value))} placeholder="Digite o CPF ou CNPJ" inputMode="numeric" />
+            <p className="text-xs text-muted-foreground">Informe o CPF do titular ou o CNPJ da empresa.</p>
           </div>
           <div className="space-y-2">
-            <label htmlFor="contract-reference" className="block text-sm font-semibold">Pedido/orçamento</label>
-            <Input id="contract-reference" className="eloom-field" value={reference} onChange={(e) => setReference(e.target.value.replace(/\D/g, "").slice(0, 18))} placeholder="Número do pedido ou orçamento" inputMode="numeric" />
+            <label htmlFor="contract-reference" className="block text-sm font-semibold">Pedido/orçamento/contrato</label>
+            <Input id="contract-reference" className="eloom-field" value={reference} onChange={(e) => setReference(e.target.value.replace(/\D/g, "").slice(0, 18))} placeholder="Número do pedido, orçamento ou contrato" inputMode="numeric" />
           </div>
           <button type="submit" className="action-pill-primary" disabled={state.loading}>{state.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Pesquisar"}</button>
         </form></CardContent>
       </Card>
       {state.error && <div className="p-4 rounded-md bg-destructive/10 text-destructive flex gap-2"><AlertCircle className="w-5 h-5 shrink-0" /><div>{Array.isArray(state.error) ? <ul className="list-disc pl-5 space-y-1">{state.error.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : state.error}</div></div>}
       {!state.loading && !state.error && state.results.length === 0
-        && (cpf.length >= 11 || reference.length > 0)
+        && (documentDigits(document).length >= 11 || reference.length > 0)
         && <p className="text-muted-foreground">Nenhum pedido ou contrato disponível para impressão foi encontrado.</p>}
       {state.results.length > 0 && <Card><CardHeader><CardTitle>{state.total} resultado(s)</CardTitle></CardHeader><CardContent className="space-y-3">
         {state.results.map((row) => <div key={row.generationId} className="border rounded-lg p-4 flex items-center justify-between gap-4">
@@ -292,8 +342,10 @@ export default function SalesContractPrinting() {
            <div className="flex flex-wrap items-center justify-end gap-2">
                 <button
                   type="button"
-                  className="action-pill-primary h-10 px-4"
-                  disabled={generatingId === row.generationId}
+                  className={row.pdfAvailable === false
+                    ? "action-pill-ghost h-10 cursor-not-allowed border-border bg-muted px-4 text-muted-foreground opacity-100 shadow-none"
+                    : "action-pill-primary h-10 px-4"}
+                  disabled={row.pdfAvailable === false || generatingId === row.generationId}
                   onClick={() => generate(row)}
                 >
                  <span className="action-pill-shine" aria-hidden="true" />
