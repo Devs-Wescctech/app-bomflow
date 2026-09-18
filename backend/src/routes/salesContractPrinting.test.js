@@ -8,6 +8,7 @@ import {
   classifyDocument,
   buildBomAutoWhatsAppMessage,
   buildBomPetWhatsAppMessage,
+  buildBomPetHealthWhatsAppMessage,
   buildContractWhatsAppDelivery,
   buildEssentialWhatsAppMessage,
   CONTRACT_WHATSAPP_TEMPLATES,
@@ -39,11 +40,15 @@ import {
 import { normalizeMediaExtension } from '../services/attendanceWhuClient.js';
 import {
   BOM_PET_BASE_PRODUCT_IDS,
+  BOM_PET_HEALTH_INDIVIDUAL_PRODUCT_IDS,
+  BOM_PET_HEALTH_THREE_PRODUCT_IDS,
   BOM_PET_PET_LAYOUT,
   CONTRACT_PRODUCTS,
   ESSENTIAL_BASE_PRODUCT_IDS,
   bomPetPaymentCategory,
   buildBomPetContractData,
+  buildBomPetHealthIndividualContractData,
+  buildBomPetHealthThreeContractData,
   buildEssentialContractData,
   detailMatchesContractProduct,
   essentialCivilCheckX,
@@ -51,8 +56,10 @@ import {
   essentialPaymentCategory,
   essentialUpperDueCheckX,
   renderBomPetPdf,
+  renderBomPetHealthPdf,
   renderEssentialPdf,
   validateBomPetContractData,
+  validateBomPetHealthContractData,
   validateEssentialContractData,
 } from '../services/salesContractModels.js';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -396,6 +403,61 @@ test('builds Bom Pet data from the base plan and linked pet rows only', () => {
     sex: 'F',
   }]);
   assert.deepEqual(validateBomPetContractData(data), []);
+});
+
+test('classifies and builds both Bom Pet Saúde products with PHP-compatible values', async () => {
+  const people = [
+    {
+      is_titular: true, nome: 'CLIENTE TESTE', cpf: '529.982.247-25', data_nascimento: '1980-01-01',
+      sexo: 'M', telefone: '11999999999', email: 'cliente@example.com',
+    },
+    ...['A','B','C','D','E','F','G','JULIA'].map((name, index) => ({
+      source_order: index + 1, nome: `${name} / SRD / PRETO / GRANDE /`,
+      data_nascimento: '2020-01-01', sexo: index === 7 ? 'F' : 'M',
+      produtos: ['BOM PET SAÚDE - NOME DO PET', ...(index === 7 ? ['BOM PET SAÚDE - ADICIONAL PET'] : [])],
+    })),
+  ];
+  const detail = {
+    titular: people[0], pessoas: people, endereco: {
+      logradouro: 'RUA A', numero: '1', bairro: 'CENTRO', cidade: 'SAO PAULO', uf: 'SP', cep: '01001000',
+    }, email: 'cliente@example.com', plano_pagamento: 'CARNE', plano_pagamento_id: 48295856,
+    produtos: [
+      { id: 87982247, valor_total: 59.9 }, { id: 203567263, valor_total: 30 },
+      { id: 79080781, valor_total: 0.08 },
+    ],
+  };
+  assert.equal(detailMatchesContractProduct(detail, CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL), true);
+  assert.equal(detailMatchesContractProduct(detail, CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS), true);
+  const individual = buildBomPetHealthIndividualContractData(detail, new Date('2026-01-01T12:00:00Z'));
+  const three = buildBomPetHealthThreeContractData(detail, new Date('2026-01-01T12:00:00Z'));
+  assert.equal(individual.pets[0].name, 'JULIA');
+  assert.equal(individual.monthly_value, 30);
+  assert.equal(three.pets.length, 8);
+  assert.deepEqual(three.pets.map((pet) => pet.name), ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'JULIA']);
+  assert.equal(three.monthly_value, 89.9);
+  assert.equal(three.adhesion, 60);
+  assert.deepEqual(validateBomPetHealthContractData(individual), []);
+  assert.deepEqual(validateBomPetHealthContractData(three, 'three'), []);
+  assert.match(
+    validateBomPetHealthContractData({ ...three, pets: [...three.pets, ...three.pets].slice(0, 14) }, 'three').join(' '),
+    /no máximo 13 pets/,
+  );
+  assert.equal(bomPetPaymentCategory('CARNE', 48295856), 'bank');
+  assert.equal(CONTRACT_WHATSAPP_TEMPLATES[CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL].name, 'boas_vindas_bom_pet_saude');
+  for (const productKey of [CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL, CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS]) {
+    const delivery = buildContractWhatsAppDelivery({
+      productKey, holderName: 'CLIENTE TESTE', displayNumber: '73110', documentUrl: 'https://example.com/c.pdf',
+    });
+    assert.equal(delivery.templateId, '69ed0d552e1d23a0987f4330');
+    assert.equal(delivery.templateName, 'boas_vindas_bom_pet_saude');
+    assert.match(delivery.fileName, /^Contrato Bom Pet Saúde/);
+    assert.equal(delivery.components[1].parameters[0].text, 'CLIENTE TESTE');
+  }
+  assert.match(buildBomPetHealthWhatsAppMessage('CLIENTE TESTE'), /^Olá, CLIENTE TESTE,/);
+  const individualPdf = await renderBomPetHealthPdf(individual, 'individual');
+  const threePdf = await renderBomPetHealthPdf(three, 'three');
+  assert.equal((individualPdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 10);
+  assert.equal((threePdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 13);
 });
 
 test('keeps compatibility with the hyphen-delimited Bom Pet representation returned by legacy orders', () => {

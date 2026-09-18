@@ -6,11 +6,15 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const essentialPages = path.resolve(__dirname, '../../public/essential-contract');
 const bomPetPages = path.resolve(__dirname, '../../public/bom-pet-contract');
+const bomPetHealthIndividualPages = path.resolve(__dirname, '../../public/bom-pet-health-individual-contract');
+const bomPetHealthThreePages = path.resolve(__dirname, '../../public/bom-pet-health-three-contract');
 
 export const CONTRACT_PRODUCTS = Object.freeze({
   BOM_AUTO: 'bom_auto',
   ESSENCIAL: 'essencial',
   BOM_PET: 'bom_pet',
+  BOM_PET_SAUDE_INDIVIDUAL: 'bom_pet_saude_individual',
+  BOM_PET_SAUDE_3PETS: 'bom_pet_saude_3pets',
 });
 
 export const BOM_PET_PET_LAYOUT = Object.freeze({
@@ -48,6 +52,9 @@ export const BOM_PET_BASE_PRODUCT_IDS = Object.freeze([
   58947582, // CAMPINAS - BOM PET 2
   58947899, // CAMPINAS - BOM PET 4
 ]);
+export const BOM_PET_HEALTH_INDIVIDUAL_PRODUCT_IDS = Object.freeze([79080540, 203567263]);
+export const BOM_PET_HEALTH_THREE_PRODUCT_IDS = Object.freeze([87982247, 206547783]);
+export const BOM_PET_HEALTH_PET_LINK_PRODUCT_ID = 79080781;
 
 // Valor homologado pelo PDF original. O gerador legado lia este campo por
 // pedido; substituir a constante quando o acesso à API de totais for retomado.
@@ -63,6 +70,8 @@ const PRODUCT_LABELS = Object.freeze({
   [CONTRACT_PRODUCTS.BOM_AUTO]: 'Bom Auto',
   [CONTRACT_PRODUCTS.ESSENCIAL]: 'Essencial',
   [CONTRACT_PRODUCTS.BOM_PET]: 'Bom Pet',
+  [CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL]: 'Bom Pet Saúde',
+  [CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS]: 'Bom Pet Saúde - 3 Pets',
 });
 const BRAZILIAN_STATES = new Set([
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO',
@@ -102,6 +111,12 @@ export function detailMatchesContractProduct(detail, productKey) {
   }
   if (productKey === CONTRACT_PRODUCTS.BOM_PET) {
     return products.some((product) => BOM_PET_BASE_PRODUCT_IDS.includes(Number(product?.id)));
+  }
+  if (productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL) {
+    return products.some((product) => BOM_PET_HEALTH_INDIVIDUAL_PRODUCT_IDS.includes(Number(product?.id)));
+  }
+  if (productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS) {
+    return products.some((product) => BOM_PET_HEALTH_THREE_PRODUCT_IDS.includes(Number(product?.id)));
   }
   return false;
 }
@@ -197,7 +212,121 @@ export function buildBomPetContractData(detail, generatedAt = new Date()) {
   };
 }
 
-export const bomPetPaymentCategory = (description) => {
+const isHealthPetLink = (person) => (person?.produtos || []).some((description) => {
+  const normalized = normalizeText(description);
+  return normalized.includes('BOM PET SAUDE') && normalized.includes('NOME DO PET');
+});
+const isHealthAdditionalLink = (person) => (person?.produtos || []).some((description) => {
+  const normalized = normalizeText(description);
+  return normalized.includes('BOM PET SAUDE') && normalized.includes('ADICIONAL PET');
+});
+const healthData = (detail, generatedAt, pets, monthlyValue, variant) => {
+  const holder = detail?.titular || (detail?.pessoas || []).find((person) => person?.is_titular);
+  return {
+    name: holder?.nome || null, cpf: holder?.cpf || null, rg: holder?.rg || null,
+    birth_date: holder?.data_nascimento || null, sex: holder?.sexo || null,
+    marital_status: normalizeCivilStatus(holder?.estado_civil), profession: holder?.profissao || 'Outros',
+    address: detail?.endereco?.logradouro || holder?.endereco?.logradouro || null,
+    complement: detail?.endereco?.complemento || holder?.endereco?.complemento || null,
+    number: detail?.endereco?.numero || holder?.endereco?.numero || null,
+    district: detail?.endereco?.bairro || holder?.endereco?.bairro || null,
+    city: detail?.endereco?.cidade || holder?.endereco?.cidade || null,
+    state: detail?.endereco?.uf || holder?.endereco?.uf || null,
+    cep: detail?.endereco?.cep || holder?.endereco?.cep || null,
+    phone: holder?.telefone || null, phone2: holder?.telefone || null,
+    email: detail?.email || holder?.email || null, payment_plan: detail?.plano_pagamento || null,
+    payment_plan_id: detail?.plano_pagamento_id || null,
+    generated_at: saoPauloDate(generatedAt), monthly_value: roundCurrency(monthlyValue),
+    adhesion: variant === 'three' ? 60 : 0, pets,
+  };
+};
+
+export function buildBomPetHealthIndividualContractData(detail, generatedAt = new Date()) {
+  const products = Array.isArray(detail?.produtos) ? detail.produtos : [];
+  const people = Array.isArray(detail?.pessoas) ? detail.pessoas : [];
+  const hasAdditional = products.some((product) => Number(product?.id) === 203567263);
+  const linked = people.filter((person) => !person?.is_titular && isHealthPetLink(person));
+  const candidates = hasAdditional
+    ? linked.filter(isHealthAdditionalLink)
+    : linked;
+  const selected = [...candidates]
+    .sort((left, right) => Number(left?.source_order || 0) - Number(right?.source_order || 0))
+    .at(-1);
+  const valueIds = hasAdditional ? [203567263] : [79080540];
+  const value = products.filter((product) => valueIds.includes(Number(product?.id)))
+    .reduce((total, product) => total + amountOf(product), 0);
+  return healthData(detail, generatedAt, selected ? [petFromPerson(selected)] : [], value, 'individual');
+}
+
+export function buildBomPetHealthThreeContractData(detail, generatedAt = new Date()) {
+  const products = Array.isArray(detail?.produtos) ? detail.produtos : [];
+  const people = Array.isArray(detail?.pessoas) ? detail.pessoas : [];
+  const value = products
+    .filter((product) => [
+      ...BOM_PET_HEALTH_THREE_PRODUCT_IDS,
+      203567263,
+    ].includes(Number(product?.id)))
+    .reduce((total, product) => total + amountOf(product), 0);
+  return healthData(
+    detail,
+    generatedAt,
+    people
+      .filter((person) => !person?.is_titular && isHealthPetLink(person))
+      .map(petFromPerson),
+    value,
+    'three',
+  );
+}
+
+export function validateBomPetHealthContractData(data, variant = 'individual') {
+  const errors = [];
+  for (const [label, value] of [
+    ['nome do titular', data?.name], ['CPF do titular', data?.cpf], ['data de nascimento do titular', data?.birth_date],
+    ['sexo do titular', data?.sex], ['endereço', data?.address], ['número do endereço', data?.number],
+    ['bairro', data?.district], ['cidade', data?.city], ['estado', data?.state], ['CEP', data?.cep],
+    ['telefone', data?.phone], ['e-mail', data?.email], ['plano de pagamento', data?.payment_plan],
+    ['data de geração', data?.generated_at],
+  ]) if (!String(value ?? '').trim()) errors.push(`Campo obrigatório ausente: ${label}.`);
+  if (!isValidCpfValue(data?.cpf)) errors.push('CPF do titular inválido.');
+  if (data?.sex && !/^[FM]$/i.test(String(data.sex))) errors.push('Sexo do titular inválido.');
+  if (!BRAZILIAN_STATES.has(normalizeText(data?.state))) errors.push('Estado do endereço inválido.');
+  if (!/^\d{8}$/.test(String(data?.cep || '').replace(/\D/g, ''))) errors.push('CEP inválido.');
+  if (!/^\d{10,11}$/.test(String(data?.phone || '').replace(/\D/g, ''))) errors.push('Telefone inválido.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(data?.email || '').trim())) errors.push('E-mail inválido.');
+  if (!bomPetPaymentCategory(data?.payment_plan, data?.payment_plan_id)) errors.push('A forma de pagamento do Bom Pet Saúde não corresponde às opções do contrato.');
+  if (!Number.isFinite(Number(data?.monthly_value)) || Number(data.monthly_value) <= 0) errors.push('Valor mensal do Bom Pet Saúde inválido.');
+  const pets = Array.isArray(data?.pets) ? data.pets : [];
+  const max = variant === 'three' ? 13 : 1;
+  if (!pets.length) errors.push('Nenhum pet vinculado ao produto Bom Pet Saúde foi encontrado.');
+  if (pets.length > max) errors.push(`O contrato comporta no máximo ${max} pets.`);
+  pets.forEach((pet, index) => {
+    if (!pet?.name) errors.push(`Pet ${index + 1}: nome ausente.`);
+    if (!pet?.breed) errors.push(`Pet ${index + 1}: raça ausente.`);
+    if (!pet?.birth_date) errors.push(`Pet ${index + 1}: data de nascimento ausente.`);
+    if (!pet?.sex) errors.push(`Pet ${index + 1}: sexo ausente.`);
+  });
+  return errors;
+}
+
+const isValidCpfValue = (value) => {
+  const cpf = String(value || '').replace(/\D/g, '');
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+  const digits = cpf.split('').map(Number);
+  const calc = (length) => {
+    const total = digits.slice(0, length).reduce((sum, digit, index) => sum + digit * (length + 1 - index), 0);
+    const rest = (total * 10) % 11;
+    return rest === 10 ? 0 : rest;
+  };
+  return calc(9) === digits[9] && calc(10) === digits[10];
+};
+
+export const bomPetPaymentCategory = (description, planId = null) => {
+  if (planId != null && String(planId).trim() !== '') {
+    const id = Number(planId);
+    if ([46285, 47214448, 48395023, 88733784].includes(id)) return 'credit_card';
+    if ([25451, 48296791, 40564923, 48286734, 1643483, 48295856, 82623870].includes(id)) return 'bank';
+    return null;
+  }
   const normalized = normalizeText(description);
   if (normalized.includes('COBRADOR')) return 'collector';
   if ([
@@ -839,5 +968,98 @@ export function renderBomPetPdf(data) {
       doc.end();
       reject(error);
     }
+  });
+}
+
+export function renderBomPetHealthPdf(data, variant = 'individual') {
+  const pagesDir = variant === 'three' ? bomPetHealthThreePages : bomPetHealthIndividualPages;
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: false });
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+    const mm = (value) => value * 72 / 25.4;
+    const write = (value, x, y, options = {}) => {
+      const content = String(value ?? '').trim();
+      if (!content) return;
+      let size = options.size || 11;
+      doc.font('Times-Roman').fontSize(size);
+      while (options.width && doc.widthOfString(content) > mm(options.width) && size > (options.minSize || 6)) {
+        size -= 0.5; doc.fontSize(size);
+      }
+      doc.text(content, mm(x + 1), mm(y + 1), { width: options.width ? mm(options.width) : undefined, lineBreak: false });
+    };
+    const addPage = (page) => {
+      doc.addPage();
+      const background = path.join(pagesDir, `page-${page}.jpg`);
+      if (!fs.existsSync(background)) throw new Error(`Página ${page} do modelo Bom Pet Saúde não encontrada.`);
+      doc.image(background, 0, 0, { width: 595.28, height: 841.89 });
+      doc.fillColor('#111');
+    };
+    const writeCommon = () => {
+      const birth = dateParts(data.birth_date);
+      write(data.name, 25, variant === 'three' ? 75 : 79.5, { width: 118 });
+      const y = variant === 'three' ? 75 : 79.5;
+      write('X', normalizeText(data.sex).startsWith('F') ? 151 : 146, y);
+      const civil = normalizeText(data.marital_status);
+      write('X', civil.includes('SOLTEIR') ? 159 : civil.includes('CASAD') ? 164 : 169, y);
+      if (birth) write(`${birth.day}    ${birth.month_number}    ${birth.year}`, 179, y);
+      write(formatCpf(data.cpf), 25, y + 8, { width: 88 }); write(data.rg, 115, y + 8, { width: 85 });
+      write([data.address, data.complement].filter(Boolean).join(' - '), 25, y + 16, { width: 157 });
+      write(data.number, 185, y + 16, { width: 18 });
+      write(data.district, 25, y + 24, { width: 78 }); write(data.city, 108, y + 24, { width: 93 });
+      write(data.state, 25, y + 31); write(data.cep, 36, y + 31, { width: 38 });
+      write(String(data.phone || '').replace(/\D/g, ''), 78, y + 31, { width: 52 });
+      write(String(data.phone2 || '').replace(/\D/g, ''), 133, y + 31, { width: 67 });
+      write(data.profession || 'Outros', 25, y + 39, { width: 75 }); write(data.email, 107, y + 39, { width: 95 });
+    };
+    const writePets = (pets, pageIndex) => {
+      const start = pageIndex === 0 ? 0 : 3 + (pageIndex - 1) * 2;
+      const pagePets = pets.slice(start, pageIndex === 0 ? 3 : start + 2);
+      let y = pageIndex === 0 ? (variant === 'three' ? 133 : 149.5) : 163;
+      pagePets.forEach((pet, index) => {
+        write(pet.name, 25, y, { size: 9, width: 118 });
+        write('X', normalizeText(pet.sex).startsWith('F') ? 158 : 153, y, { size: 9 });
+        const detailY = pageIndex === 0 ? y + 8 : y + 9;
+        write(pet.breed, 25, detailY, { size: 9, width: 65 });
+        write(pet.color, 95, detailY, { size: 9, width: 48 });
+        write(petAge(pet.birth_date, data.generated_at), 148, detailY, { size: 9, width: 38 });
+        y += pageIndex === 0
+          ? (index === 0 ? 28 : 19)
+          : 18;
+      });
+    };
+    try {
+      const petPages = variant === 'three' ? Math.max(1, 1 + Math.ceil(Math.max(0, data.pets.length - 3) / 2)) : 1;
+      for (let page = 1; page <= 3; page += 1) addPage(page);
+      for (let group = 0; group < petPages; group += 1) {
+        addPage(4); writeCommon();
+        if (variant === 'three') {
+          write('60.00', 30, 47); write('X', 83, 44); write(money(data.monthly_value), 89, 47);
+        }
+        writePets(data.pets, group);
+        write(money(data.monthly_value), 160, variant === 'three' ? 216 : 187);
+        const generated = dateParts(data.generated_at);
+        if (generated) {
+          const dateY = variant === 'three' ? 219 : 190;
+          write(generated.day, 35, dateY); write(generated.month, 50, dateY, { width: 20 }); write(generated.year, 75, dateY);
+        }
+        const payment = bomPetPaymentCategory(data.payment_plan, data.payment_plan_id);
+        const paymentY = variant === 'three' ? 222 : 193;
+        const paymentX = payment === 'credit_card' ? 148 : payment === 'bank' ? 178 : null;
+        if (paymentX != null) write('X', paymentX, paymentY);
+      }
+      for (let page = 5; page <= 10; page += 1) {
+        addPage(page);
+        if (page === 10) {
+          const generated = dateParts(data.generated_at);
+          if (generated) {
+            write(generated.day, 115, 181); write(generated.month, 135, 181, { width: 30 }); write(generated.year.slice(-2), 175, 181);
+          }
+        }
+      }
+      doc.end();
+    } catch (error) { doc.end(); reject(error); }
   });
 }

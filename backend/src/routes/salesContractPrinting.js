@@ -29,15 +29,21 @@ import { decrypt } from '../utils/encryption.js';
 import {
   CONTRACT_PRODUCTS,
   BOM_PET_BASE_PRODUCT_IDS,
+  BOM_PET_HEALTH_INDIVIDUAL_PRODUCT_IDS,
+  BOM_PET_HEALTH_THREE_PRODUCT_IDS,
   ESSENTIAL_BASE_PRODUCT_IDS,
   buildBomPetContractData,
+  buildBomPetHealthIndividualContractData,
+  buildBomPetHealthThreeContractData,
   buildEssentialContractData,
   contractProductLabel,
   detailMatchesContractProduct,
   normalizeContractProduct,
   renderBomPetPdf,
+  renderBomPetHealthPdf,
   renderEssentialPdf,
   validateBomPetContractData,
+  validateBomPetHealthContractData,
   validateEssentialContractData,
 } from '../services/salesContractModels.js';
 
@@ -57,6 +63,14 @@ export const CONTRACT_WHATSAPP_TEMPLATES = Object.freeze({
   [CONTRACT_PRODUCTS.BOM_PET]: Object.freeze({
     id: '69ed0d552e1d23a0987f433f',
     name: 'bom_pet_boas_vindas',
+  }),
+  [CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL]: Object.freeze({
+    id: '69ed0d552e1d23a0987f4330',
+    name: 'boas_vindas_bom_pet_saude',
+  }),
+  [CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS]: Object.freeze({
+    id: '69ed0d552e1d23a0987f4330',
+    name: 'boas_vindas_bom_pet_saude',
   }),
 });
 const secret = () => {
@@ -235,6 +249,28 @@ Obrigado por sua confiança e pode contar com a gente! Qualquer dúvida, é só 
 Bom Pet - Grupo Bom Pastor Multiassistência.`;
 }
 
+export function buildBomPetHealthWhatsAppMessage(name) {
+  const holder = String(name || '').trim();
+  return `Olá, ${holder}, bem-vindo (a) ao Plano Bom Pet Saúde e Cremação. Ficamos muito felizes em receber você e seus filhos de patas! O Grupo Bom Pastor é uma empresa séria, que proporciona conforto e acolhimento em diversos momentos da vida.
+
+Salve este número, ele é muito importante: https://wa.me/558007793330. Será por ele que você poderá acessar as consultas para o seu Pet através da Telemedicina Veterinária.
+
+Em caso de óbito do Pet, ligue: 08009403227 (24h).
+
+Conheça os benefícios:
+
+Além de consultas ilimitadas com veterinários a qualquer hora, você ainda terá acesso a descontos em veterinários, pet shops, farmácias, recreação e muito mais.
+
+Acesse também nosso clube de descontos online com promoções exclusivas: https://bompastordescontosonline.com.br/.
+
+Concorra a prêmios de R$1.000 e R$5.000. Para participar, mantenha suas mensalidades em dia.
+
+Apoio psicológico profissional do Instituto de Apoio ao Luto.
+
+Obrigado por sua confiança e conte sempre com a gente!
+Bom Pet - Grupo Bom Pastor Multiassistência`;
+}
+
 export function buildContractWhatsAppDelivery({
   productKey,
   holderName,
@@ -243,9 +279,13 @@ export function buildContractWhatsAppDelivery({
 }) {
   const template = CONTRACT_WHATSAPP_TEMPLATES[productKey];
   if (!template) throw new Error('Produto sem template de contrato aprovado.');
+  if (!template.id) throw new Error('Template WhatsApp do Bom Pet Saúde ainda não foi configurado.');
   const isEssential = productKey === CONTRACT_PRODUCTS.ESSENCIAL;
   const isBomPet = productKey === CONTRACT_PRODUCTS.BOM_PET;
-  const productName = isEssential ? 'Essencial' : isBomPet ? 'Bom Pet' : 'Bom Auto';
+  const isBomPetHealth = productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL
+    || productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS;
+  const productName = isEssential ? 'Essencial' : isBomPet ? 'Bom Pet'
+    : isBomPetHealth ? 'Bom Pet Saúde' : 'Bom Auto';
   const fileName = `Contrato ${productName} ${displayNumber}.pdf`;
   return {
     templateId: template.id,
@@ -253,7 +293,9 @@ export function buildContractWhatsAppDelivery({
     fileName,
     caption: isEssential
       ? buildEssentialWhatsAppMessage(holderName)
-      : isBomPet
+      : isBomPetHealth
+        ? buildBomPetHealthWhatsAppMessage(holderName)
+        : isBomPet
         ? buildBomPetWhatsAppMessage(holderName)
         : buildBomAutoWhatsAppMessage(holderName),
     components: [
@@ -536,6 +578,18 @@ export async function findOrders(cpf, page, pageSize, reference = null) {
             WHERE ip.pedido_id=p.id
               AND ip.produto_id = ANY($6::bigint[])
          )
+         UNION ALL
+         SELECT 'bom_pet_saude_individual'::text
+          WHERE EXISTS (
+            SELECT 1 FROM itens_pedidos ip
+             WHERE ip.pedido_id=p.id AND ip.produto_id = ANY($7::bigint[])
+          )
+         UNION ALL
+         SELECT 'bom_pet_saude_3pets'::text
+          WHERE EXISTS (
+            SELECT 1 FROM itens_pedidos ip
+             WHERE ip.pedido_id=p.id AND ip.produto_id = ANY($8::bigint[])
+          )
       ) model ON TRUE
       GROUP BY p.id,p.pedido,p.contrato_id,cs.contrato_servicos,cs.data_contrato,p.data_emissao,
                p.data_inclusao,holder.nome_completo,model.product_key
@@ -549,6 +603,8 @@ export async function findOrders(cpf, page, pageSize, reference = null) {
     offset,
     ESSENTIAL_BASE_PRODUCT_IDS,
     BOM_PET_BASE_PRODUCT_IDS,
+    BOM_PET_HEALTH_INDIVIDUAL_PRODUCT_IDS,
+    BOM_PET_HEALTH_THREE_PRODUCT_IDS,
   ]);
   return {
     rows: result.rows.map((r) => classifyDocument({
@@ -609,6 +665,18 @@ export async function findOrdersByReference(reference, page, pageSize) {
             WHERE ip.pedido_id=p.id
               AND ip.produto_id = ANY($5::bigint[])
          )
+         UNION ALL
+         SELECT 'bom_pet_saude_individual'::text
+          WHERE EXISTS (
+            SELECT 1 FROM itens_pedidos ip
+             WHERE ip.pedido_id=p.id AND ip.produto_id = ANY($6::bigint[])
+          )
+         UNION ALL
+         SELECT 'bom_pet_saude_3pets'::text
+          WHERE EXISTS (
+            SELECT 1 FROM itens_pedidos ip
+             WHERE ip.pedido_id=p.id AND ip.produto_id = ANY($7::bigint[])
+          )
       ) model ON TRUE
      GROUP BY p.id,p.pedido,p.contrato_id,cs.contrato_servicos,cs.data_contrato,
                p.data_emissao,p.data_inclusao,holder.nome_completo,d.cpf_owner,model.product_key
@@ -621,6 +689,8 @@ export async function findOrdersByReference(reference, page, pageSize) {
     offset,
     ESSENTIAL_BASE_PRODUCT_IDS,
     BOM_PET_BASE_PRODUCT_IDS,
+    BOM_PET_HEALTH_INDIVIDUAL_PRODUCT_IDS,
+    BOM_PET_HEALTH_THREE_PRODUCT_IDS,
   ]);
   return {
     rows: result.rows.map((r) => classifyDocument({
@@ -672,18 +742,36 @@ router.get('/contracts/search', async (req, res) => {
 const buildProductContractData = (detail, productKey) => {
   if (productKey === CONTRACT_PRODUCTS.ESSENCIAL) return buildEssentialContractData(detail);
   if (productKey === CONTRACT_PRODUCTS.BOM_PET) return buildBomPetContractData(detail);
+  if (productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL) {
+    return buildBomPetHealthIndividualContractData(detail);
+  }
+  if (productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS) {
+    return buildBomPetHealthThreeContractData(detail);
+  }
   return contractData(detail);
 };
 
 const validateProductContractData = (data, productKey) => {
   if (productKey === CONTRACT_PRODUCTS.ESSENCIAL) return validateEssentialContractData(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_PET) return validateBomPetContractData(data);
+  if (productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL) {
+    return validateBomPetHealthContractData(data, 'individual');
+  }
+  if (productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS) {
+    return validateBomPetHealthContractData(data, 'three');
+  }
   return validateContractData(data);
 };
 
 const renderProductContract = (data, productKey, pedido) => {
   if (productKey === CONTRACT_PRODUCTS.ESSENCIAL) return renderEssentialPdf(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_PET) return renderBomPetPdf(data);
+  if (productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL) {
+    return renderBomPetHealthPdf(data, 'individual');
+  }
+  if (productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS) {
+    return renderBomPetHealthPdf(data, 'three');
+  }
   return renderPdf(data, pedido);
 };
 
@@ -691,6 +779,8 @@ const contractFileProduct = (productKey) => ({
   [CONTRACT_PRODUCTS.BOM_AUTO]: 'bom-auto',
   [CONTRACT_PRODUCTS.ESSENCIAL]: 'essencial',
   [CONTRACT_PRODUCTS.BOM_PET]: 'bom-pet',
+  [CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL]: 'bom-pet-saude-individual',
+  [CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS]: 'bom-pet-saude-3pets',
 })[productKey];
 
 router.post('/contracts/validate', async (req, res) => {
