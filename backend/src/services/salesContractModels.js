@@ -332,6 +332,20 @@ export const essentialLowerDueCheckX = (day) => ({
   25: 467.72,
 })[Number(day)] ?? null;
 
+export const essentialUpperDueCheckX = (day) => ({
+  10: 72.25,
+  15: 146.75,
+  20: 221.25,
+  25: 295.75,
+})[Number(day)] ?? null;
+
+export const essentialCivilCheckX = (value) => {
+  const civil = normalizeText(value);
+  if (civil.includes('SOLTEIR')) return 450;
+  if (civil.includes('CASAD')) return 467.5;
+  return 482.5;
+};
+
 const linkedEssentialProducts = (person) => (person?.produtos || [])
   .map(normalizeText)
   .filter((description) => description.includes('ESSENCIAL DEPENDENTE'));
@@ -635,13 +649,12 @@ export function renderEssentialPdf(data) {
         write(money(data.flowers_value), 374.17, 119.1);
         write(money(data.mileage_value), 447.87, 119.1);
         write(money(data.total_value), 525.83, 119.1);
-        const dueCheckX = { 10: 59.53, 15: 147, 20: 229, 25: 306 }[Number(data.due_day)];
+        const dueCheckX = essentialUpperDueCheckX(data.due_day);
         if (dueCheckX != null) write('X', dueCheckX, 147.44);
         write(data.name, 73.7, 172.96, { width: 330 });
         const holderSexX = normalizeText(data.sex).startsWith('F') ? 433.7 : 416.7;
         write('X', holderSexX, 172.96);
-        const civil = normalizeText(data.marital_status);
-        write('X', civil.includes('SOLTEIR') ? 467.72 : (civil.includes('CASAD') ? 484 : 500), 172.96);
+        write('X', essentialCivilCheckX(data.marital_status), 172.96);
         if (issue) {
           const birth = dateParts(data.birth_date);
           if (birth) {

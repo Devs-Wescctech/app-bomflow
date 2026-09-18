@@ -46,8 +46,10 @@ import {
   buildBomPetContractData,
   buildEssentialContractData,
   detailMatchesContractProduct,
+  essentialCivilCheckX,
   essentialLowerDueCheckX,
   essentialPaymentCategory,
+  essentialUpperDueCheckX,
   renderBomPetPdf,
   renderEssentialPdf,
   validateBomPetContractData,
@@ -641,6 +643,17 @@ test('positions every lower Essencial due-date marker inside its legacy checkbox
   assert.equal(essentialLowerDueCheckX(20), 413.86);
   assert.equal(essentialLowerDueCheckX(25), 467.72);
   assert.equal(essentialLowerDueCheckX(null), null);
+});
+
+test('positions upper Essencial due dates and civil status in their printed checkboxes', () => {
+  assert.equal(essentialUpperDueCheckX(10), 72.25);
+  assert.equal(essentialUpperDueCheckX(15), 146.75);
+  assert.equal(essentialUpperDueCheckX(20), 221.25);
+  assert.equal(essentialUpperDueCheckX(25), 295.75);
+  assert.equal(essentialUpperDueCheckX(12), null);
+  assert.equal(essentialCivilCheckX('SOLTEIRO'), 450);
+  assert.equal(essentialCivilCheckX('CASADO'), 467.5);
+  assert.equal(essentialCivilCheckX('OUTROS'), 482.5);
 });
 
 test('allows CPFL without a due day and carries optional ERP contract fields', () => {
