@@ -33,6 +33,7 @@ import {
   BOM_PET_HEALTH_THREE_PRODUCT_IDS,
   ESSENTIAL_BASE_PRODUCT_IDS,
   buildBomPetContractData,
+  buildBomCorpContractData,
   buildBomPetHealthIndividualContractData,
   buildBomPetHealthThreeContractData,
   buildEssentialContractData,
@@ -40,9 +41,11 @@ import {
   detailMatchesContractProduct,
   normalizeContractProduct,
   renderBomPetPdf,
+  renderBomCorpPdf,
   renderBomPetHealthPdf,
   renderEssentialPdf,
   validateBomPetContractData,
+  validateBomCorpContractData,
   validateBomPetHealthContractData,
   validateEssentialContractData,
 } from '../services/salesContractModels.js';
@@ -184,6 +187,7 @@ function issueId(req, cpf, row) {
     cpf: protectCpf(cpf),
     pedido: row.pedido || null,
     contrato: row.contrato || null,
+    companyId: row.companyId || null,
     displayNumber: row.displayNumber || null,
     productKey: normalizeContractProduct(row.productKey || CONTRACT_PRODUCTS.BOM_AUTO),
   }, secret(), { expiresIn: '10m' });
@@ -729,7 +733,7 @@ export async function findOrdersByReference(reference, page, pageSize) {
   };
 }
 
-export async function findBomCorpContracts(cnpj, page, pageSize, reference = null) {
+async function requestBomCorpRecords(cnpj) {
   const token = process.env.ERP_AUTH_TOKEN;
   if (!token) {
     const error = new Error('ERP_AUTH_TOKEN não configurado.');
@@ -768,13 +772,21 @@ export async function findBomCorpContracts(cnpj, page, pageSize, reference = nul
     error.statusCode = 502;
     throw error;
   }
+  return records;
+}
+
+export async function findBomCorpContracts(cnpj, page, pageSize, reference = null) {
+  const records = await requestBomCorpRecords(cnpj);
   const contracts = new Map();
   for (const record of records) {
     const contract = String(record?.numero_contrato || '').replace(/\D/g, '');
     if (!contract || (reference && contract !== reference)) continue;
     const existing = contracts.get(contract);
     if (existing) {
-      existing.lifeCount += 1;
+      existing.employeeIds.add(String(
+        record?.colaborador_vinculo_id
+          || `${record?.colaborador_cpf || ''}:${record?.colaborador_nome || ''}`,
+      ));
       continue;
     }
     contracts.set(contract, {
@@ -782,18 +794,124 @@ export async function findBomCorpContracts(cnpj, page, pageSize, reference = nul
       product_key: CONTRACT_PRODUCTS.BOM_CORP,
       name: String(record?.empresa_razao_social || '').trim() || null,
       issue_date: record?.data_contrato || null,
-      lifeCount: 1,
+      employeeIds: new Set([String(
+        record?.colaborador_vinculo_id
+          || `${record?.colaborador_cpf || ''}:${record?.colaborador_nome || ''}`,
+      )]),
       contractValue: Number(record?.valor_contrato || 0),
-      pdfAvailable: false,
+      companyId: record?.empresa_id ? String(record.empresa_id) : null,
+      pdfAvailable: true,
     });
   }
-  const sorted = [...contracts.values()].sort((a, b) =>
+  const sorted = [...contracts.values()].map(({ employeeIds, ...row }) => ({
+    ...row,
+    lifeCount: employeeIds.size,
+  })).sort((a, b) =>
     String(b.issue_date || '').localeCompare(String(a.issue_date || '')));
   const offset = (page - 1) * pageSize;
   return {
     rows: sorted.slice(offset, offset + pageSize).map((row) => classifyDocument(row)),
     total: sorted.length,
   };
+}
+
+export async function loadBomCorpContractData(claims) {
+  const companyId = String(claims.companyId || '').replace(/\D/g, '');
+  const contract = String(claims.contrato || '').replace(/\D/g, '');
+  if (!companyId || !contract) {
+    const error = new Error('Identificador corporativo inválido ou expirado.');
+    error.statusCode = 422;
+    throw error;
+  }
+  const db = getErpPool();
+  const companyResult = await db.query(
+    `SELECT p.id, p.nome_completo, p.e_mail_1,
+            regexp_replace(dp.documento, '\\D', '', 'g') AS cnpj
+       FROM pessoas p
+       JOIN documentos_pessoas dp ON dp.pessoa_id = p.id AND dp.tipo_documento_id = 579
+      WHERE p.id = $1
+      LIMIT 1`,
+    [companyId],
+  );
+  const company = companyResult.rows[0];
+  const cnpj = normalizeCnpj(company?.cnpj);
+  if (!cnpj || protectCpf(cnpj) !== claims.cpf) {
+    const error = new Error('A empresa do contrato não corresponde ao CNPJ consultado.');
+    error.statusCode = 422;
+    throw error;
+  }
+  const records = (await requestBomCorpRecords(cnpj)).filter((record) =>
+    String(record?.numero_contrato || '').replace(/\D/g, '') === contract
+      && String(record?.empresa_id || '') === companyId);
+  if (!records.length) {
+    const error = new Error('O contrato Bom Corp não foi encontrado para esta empresa.');
+    error.statusCode = 422;
+    throw error;
+  }
+  const [addressResult, contactsResult] = await Promise.all([
+    db.query(
+      `SELECT en.codigo_postal, en.endereco, en.numero, en.complemento, en.bairro, c.cidade
+         FROM enderecos en
+         LEFT JOIN cidades c ON c.id = en.cidade_id
+        WHERE en.pessoa_id = $1 AND en.tipo_endereco_id = 577 AND en.ativo = 'S'
+        ORDER BY en.sequencia ASC NULLS LAST, en.id ASC
+        LIMIT 1`,
+      [companyId],
+    ),
+    db.query(
+      `SELECT tipo_endereco_id, endereco
+         FROM enderecos
+        WHERE pessoa_id = $1
+          AND tipo_endereco_id IN (565, 12190362, 574, 573, 566)
+          AND ativo = 'S'
+        ORDER BY CASE tipo_endereco_id
+                   WHEN 565 THEN 1 WHEN 12190362 THEN 2 WHEN 574 THEN 3
+                   WHEN 573 THEN 4 WHEN 566 THEN 5 ELSE 6
+                 END, id DESC`,
+      [companyId],
+    ),
+  ]);
+  const address = addressResult.rows[0] || {};
+  const cityMatch = String(address.cidade || '').trim().match(/^(.*?)\s*-\s*([A-Z]{2})$/i);
+  const contacts = contactsResult.rows;
+  const phones = contacts
+    .filter((row) => Number(row.tipo_endereco_id) !== 566)
+    .map((row) => row.endereco)
+    .filter(Boolean);
+  const email = contacts.find((row) => Number(row.tipo_endereco_id) === 566)?.endereco
+    || company.e_mail_1
+    || '';
+  const uniqueRecords = [...new Map(records.map((record) => [
+    String(record.colaborador_vinculo_id
+      || `${record.colaborador_cpf || ''}:${record.colaborador_nome || ''}`),
+    record,
+  ])).values()];
+  const first = uniqueRecords[0];
+  return buildBomCorpContractData({
+    company_name: first.empresa_razao_social || company.nome_completo,
+    cnpj,
+    address: address.endereco,
+    number: address.numero,
+    complement: address.complemento,
+    district: address.bairro,
+    city: cityMatch?.[1]?.trim() || address.cidade,
+    state: cityMatch?.[2]?.toUpperCase() || '',
+    cep: address.codigo_postal,
+    phone: phones[0],
+    phone2: phones[1],
+    email,
+    contract,
+    plan: first.plano,
+    issue_date: first.data_contrato,
+    contract_value: first.valor_contrato,
+    employees: uniqueRecords.map((record) => ({
+      id: record.colaborador_vinculo_id,
+      name: record.colaborador_nome,
+      cpf: record.colaborador_cpf,
+      birth_date: record.colaborador_nascimento || null,
+      phone: record.colaborador_telefone || '',
+    })),
+  });
 }
 
 router.use(authMiddleware, loadAgentMiddleware, requireSalesContractPrinting);
@@ -821,9 +939,9 @@ router.get('/contracts/search', async (req, res) => {
       : cpf
         ? await findOrders(cpf, page, pageSize, reference || null)
         : await findOrdersByReference(reference, page, pageSize);
-    found.rows = found.rows.map(({ cpfOwner, ...row }) => ({
+    found.rows = found.rows.map(({ cpfOwner, companyId, ...row }) => ({
       ...row,
-      generationId: issueId(req, cpf || cnpj || cpfOwner, row),
+      generationId: issueId(req, cpf || cnpj || cpfOwner, { ...row, companyId }),
     }));
     await audit(req, auditKey, null, found.rows.length ? 'success' : 'empty', 'lookup', { required: true });
     res.json({ ...found, page, pageSize });
@@ -846,6 +964,7 @@ const buildProductContractData = (detail, productKey) => {
 };
 
 const validateProductContractData = (data, productKey) => {
+  if (productKey === CONTRACT_PRODUCTS.BOM_CORP) return validateBomCorpContractData(data);
   if (productKey === CONTRACT_PRODUCTS.ESSENCIAL) return validateEssentialContractData(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_PET) return validateBomPetContractData(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL) {
@@ -863,6 +982,7 @@ const renderProductContract = (
   pedido,
   { optimizeForWhatsapp = false } = {},
 ) => {
+  if (productKey === CONTRACT_PRODUCTS.BOM_CORP) return renderBomCorpPdf(data);
   if (productKey === CONTRACT_PRODUCTS.ESSENCIAL) return renderEssentialPdf(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_PET) {
     return renderBomPetPdf(data, { optimizeForWhatsapp });
@@ -878,6 +998,7 @@ const renderProductContract = (
 
 const contractFileProduct = (productKey) => ({
   [CONTRACT_PRODUCTS.BOM_AUTO]: 'bom_auto',
+  [CONTRACT_PRODUCTS.BOM_CORP]: 'bom_corp',
   [CONTRACT_PRODUCTS.ESSENCIAL]: 'essencial',
   [CONTRACT_PRODUCTS.BOM_PET]: 'bom_pet',
   [CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL]: 'bom_pet_saude_individual',
@@ -901,6 +1022,15 @@ router.post('/contracts/validate', async (req, res) => {
       return res.status(422).json({
         message: 'Identificador de produto inválido ou expirado. Faça uma nova busca.',
       });
+    }
+    if (productKey === CONTRACT_PRODUCTS.BOM_CORP) {
+      const data = await loadBomCorpContractData(claims);
+      const errors = validateBomCorpContractData(data);
+      if (errors.length) {
+        await audit(req, `hash:${claims.cpf}`, claims, 'validation_error', 'validation');
+        return res.status(422).json({ message: 'Dados do ERP incompletos ou inconsistentes.', errors });
+      }
+      return res.json({ valid: true });
     }
     const detail = await getOrcamentoDetalhe(Number(claims.pedido));
     const titular = detail?.titular;
@@ -951,6 +1081,19 @@ router.post('/contracts/generate', async (req, res) => {
       return res.status(422).json({
         message: 'Identificador de produto inválido ou expirado. Faça uma nova busca.',
       });
+    }
+    if (productKey === CONTRACT_PRODUCTS.BOM_CORP) {
+      const data = await loadBomCorpContractData(claims);
+      const errors = validateBomCorpContractData(data);
+      if (errors.length) {
+        await audit(req, `hash:${claims.cpf}`, claims, 'validation_error', 'generation');
+        return res.status(422).json({ message: 'Dados do ERP incompletos ou inconsistentes.', errors });
+      }
+      const pdf = await renderBomCorpPdf(data);
+      await audit(req, `hash:${claims.cpf}`, claims, 'success', 'generation', { required: true });
+      return res.type('application/pdf')
+        .set('Content-Disposition', `inline; filename="contrato_bom_corp_${claims.contrato}.pdf"`)
+        .send(pdf);
     }
     const detail = await getOrcamentoDetalhe(Number(claims.pedido));
     // O row retornado pela busca é a autoridade do titular; não use o nome

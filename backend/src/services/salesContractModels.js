@@ -8,6 +8,7 @@ import { promisify } from 'util';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const essentialPages = path.resolve(__dirname, '../../public/essential-contract');
+const bomCorpPages = path.resolve(__dirname, '../../public/bom-corp-contract');
 const bomPetPages = path.resolve(__dirname, '../../public/bom-pet-contract');
 const bomPetHealthIndividualPages = path.resolve(__dirname, '../../public/bom-pet-health-individual-contract');
 const bomPetHealthThreePages = path.resolve(__dirname, '../../public/bom-pet-health-three-contract');
@@ -146,6 +147,45 @@ const productMatches = (product, matcher) => matcher(normalizeText(product?.desc
 
 export const contractProductLabel = (productKey) =>
   PRODUCT_LABELS[productKey] || null;
+
+export const buildBomCorpContractData = (source = {}) => ({
+  company_name: String(source.company_name || '').trim(),
+  cnpj: String(source.cnpj || '').replace(/\D/g, ''),
+  state_registration: String(source.state_registration || '').trim(),
+  address: String(source.address || '').trim(),
+  number: String(source.number || '').trim(),
+  complement: String(source.complement || '').trim(),
+  district: String(source.district || '').trim(),
+  city: String(source.city || '').trim(),
+  state: String(source.state || '').trim().toUpperCase(),
+  cep: String(source.cep || '').trim(),
+  phone: String(source.phone || '').trim(),
+  phone2: String(source.phone2 || '').trim(),
+  email: String(source.email || '').trim(),
+  contract: String(source.contract || '').replace(/\D/g, ''),
+  plan: String(source.plan || '').trim(),
+  issue_date: source.issue_date || null,
+  contract_value: Number(source.contract_value || 0),
+  observations: String(source.observations || '').trim(),
+  employees: Array.isArray(source.employees)
+    ? source.employees.map((employee) => ({
+        id: String(employee?.id || '').trim(),
+        name: String(employee?.name || '').trim(),
+        cpf: String(employee?.cpf || '').trim(),
+        birth_date: employee?.birth_date || null,
+        phone: String(employee?.phone || '').trim(),
+      })).filter((employee) => employee.name)
+    : [],
+});
+
+export const validateBomCorpContractData = (data) => {
+  const errors = [];
+  if (!data?.company_name) errors.push('Razão social da empresa ausente.');
+  if (!/^\d{14}$/.test(String(data?.cnpj || ''))) errors.push('CNPJ da empresa inválido.');
+  if (!data?.contract) errors.push('Número do contrato Bom Corp ausente.');
+  if (!data?.employees?.length) errors.push('Nenhum colaborador foi encontrado para o contrato Bom Corp.');
+  return errors;
+};
 
 export const normalizeContractProduct = (value) =>
   Object.values(CONTRACT_PRODUCTS).includes(value) ? value : null;
@@ -755,12 +795,120 @@ const formatCpf = (value) => {
     : String(value || '');
 };
 
+const formatCnpj = (value) => {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 14);
+  return digits.length === 14
+    ? digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
+    : String(value || '');
+};
+
 const formatPhone = (value) => {
   const digits = String(value || '').replace(/\D/g, '').slice(0, 11);
   if (digits.length === 11) return digits.replace(/(\d{2})(\d{5})(\d{4})/, '$1 $2-$3');
   if (digits.length === 10) return digits.replace(/(\d{2})(\d{4})(\d{4})/, '$1 $2-$3');
   return String(value || '');
 };
+
+export async function renderBomCorpPdf(data) {
+  const backgrounds = await prepareContractBackgrounds(
+    bomCorpPages,
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    false,
+  );
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: false });
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+    const mm = (value) => value * 72 / 25.4;
+    const write = (value, x, y, { size = 10, width = null, minSize = 6 } = {}) => {
+      const content = String(value ?? '').trim();
+      if (!content) return;
+      doc.font('Times-Roman').fontSize(size);
+      let fontSize = size;
+      while (width && doc.widthOfString(content) > mm(width) && fontSize > minSize) {
+        fontSize -= 0.5;
+        doc.fontSize(fontSize);
+      }
+      doc.text(content, mm(x + 1), mm(y + 1), {
+        width: width ? mm(width) : undefined,
+        lineBreak: false,
+      });
+    };
+    const addPage = (page) => {
+      doc.addPage();
+      doc.image(backgrounds.get(page), 0, 0, { width: 595.28, height: 841.89 });
+      doc.fillColor('#111');
+    };
+    const issue = dateParts(data.issue_date) || dateParts(new Date());
+    const plan = normalizeText(data.plan);
+    const planX = plan.includes('ESSENTIAL') ? 29
+      : plan.includes('PLUS') ? 65
+        : plan.includes('PRIME') ? 101
+          : plan.includes('TOTAL') ? 137
+            : plan.includes('FLEX') ? 172
+              : null;
+    const employees = data.employees || [];
+    const employeePages = Math.max(1, Math.ceil(employees.length / 22));
+    const writeEnrollmentPage = (pageIndex) => {
+      addPage(3);
+      if (planX != null) write('X', planX, 44, { size: 15 });
+      write(data.company_name, 25, 56, { size: 11, width: 118 });
+      write(formatCnpj(data.cnpj), 25, 64, { size: 11, width: 88 });
+      write(data.state_registration, 115, 64, { size: 11, width: 85 });
+      write([data.address, data.complement].filter(Boolean).join(' - '), 25, 71.5, {
+        size: 11,
+        width: 157,
+      });
+      write(data.number, 186, 71.5, { size: 11, width: 18 });
+      write(data.district, 25, 78.5, { size: 11, width: 78 });
+      write(data.city, 108, 78.5, { size: 11, width: 93 });
+      write(data.state, 25, 85.5, { size: 11, width: 8 });
+      const cep = String(data.cep || '').replace(/\D/g, '').slice(0, 8);
+      [36, 41, 46, 50, 55, 63, 67, 72]
+        .forEach((x, index) => write(cep[index], x, 85.5, { size: 10 }));
+      write(String(data.phone || '').replace(/\D/g, ''), 78, 85.5, { size: 11, width: 52 });
+      write(String(data.phone2 || '').replace(/\D/g, ''), 133, 85.5, { size: 11, width: 67 });
+      write(data.email, 25, 92.5, { size: 10, width: 100 });
+      employees.slice(pageIndex * 22, pageIndex * 22 + 22).forEach((employee, index) => {
+        const y = 100 + index * (index >= 2 ? 5.5 : 6);
+        write(employee.name, 25, y, { size: 9, width: 78 });
+        write(formatCpf(employee.cpf), 105, y, { size: 9, width: 37 });
+        const birth = dateParts(employee.birth_date);
+        if (birth) write(`${birth.day}   ${birth.month_number}   ${birth.year}`, 144, y, { size: 9, width: 29 });
+        write(formatPhone(employee.phone), 175, y, { size: 9, width: 28 });
+      });
+      write(data.observations, 35, 222, { size: 9, width: 165 });
+      if (issue) {
+        write(issue.day, 36, 242, { size: 11 });
+        write(issue.month, 50, 242, { size: 11, width: 22 });
+        write(issue.year, 74, 242, { size: 11 });
+      }
+      write(employees.length, 115, 242, { size: 11 });
+      write(money(data.contract_value), 165, 242, { size: 11 });
+    };
+    try {
+      addPage(1);
+      addPage(2);
+      for (let pageIndex = 0; pageIndex < employeePages; pageIndex += 1) {
+        writeEnrollmentPage(pageIndex);
+      }
+      for (let page = 4; page <= 11; page += 1) {
+        addPage(page);
+        if (page === 11 && issue) {
+          write(issue.day, 115, 230, { size: 12 });
+          write(issue.month, 131, 230, { size: 12, width: 40 });
+          write(issue.year.slice(-2), 173, 230, { size: 12 });
+        }
+      }
+      doc.end();
+    } catch (error) {
+      doc.end();
+      reject(error);
+    }
+  });
+}
 
 export function renderEssentialPdf(data) {
   return new Promise((resolve, reject) => {

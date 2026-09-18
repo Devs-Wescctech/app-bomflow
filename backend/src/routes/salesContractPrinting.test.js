@@ -46,6 +46,7 @@ import {
   BOM_PET_PET_LAYOUT,
   CONTRACT_PRODUCTS,
   ESSENTIAL_BASE_PRODUCT_IDS,
+  buildBomCorpContractData,
   bomPetPaymentCategory,
   buildBomPetContractData,
   buildBomPetHealthIndividualContractData,
@@ -57,9 +58,11 @@ import {
   essentialPaymentCategory,
   essentialUpperDueCheckX,
   renderBomPetPdf,
+  renderBomCorpPdf,
   renderBomPetHealthPdf,
   renderEssentialPdf,
   validateBomPetContractData,
+  validateBomCorpContractData,
   validateBomPetHealthContractData,
   validateEssentialContractData,
 } from '../services/salesContractModels.js';
@@ -77,6 +80,29 @@ test('validates CNPJ check digits before consulting ERP', () => {
   assert.equal(isValidCnpj('19.367.986/0001-60'), true);
   assert.equal(isValidCnpj('19.367.986/0001-61'), false);
   assert.equal(isValidCnpj('11.111.111/1111-11'), false);
+});
+
+test('builds and validates Bom Corp data without inventing optional company fields', () => {
+  const data = buildBomCorpContractData({
+    company_name: 'EMPRESA TESTE LTDA',
+    cnpj: '19.367.986/0001-60',
+    contract: '132383',
+    plan: 'BOMCORP PRIME',
+    issue_date: '2025-07-31',
+    contract_value: 224.5,
+    employees: [
+      { id: 1, name: 'COLABORADOR UM', cpf: '529.982.247-25' },
+      { id: 2, name: 'COLABORADOR DOIS', cpf: '' },
+    ],
+  });
+  assert.equal(data.cnpj, '19367986000160');
+  assert.equal(data.address, '');
+  assert.equal(data.employees.length, 2);
+  assert.deepEqual(validateBomCorpContractData(data), []);
+  assert.match(
+    validateBomCorpContractData(buildBomCorpContractData({})).join(' '),
+    /Razão social|CNPJ|Número do contrato|Nenhum colaborador/,
+  );
 });
 
 test('validates Brazilian WhatsApp recipients without comparing them to the ERP phone', () => {
@@ -1078,6 +1104,25 @@ test('contract PDF uses official seven-page background', async () => {
   const pdf = await renderPdf({ name: 'Titular', cpf: '52998224725', issue_date: '2025-01-01', vehicles: [] }, 10);
   assert.ok(pdf.length > 1000000);
   assert.ok((pdf.toString('latin1').match(/\/Subtype\s*\/Image/g) || []).length >= 7);
+});
+
+test('Bom Corp PDF uses all official pages and repeats the enrollment page for over 22 employees', async () => {
+  const pdf = await renderBomCorpPdf(buildBomCorpContractData({
+    company_name: 'EMPRESA TESTE LTDA',
+    cnpj: '19367986000160',
+    contract: '132383',
+    plan: 'BOMCORP PRIME',
+    issue_date: '2025-07-31',
+    contract_value: 224.5,
+    employees: Array.from({ length: 23 }, (_, index) => ({
+      id: index + 1,
+      name: `COLABORADOR ${index + 1}`,
+      cpf: index === 0 ? '52998224725' : '',
+    })),
+  }));
+  assert.ok(pdf.length > 5000000);
+  assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 12);
+  assert.ok((pdf.toString('latin1').match(/\/Subtype\s*\/Image/g) || []).length >= 11);
 });
 
 test('Essencial PDF uses the fourteen printed JPEG pages and excludes PG-15', async () => {
