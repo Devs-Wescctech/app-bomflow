@@ -4,7 +4,10 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Loader2, FileText, Search, AlertCircle, Send, CheckCircle2 } from "lucide-react";
+import {
+  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Loader2, FileText, Search, AlertCircle, Send, CheckCircle2, Info } from "lucide-react";
 
 const token = () => localStorage.getItem("accessToken") || localStorage.getItem("auth_token");
 const documentMask = (value) => {
@@ -58,7 +61,7 @@ const hasWhatsAppTemplate = (row) => {
   return productKey !== "bom_corp" && productName !== "bom corp";
 };
 const BOM_CORP_WHATSAPP_UNAVAILABLE =
-  "Não há template de envio cadastrado para o Bom Corp no WHU.";
+  "O Bom Corp ainda não possui um modelo de mensagem cadastrado. Você pode baixar o PDF e enviá-lo manualmente.";
 const PAGE_SIZE = 20;
 const contractFileName = (row) => {
   const product = String(row.product || "contrato")
@@ -354,20 +357,12 @@ export default function SalesContractPrinting() {
                     : <FileText className="action-pill-icon h-4 w-4" />}
                   {generatingId === row.generationId ? "Gerando PDF..." : "Gerar PDF"}
               </button>
-                <span
-                  className="inline-flex"
-                  title={hasWhatsAppTemplate(row) ? undefined : BOM_CORP_WHATSAPP_UNAVAILABLE}
-                >
+                 {hasWhatsAppTemplate(row) ? (
                   <button
                     type="button"
-                    className={hasWhatsAppTemplate(row)
-                      ? "action-pill-primary h-10 px-4"
-                      : "action-pill-ghost h-10 cursor-not-allowed border-border bg-muted px-4 text-muted-foreground opacity-100 shadow-none"}
-                    disabled={!hasWhatsAppTemplate(row)
-                      || whatsapp.checkingGenerationId === row.generationId}
-                    aria-label={hasWhatsAppTemplate(row)
-                      ? "Enviar contrato pelo WhatsApp"
-                      : `Enviar contrato pelo WhatsApp indisponível. ${BOM_CORP_WHATSAPP_UNAVAILABLE}`}
+                     className="action-pill-primary h-10 px-4"
+                     disabled={whatsapp.checkingGenerationId === row.generationId}
+                     aria-label="Enviar contrato pelo WhatsApp"
                     onClick={() => openWhatsapp(row)}
                   >
                     {whatsapp.checkingGenerationId === row.generationId
@@ -375,7 +370,43 @@ export default function SalesContractPrinting() {
                       : <Send className="h-4 w-4" />}
                     {whatsapp.checkingGenerationId === row.generationId ? "Validando..." : "Enviar WhatsApp"}
                   </button>
-                </span>
+                 ) : (
+                   <TooltipProvider delayDuration={150}>
+                     <Tooltip>
+                       <TooltipTrigger asChild>
+                         <span
+                           className="inline-flex rounded-full focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15"
+                           tabIndex={0}
+                           aria-label={`Enviar WhatsApp indisponível. ${BOM_CORP_WHATSAPP_UNAVAILABLE}`}
+                         >
+                           <button
+                             type="button"
+                             className="action-pill-primary h-10 cursor-not-allowed px-4 !bg-muted !text-muted-foreground !opacity-100 !shadow-none hover:!translate-y-0"
+                             disabled
+                           >
+                             <Send className="h-4 w-4" />
+                             Enviar WhatsApp
+                           </button>
+                         </span>
+                       </TooltipTrigger>
+                       <TooltipContent
+                         side="top"
+                         sideOffset={8}
+                         className="max-w-[300px] rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-lg"
+                       >
+                         <div className="flex items-start gap-2.5">
+                           <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                           <div className="space-y-1">
+                             <p className="font-semibold">WhatsApp ainda não disponível</p>
+                             <p className="leading-relaxed text-muted-foreground">
+                               {BOM_CORP_WHATSAPP_UNAVAILABLE}
+                             </p>
+                           </div>
+                         </div>
+                       </TooltipContent>
+                     </Tooltip>
+                   </TooltipProvider>
+                 )}
            </div>
         </div>)}
          {totalPages > 1 && (
