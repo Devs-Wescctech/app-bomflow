@@ -190,9 +190,9 @@ export default function SalesContractSigning() {
   };
 
   const totalPages = Math.max(1, Math.ceil(state.total / state.pageSize));
-  const productLabels = { bom_auto: "Bom Auto", essencial: "Essencial", bom_pet: "Bom Pet" };
+  const productLabels = { bom_auto: "Bom Auto", bom_med: "Bom Med", essencial: "Essencial", bom_pet: "Bom Pet" };
   const productName = (row) => row.product || row.productName || productLabels[row.productKey] || "";
-  const groupedResults = ["Bom Auto", "Essencial", "Bom Pet"].map((product) => ({
+  const groupedResults = ["Bom Auto", "Bom Med", "Essencial", "Bom Pet"].map((product) => ({
     product,
     rows: state.results.filter((row) => productName(row).toLowerCase().includes(product.toLowerCase())),
   })).filter((group) => group.rows.length);
@@ -205,7 +205,7 @@ export default function SalesContractSigning() {
           </div>
           <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">Assinatura de Contrato</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Encontre contratos elegíveis de Bom Auto, Essencial e Bom Pet por CPF ou pedido. A captura abaixo é uma prévia local, sem persistência.
+            Encontre contratos elegíveis de Bom Auto, Bom Med, Essencial e Bom Pet por CPF ou pedido. A captura abaixo é uma prévia local, sem persistência.
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-800">

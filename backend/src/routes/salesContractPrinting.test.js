@@ -10,6 +10,11 @@ import {
   validateBomIdealContractData,
 } from '../services/bomIdealContract.js';
 import {
+  BOM_MED_BASE_PRODUCT_IDS,
+  renderBomMedPdf,
+  validateBomMedContractData,
+} from '../services/bomMedContract.js';
+import {
   bomAutoPaymentCategory,
   classifyDocument,
   buildBomAutoWhatsAppMessage,
@@ -152,6 +157,48 @@ test('validates the Bom Ideal contract fields and legacy payment categories', ()
   assert.match(
     validateBomIdealContractData({ ...data, children: Array(5).fill(data.children[0]) }).join(' '),
     /máximo 4 filhos/i,
+  );
+});
+
+test('recognizes and validates the Bom Med contract without treating it as Essencial', () => {
+  const data = {
+    pedido: '80442',
+    name: 'TITULAR TESTE',
+    cpf: '529.982.247-25',
+    birth_date: '1990-03-30',
+    sex: 'FEMININO',
+    marital_status: 'OUTROS',
+    address: 'RUA TESTE',
+    number: '10',
+    district: 'CENTRO',
+    city: 'LIMEIRA',
+    state: 'SP',
+    cep: '13480000',
+    phone: '19999999999',
+    standard_value: 59.9,
+    dependent_value: 0,
+    monthly_value: 59.9,
+    due_day: 25,
+    dependents: Array.from({ length: 8 }, (_, index) => ({
+      name: `DEPENDENTE ${index + 1}`,
+      cpf: '529.982.247-25',
+      birth_date: '2000-01-01',
+      phone: '19999999999',
+      sex: index % 2 ? 'M' : 'F',
+      price: 0.01,
+    })),
+  };
+  assert.equal(BOM_MED_BASE_PRODUCT_IDS.includes(48337330), true);
+  assert.equal(CONTRACT_PRODUCTS.BOM_MED, 'bom_med');
+  assert.equal(classifyDocument({
+    pedido: '373684915',
+    numero_pedido: '80442',
+    product_key: 'bom_med',
+  }).product, 'Bom Med');
+  assert.deepEqual(validateBomMedContractData(data), []);
+  assert.match(
+    validateBomMedContractData({ ...data, dependents: Array(10).fill(data.dependents[0]) }).join(' '),
+    /máximo 9 dependentes/i,
   );
 });
 
@@ -1206,6 +1253,32 @@ test('Bom Ideal PDF uses the official sixteen-page model', async () => {
   });
   assert.equal(pdf.subarray(0, 4).toString(), '%PDF');
   assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 16);
+});
+
+test('Bom Med PDF uses the six official pages', async () => {
+  const pdf = await renderBomMedPdf({
+    pedido: '80442',
+    name: 'TITULAR TESTE',
+    cpf: '529.982.247-25',
+    birth_date: '1990-03-30',
+    sex: 'FEMININO',
+    marital_status: 'OUTROS',
+    address: 'RUA TESTE',
+    number: '10',
+    district: 'CENTRO',
+    city: 'LIMEIRA',
+    state: 'SP',
+    cep: '13480000',
+    phone: '19999999999',
+    standard_value: 59.9,
+    dependent_value: 0.08,
+    monthly_value: 59.98,
+    due_day: 25,
+    issue_date: '2026-09-18',
+    dependents: [],
+  });
+  assert.equal(pdf.subarray(0, 4).toString(), '%PDF');
+  assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 6);
 });
 
 test('Essencial PDF uses the fourteen printed JPEG pages and excludes PG-15', async () => {
