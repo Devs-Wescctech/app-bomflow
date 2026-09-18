@@ -16,6 +16,7 @@ import {
   legacyProfession,
   isValidCpf,
   isValidCnpj,
+  bomCorpPrintableRecords,
   isValidWhatsappRecipient,
   waitForWhatsAppDelivery,
   validateContractData,
@@ -103,6 +104,17 @@ test('builds and validates Bom Corp data without inventing optional company fiel
     validateBomCorpContractData(buildBomCorpContractData({})).join(' '),
     /Razão social|CNPJ|Número do contrato|Nenhum colaborador/,
   );
+});
+
+test('Bom Corp prints and counts only unique employees with CPF, matching the legacy contract rule', () => {
+  const printable = bomCorpPrintableRecords([
+    { colaborador_vinculo_id: 1, colaborador_nome: 'COM CPF', colaborador_cpf: '52998224725' },
+    { colaborador_vinculo_id: 2, colaborador_nome: 'SEM CPF', colaborador_cpf: '' },
+    { colaborador_vinculo_id: 3, colaborador_nome: 'CPF FORMATADO', colaborador_cpf: '041.990.186-89' },
+    { colaborador_vinculo_id: 1, colaborador_nome: 'COM CPF', colaborador_cpf: '52998224725' },
+  ]);
+  assert.equal(printable.length, 2);
+  assert.deepEqual(printable.map((record) => record.colaborador_vinculo_id), [1, 3]);
 });
 
 test('validates Brazilian WhatsApp recipients without comparing them to the ERP phone', () => {

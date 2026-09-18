@@ -775,8 +775,19 @@ async function requestBomCorpRecords(cnpj) {
   return records;
 }
 
+export function bomCorpPrintableRecords(records) {
+  const printable = Array.isArray(records)
+    ? records.filter((record) => normalizeCpf(record?.colaborador_cpf))
+    : [];
+  return [...new Map(printable.map((record) => [
+    String(record.colaborador_vinculo_id
+      || `${normalizeCpf(record.colaborador_cpf)}:${record.colaborador_nome || ''}`),
+    record,
+  ])).values()];
+}
+
 export async function findBomCorpContracts(cnpj, page, pageSize, reference = null) {
-  const records = await requestBomCorpRecords(cnpj);
+  const records = bomCorpPrintableRecords(await requestBomCorpRecords(cnpj));
   const contracts = new Map();
   for (const record of records) {
     const contract = String(record?.numero_contrato || '').replace(/\D/g, '');
@@ -840,7 +851,7 @@ export async function loadBomCorpContractData(claims) {
     error.statusCode = 422;
     throw error;
   }
-  const records = (await requestBomCorpRecords(cnpj)).filter((record) =>
+  const records = bomCorpPrintableRecords(await requestBomCorpRecords(cnpj)).filter((record) =>
     String(record?.numero_contrato || '').replace(/\D/g, '') === contract
       && String(record?.empresa_id || '') === companyId);
   if (!records.length) {
@@ -848,7 +859,8 @@ export async function loadBomCorpContractData(claims) {
     error.statusCode = 422;
     throw error;
   }
-  const [addressResult, contactsResult] = await Promise.all([
+  const employeeCpfs = records.map((record) => normalizeCpf(record.colaborador_cpf));
+  const [addressResult, contactsResult, birthsResult, contractResult] = await Promise.all([
     db.query(
       `SELECT en.codigo_postal, en.endereco, en.numero, en.complemento, en.bairro, c.cidade
          FROM enderecos en
@@ -870,6 +882,25 @@ export async function loadBomCorpContractData(claims) {
                  END, id DESC`,
       [companyId],
     ),
+    db.query(
+      `SELECT DISTINCT ON (regexp_replace(dp.documento, '\\D', '', 'g'))
+              regexp_replace(dp.documento, '\\D', '', 'g') AS cpf,
+              p.data_nascimento
+         FROM documentos_pessoas dp
+         JOIN pessoas p ON p.id = dp.pessoa_id
+        WHERE dp.tipo_documento_id = 580
+          AND regexp_replace(dp.documento, '\\D', '', 'g') = ANY($1::text[])
+        ORDER BY regexp_replace(dp.documento, '\\D', '', 'g'), p.id DESC`,
+      [employeeCpfs],
+    ),
+    db.query(
+      `SELECT data_aprovacao
+         FROM contratos_servicos
+        WHERE contrato_servicos::text = $1
+        ORDER BY id DESC
+        LIMIT 1`,
+      [contract],
+    ),
   ]);
   const address = addressResult.rows[0] || {};
   const cityMatch = String(address.cidade || '').trim().match(/^(.*?)\s*-\s*([A-Z]{2})$/i);
@@ -881,12 +912,11 @@ export async function loadBomCorpContractData(claims) {
   const email = contacts.find((row) => Number(row.tipo_endereco_id) === 566)?.endereco
     || company.e_mail_1
     || '';
-  const uniqueRecords = [...new Map(records.map((record) => [
-    String(record.colaborador_vinculo_id
-      || `${record.colaborador_cpf || ''}:${record.colaborador_nome || ''}`),
-    record,
-  ])).values()];
-  const first = uniqueRecords[0];
+  const birthsByCpf = new Map(birthsResult.rows.map((row) => [
+    normalizeCpf(row.cpf),
+    row.data_nascimento,
+  ]));
+  const first = records[0];
   return buildBomCorpContractData({
     company_name: first.empresa_razao_social || company.nome_completo,
     cnpj,
@@ -902,13 +932,15 @@ export async function loadBomCorpContractData(claims) {
     email,
     contract,
     plan: first.plano,
-    issue_date: first.data_contrato,
+    issue_date: contractResult.rows[0]?.data_aprovacao || null,
     contract_value: first.valor_contrato,
-    employees: uniqueRecords.map((record) => ({
+    employees: records.map((record) => ({
       id: record.colaborador_vinculo_id,
       name: record.colaborador_nome,
       cpf: record.colaborador_cpf,
-      birth_date: record.colaborador_nascimento || null,
+      birth_date: birthsByCpf.get(normalizeCpf(record.colaborador_cpf))
+        || record.colaborador_nascimento
+        || null,
       phone: record.colaborador_telefone || '',
     })),
   });
