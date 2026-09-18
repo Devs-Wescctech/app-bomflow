@@ -31,7 +31,8 @@ const preparePdfTab = (popup) => {
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>Gerando contrato...</title>
-        <link rel="icon" type="image/svg+xml" href="${window.location.origin}/favicon.svg" />
+        <link rel="icon" type="image/png" href="${window.location.origin}/logo-bomflow-icon.png" />
+        <link rel="shortcut icon" type="image/png" href="${window.location.origin}/logo-bomflow-icon.png" />
         <style>
           * { box-sizing: border-box; }
           body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f3f5f7;
@@ -75,7 +76,7 @@ const showPdfInTab = (popup, pdfUrl, fileName) => {
   toolbar.append(title, download);
 
   const viewer = doc.createElement("iframe");
-  viewer.src = pdfUrl;
+  viewer.src = `${pdfUrl}#toolbar=0`;
   viewer.title = fileName;
   viewer.style.cssText = "display:block;width:100%;height:calc(100vh - 48px);border:0";
   doc.body.append(toolbar, viewer);

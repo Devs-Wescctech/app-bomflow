@@ -309,7 +309,8 @@ test('search uses only the canonical pedido holder and UI renders validation det
   assert.match(pageSource, /Serviço de impressão indisponível \(HTTP \$\{response\.status\}\)/);
   assert.match(pageSource, /generatingId === row\.generationId \? "Gerando PDF\.\.\." : "Gerar PDF"/);
   assert.match(pageSource, /logo-bomflow\.png/);
-  assert.match(pageSource, /favicon\.svg/);
+  assert.match(pageSource, /logo-bomflow-icon\.png/);
+  assert.match(pageSource, /#toolbar=0/);
   assert.match(pageSource, /download\.download = fileName/);
   assert.match(pageSource, /contrato_\$\{product\}_\$\{order\}\.pdf/);
   assert.match(routeSource, /contrato_\$\{fileProduct\}_\$\{claims\.pedido\}\.pdf/);
