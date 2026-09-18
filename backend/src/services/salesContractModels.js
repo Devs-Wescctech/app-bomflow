@@ -876,7 +876,12 @@ export async function renderBomCorpPdf(data) {
         write(employee.name, 25, y, { size: 9, width: 78 });
         write(formatCpf(employee.cpf), 105, y, { size: 9, width: 37 });
         const birth = dateParts(employee.birth_date);
-        if (birth) write(`${birth.day}   ${birth.month_number}   ${birth.year}`, 144, y, { size: 9, width: 29 });
+        if (birth) {
+          const birthY = y + 0.6;
+          write(birth.day, 144, birthY, { size: 9, width: 7 });
+          write(birth.month_number, 154, birthY, { size: 9, width: 7 });
+          write(birth.year, 161, birthY, { size: 9, width: 11 });
+        }
         write(formatPhone(employee.phone), 175, y, { size: 9, width: 28 });
       });
       write(data.observations, 35, 222, { size: 9, width: 165 });
@@ -899,7 +904,7 @@ export async function renderBomCorpPdf(data) {
         if (page === 11 && issue) {
           write(issue.day, 115, 230, { size: 12 });
           write(issue.month, 131, 230, { size: 12, width: 40 });
-          write(issue.year.slice(-2), 173, 230, { size: 12 });
+          write(issue.year.slice(-2), 173, 230.8, { size: 12 });
         }
       }
       doc.end();
