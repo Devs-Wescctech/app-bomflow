@@ -245,7 +245,12 @@ export async function renderBomIdealPdf(data) {
         const sexX = person.sex === 'M' ? 125 : 128;
         write('X', sexX, y, { size: 10 });
       }
-      writeDate(person.birth_date, 142, y, [0, 10, 19]);
+      const birth = dateParts(person.birth_date);
+      if (birth) {
+        write(birth.day, 142, y, { size: 10, width: 7 });
+        write(birth.month_number, 152, y, { size: 10, width: 7 });
+        write(birth.year, 159, y, { size: 9, width: 10 });
+      }
       write(digits(person.phone), 170, y, { size: 10, width: 34 });
     };
     const issue = dateParts(data.issue_date) || dateParts(new Date());
