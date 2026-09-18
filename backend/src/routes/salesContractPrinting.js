@@ -49,6 +49,12 @@ import {
   validateBomPetHealthContractData,
   validateEssentialContractData,
 } from '../services/salesContractModels.js';
+import {
+  BOM_IDEAL_BASE_PRODUCT_IDS,
+  loadBomIdealFromErp,
+  renderBomIdealPdf,
+  validateBomIdealContractData,
+} from '../services/bomIdealContract.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -189,6 +195,7 @@ function issueId(req, cpf, row) {
     contrato: row.contrato || null,
     companyId: row.companyId || null,
     displayNumber: row.displayNumber || null,
+    numeroPedido: row.numero_pedido || null,
     productKey: normalizeContractProduct(row.productKey || CONTRACT_PRODUCTS.BOM_AUTO),
   }, secret(), { expiresIn: '10m' });
 }
@@ -605,6 +612,14 @@ export async function findOrders(cpf, page, pageSize, reference = null) {
               AND ip.produto_id = ANY($6::bigint[])
          )
          UNION ALL
+         SELECT 'bom_ideal'::text
+          WHERE EXISTS (
+            SELECT 1 FROM itens_pedidos ip LEFT JOIN produtos pr ON pr.id=ip.produto_id
+             WHERE ip.pedido_id=p.id
+               AND (ip.produto_id = ANY($9::bigint[])
+                 OR UPPER(COALESCE(pr.descricao, ip.descricao, '')) LIKE '%BOM DESCANSO IDEAL%BASE%')
+          )
+         UNION ALL
          SELECT 'bom_pet_saude_individual'::text
           WHERE EXISTS (
             SELECT 1 FROM itens_pedidos ip
@@ -631,6 +646,7 @@ export async function findOrders(cpf, page, pageSize, reference = null) {
     BOM_PET_BASE_PRODUCT_IDS,
     BOM_PET_HEALTH_INDIVIDUAL_PRODUCT_IDS,
     BOM_PET_HEALTH_THREE_PRODUCT_IDS,
+    BOM_IDEAL_BASE_PRODUCT_IDS,
   ]);
   return {
     rows: result.rows.map((r) => classifyDocument({
@@ -692,6 +708,14 @@ export async function findOrdersByReference(reference, page, pageSize) {
               AND ip.produto_id = ANY($5::bigint[])
          )
          UNION ALL
+         SELECT 'bom_ideal'::text
+          WHERE EXISTS (
+            SELECT 1 FROM itens_pedidos ip LEFT JOIN produtos pr ON pr.id=ip.produto_id
+             WHERE ip.pedido_id=p.id
+               AND (ip.produto_id = ANY($8::bigint[])
+                 OR UPPER(COALESCE(pr.descricao, ip.descricao, '')) LIKE '%BOM DESCANSO IDEAL%BASE%')
+          )
+         UNION ALL
          SELECT 'bom_pet_saude_individual'::text
           WHERE EXISTS (
             SELECT 1 FROM itens_pedidos ip
@@ -717,6 +741,7 @@ export async function findOrdersByReference(reference, page, pageSize) {
     BOM_PET_BASE_PRODUCT_IDS,
     BOM_PET_HEALTH_INDIVIDUAL_PRODUCT_IDS,
     BOM_PET_HEALTH_THREE_PRODUCT_IDS,
+    BOM_IDEAL_BASE_PRODUCT_IDS,
   ]);
   return {
     rows: result.rows.map((r) => classifyDocument({
@@ -946,6 +971,28 @@ export async function loadBomCorpContractData(claims) {
   });
 }
 
+export async function loadBomIdealContractData(claims) {
+  const db = getErpPool();
+  const result = await db.query(
+    `SELECT p.pedido::text AS numero_pedido, dp.documento
+       FROM pedidos p
+       JOIN documentos_pessoas dp ON dp.pessoa_id = p.cliente_id
+        AND dp.tipo_documento_id = 580
+      WHERE p.id::text = $1
+      ORDER BY dp.id DESC
+      LIMIT 1`,
+    [String(claims.pedido || '')],
+  );
+  const row = result.rows[0];
+  const cpf = normalizeCpf(row?.documento);
+  if (!cpf || protectCpf(cpf) !== claims.cpf) {
+    const error = new Error('O titular do pedido não corresponde ao CPF consultado.');
+    error.statusCode = 422;
+    throw error;
+  }
+  return loadBomIdealFromErp(row.documento, claims.numeroPedido || row.numero_pedido);
+}
+
 router.use(authMiddleware, loadAgentMiddleware, requireSalesContractPrinting);
 
 router.get('/contracts/search', async (req, res) => {
@@ -996,6 +1043,7 @@ const buildProductContractData = (detail, productKey) => {
 };
 
 const validateProductContractData = (data, productKey) => {
+  if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return validateBomIdealContractData(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_CORP) return validateBomCorpContractData(data);
   if (productKey === CONTRACT_PRODUCTS.ESSENCIAL) return validateEssentialContractData(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_PET) return validateBomPetContractData(data);
@@ -1015,6 +1063,7 @@ const renderProductContract = (
   { optimizeForWhatsapp = false } = {},
 ) => {
   if (productKey === CONTRACT_PRODUCTS.BOM_CORP) return renderBomCorpPdf(data);
+  if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return renderBomIdealPdf(data);
   if (productKey === CONTRACT_PRODUCTS.ESSENCIAL) return renderEssentialPdf(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_PET) {
     return renderBomPetPdf(data, { optimizeForWhatsapp });
@@ -1031,6 +1080,7 @@ const renderProductContract = (
 const contractFileProduct = (productKey) => ({
   [CONTRACT_PRODUCTS.BOM_AUTO]: 'bom_auto',
   [CONTRACT_PRODUCTS.BOM_CORP]: 'bom_corp',
+    [CONTRACT_PRODUCTS.BOM_IDEAL]: 'bom_ideal',
   [CONTRACT_PRODUCTS.ESSENCIAL]: 'essencial',
   [CONTRACT_PRODUCTS.BOM_PET]: 'bom_pet',
   [CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL]: 'bom_pet_saude_individual',
@@ -1055,9 +1105,13 @@ router.post('/contracts/validate', async (req, res) => {
         message: 'Identificador de produto inválido ou expirado. Faça uma nova busca.',
       });
     }
-    if (productKey === CONTRACT_PRODUCTS.BOM_CORP) {
-      const data = await loadBomCorpContractData(claims);
-      const errors = validateBomCorpContractData(data);
+    if ([CONTRACT_PRODUCTS.BOM_CORP, CONTRACT_PRODUCTS.BOM_IDEAL].includes(productKey)) {
+      const data = productKey === CONTRACT_PRODUCTS.BOM_CORP
+        ? await loadBomCorpContractData(claims)
+        : await loadBomIdealContractData(claims);
+      const errors = productKey === CONTRACT_PRODUCTS.BOM_CORP
+        ? validateBomCorpContractData(data)
+        : validateBomIdealContractData(data);
       if (errors.length) {
         await audit(req, `hash:${claims.cpf}`, claims, 'validation_error', 'validation');
         return res.status(422).json({ message: 'Dados do ERP incompletos ou inconsistentes.', errors });
@@ -1114,17 +1168,23 @@ router.post('/contracts/generate', async (req, res) => {
         message: 'Identificador de produto inválido ou expirado. Faça uma nova busca.',
       });
     }
-    if (productKey === CONTRACT_PRODUCTS.BOM_CORP) {
-      const data = await loadBomCorpContractData(claims);
-      const errors = validateBomCorpContractData(data);
+    if ([CONTRACT_PRODUCTS.BOM_CORP, CONTRACT_PRODUCTS.BOM_IDEAL].includes(productKey)) {
+      const data = productKey === CONTRACT_PRODUCTS.BOM_CORP
+        ? await loadBomCorpContractData(claims)
+        : await loadBomIdealContractData(claims);
+      const errors = productKey === CONTRACT_PRODUCTS.BOM_CORP
+        ? validateBomCorpContractData(data)
+        : validateBomIdealContractData(data);
       if (errors.length) {
         await audit(req, `hash:${claims.cpf}`, claims, 'validation_error', 'generation');
         return res.status(422).json({ message: 'Dados do ERP incompletos ou inconsistentes.', errors });
       }
-      const pdf = await renderBomCorpPdf(data);
+      const pdf = productKey === CONTRACT_PRODUCTS.BOM_CORP
+        ? await renderBomCorpPdf(data)
+        : await renderBomIdealPdf(data);
       await audit(req, `hash:${claims.cpf}`, claims, 'success', 'generation', { required: true });
       return res.type('application/pdf')
-        .set('Content-Disposition', `inline; filename="contrato_bom_corp_${claims.contrato}.pdf"`)
+        .set('Content-Disposition', `inline; filename="contrato_${contractFileProduct(productKey)}_${claims.contrato || claims.numeroPedido || claims.pedido}.pdf"`)
         .send(pdf);
     }
     const detail = await getOrcamentoDetalhe(Number(claims.pedido));

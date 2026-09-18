@@ -61,6 +61,7 @@ async function prepareContractBackgrounds(pagesDir, pages, optimizeForWhatsapp) 
 export const CONTRACT_PRODUCTS = Object.freeze({
   BOM_AUTO: 'bom_auto',
   BOM_CORP: 'bom_corp',
+  BOM_IDEAL: 'bom_ideal',
   ESSENCIAL: 'essencial',
   BOM_PET: 'bom_pet',
   BOM_PET_SAUDE_INDIVIDUAL: 'bom_pet_saude_individual',
@@ -119,6 +120,7 @@ const ESSENTIAL_PAYMENT_PLAN_IDS = Object.freeze({
 const PRODUCT_LABELS = Object.freeze({
   [CONTRACT_PRODUCTS.BOM_AUTO]: 'Bom Auto',
   [CONTRACT_PRODUCTS.BOM_CORP]: 'Bom Corp',
+  [CONTRACT_PRODUCTS.BOM_IDEAL]: 'Bom Ideal',
   [CONTRACT_PRODUCTS.ESSENCIAL]: 'Essencial',
   [CONTRACT_PRODUCTS.BOM_PET]: 'Bom Pet',
   [CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL]: 'Bom Pet Saúde',

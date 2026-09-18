@@ -4,6 +4,12 @@ import { readFileSync } from 'node:fs';
 import express from 'express';
 import salesContractPrintingRouter from './salesContractPrinting.js';
 import {
+  BOM_IDEAL_BASE_PRODUCT_IDS,
+  bomIdealPaymentCategory,
+  renderBomIdealPdf,
+  validateBomIdealContractData,
+} from '../services/bomIdealContract.js';
+import {
   bomAutoPaymentCategory,
   classifyDocument,
   buildBomAutoWhatsAppMessage,
@@ -115,6 +121,38 @@ test('Bom Corp prints and counts only unique employees with CPF, matching the le
   ]);
   assert.equal(printable.length, 2);
   assert.deepEqual(printable.map((record) => record.colaborador_vinculo_id), [1, 3]);
+});
+
+test('validates the Bom Ideal contract fields and legacy payment categories', () => {
+  const data = {
+    pedido: '63764',
+    issue_date: '2026-03-19',
+    name: 'TITULAR TESTE',
+    cpf: '529.982.247-25',
+    birth_date: '1974-09-25',
+    sex: 'MASCULINO',
+    marital_status: 'CASADO',
+    address: 'RUA TESTE',
+    number: '70',
+    district: 'CENTRO',
+    city: 'LIMEIRA',
+    state: 'SP',
+    cep: '13480000',
+    phone: '19999999999',
+    payment_plan_id: 1643483,
+    monthly_value: 69.9,
+    children: [{ name: 'DEPENDENTE', birth_date: '2000-12-25', phone: '19999999999', sex: 'M' }],
+    dependents: [],
+  };
+  assert.equal(BOM_IDEAL_BASE_PRODUCT_IDS.includes(214479204), true);
+  assert.equal(bomIdealPaymentCategory(32922780), 'cpfl');
+  assert.equal(bomIdealPaymentCategory(1643483), 'bank');
+  assert.equal(bomIdealPaymentCategory(46285), 'credit_card');
+  assert.deepEqual(validateBomIdealContractData(data), []);
+  assert.match(
+    validateBomIdealContractData({ ...data, children: Array(5).fill(data.children[0]) }).join(' '),
+    /máximo 4 filhos/i,
+  );
 });
 
 test('validates Brazilian WhatsApp recipients without comparing them to the ERP phone', () => {
@@ -1135,6 +1173,39 @@ test('Bom Corp PDF uses all official pages and repeats the enrollment page for o
   assert.ok(pdf.length > 5000000);
   assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 12);
   assert.ok((pdf.toString('latin1').match(/\/Subtype\s*\/Image/g) || []).length >= 11);
+});
+
+test('Bom Ideal PDF uses the official sixteen-page model', async () => {
+  const pdf = await renderBomIdealPdf({
+    pedido: '63764',
+    issue_date: '2026-03-19',
+    observations: 'Adesão zero\nAutorizado.',
+    name: 'TITULAR TESTE',
+    cpf: '529.982.247-25',
+    rg: '123456789',
+    birth_date: '1974-09-25',
+    sex: 'MASCULINO',
+    marital_status: 'CASADO',
+    profession: 'Outros',
+    address: 'RUA TESTE',
+    number: '70',
+    district: 'CENTRO',
+    city: 'LIMEIRA',
+    state: 'SP',
+    cep: '13480000',
+    phone: '19999999999',
+    phone2: '1933334444',
+    email: 'teste@example.com',
+    adhesion: 60,
+    monthly_value: 69.9,
+    payment_plan_id: 1643483,
+    due_day: '25',
+    spouse: null,
+    children: [],
+    dependents: [],
+  });
+  assert.equal(pdf.subarray(0, 4).toString(), '%PDF');
+  assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 16);
 });
 
 test('Essencial PDF uses the fourteen printed JPEG pages and excludes PG-15', async () => {

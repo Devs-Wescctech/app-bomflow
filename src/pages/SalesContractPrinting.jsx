@@ -58,10 +58,13 @@ const hasWhatsAppTemplate = (row) => {
     .toLowerCase()
     .replace(/[\s-]+/g, "_");
   const productName = String(row?.product || "").trim().toLowerCase();
-  return productKey !== "bom_corp" && productName !== "bom corp";
+  return !["bom_corp", "bom_ideal"].includes(productKey)
+    && !["bom corp", "bom ideal"].includes(productName);
 };
-const BOM_CORP_WHATSAPP_UNAVAILABLE =
-  "O Bom Corp ainda não possui um modelo de mensagem cadastrado. Você pode baixar o PDF e enviá-lo manualmente.";
+const whatsappUnavailableMessage = (row) => {
+  const product = String(row?.product || "").trim() || "Este produto";
+  return `${product} ainda não possui um modelo de mensagem cadastrado. Você pode baixar o PDF e enviá-lo manualmente.`;
+};
 const PAGE_SIZE = 20;
 const contractFileName = (row) => {
   const product = String(row.product || "contrato")
@@ -377,7 +380,7 @@ export default function SalesContractPrinting() {
                          <span
                            className="inline-flex rounded-full focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15"
                            tabIndex={0}
-                           aria-label={`Enviar WhatsApp indisponível. ${BOM_CORP_WHATSAPP_UNAVAILABLE}`}
+                           aria-label={`Enviar WhatsApp indisponível. ${whatsappUnavailableMessage(row)}`}
                          >
                            <button
                              type="button"
@@ -399,7 +402,7 @@ export default function SalesContractPrinting() {
                            <div className="space-y-1">
                              <p className="font-semibold">WhatsApp ainda não disponível</p>
                              <p className="leading-relaxed text-muted-foreground">
-                               {BOM_CORP_WHATSAPP_UNAVAILABLE}
+                               {whatsappUnavailableMessage(row)}
                              </p>
                            </div>
                          </div>
