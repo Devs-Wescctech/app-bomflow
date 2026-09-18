@@ -1026,7 +1026,9 @@ export function renderBomPetHealthPdf(data, variant = 'individual') {
       const pagePets = pets.slice(start, pageIndex === 0 ? 3 : start + 2);
       // PDFKit posiciona o topo da fonte, enquanto o PHP legado posicionava
       // a linha-base. O deslocamento evita sobrepor os rótulos impressos.
-      const animalTextOffsetY = pageIndex === 0 ? 0 : -3;
+      const animalTextOffsetY = pageIndex === 0
+        ? (variant === 'three' ? 0 : 2)
+        : -3;
       let y = (pageIndex === 0 ? (variant === 'three' ? 133 : 149.5) : 163)
         + animalTextOffsetY;
       pagePets.forEach((pet, index) => {
