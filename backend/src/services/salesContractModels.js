@@ -1017,11 +1017,15 @@ export function renderBomPetHealthPdf(data, variant = 'individual') {
     const writePets = (pets, pageIndex) => {
       const start = pageIndex === 0 ? 0 : 3 + (pageIndex - 1) * 2;
       const pagePets = pets.slice(start, pageIndex === 0 ? 3 : start + 2);
-      let y = pageIndex === 0 ? (variant === 'three' ? 133 : 149.5) : 163;
+      // PDFKit posiciona o topo da fonte, enquanto o PHP legado posicionava
+      // a linha-base. O deslocamento evita sobrepor os rótulos impressos.
+      const animalTextOffsetY = pageIndex === 0 ? 3 : 1;
+      let y = (pageIndex === 0 ? (variant === 'three' ? 133 : 149.5) : 163)
+        + animalTextOffsetY;
       pagePets.forEach((pet, index) => {
         write(pet.name, 25, y, { size: 9, width: 118 });
         write('X', normalizeText(pet.sex).startsWith('F') ? 158 : 153, y, { size: 9 });
-        const detailY = pageIndex === 0 ? y + 8 : y + 9;
+        const detailY = y + 8;
         write(pet.breed, 25, detailY, { size: 9, width: 65 });
         write(pet.color, 95, detailY, { size: 9, width: 48 });
         write(petAge(pet.birth_date, data.generated_at), 148, detailY, { size: 9, width: 38 });
