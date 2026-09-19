@@ -74,6 +74,12 @@ import {
   renderConvalescencaPdf,
   validateConvalescencaContractData,
 } from '../services/convalescencaContract.js';
+import {
+  BOM_FAMILIA_BASE_PRODUCT_IDS,
+  loadBomFamiliaFromErp,
+  renderBomFamiliaPdf,
+  validateBomFamiliaContractData,
+} from '../services/bomFamiliaContract.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -109,6 +115,10 @@ export const CONTRACT_WHATSAPP_TEMPLATES = Object.freeze({
     id: '69ed0d552e1d23a0987f42bb',
     name: 'boas_vindas_multi_bem_star',
     documentHeader: false,
+  }),
+  [CONTRACT_PRODUCTS.BOM_FAMILIA]: Object.freeze({
+    id: '69ed0d552e1d23a0987f4319',
+    name: 'boasvindas_plano_bdfamilia_anexo',
   }),
 });
 const secret = () => {
@@ -365,7 +375,8 @@ export function buildContractWhatsAppDelivery({
     || productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS;
   const isCombo = productKey === CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING
     || productKey === CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING;
-  const productName = isEssential ? 'Essencial' : isBomPet ? 'Bom Pet'
+  const productName = productKey === CONTRACT_PRODUCTS.BOM_FAMILIA ? 'Plano Família'
+    : isEssential ? 'Essencial' : isBomPet ? 'Bom Pet'
     : isBomPetHealth ? 'Bom Pet Saúde'
       : productKey === CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING
         ? 'Novo Combo Multi Bem Estar'
@@ -694,6 +705,13 @@ export async function findOrders(cpf, page, pageSize, reference = null) {
                AND ip.produto_id = ANY($10::bigint[])
           )
          UNION ALL
+         SELECT 'bom_familia'::text
+          WHERE EXISTS (
+            SELECT 1 FROM itens_pedidos ip
+             WHERE ip.pedido_id=p.id
+               AND ip.produto_id = ANY($13::bigint[])
+          )
+         UNION ALL
          SELECT 'combo_multi_bem_estar'::text
           WHERE EXISTS (
             SELECT 1 FROM itens_pedidos ip
@@ -752,6 +770,7 @@ export async function findOrders(cpf, page, pageSize, reference = null) {
     BOM_MED_BASE_PRODUCT_IDS,
     COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
     NEW_COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
+    BOM_FAMILIA_BASE_PRODUCT_IDS,
   ]);
   return {
     rows: result.rows.map((r) => classifyDocument({
@@ -836,6 +855,13 @@ export async function findOrdersByReference(reference, page, pageSize) {
                AND ip.produto_id = ANY($9::bigint[])
           )
          UNION ALL
+         SELECT 'bom_familia'::text
+          WHERE EXISTS (
+            SELECT 1 FROM itens_pedidos ip
+             WHERE ip.pedido_id=p.id
+               AND ip.produto_id = ANY($12::bigint[])
+          )
+         UNION ALL
          SELECT 'combo_multi_bem_estar'::text
           WHERE EXISTS (
             SELECT 1 FROM itens_pedidos ip
@@ -893,6 +919,7 @@ export async function findOrdersByReference(reference, page, pageSize) {
     BOM_MED_BASE_PRODUCT_IDS,
     COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
     NEW_COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
+    BOM_FAMILIA_BASE_PRODUCT_IDS,
   ]);
   return {
     rows: result.rows.map((r) => classifyDocument({
@@ -1166,6 +1193,28 @@ export async function loadBomMedContractData(claims) {
   return loadBomMedFromErp(row.documento, claims.numeroPedido || row.numero_pedido);
 }
 
+export async function loadBomFamiliaContractData(claims) {
+  const db = getErpPool();
+  const result = await db.query(
+    `SELECT p.pedido::text AS numero_pedido, dp.documento
+       FROM pedidos p
+       JOIN documentos_pessoas dp ON dp.pessoa_id = p.cliente_id
+        AND dp.tipo_documento_id = 580
+      WHERE p.id::text = $1
+      ORDER BY dp.id DESC
+      LIMIT 1`,
+    [String(claims.pedido || '')],
+  );
+  const row = result.rows[0];
+  const cpf = normalizeCpf(row?.documento);
+  if (!cpf || protectCpf(cpf) !== claims.cpf) {
+    const error = new Error('O titular do pedido não corresponde ao CPF consultado.');
+    error.statusCode = 422;
+    throw error;
+  }
+  return loadBomFamiliaFromErp(row.documento, claims.numeroPedido || row.numero_pedido);
+}
+
 export async function loadConvalescencaContractData(claims) {
   const db = getErpPool();
   const result = await db.query(
@@ -1193,6 +1242,7 @@ const STANDALONE_ERP_PRODUCTS = new Set([
   CONTRACT_PRODUCTS.BOM_CORP,
   CONTRACT_PRODUCTS.BOM_IDEAL,
   CONTRACT_PRODUCTS.BOM_MED,
+  CONTRACT_PRODUCTS.BOM_FAMILIA,
   CONTRACT_PRODUCTS.CONVALESCENCA,
 ]);
 
@@ -1200,6 +1250,7 @@ const loadStandaloneContractData = async (productKey, claims) => {
   if (productKey === CONTRACT_PRODUCTS.BOM_CORP) return loadBomCorpContractData(claims);
   if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return loadBomIdealContractData(claims);
   if (productKey === CONTRACT_PRODUCTS.BOM_MED) return loadBomMedContractData(claims);
+  if (productKey === CONTRACT_PRODUCTS.BOM_FAMILIA) return loadBomFamiliaContractData(claims);
   return loadConvalescencaContractData(claims);
 };
 
@@ -1207,6 +1258,7 @@ const validateStandaloneContractData = (productKey, data) => {
   if (productKey === CONTRACT_PRODUCTS.BOM_CORP) return validateBomCorpContractData(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return validateBomIdealContractData(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_MED) return validateBomMedContractData(data);
+  if (productKey === CONTRACT_PRODUCTS.BOM_FAMILIA) return validateBomFamiliaContractData(data);
   return validateConvalescencaContractData(data);
 };
 
@@ -1214,6 +1266,7 @@ const renderStandaloneContract = (productKey, data) => {
   if (productKey === CONTRACT_PRODUCTS.BOM_CORP) return renderBomCorpPdf(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return renderBomIdealPdf(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_MED) return renderBomMedPdf(data);
+  if (productKey === CONTRACT_PRODUCTS.BOM_FAMILIA) return renderBomFamiliaPdf(data);
   return renderConvalescencaPdf(data);
 };
 
@@ -1314,6 +1367,7 @@ const renderProductContract = (
   if (productKey === CONTRACT_PRODUCTS.BOM_CORP) return renderBomCorpPdf(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return renderBomIdealPdf(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_MED) return renderBomMedPdf(data);
+  if (productKey === CONTRACT_PRODUCTS.BOM_FAMILIA) return renderBomFamiliaPdf(data);
   if (productKey === CONTRACT_PRODUCTS.ESSENCIAL) return renderEssentialPdf(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_PET) {
     return renderBomPetPdf(data, { optimizeForWhatsapp });
@@ -1332,6 +1386,7 @@ const contractFileProduct = (productKey) => ({
   [CONTRACT_PRODUCTS.BOM_CORP]: 'bom_corp',
     [CONTRACT_PRODUCTS.BOM_IDEAL]: 'bom_ideal',
   [CONTRACT_PRODUCTS.BOM_MED]: 'bom_med',
+  [CONTRACT_PRODUCTS.BOM_FAMILIA]: 'bom_familia',
   [CONTRACT_PRODUCTS.ESSENCIAL]: 'essencial',
   [CONTRACT_PRODUCTS.BOM_PET]: 'bom_pet',
   [CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL]: 'bom_pet_saude_individual',
@@ -1521,22 +1576,29 @@ router.post('/contracts/send-whatsapp', async (req, res) => {
       error.statusCode = 503;
       throw error;
     }
-    const detail = await getOrcamentoDetalhe(Number(claims.pedido));
-    const titular = detail?.titular;
-    if (!detail?.titular_is_canonical
-      || !titular
-      || protectCpf(normalizeCpf(titular.cpf) || '') !== claims.cpf) {
-      await audit(req, `hash:${claims.cpf}`, claims, 'cpf_mismatch', 'whatsapp', { recipientHash });
-      return res.status(422).json({ message: 'O titular do pedido não corresponde ao CPF consultado.' });
+    let data;
+    let errors;
+    if (STANDALONE_ERP_PRODUCTS.has(productKey)) {
+      data = await loadStandaloneContractData(productKey, claims);
+      errors = validateStandaloneContractData(productKey, data);
+    } else {
+      const detail = await getOrcamentoDetalhe(Number(claims.pedido));
+      const titular = detail?.titular;
+      if (!detail?.titular_is_canonical
+        || !titular
+        || protectCpf(normalizeCpf(titular.cpf) || '') !== claims.cpf) {
+        await audit(req, `hash:${claims.cpf}`, claims, 'cpf_mismatch', 'whatsapp', { recipientHash });
+        return res.status(422).json({ message: 'O titular do pedido não corresponde ao CPF consultado.' });
+      }
+      if (!detailMatchesContractProduct(detail, productKey)) {
+        await audit(req, `hash:${claims.cpf}`, claims, 'product_mismatch', 'whatsapp', { recipientHash });
+        return res.status(422).json({
+          message: 'Os produtos atuais do pedido não correspondem ao contrato enviado.',
+        });
+      }
+      data = buildProductContractData(detail, productKey);
+      errors = validateProductContractData(data, productKey);
     }
-    if (!detailMatchesContractProduct(detail, productKey)) {
-      await audit(req, `hash:${claims.cpf}`, claims, 'product_mismatch', 'whatsapp', { recipientHash });
-      return res.status(422).json({
-        message: 'Os produtos atuais do pedido não correspondem ao contrato enviado.',
-      });
-    }
-    const data = buildProductContractData(detail, productKey);
-    const errors = validateProductContractData(data, productKey);
     if (errors.length) {
       await audit(req, `hash:${claims.cpf}`, claims, 'validation_error', 'whatsapp', { recipientHash });
       return res.status(422).json({ message: 'Dados do ERP incompletos ou inconsistentes.', errors });

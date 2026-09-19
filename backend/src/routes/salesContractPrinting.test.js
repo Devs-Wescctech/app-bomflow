@@ -20,6 +20,12 @@ import {
   validateConvalescencaContractData,
 } from '../services/convalescencaContract.js';
 import {
+  BOM_FAMILIA_BASE_PRODUCT_IDS,
+  bomFamiliaPaymentCategory,
+  renderBomFamiliaPdf,
+  validateBomFamiliaContractData,
+} from '../services/bomFamiliaContract.js';
+import {
   COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
   NEW_COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
   buildComboMultiWellbeingContractData,
@@ -175,6 +181,35 @@ test('validates the Bom Ideal contract fields and legacy payment categories', ()
     validateBomIdealContractData({ ...data, children: Array(5).fill(data.children[0]) }).join(' '),
     /máximo 4 filhos/i,
   );
+});
+
+test('recognizes and validates Plano Família without including its dependent item', () => {
+  const data = {
+    pedido: '59616',
+    issue_date: '2026-01-20',
+    name: 'TITULAR TESTE',
+    cpf: '529.982.247-25',
+    birth_date: '1998-08-14',
+    sex: 'MASCULINO',
+    marital_status: 'SOLTEIRO',
+    address: 'RUA TESTE',
+    number: '470',
+    district: 'CENTRO',
+    city: 'PORTO ALEGRE',
+    state: 'RS',
+    cep: '91150330',
+    phone: '51999999999',
+    payment_plan_id: 1643483,
+    monthly_value: 89.9,
+    dependents: [],
+    bom_med_dependents: [],
+  };
+  assert.equal(BOM_FAMILIA_BASE_PRODUCT_IDS.includes(106446285), true);
+  assert.equal(BOM_FAMILIA_BASE_PRODUCT_IDS.includes(106134686), false);
+  assert.equal(bomFamiliaPaymentCategory(32922780), 'cpfl');
+  assert.equal(bomFamiliaPaymentCategory(1643483), 'bank');
+  assert.equal(bomFamiliaPaymentCategory(46285), 'credit_card');
+  assert.deepEqual(validateBomFamiliaContractData(data), []);
 });
 
 test('recognizes and validates the Bom Med contract without treating it as Essencial', () => {
@@ -1192,6 +1227,19 @@ test('selects the approved document template and exact payload for each contract
   assert.equal(CONTRACT_WHATSAPP_TEMPLATES.essencial.name, 'bom_vindas_funeral');
   assert.equal(CONTRACT_WHATSAPP_TEMPLATES.bom_auto.name, 'bom_auto_boas_vindas');
   assert.equal(CONTRACT_WHATSAPP_TEMPLATES.bom_pet.name, 'bom_pet_boas_vindas');
+  assert.equal(
+    CONTRACT_WHATSAPP_TEMPLATES[CONTRACT_PRODUCTS.BOM_FAMILIA].name,
+    'boasvindas_plano_bdfamilia_anexo',
+  );
+  const family = buildContractWhatsAppDelivery({
+    productKey: CONTRACT_PRODUCTS.BOM_FAMILIA,
+    holderName: 'CLIENTE TESTE',
+    displayNumber: '59616',
+    documentUrl: 'https://example.com/family.pdf',
+  });
+  assert.equal(family.templateId, '69ed0d552e1d23a0987f4319');
+  assert.equal(family.fileName, 'Contrato Plano Familia 59616.pdf');
+  assert.equal(family.components[0].parameters[0].type, 'document');
   const essential = buildContractWhatsAppDelivery({
     productKey: CONTRACT_PRODUCTS.ESSENCIAL,
     holderName: 'CLIENTE TESTE',
@@ -1509,6 +1557,35 @@ test('Bom Ideal PDF uses the official sixteen-page model', async () => {
   });
   assert.equal(pdf.subarray(0, 4).toString(), '%PDF');
   assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 16);
+});
+
+test('Plano Família PDF uses the official seventeen-page model', async () => {
+  const pdf = await renderBomFamiliaPdf({
+    pedido: '59616',
+    issue_date: '2026-01-20',
+    name: 'TITULAR TESTE',
+    cpf: '529.982.247-25',
+    birth_date: '1998-08-14',
+    sex: 'MASCULINO',
+    marital_status: 'SOLTEIRO',
+    profession: 'Outros',
+    address: 'RUA TESTE',
+    number: '470',
+    district: 'CENTRO',
+    city: 'PORTO ALEGRE',
+    state: 'RS',
+    cep: '91150330',
+    phone: '51999999999',
+    email: 'teste@example.com',
+    adhesion: 60,
+    monthly_value: 89.9,
+    payment_plan_id: 1643483,
+    due_day: '10',
+    dependents: [],
+    bom_med_dependents: [],
+  });
+  assert.equal(pdf.subarray(0, 4).toString(), '%PDF');
+  assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 17);
 });
 
 test('Bom Med PDF uses the six official pages', async () => {
