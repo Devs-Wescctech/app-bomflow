@@ -76,8 +76,11 @@ import {
 } from '../services/convalescencaContract.js';
 import {
   BOM_FAMILIA_BASE_PRODUCT_IDS,
+  BOM_FAMILIA_PORTABILITY_BASE_PRODUCT_IDS,
   loadBomFamiliaFromErp,
+  loadBomFamiliaPortabilityFromErp,
   renderBomFamiliaPdf,
+  renderBomFamiliaPortabilityPdf,
   validateBomFamiliaContractData,
 } from '../services/bomFamiliaContract.js';
 
@@ -117,6 +120,10 @@ export const CONTRACT_WHATSAPP_TEMPLATES = Object.freeze({
     documentHeader: false,
   }),
   [CONTRACT_PRODUCTS.BOM_FAMILIA]: Object.freeze({
+    id: '69ed0d552e1d23a0987f4319',
+    name: 'boasvindas_plano_bdfamilia_anexo',
+  }),
+  [CONTRACT_PRODUCTS.BOM_FAMILIA_PORTABILITY]: Object.freeze({
     id: '69ed0d552e1d23a0987f4319',
     name: 'boasvindas_plano_bdfamilia_anexo',
   }),
@@ -376,6 +383,7 @@ export function buildContractWhatsAppDelivery({
   const isCombo = productKey === CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING
     || productKey === CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING;
   const productName = productKey === CONTRACT_PRODUCTS.BOM_FAMILIA ? 'Plano Família'
+    : productKey === CONTRACT_PRODUCTS.BOM_FAMILIA_PORTABILITY ? 'Plano Família-Portabilidade'
     : isEssential ? 'Essencial' : isBomPet ? 'Bom Pet'
     : isBomPetHealth ? 'Bom Pet Saúde'
       : productKey === CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING
@@ -712,6 +720,13 @@ export async function findOrders(cpf, page, pageSize, reference = null) {
                AND ip.produto_id = ANY($13::bigint[])
           )
          UNION ALL
+         SELECT 'bom_familia_portabilidade'::text
+          WHERE EXISTS (
+            SELECT 1 FROM itens_pedidos ip
+             WHERE ip.pedido_id=p.id
+               AND ip.produto_id = ANY($14::bigint[])
+          )
+         UNION ALL
          SELECT 'combo_multi_bem_estar'::text
           WHERE EXISTS (
             SELECT 1 FROM itens_pedidos ip
@@ -771,6 +786,7 @@ export async function findOrders(cpf, page, pageSize, reference = null) {
     COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
     NEW_COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
     BOM_FAMILIA_BASE_PRODUCT_IDS,
+    BOM_FAMILIA_PORTABILITY_BASE_PRODUCT_IDS,
   ]);
   return {
     rows: result.rows.map((r) => classifyDocument({
@@ -862,6 +878,13 @@ export async function findOrdersByReference(reference, page, pageSize) {
                AND ip.produto_id = ANY($12::bigint[])
           )
          UNION ALL
+         SELECT 'bom_familia_portabilidade'::text
+          WHERE EXISTS (
+            SELECT 1 FROM itens_pedidos ip
+             WHERE ip.pedido_id=p.id
+               AND ip.produto_id = ANY($13::bigint[])
+          )
+         UNION ALL
          SELECT 'combo_multi_bem_estar'::text
           WHERE EXISTS (
             SELECT 1 FROM itens_pedidos ip
@@ -920,6 +943,7 @@ export async function findOrdersByReference(reference, page, pageSize) {
     COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
     NEW_COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
     BOM_FAMILIA_BASE_PRODUCT_IDS,
+    BOM_FAMILIA_PORTABILITY_BASE_PRODUCT_IDS,
   ]);
   return {
     rows: result.rows.map((r) => classifyDocument({
@@ -1215,6 +1239,32 @@ export async function loadBomFamiliaContractData(claims) {
   return loadBomFamiliaFromErp(row.documento, claims.numeroPedido || row.numero_pedido);
 }
 
+export async function loadBomFamiliaPortabilityContractData(claims) {
+  const db = getErpPool();
+  const result = await db.query(
+    `SELECT p.pedido::text AS numero_pedido, dp.documento
+       FROM pedidos p
+       JOIN documentos_pessoas dp ON dp.pessoa_id = p.cliente_id
+        AND dp.tipo_documento_id = 580
+      WHERE p.id::text = $1
+      ORDER BY dp.id DESC
+      LIMIT 1`,
+    [String(claims.pedido || '')],
+  );
+  const row = result.rows[0];
+  const cpf = normalizeCpf(row?.documento);
+  if (!cpf || protectCpf(cpf) !== claims.cpf) {
+    const error = new Error('O titular do pedido não corresponde ao CPF consultado.');
+    error.statusCode = 422;
+    throw error;
+  }
+  return loadBomFamiliaPortabilityFromErp(
+    row.documento,
+    claims.numeroPedido || row.numero_pedido,
+    claims.pedido,
+  );
+}
+
 export async function loadConvalescencaContractData(claims) {
   const db = getErpPool();
   const result = await db.query(
@@ -1243,6 +1293,7 @@ const STANDALONE_ERP_PRODUCTS = new Set([
   CONTRACT_PRODUCTS.BOM_IDEAL,
   CONTRACT_PRODUCTS.BOM_MED,
   CONTRACT_PRODUCTS.BOM_FAMILIA,
+  CONTRACT_PRODUCTS.BOM_FAMILIA_PORTABILITY,
   CONTRACT_PRODUCTS.CONVALESCENCA,
 ]);
 
@@ -1251,6 +1302,9 @@ const loadStandaloneContractData = async (productKey, claims) => {
   if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return loadBomIdealContractData(claims);
   if (productKey === CONTRACT_PRODUCTS.BOM_MED) return loadBomMedContractData(claims);
   if (productKey === CONTRACT_PRODUCTS.BOM_FAMILIA) return loadBomFamiliaContractData(claims);
+  if (productKey === CONTRACT_PRODUCTS.BOM_FAMILIA_PORTABILITY) {
+    return loadBomFamiliaPortabilityContractData(claims);
+  }
   return loadConvalescencaContractData(claims);
 };
 
@@ -1259,6 +1313,9 @@ const validateStandaloneContractData = (productKey, data) => {
   if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return validateBomIdealContractData(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_MED) return validateBomMedContractData(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_FAMILIA) return validateBomFamiliaContractData(data);
+  if (productKey === CONTRACT_PRODUCTS.BOM_FAMILIA_PORTABILITY) {
+    return validateBomFamiliaContractData(data);
+  }
   return validateConvalescencaContractData(data);
 };
 
@@ -1267,6 +1324,9 @@ const renderStandaloneContract = (productKey, data) => {
   if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return renderBomIdealPdf(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_MED) return renderBomMedPdf(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_FAMILIA) return renderBomFamiliaPdf(data);
+  if (productKey === CONTRACT_PRODUCTS.BOM_FAMILIA_PORTABILITY) {
+    return renderBomFamiliaPortabilityPdf(data);
+  }
   return renderConvalescencaPdf(data);
 };
 
@@ -1368,6 +1428,9 @@ const renderProductContract = (
   if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return renderBomIdealPdf(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_MED) return renderBomMedPdf(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_FAMILIA) return renderBomFamiliaPdf(data);
+  if (productKey === CONTRACT_PRODUCTS.BOM_FAMILIA_PORTABILITY) {
+    return renderBomFamiliaPortabilityPdf(data);
+  }
   if (productKey === CONTRACT_PRODUCTS.ESSENCIAL) return renderEssentialPdf(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_PET) {
     return renderBomPetPdf(data, { optimizeForWhatsapp });
@@ -1387,6 +1450,7 @@ const contractFileProduct = (productKey) => ({
     [CONTRACT_PRODUCTS.BOM_IDEAL]: 'bom_ideal',
   [CONTRACT_PRODUCTS.BOM_MED]: 'bom_med',
   [CONTRACT_PRODUCTS.BOM_FAMILIA]: 'bom_familia',
+  [CONTRACT_PRODUCTS.BOM_FAMILIA_PORTABILITY]: 'bom_familia_portabilidade',
   [CONTRACT_PRODUCTS.ESSENCIAL]: 'essencial',
   [CONTRACT_PRODUCTS.BOM_PET]: 'bom_pet',
   [CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL]: 'bom_pet_saude_individual',

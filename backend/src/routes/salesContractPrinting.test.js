@@ -21,8 +21,10 @@ import {
 } from '../services/convalescencaContract.js';
 import {
   BOM_FAMILIA_BASE_PRODUCT_IDS,
+  BOM_FAMILIA_PORTABILITY_BASE_PRODUCT_IDS,
   bomFamiliaPaymentCategory,
   renderBomFamiliaPdf,
+  renderBomFamiliaPortabilityPdf,
   validateBomFamiliaContractData,
 } from '../services/bomFamiliaContract.js';
 import {
@@ -210,6 +212,15 @@ test('recognizes and validates Plano Família without including its dependent it
   assert.equal(bomFamiliaPaymentCategory(1643483), 'bank');
   assert.equal(bomFamiliaPaymentCategory(46285), 'credit_card');
   assert.deepEqual(validateBomFamiliaContractData(data), []);
+});
+
+test('recognizes Plano Família-Portabilidade as a distinct contract product', () => {
+  assert.deepEqual(BOM_FAMILIA_PORTABILITY_BASE_PRODUCT_IDS, [314795021]);
+  assert.equal(CONTRACT_PRODUCTS.BOM_FAMILIA_PORTABILITY, 'bom_familia_portabilidade');
+  assert.equal(
+    CONTRACT_WHATSAPP_TEMPLATES[CONTRACT_PRODUCTS.BOM_FAMILIA_PORTABILITY].name,
+    'boasvindas_plano_bdfamilia_anexo',
+  );
 });
 
 test('recognizes and validates the Bom Med contract without treating it as Essencial', () => {
@@ -1586,6 +1597,47 @@ test('Plano Família PDF uses the official seventeen-page model', async () => {
   });
   assert.equal(pdf.subarray(0, 4).toString(), '%PDF');
   assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 17);
+});
+
+test('Plano Família-Portabilidade uses seventeen pages and only selected adendums', async () => {
+  const pdf = await renderBomFamiliaPortabilityPdf({
+    pedido: '74208',
+    issue_date: '2026-07-15',
+    name: 'TITULAR TESTE',
+    cpf: '529.982.247-25',
+    birth_date: '1998-08-14',
+    sex: 'MASCULINO',
+    marital_status: 'SOLTEIRO',
+    profession: 'Outros',
+    address: 'RUA TESTE',
+    number: '470',
+    district: 'CENTRO',
+    city: 'PORTO ALEGRE',
+    state: 'RS',
+    cep: '91150330',
+    phone: '51999999999',
+    email: 'teste@example.com',
+    adhesion: 0,
+    monthly_value: 89.9,
+    wreath_value: 15,
+    wreath_quantity: 1,
+    mileage_value: 40,
+    mileage_quantity: 2000,
+    thanatopraxy_value: 27,
+    cremation_value: 0,
+    payment_plan_id: 48295856,
+    due_day: '10',
+    dependents: [{
+      name: 'DEPENDENTE TESTE',
+      birth_date: '1995-01-01',
+      phone: '51988888888',
+      sex: 'F',
+      relationship: 'M',
+    }],
+    bom_med_dependents: [],
+  });
+  assert.equal(pdf.subarray(0, 4).toString(), '%PDF');
+  assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 20);
 });
 
 test('Bom Med PDF uses the six official pages', async () => {

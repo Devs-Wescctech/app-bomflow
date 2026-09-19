@@ -6,9 +6,14 @@ import { getOrcamentoDetalhe } from './erpDbService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pagesDir = path.resolve(__dirname, '../../public/bom-familia-contract');
+const portabilityPagesDir = path.resolve(
+  __dirname,
+  '../../public/bom-familia-portability-contract',
+);
 const ERP_BASE = 'http://erp.wescctech.com.br:8080/BP_MULTI/api';
 
 export const BOM_FAMILIA_BASE_PRODUCT_IDS = Object.freeze([106446285, 106133471, 206572571]);
+export const BOM_FAMILIA_PORTABILITY_BASE_PRODUCT_IDS = Object.freeze([314795021]);
 
 const PAYMENT_PLAN_IDS = Object.freeze({
   cpfl: new Set([32922780]),
@@ -163,6 +168,100 @@ export async function loadBomFamiliaFromErp(cpf, pedido) {
   };
 }
 
+export async function loadBomFamiliaPortabilityFromErp(cpf, pedido, pedidoId) {
+  const [holderRows, detail] = await Promise.all([
+    request('API_FAMILIA_TITULAR', cpf, pedido, { pedidoRequired: false }),
+    getOrcamentoDetalhe(Number(pedidoId)),
+  ]);
+  const holder = first(holderRows) || {};
+  const titular = detail?.titular || {};
+  const address = detail?.endereco || titular.endereco || {};
+  const products = Array.isArray(detail?.produtos) ? detail.produtos : [];
+  const people = Array.isArray(detail?.pessoas) ? detail.pessoas : [];
+  const baseProduct = products.find((product) =>
+    BOM_FAMILIA_PORTABILITY_BASE_PRODUCT_IDS.includes(Number(product?.id)));
+  if (!baseProduct) {
+    const error = new Error('O pedido não contém o produto Plano Família-Portabilidade.');
+    error.statusCode = 422;
+    throw error;
+  }
+  const productTotal = (product) => amount(product?.valor_total)
+    || amount(product?.preco) * amount(product?.quantidade || 1);
+  const productsMatching = (pattern) => products.filter((product) =>
+    pattern.test(text(product?.descricao)));
+  const sumProducts = (pattern) => rounded(productsMatching(pattern)
+    .reduce((total, product) => total + productTotal(product), 0));
+  const linkedTo = (person, pattern) => (person?.produtos || [])
+    .some((description) => pattern.test(text(description)));
+  const mapPerson = (person) => ({
+    name: text(person.nome),
+    cpf: text(person.cpf),
+    birth_date: person.data_nascimento || null,
+    phone: text(person.telefone),
+    sex: text(person.sexo).toUpperCase().slice(0, 1),
+    relationship: text(person.parentesco),
+  });
+  const dependents = people
+    .filter((person) => !person.is_titular && linkedTo(person, /FAM[IÍ]LIA.*PORTABILIDADE/i))
+    .map(mapPerson);
+  const bomMedDependents = people
+    .filter((person) => !person.is_titular && linkedTo(person, /BOM MED.*DEPENDENTE/i))
+    .map(mapPerson);
+  const mileageProduct = productsMatching(/QUILOMETRAGEM/i)[0];
+  const mileageDescription = text(mileageProduct?.descricao);
+  const mileageMatch = mileageDescription.match(/(\d+)\s*(?:MIL\s*)?KM/i);
+  const mileageKilometers = /1\s*MIL\s*KM/i.test(mileageDescription)
+    ? 1000
+    : Number(mileageMatch?.[1] || 0);
+  const sexSource = text(holder.sexo || titular.sexo).toUpperCase();
+  const sex = sexSource.startsWith('F') ? 'FEMININO'
+    : sexSource.startsWith('M') ? 'MASCULINO' : sexSource;
+  const observations = text(detail?.observacoes);
+  const adhesionMatch = observations.match(/ADES[AÃ]O[^\d]*([\d.,]+)/i);
+  const adhesion = adhesionMatch
+    ? Number(adhesionMatch[1].replace(/\./g, '').replace(',', '.'))
+    : 0;
+  const wreathProducts = productsMatching(/COROA DE FLORES/i);
+  return {
+    pedido: text(pedido),
+    issue_date: detail?.data_emissao || null,
+    observations,
+    name: text(holder.cliente || titular.nome),
+    cpf: text(holder.documento || titular.cpf || cpf),
+    rg: text(holder.rg || titular.rg),
+    birth_date: holder.data_nascimento || titular.data_nascimento || null,
+    sex,
+    marital_status: text(holder.estado_civil || 'OUTROS').toUpperCase(),
+    profession: text(holder.profissao || titular.profissao) || 'Outros',
+    income: text(holder.renda || titular.renda),
+    address: text(holder.endereco || address.logradouro),
+    complement: text(holder.complemento || address.complemento),
+    number: text(holder.numero || address.numero),
+    district: text(holder.bairro || address.bairro),
+    city: text(holder.cidade || address.cidade),
+    state: text(holder.sigla || address.uf).toUpperCase(),
+    cep: text(holder.codigo_postal || address.cep),
+    phone: text(holder.telefone1 || titular.telefone),
+    phone2: text(holder.telefone2 || detail?.telefone_secundario),
+    email: text(holder.email || detail?.email || titular.email),
+    adhesion: rounded(adhesion),
+    monthly_value: rounded(amount(baseProduct.preco) || amount(detail?.valor_mensal)),
+    cremation_value: sumProducts(/CREMAÇÃO|CREMACAO/i),
+    wreath_value: sumProducts(/COROA DE FLORES/i),
+    wreath_quantity: wreathProducts.reduce(
+      (total, product) => total + amount(product.quantidade || 1),
+      0,
+    ),
+    mileage_value: mileageProduct ? rounded(productTotal(mileageProduct)) : 0,
+    mileage_quantity: mileageKilometers,
+    thanatopraxy_value: sumProducts(/TANATO/i),
+    payment_plan_id: detail?.plano_pagamento_id || null,
+    due_day: text(detail?.dia_vencimento),
+    dependents,
+    bom_med_dependents: bomMedDependents,
+  };
+}
+
 export function validateBomFamiliaContractData(data) {
   const errors = [];
   for (const [label, value] of [
@@ -199,12 +298,49 @@ const dateParts = (value) => {
 const money = (value) => amount(value).toLocaleString('pt-BR', {
   minimumFractionDigits: 2, maximumFractionDigits: 2,
 });
-
-export async function renderBomFamiliaPdf(data) {
+const integerWords = (value) => {
+  const number = Math.max(0, Math.trunc(amount(value)));
+  const units = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove'];
+  const teens = ['dez', 'onze', 'doze', 'treze', 'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove'];
+  const tens = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa'];
+  const hundreds = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos',
+    'seiscentos', 'setecentos', 'oitocentos', 'novecentos'];
+  const belowThousand = (part) => {
+    if (part === 0) return '';
+    if (part === 100) return 'cem';
+    const words = [];
+    const hundred = Math.floor(part / 100);
+    const rest = part % 100;
+    if (hundred) words.push(hundreds[hundred]);
+    if (rest) {
+      const restWords = rest < 10 ? units[rest]
+        : rest < 20 ? teens[rest - 10]
+          : [tens[Math.floor(rest / 10)], units[rest % 10]].filter(Boolean).join(' e ');
+      if (words.length) words.push('e');
+      words.push(restWords);
+    }
+    return words.join(' ');
+  };
+  if (number === 0) return 'zero';
+  if (number < 1000) return belowThousand(number);
+  if (number < 1_000_000) {
+    const thousand = Math.floor(number / 1000);
+    const rest = number % 1000;
+    const prefix = thousand === 1 ? 'mil' : `${belowThousand(thousand)} mil`;
+    if (!rest) return prefix;
+    return `${prefix}${rest < 100 || rest % 100 === 0 ? ' e ' : ' '}${belowThousand(rest)}`;
+  }
+  return String(number);
+};
+async function renderBomFamilia(data, { portability = false } = {}) {
+  const modelDir = portability ? portabilityPagesDir : pagesDir;
+  const modelLabel = portability ? 'Família-Portabilidade' : 'Família';
   const backgrounds = Array.from({ length: 17 }, (_, index) =>
-    path.join(pagesDir, `page-${index + 1}.jpg`));
+    path.join(modelDir, `page-${index + 1}.jpg`));
   backgrounds.forEach((source, index) => {
-    if (!fs.existsSync(source)) throw new Error(`Página ${index + 1} do contrato Família não encontrada.`);
+    if (!fs.existsSync(source)) {
+      throw new Error(`Página ${index + 1} do contrato ${modelLabel} não encontrada.`);
+    }
   });
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: false });
@@ -234,11 +370,13 @@ export async function renderBomFamiliaPdf(data) {
       if (!date) return;
       write(date.day, x, y); write(date.month_number, x + 8, y); write(date.year, x + 15, y);
     };
-    const writePerson = (person, y, { bomMed = false } = {}) => {
+    const writePerson = (person, y, { bomMed = false, showSex = true } = {}) => {
       write(person.name, 25, y, { size: bomMed ? 9 : 10, width: bomMed ? 66 : 100 });
       if (bomMed) write(person.cpf, 93, y, { size: 9, width: 38 });
       write(digits(person.phone), bomMed ? 133 : 170, y, { size: 9, width: 29 });
-      if (person.sex) write('X', bomMed ? (person.sex === 'M' ? 163 : 165) : (person.sex === 'M' ? 125 : 128), y);
+      if (showSex && person.sex) {
+        write('X', bomMed ? (person.sex === 'M' ? 163 : 165) : (person.sex === 'M' ? 125 : 128), y);
+      }
       const birth = dateParts(person.birth_date);
       if (birth) {
         const x = bomMed ? 179 : 142;
@@ -275,7 +413,17 @@ export async function renderBomFamiliaPdf(data) {
           write(digits(data.phone), 78, 100); write(digits(data.phone2), 133, 100);
           write(data.profession, 25, 108); write(data.income, 70, 108);
           write(data.email, 110, 108, { size: 9, width: 94 });
-          (data.dependents || []).forEach((person, index) => writePerson(person, 153 + index * 5.5));
+          const relativeRows = new Map([
+            ['PAI', 116], ['P', 116], ['MÃE', 123], ['MAE', 123], ['M', 123],
+            ['SOGRO', 130], ['SOGRA', 137], ['CÔNJUGE', 145], ['CONJUGE', 145],
+          ]);
+          let childIndex = 0;
+          (data.dependents || []).forEach((person) => {
+            const relationship = text(person.relationship).toUpperCase();
+            const relativeY = relativeRows.get(relationship);
+            const y = relativeY ?? 153 + childIndex++ * 5.5;
+            writePerson(person, y, { showSex: relativeY == null });
+          });
           const paymentX = { cpfl: 111, bank: 148.5, credit_card: 166.5 }[
             bomFamiliaPaymentCategory(data.payment_plan_id)];
           write('X', paymentX, 216.5);
@@ -307,53 +455,63 @@ export async function renderBomFamiliaPdf(data) {
           write(digits(data.phone), 80, 91.5); write(digits(data.phone2), 135, 91.5);
           write(data.profession, 25, 98.5); write(data.email, 106, 98.5, { size: 10, width: 98 });
           const relatives = new Map([
-            ['PAI', 107], ['MÃE', 115], ['MAE', 115], ['SOGRO', 122],
+            ['PAI', 107], ['P', 107], ['MÃE', 115], ['MAE', 115], ['M', 115], ['SOGRO', 122],
             ['SOGRA', 129], ['CÔNJUGE', 136], ['CONJUGE', 136],
           ]);
           let genericIndex = 0;
           (data.bom_med_dependents || []).forEach((person) => {
             const relationship = text(person.relationship).toUpperCase();
-            const y = relatives.get(relationship) ?? 144 + genericIndex++ * 7.2;
-            writePerson(person, y, { bomMed: true });
+            const relativeY = relatives.get(relationship);
+            const y = relativeY ?? 144 + genericIndex++ * 7.2;
+            writePerson(person, y, { bomMed: true, showSex: relativeY == null });
           });
         }
       }
       const addAdendum = (file, fill) => {
-        const source = path.join(pagesDir, file);
-        if (!fs.existsSync(source)) throw new Error(`Adendo ${file} do contrato Família não encontrado.`);
+        const source = path.join(modelDir, file);
+        if (!fs.existsSync(source)) {
+          throw new Error(`Adendo ${file} do contrato ${modelLabel} não encontrado.`);
+        }
         addPage(source);
         write(data.pedido, 145, file === 'mileage.jpg' ? 65 : 55, { size: 10, width: 38 });
         fill();
       };
       const writeIssue = (x, y) => {
         if (!issue) return;
-        write(issue.day, x, y); write(issue.month, x + 13, y, { width: 38 });
-        write(issue.year.slice(-2), x + 54, y);
+        write(issue.day, x, y);
+        write(issue.month, x + (portability ? 18 : 13), y, { width: 38 });
+        write(issue.year.slice(-2), x + (portability ? 59 : 54), y);
       };
       if (amount(data.wreath_value) > 0) {
         addAdendum('wreath.jpg', () => {
-          write(data.wreath_quantity || 1, 58, 95);
-          write(money(data.wreath_value), 132, 123);
-          writeIssue(111, 247);
+          if (!portability) write(data.wreath_quantity || 1, 58, 95);
+          write(money(data.wreath_value), portability ? 128 : 132, 123);
+          writeIssue(portability ? 124 : 111, portability ? 242 : 247);
         });
       }
       if (amount(data.thanatopraxy_value) > 0) {
         addAdendum('thanatopraxy.jpg', () => {
-          write(money(data.thanatopraxy_value), 116, 151);
-          writeIssue(111, 250);
+          write(money(data.thanatopraxy_value), portability ? 98 : 116, portability ? 158.5 : 151);
+          if (portability) write('REAIS', 130, 158.5);
+          writeIssue(portability ? 125 : 111, portability ? 241 : 250);
         });
       }
       if (amount(data.cremation_value) > 0) {
         addAdendum('cremation.jpg', () => {
-          write(money(data.cremation_value), 113, 166);
-          writeIssue(111, 250);
+          write(money(data.cremation_value), portability ? 60 : 113, portability ? 157 : 166);
+          if (portability) write('REAIS', 77, 157);
+          writeIssue(portability ? 125 : 111, portability ? 241 : 250);
         });
       }
       if (amount(data.mileage_value) > 0) {
         addAdendum('mileage.jpg', () => {
-          write(data.mileage_quantity, 126, 96);
-          write(money(data.mileage_value), 112, 139);
-          writeIssue(111, 231);
+          write(data.mileage_quantity, portability ? 178 : 126, portability ? 93 : 96);
+          if (portability) {
+            write(integerWords(data.mileage_quantity), 16, 96, { size: 10, width: 70 });
+          }
+          write(money(data.mileage_value), portability ? 90 : 112, portability ? 128 : 139);
+          if (portability) write('REAIS', 128, 128);
+          writeIssue(portability ? 125 : 111, portability ? 220 : 231);
         });
       }
       doc.end();
@@ -362,4 +520,12 @@ export async function renderBomFamiliaPdf(data) {
       reject(error);
     }
   });
+}
+
+export async function renderBomFamiliaPdf(data) {
+  return renderBomFamilia(data);
+}
+
+export async function renderBomFamiliaPortabilityPdf(data) {
+  return renderBomFamilia(data, { portability: true });
 }
