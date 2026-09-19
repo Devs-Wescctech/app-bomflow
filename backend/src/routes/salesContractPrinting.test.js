@@ -18,6 +18,7 @@ import {
 import {
   COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
   buildComboMultiWellbeingContractData,
+  calculateComboPetAge,
   comboMultiWellbeingPaymentCategory,
   renderComboMultiWellbeingPdf,
   sortComboMultiWellbeingDependents,
@@ -1060,6 +1061,13 @@ test('orders Combo Multi Bem Estar dependents with the legacy Bom Med rule', () 
     { name: 'JULIANO', phone: '19995170041', birth_date: new Date('1982-04-11T00:00:00Z'), price: 0.01 },
   ]);
   assert.deepEqual(ordered.map((dependent) => dependent.name), ['JACOB', 'JULIANO', 'TAINA']);
+});
+
+test('calculates Combo pet age at contract generation instead of the old order date', () => {
+  assert.equal(
+    calculateComboPetAge('2015-08-07', '2026-09-19'),
+    '11 anos 1 mês',
+  );
 });
 
 test('selects the approved document template and exact payload for each contract product', () => {

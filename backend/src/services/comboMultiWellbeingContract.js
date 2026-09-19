@@ -138,6 +138,7 @@ export function buildComboMultiWellbeingContractData(detail = {}) {
 
   return {
     issue_date: detail.data_emissao || null,
+    generation_date: new Date(),
     name: text(holder.nome),
     cpf: text(holder.cpf),
     rg: text(holder.rg),
@@ -238,18 +239,21 @@ const dateParts = (value) => {
   };
 };
 
-const petAge = (birthDate, issueDate) => {
+export const calculateComboPetAge = (birthDate, referenceDate) => {
   const birth = dateParts(birthDate);
-  const issue = dateParts(issueDate);
-  if (!birth || !issue) return '';
-  let years = Number(issue.year) - Number(birth.year);
-  let months = Number(issue.month_number) - Number(birth.month_number);
-  if (Number(issue.day) < Number(birth.day)) months -= 1;
+  const reference = dateParts(referenceDate);
+  if (!birth || !reference) return '';
+  let years = Number(reference.year) - Number(birth.year);
+  let months = Number(reference.month_number) - Number(birth.month_number);
+  if (Number(reference.day) < Number(birth.day)) months -= 1;
   if (months < 0) {
     years -= 1;
     months += 12;
   }
-  return `${Math.max(0, years)} anos ${Math.max(0, months)} meses`;
+  const safeYears = Math.max(0, years);
+  const safeMonths = Math.max(0, months);
+  return `${safeYears} ${safeYears === 1 ? 'ano' : 'anos'} `
+    + `${safeMonths} ${safeMonths === 1 ? 'mês' : 'meses'}`;
 };
 
 const money = (value) => amount(value).toLocaleString('pt-BR', {
@@ -382,7 +386,12 @@ export async function renderComboMultiWellbeingPdf(data) {
         if (data.pet.sex === 'F') write('X', 163, petNameY);
         write(data.pet.breed, 24, petDetailsY, { width: 65 });
         write(data.pet.color, 107, petDetailsY, { width: 45 });
-        write(petAge(data.pet.birth_date, data.issue_date), 154, petDetailsY, { size: 9, width: 32 });
+        write(
+          calculateComboPetAge(data.pet.birth_date, data.generation_date || new Date()),
+          154,
+          petDetailsY,
+          { size: 9, width: 32 },
+        );
         const sizeX = { PEQUENO: 190, MEDIO: 194, GRANDE: 199 }[data.pet.size];
         if (sizeX) write('X', sizeX, 142, { size: 9 });
       }
