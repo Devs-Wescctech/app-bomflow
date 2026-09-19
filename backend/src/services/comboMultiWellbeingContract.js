@@ -379,8 +379,9 @@ export async function renderComboMultiWellbeingPdf(data) {
         write(data.driver.phone, 115, 123.5, { width: 52 });
       }
       if (data.pet) {
-        const petNameY = pageNumber === 9 ? 138.6 : 139.1;
-        const petDetailsY = pageNumber === 9 ? 145.1 : 146.1;
+        const protocolPetOffset = pageNumber === 9 ? 1 : 0;
+        const petNameY = (pageNumber === 9 ? 138.6 : 139.1) + protocolPetOffset;
+        const petDetailsY = (pageNumber === 9 ? 145.1 : 146.1) + protocolPetOffset;
         write(data.pet.name, 24, petNameY, { width: 118 });
         if (data.pet.sex === 'M') write('X', 158, petNameY);
         if (data.pet.sex === 'F') write('X', 163, petNameY);
@@ -393,7 +394,7 @@ export async function renderComboMultiWellbeingPdf(data) {
           { size: 9, width: 32 },
         );
         const sizeX = { PEQUENO: 190, MEDIO: 194, GRANDE: 199 }[data.pet.size];
-        if (sizeX) write('X', sizeX, 142, { size: 9 });
+        if (sizeX) write('X', sizeX, 142 + protocolPetOffset, { size: 9 });
       }
       (data.dependents || []).forEach((dependent, index) => {
         const y = 169.3 + (index * 4) + (index >= 3 ? 5 : 0);
