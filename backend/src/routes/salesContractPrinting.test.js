@@ -1113,6 +1113,38 @@ test('recognizes and renders Novo Combo with its own product and model files', a
   assert.equal(pdf.subarray(0, 4).toString(), '%PDF');
 });
 
+test('Novo Combo reproduces legacy optional pages and ignores ADENDO TANATO', async () => {
+  const detail = {
+    data_emissao: '2026-09-01',
+    titular: {
+      nome: 'CLIENTE NOVO COMBO', cpf: '529.982.247-25',
+      data_nascimento: '1980-04-10', sexo: 'F', estado_civil: 'CASADO',
+      telefone: '19999999999',
+    },
+    endereco: {
+      logradouro: 'RUA TESTE', numero: '10', bairro: 'CENTRO',
+      cidade: 'CAMPINAS', uf: 'SP', cep: '13000000',
+    },
+    plano_pagamento_id: 25451,
+    dia_vencimento: '20',
+    produtos: [
+      { id: NEW_COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS[0], quantidade: 1, preco: 79.9, valor_total: 79.9 },
+      { id: 214147174, descricao: 'ADENDO TANATO', quantidade: 1, preco: 27, valor_total: 27 },
+      { id: 47843900, descricao: 'COROA DE FLORES (15,00)', quantidade: 1, preco: 15, valor_total: 15 },
+      { id: 52247142, descricao: 'CREMAÇÃO (R$ 30,00)', quantidade: 1, preco: 30, valor_total: 30 },
+      { id: 203567296, descricao: 'QUILOMETRAGEM (500 KM)', quantidade: 1, preco: 15, valor_total: 15 },
+    ],
+    pessoas: [],
+    veiculos: [],
+  };
+  const data = buildComboMultiWellbeingContractData(detail, { newCombo: true });
+  assert.equal(data.monthly_value, 139.9);
+  assert.equal(data.optional_services.thanatopraxy, undefined);
+  assert.deepEqual(validateComboMultiWellbeingContractData(data), []);
+  const pdf = await renderNewComboMultiWellbeingPdf(data);
+  assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 19);
+});
+
 test('selects the approved document template and exact payload for each contract product', () => {
   assert.equal(CONTRACT_WHATSAPP_TEMPLATES.essencial.name, 'bom_vindas_funeral');
   assert.equal(CONTRACT_WHATSAPP_TEMPLATES.bom_auto.name, 'bom_auto_boas_vindas');

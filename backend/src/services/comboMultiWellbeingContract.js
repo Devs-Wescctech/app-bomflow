@@ -13,13 +13,11 @@ export const COMBO_MULTI_WELLBEING_ADHESION = 60;
 export const NEW_COMBO_OPTIONAL_PRODUCTS = Object.freeze({
   crown: Object.freeze([47843900, 47989280, 114742914]),
   cremation: Object.freeze([52247142]),
-  thanatopraxy: Object.freeze([214147174, 48337202]),
   mileage: Object.freeze([203567296, 203567310, 203567429, 203567456, 52247119]),
 });
 const NEW_COMBO_OPTIONAL_TEMPLATE_FILES = Object.freeze({
   crown: '01_coroa.jpg',
   cremation: 'cremacao.jpg',
-  thanatopraxy: 'tanatopraxia.jpg',
   mileage: 'quilometragem.jpg',
 });
 
@@ -161,9 +159,8 @@ export function buildComboMultiWellbeingContractData(detail = {}, { newCombo = f
         }];
       }))
     : {};
-  const optionalMonthlyValue = Object.entries(optionalServices)
-    .filter(([key]) => key !== 'thanatopraxy')
-    .reduce((total, [, service]) => total + service.value, 0);
+  const optionalMonthlyValue = Object.values(optionalServices)
+    .reduce((total, service) => total + service.value, 0);
 
   return {
     issue_date: detail.data_emissao || null,
@@ -245,9 +242,11 @@ export function validateComboMultiWellbeingContractData(data) {
   if (!Number.isFinite(amount(data?.monthly_value)) || amount(data?.monthly_value) <= 0) {
     errors.push('Valor mensal do Combo Multi Bem Estar inválido.');
   }
-  if (!data?.vehicle) errors.push('Nenhum veículo foi encontrado para o Combo Multi Bem Estar.');
-  if (!data?.driver) errors.push('Nenhum condutor foi encontrado para o Combo Multi Bem Estar.');
-  if (!data?.pet) errors.push('Nenhum pet foi encontrado para o Combo Multi Bem Estar.');
+  if (!data?.new_combo) {
+    if (!data?.vehicle) errors.push('Nenhum veículo foi encontrado para o Combo Multi Bem Estar.');
+    if (!data?.driver) errors.push('Nenhum condutor foi encontrado para o Combo Multi Bem Estar.');
+    if (!data?.pet) errors.push('Nenhum pet foi encontrado para o Combo Multi Bem Estar.');
+  }
   if ((data?.dependents || []).length > 13) {
     errors.push('O contrato Combo Multi Bem Estar comporta no máximo 13 dependentes.');
   }
@@ -451,6 +450,25 @@ async function renderComboMultiWellbeingPdfFrom(data, contractPagesDir) {
       if (category === 'credit_card') write('X', 185, 239);
     };
     const issue = dateParts(data.issue_date) || dateParts(new Date());
+    const legacyOptionalValue = (value) => Number.isInteger(amount(value))
+      ? String(amount(value))
+      : money(value);
+    const crownValueInWords = (value) => ({
+      8: 'Oito Reais',
+      15: 'Quinze Reais',
+      30: 'Trinta Reais',
+    })[amount(value)] || `${money(value)} Reais`;
+    const addOptionalPage = (key, renderFields) => {
+      const service = data.optional_services?.[key];
+      if (!service?.present) return;
+      const fileName = NEW_COMBO_OPTIONAL_TEMPLATE_FILES[key];
+      const source = path.join(newPagesDir, fileName);
+      if (!fs.existsSync(source)) throw new Error(`Modelo do serviço opcional ausente: ${fileName}.`);
+      doc.addPage();
+      doc.image(source, 0, 0, { width: 595.28, height: 841.89 });
+      doc.fillColor('#111');
+      renderFields(service);
+    };
     try {
       for (let page = 1; page <= pageCount; page += 1) {
         doc.addPage();
@@ -475,6 +493,31 @@ async function renderComboMultiWellbeingPdfFrom(data, contractPagesDir) {
             x: 122, shortYear: true, monthOffset: 19, yearOffset: 60,
           });
         }
+      }
+      if (data.new_combo) {
+        addOptionalPage('cremation', (service) => {
+          write(legacyOptionalValue(service.value), 60, 157, { size: 11 });
+          write('REAIS', 77, 157, { size: 11 });
+          write(issue.day, 125, 241, { size: 12 });
+          write(issue.month, 143, 241, { size: 12, width: 28 });
+        });
+        addOptionalPage('mileage', (service) => {
+          // O gerador legado imprime 2.000 km para qualquer faixa contratada.
+          write('2000', 178, 93, { size: 10 });
+          write('Dois Mil', 16, 96, { size: 10 });
+          write(legacyOptionalValue(service.value), 90, 128, { size: 11 });
+          write('REAIS', 128, 128, { size: 10 });
+          write(issue.day, 125, 220, { size: 12 });
+          write(issue.month, 143, 220, { size: 12, width: 28 });
+        });
+        addOptionalPage('crown', (service) => {
+          // O campo de quantidade permanecia vazio no PDF oficial.
+          write(money(service.value), 148, 119, { size: 11 });
+          write(crownValueInWords(service.value), 25, 123, { size: 11 });
+          writeIssueDate(issue, 239, {
+            x: 124, shortYear: true, monthOffset: 20, yearOffset: 58,
+          });
+        });
       }
       doc.end();
     } catch (error) {
