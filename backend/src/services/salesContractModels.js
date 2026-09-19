@@ -67,6 +67,7 @@ export const CONTRACT_PRODUCTS = Object.freeze({
   BOM_PET: 'bom_pet',
   BOM_PET_SAUDE_INDIVIDUAL: 'bom_pet_saude_individual',
   BOM_PET_SAUDE_3PETS: 'bom_pet_saude_3pets',
+  COMBO_MULTI_WELLBEING: 'combo_multi_bem_estar',
 });
 
 export const BOM_PET_PET_LAYOUT = Object.freeze({
@@ -127,6 +128,7 @@ const PRODUCT_LABELS = Object.freeze({
   [CONTRACT_PRODUCTS.BOM_PET]: 'Bom Pet',
   [CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL]: 'Bom Pet Saúde',
   [CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS]: 'Bom Pet Saúde - 3 Pets',
+  [CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING]: 'Combo Multi Bem Estar',
 });
 const BRAZILIAN_STATES = new Set([
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO',
@@ -211,6 +213,9 @@ export function detailMatchesContractProduct(detail, productKey) {
   }
   if (productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS) {
     return products.some((product) => BOM_PET_HEALTH_THREE_PRODUCT_IDS.includes(Number(product?.id)));
+  }
+  if (productKey === CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING) {
+    return products.some((product) => Number(product?.id) === 70690724);
   }
   return false;
 }

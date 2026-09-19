@@ -13,6 +13,7 @@ import { sendTemplate } from '../services/attendanceWhuClient.js';
 import {
   getContactByPhone,
   getMessageDeliveryInfo,
+  sendDocumentWithToken,
   setContactAttributes,
 } from '../services/whatsappService.js';
 import { emitAttendanceEvent } from '../services/attendanceEvents.js';
@@ -61,6 +62,12 @@ import {
   renderBomMedPdf,
   validateBomMedContractData,
 } from '../services/bomMedContract.js';
+import {
+  COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
+  buildComboMultiWellbeingContractData,
+  renderComboMultiWellbeingPdf,
+  validateComboMultiWellbeingContractData,
+} from '../services/comboMultiWellbeingContract.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -86,6 +93,11 @@ export const CONTRACT_WHATSAPP_TEMPLATES = Object.freeze({
   [CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS]: Object.freeze({
     id: '69ed0d552e1d23a0987f4330',
     name: 'boas_vindas_bom_pet_saude',
+  }),
+  [CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING]: Object.freeze({
+    id: '69ed0d552e1d23a0987f42bb',
+    name: 'boas_vindas_multi_bem_star',
+    documentHeader: false,
   }),
 });
 const secret = () => {
@@ -307,6 +319,25 @@ Obrigado por sua confiança e conte sempre com a gente!
 Bom Pet - Grupo Bom Pastor Multiassistência`;
 }
 
+export function buildComboMultiWellbeingWhatsAppMessage(name) {
+  const holder = String(name || '').trim();
+  return `Olá, ${holder}! Parabéns por aproveitar o combo MULTI BEM ESTAR! Agora você é parte da família Bom Pastor Multiassistência 🧡.
+Informações importantes:
+🩺 BOM MED - Telemedicina: Após 48 horas, o acesso ao agendamento de consultas será liberado através do link https://autoagendamento.brshealthcare.com.br/bommed
+Baixe o guia de uso: https://grupobompastor.com.br/wpcontent/uploads/2024/01/PASSO-A-PASSO-BOMMED.pdf
+
+🐾 BOM PET - Assistência, Saúde e Cremação: em caso de óbito do pet, ligue para 0800 940 3227 (24h).
+🚘 BOM AUTO - Assistência para carro ou moto: para acionar o serviço, ligue para 0800 940 3227 (24h).
+Conheça seus benefícios:
+🛍 Descontos em dentistas, exames, farmácias, pet shops e mais.
+💻 Descontos online: https://bompastordescontosonline.com.br/.
+💰 Sorteios de R$1.000 e R$5.000.
+👨‍🦽 Locação de equipamentos como cadeira de rodas, muleta e outros.
+❤ Orientação psicológica do Instituto de Apoio ao Luto.
+Conte com a gente!
+Bom Pastor Multiassistência.`;
+}
+
 export function buildContractWhatsAppDelivery({
   productKey,
   holderName,
@@ -320,8 +351,9 @@ export function buildContractWhatsAppDelivery({
   const isBomPet = productKey === CONTRACT_PRODUCTS.BOM_PET;
   const isBomPetHealth = productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL
     || productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS;
+  const isCombo = productKey === CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING;
   const productName = isEssential ? 'Essencial' : isBomPet ? 'Bom Pet'
-    : isBomPetHealth ? 'Bom Pet Saúde' : 'Bom Auto';
+    : isBomPetHealth ? 'Bom Pet Saúde' : isCombo ? 'Combo Multi Bem Estar' : 'Bom Auto';
   const fileName = `Contrato ${productName} ${displayNumber}.pdf`
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -330,21 +362,25 @@ export function buildContractWhatsAppDelivery({
     templateId: template.id,
     templateName: template.name,
     fileName,
-    caption: isEssential
+    caption: isCombo
+      ? buildComboMultiWellbeingWhatsAppMessage(holderName)
+      : isEssential
       ? buildEssentialWhatsAppMessage(holderName)
       : isBomPetHealth
         ? buildBomPetHealthWhatsAppMessage(holderName)
         : isBomPet
         ? buildBomPetWhatsAppMessage(holderName)
         : buildBomAutoWhatsAppMessage(holderName),
+    separateDocument: template.documentHeader === false,
+    documentUrl,
     components: [
-      {
+      ...(template.documentHeader === false ? [] : [{
         type: 'header',
         parameters: [{
           type: 'document',
           document: { link: documentUrl, fileName },
         }],
-      },
+      }]),
       {
         type: 'body',
         parameters: [{ type: 'text', text: holderName }],
@@ -603,6 +639,10 @@ export async function findOrders(cpf, page, pageSize, reference = null) {
                 'AAAAEEEIIOOOOUCN'
               )) LIKE '%BOM AUTO% DADOS DO VEICULO%'
          )
+          AND NOT EXISTS (
+            SELECT 1 FROM itens_pedidos combo_ip
+             WHERE combo_ip.pedido_id=p.id AND combo_ip.produto_id = ANY($11::bigint[])
+          )
         UNION ALL
         SELECT 'essencial'::text
          WHERE EXISTS (
@@ -633,6 +673,13 @@ export async function findOrders(cpf, page, pageSize, reference = null) {
                AND ip.produto_id = ANY($10::bigint[])
           )
          UNION ALL
+         SELECT 'combo_multi_bem_estar'::text
+          WHERE EXISTS (
+            SELECT 1 FROM itens_pedidos ip
+             WHERE ip.pedido_id=p.id
+               AND ip.produto_id = ANY($11::bigint[])
+          )
+         UNION ALL
          SELECT 'bom_pet_saude_individual'::text
           WHERE EXISTS (
             SELECT 1 FROM itens_pedidos ip
@@ -661,6 +708,7 @@ export async function findOrders(cpf, page, pageSize, reference = null) {
     BOM_PET_HEALTH_THREE_PRODUCT_IDS,
     BOM_IDEAL_BASE_PRODUCT_IDS,
     BOM_MED_BASE_PRODUCT_IDS,
+    COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
   ]);
   return {
     rows: result.rows.map((r) => classifyDocument({
@@ -707,6 +755,10 @@ export async function findOrdersByReference(reference, page, pageSize) {
                 'AAAAEEEIIOOOOUCN'
               )) LIKE '%BOM AUTO% DADOS DO VEICULO%'
          )
+          AND NOT EXISTS (
+            SELECT 1 FROM itens_pedidos combo_ip
+             WHERE combo_ip.pedido_id=p.id AND combo_ip.produto_id = ANY($10::bigint[])
+          )
         UNION ALL
         SELECT 'essencial'::text
          WHERE EXISTS (
@@ -737,6 +789,13 @@ export async function findOrdersByReference(reference, page, pageSize) {
                AND ip.produto_id = ANY($9::bigint[])
           )
          UNION ALL
+         SELECT 'combo_multi_bem_estar'::text
+          WHERE EXISTS (
+            SELECT 1 FROM itens_pedidos ip
+             WHERE ip.pedido_id=p.id
+               AND ip.produto_id = ANY($10::bigint[])
+          )
+         UNION ALL
          SELECT 'bom_pet_saude_individual'::text
           WHERE EXISTS (
             SELECT 1 FROM itens_pedidos ip
@@ -764,6 +823,7 @@ export async function findOrdersByReference(reference, page, pageSize) {
     BOM_PET_HEALTH_THREE_PRODUCT_IDS,
     BOM_IDEAL_BASE_PRODUCT_IDS,
     BOM_MED_BASE_PRODUCT_IDS,
+    COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
   ]);
   return {
     rows: result.rows.map((r) => classifyDocument({
@@ -1075,6 +1135,9 @@ router.get('/contracts/search', async (req, res) => {
 });
 
 const buildProductContractData = (detail, productKey) => {
+  if (productKey === CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING) {
+    return buildComboMultiWellbeingContractData(detail);
+  }
   if (productKey === CONTRACT_PRODUCTS.ESSENCIAL) return buildEssentialContractData(detail);
   if (productKey === CONTRACT_PRODUCTS.BOM_PET) return buildBomPetContractData(detail);
   if (productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL) {
@@ -1087,6 +1150,9 @@ const buildProductContractData = (detail, productKey) => {
 };
 
 const validateProductContractData = (data, productKey) => {
+  if (productKey === CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING) {
+    return validateComboMultiWellbeingContractData(data);
+  }
   if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return validateBomIdealContractData(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_MED) return validateBomMedContractData(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_CORP) return validateBomCorpContractData(data);
@@ -1107,6 +1173,9 @@ const renderProductContract = (
   pedido,
   { optimizeForWhatsapp = false } = {},
 ) => {
+  if (productKey === CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING) {
+    return renderComboMultiWellbeingPdf(data);
+  }
   if (productKey === CONTRACT_PRODUCTS.BOM_CORP) return renderBomCorpPdf(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return renderBomIdealPdf(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_MED) return renderBomMedPdf(data);
@@ -1132,6 +1201,7 @@ const contractFileProduct = (productKey) => ({
   [CONTRACT_PRODUCTS.BOM_PET]: 'bom_pet',
   [CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL]: 'bom_pet_saude_individual',
   [CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS]: 'bom_pet_saude_3pets',
+  [CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING]: 'combo_multi_bem_estar',
 })[productKey];
 
 router.post('/contracts/validate', async (req, res) => {
@@ -1406,12 +1476,20 @@ router.post('/contracts/send-whatsapp', async (req, res) => {
       caption, components, fileName, templateId, templateName,
     } = deliveryConfig;
     deliveryStarted = true;
-    const response = await sendTemplate(
+    const templateResponse = await sendTemplate(
       channelToken,
       phone,
       templateId,
       components,
     );
+    const response = deliveryConfig.separateDocument
+      ? await sendDocumentWithToken({
+          number: phone,
+          documentUrl: deliveryConfig.documentUrl,
+          caption,
+          filename: fileName,
+        }, channelToken)
+      : templateResponse;
     scheduleContractDeletion(temporaryObject);
     temporaryObject = null;
     externalMessageId =

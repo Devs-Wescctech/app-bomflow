@@ -16,11 +16,19 @@ import {
   validateBomMedContractData,
 } from '../services/bomMedContract.js';
 import {
+  COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
+  buildComboMultiWellbeingContractData,
+  comboMultiWellbeingPaymentCategory,
+  renderComboMultiWellbeingPdf,
+  validateComboMultiWellbeingContractData,
+} from '../services/comboMultiWellbeingContract.js';
+import {
   bomAutoPaymentCategory,
   classifyDocument,
   buildBomAutoWhatsAppMessage,
   buildBomPetWhatsAppMessage,
   buildBomPetHealthWhatsAppMessage,
+  buildComboMultiWellbeingWhatsAppMessage,
   buildContractWhatsAppDelivery,
   buildEssentialWhatsAppMessage,
   CONTRACT_WHATSAPP_TEMPLATES,
@@ -961,6 +969,87 @@ test('builds the approved Bom Pet WhatsApp message with the ERP holder name', ()
   assert.match(message, /filhos de patas/);
   assert.match(message, /0800 940 3227/);
   assert.match(message, /Bom Pet - Grupo Bom Pastor Multiassistência\.$/);
+});
+
+test('builds, validates and renders the historical Combo Multi Bem Estar representation', async () => {
+  const detail = {
+    titular_is_canonical: true,
+    data_emissao: '2026-06-12',
+    dia_vencimento: 20,
+    plano_pagamento_id: 1643483,
+    titular: {
+      nome: 'CLIENTE TESTE',
+      cpf: '529.982.247-25',
+      rg: '123456',
+      data_nascimento: '1967-04-28',
+      sexo: 'F',
+      estado_civil: 'SOLTEIRO',
+      profissao: 'Outros',
+      telefone: '19999999999',
+      email: 'cliente@example.com',
+    },
+    endereco: {
+      logradouro: 'RUA A', numero: '10', bairro: 'CENTRO',
+      cidade: 'CAMPINAS', uf: 'SP', cep: '13043010',
+    },
+    produtos: [
+      { id: COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS[0], quantidade: 1, preco: 55.9, valor_total: 55.9 },
+      { id: 55482336, descricao: 'BOM MED - DEPENDENTE 0,00', quantidade: 1, preco: 0.01, valor_total: 0.01 },
+      { id: 79080781, descricao: 'BOM PET SAÚDE - NOME DO PET', quantidade: 1, preco: 0.01, valor_total: 0.01 },
+    ],
+    pessoas: [
+      { is_titular: true, nome: 'CLIENTE TESTE', produtos: ['COMBO MULTI BEM ESTAR'] },
+      {
+        nome: 'DEPENDENTE TESTE', cpf: '111.444.777-35', data_nascimento: '2000-01-01',
+        sexo: 'M', telefone: '19999999999', produtos: ['BOM MED - DEPENDENTE 0,00'],
+      },
+      {
+        nome: 'LHASA APSO/TOBBY', data_nascimento: '2015-08-07', sexo: 'M',
+        produtos: ['BOM PET SAÚDE - NOME DO PET'],
+      },
+    ],
+    veiculos: [{
+      descricao: 'JEEP/GHP9E80/VERMELHO',
+      nome: 'JEEP/GHP9E80/VERMELHO',
+      data_nascimento: '2015-03-20',
+      cpf: null,
+      driver: null,
+    }],
+  };
+  assert.equal(detailMatchesContractProduct(detail, CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING), true);
+  const data = buildComboMultiWellbeingContractData(detail);
+  assert.equal(data.adhesion, 60);
+  assert.equal(data.standard_value, 55.9);
+  assert.equal(data.dependent_value, 0);
+  assert.equal(data.monthly_value, 55.9);
+  assert.deepEqual(data.vehicle, {
+    manufacturer: 'JEEP', model: '', color: 'VERMELHO', year: '2015', plate: 'GHP9E80',
+  });
+  assert.equal(data.driver.name, 'CLIENTE TESTE');
+  assert.equal(data.pet.name, 'LHASA APSO');
+  assert.equal(data.pet.breed, 'TOBBY');
+  assert.deepEqual(validateComboMultiWellbeingContractData(data), []);
+  assert.equal(comboMultiWellbeingPaymentCategory(data.payment_plan_id), 'bank');
+  const pdf = await renderComboMultiWellbeingPdf(data);
+  assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 17);
+});
+
+test('uses the approved text template and a follow-up document for Combo Multi Bem Estar', () => {
+  const delivery = buildContractWhatsAppDelivery({
+    productKey: CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING,
+    holderName: 'CLIENTE TESTE',
+    displayNumber: '70573',
+    documentUrl: 'https://example.com/combo.pdf',
+  });
+  assert.equal(delivery.templateId, '69ed0d552e1d23a0987f42bb');
+  assert.equal(delivery.templateName, 'boas_vindas_multi_bem_star');
+  assert.equal(delivery.separateDocument, true);
+  assert.equal(delivery.documentUrl, 'https://example.com/combo.pdf');
+  assert.deepEqual(delivery.components, [{
+    type: 'body',
+    parameters: [{ type: 'text', text: 'CLIENTE TESTE' }],
+  }]);
+  assert.match(buildComboMultiWellbeingWhatsAppMessage('CLIENTE TESTE'), /^Olá, CLIENTE TESTE!/);
 });
 
 test('selects the approved document template and exact payload for each contract product', () => {

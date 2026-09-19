@@ -1,0 +1,377 @@
+import PDFDocument from 'pdfkit';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const pagesDir = path.resolve(__dirname, '../../public/combo-multi-wellbeing-contract');
+
+export const COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS = Object.freeze([70690724]);
+export const COMBO_MULTI_WELLBEING_ADHESION = 60;
+
+const BANK_PAYMENT_PLAN_IDS = new Set([
+  25451, 48296791, 40564923, 48286734, 1643483, 48295856, 82623870,
+]);
+const CREDIT_CARD_PAYMENT_PLAN_IDS = new Set([
+  46285, 47214448, 48395023, 88733784,
+]);
+
+const text = (value) => String(value ?? '').trim();
+const digits = (value) => text(value).replace(/\D/g, '');
+const amount = (value) => Number(value || 0);
+const rounded = (value) => Math.round((amount(value) + Number.EPSILON) * 100) / 100;
+const normalized = (value) => text(value)
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toUpperCase();
+
+const productAmount = (product) => {
+  if (product?.valor_total != null) return amount(product.valor_total);
+  return amount(product?.preco) * amount(product?.quantidade);
+};
+
+const linkedTo = (person, matcher) =>
+  (person?.produtos || []).some((description) => matcher(normalized(description)));
+
+const isBomMedDependent = (description) =>
+  description.includes('BOM MED') && description.includes('DEPENDENTE');
+
+const isPetName = (description) =>
+  description.includes('BOM PET') && description.includes('NOME DO PET');
+
+const parsePet = (person) => {
+  const parts = text(person?.nome).split(/\s*\/\s*/).map(text).filter(Boolean);
+  const compactLegacy = parts.length <= 2;
+  return {
+    name: parts[0] || text(person?.nome),
+    type: compactLegacy ? '' : parts[1] || '',
+    breed: compactLegacy ? parts[1] || '' : parts[2] || '',
+    color: parts[3] || '',
+    size: normalized(parts[4] || person?.porte),
+    birth_date: person?.data_nascimento || null,
+    sex: normalized(person?.sexo).startsWith('F') ? 'F' : 'M',
+  };
+};
+
+const normalizeSex = (value) => {
+  const valueNormalized = normalized(value);
+  if (valueNormalized === 'F' || valueNormalized === 'FEMININO') return 'FEMININO';
+  if (valueNormalized === 'M' || valueNormalized === 'MASCULINO') return 'MASCULINO';
+  return '';
+};
+
+const normalizeCivilStatus = (value) => {
+  const valueNormalized = normalized(value);
+  if (valueNormalized.includes('SOLTEIR')) return 'SOLTEIRO';
+  if (valueNormalized.includes('CASAD')) return 'CASADO';
+  return 'OUTROS';
+};
+
+export function comboMultiWellbeingPaymentCategory(planId) {
+  const id = Number(planId);
+  if (BANK_PAYMENT_PLAN_IDS.has(id)) return 'bank';
+  if (CREDIT_CARD_PAYMENT_PLAN_IDS.has(id)) return 'credit_card';
+  return null;
+}
+
+export function buildComboMultiWellbeingContractData(detail = {}) {
+  const holder = detail.titular || {};
+  const address = detail.endereco || {};
+  const products = Array.isArray(detail.produtos) ? detail.produtos : [];
+  const people = Array.isArray(detail.pessoas) ? detail.pessoas : [];
+  const baseProduct = products.find((product) =>
+    COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS.includes(Number(product?.id)));
+  const dependentProducts = products.filter((product) =>
+    isBomMedDependent(normalized(product?.descricao)));
+  const dependentPrices = dependentProducts.flatMap((product) =>
+    Array.from(
+      { length: Math.max(1, Number(product?.quantidade) || 1) },
+      () => rounded(product?.preco),
+    ));
+  const dependents = people
+    .filter((person) => !person?.is_titular && linkedTo(person, isBomMedDependent))
+    .map((person, index) => ({
+      name: text(person.nome),
+      cpf: text(person.cpf),
+      birth_date: person.data_nascimento || null,
+      phone: text(person.telefone),
+      sex: normalizeSex(person.sexo).slice(0, 1),
+      price: dependentPrices[index] ?? 0,
+    }));
+  const dependentValue = rounded(dependents
+    .filter((dependent) => dependent.price > 1)
+    .reduce((total, dependent) => total + dependent.price, 0));
+  const pets = people
+    .filter((person) => linkedTo(person, isPetName))
+    .map(parsePet);
+  const vehicle = Array.isArray(detail.veiculos) ? detail.veiculos[0] || null : null;
+  const legacyVehicleParts = text(vehicle?.descricao).split(/\s*\/\s*/).map(text).filter(Boolean);
+  // Pedidos históricos do Combo gravaram apenas MODELO/PLACA/COR e não
+  // criaram uma linha separada de condutor; o gerador oficial usava o titular.
+  const legacyComboVehicle = legacyVehicleParts.length === 3 && !vehicle?.cpf;
+  const driver = vehicle?.driver || (legacyComboVehicle && detail.titular_is_canonical ? holder : null);
+  const standardValue = rounded(productAmount(baseProduct));
+
+  return {
+    issue_date: detail.data_emissao || null,
+    name: text(holder.nome),
+    cpf: text(holder.cpf),
+    rg: text(holder.rg),
+    birth_date: holder.data_nascimento || null,
+    sex: normalizeSex(holder.sexo),
+    marital_status: normalizeCivilStatus(holder.estado_civil),
+    profession: text(holder.profissao),
+    income: holder.renda ?? null,
+    address: text(address.logradouro),
+    complement: text(address.complemento),
+    number: text(address.numero),
+    district: text(address.bairro),
+    city: text(address.cidade),
+    state: normalized(address.uf),
+    cep: digits(address.cep),
+    phone: text(holder.telefone),
+    phone2: text(detail.telefone_secundario),
+    email: text(holder.email || detail.email),
+    adhesion: COMBO_MULTI_WELLBEING_ADHESION,
+    standard_value: standardValue,
+    dependent_value: dependentValue,
+    monthly_value: rounded(standardValue + dependentValue),
+    payment_plan_id: detail.plano_pagamento_id || null,
+    due_day: text(detail.dia_vencimento),
+    dependents,
+    pet: pets[0] || null,
+    vehicle: vehicle ? {
+      manufacturer: legacyComboVehicle ? legacyVehicleParts[0] : text(vehicle.fabricante),
+      model: legacyComboVehicle ? '' : text(vehicle.modelo),
+      color: legacyComboVehicle ? legacyVehicleParts[2] : text(vehicle.cor),
+      year: legacyComboVehicle
+        ? dateParts(vehicle.data_nascimento)?.year || ''
+        : text(vehicle.ano),
+      plate: (legacyComboVehicle ? legacyVehicleParts[1] : text(vehicle.placa)).toUpperCase(),
+    } : null,
+    driver: driver ? {
+      name: text(driver.nome),
+      cpf: text(driver.cpf),
+      birth_date: driver.data_nascimento || null,
+      phone: text(driver.telefone),
+      sex: normalizeSex(driver.sexo),
+      marital_status: normalizeCivilStatus(driver.estado_civil),
+    } : null,
+  };
+}
+
+export function validateComboMultiWellbeingContractData(data) {
+  const errors = [];
+  for (const [label, value] of [
+    ['data de emissão', data?.issue_date],
+    ['nome do titular', data?.name],
+    ['CPF do titular', data?.cpf],
+    ['data de nascimento do titular', data?.birth_date],
+    ['sexo do titular', data?.sex],
+    ['endereço', data?.address],
+    ['número do endereço', data?.number],
+    ['bairro', data?.district],
+    ['cidade', data?.city],
+    ['estado', data?.state],
+    ['CEP', data?.cep],
+    ['telefone', data?.phone],
+    ['plano de pagamento', data?.payment_plan_id],
+  ]) {
+    if (!text(value)) errors.push(`Campo obrigatório ausente: ${label}.`);
+  }
+  if (digits(data?.cpf).length !== 11) errors.push('CPF do titular inválido.');
+  if (!['MASCULINO', 'FEMININO'].includes(text(data?.sex))) {
+    errors.push('Sexo do titular inválido.');
+  }
+  if (!comboMultiWellbeingPaymentCategory(data?.payment_plan_id)) {
+    errors.push('A forma de pagamento não corresponde às opções do contrato Combo Multi Bem Estar.');
+  }
+  if (!Number.isFinite(amount(data?.monthly_value)) || amount(data?.monthly_value) <= 0) {
+    errors.push('Valor mensal do Combo Multi Bem Estar inválido.');
+  }
+  if (!data?.vehicle) errors.push('Nenhum veículo foi encontrado para o Combo Multi Bem Estar.');
+  if (!data?.driver) errors.push('Nenhum condutor foi encontrado para o Combo Multi Bem Estar.');
+  if (!data?.pet) errors.push('Nenhum pet foi encontrado para o Combo Multi Bem Estar.');
+  if ((data?.dependents || []).length > 13) {
+    errors.push('O contrato Combo Multi Bem Estar comporta no máximo 13 dependentes.');
+  }
+  return errors;
+}
+
+const dateParts = (value) => {
+  const match = text(value instanceof Date ? value.toISOString() : value)
+    .match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const month = new Intl.DateTimeFormat('pt-BR', {
+    month: 'long',
+    timeZone: 'UTC',
+  }).format(new Date(`${match[1]}-${match[2]}-${match[3]}T12:00:00Z`));
+  return {
+    year: match[1],
+    month_number: match[2],
+    day: match[3],
+    month: month.charAt(0).toUpperCase() + month.slice(1),
+  };
+};
+
+const petAge = (birthDate, issueDate) => {
+  const birth = dateParts(birthDate);
+  const issue = dateParts(issueDate);
+  if (!birth || !issue) return '';
+  let years = Number(issue.year) - Number(birth.year);
+  let months = Number(issue.month_number) - Number(birth.month_number);
+  if (Number(issue.day) < Number(birth.day)) months -= 1;
+  if (months < 0) {
+    years -= 1;
+    months += 12;
+  }
+  return `${Math.max(0, years)} anos ${Math.max(0, months)} meses`;
+};
+
+const money = (value) => amount(value).toLocaleString('pt-BR', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+export async function renderComboMultiWellbeingPdf(data) {
+  const pageCount = data.pet ? 17 : 16;
+  const backgrounds = new Map();
+  for (let page = 1; page <= pageCount; page += 1) {
+    const source = path.join(pagesDir, `page-${page}.jpg`);
+    if (!fs.existsSync(source)) {
+      throw new Error(`Página ${page} do contrato Combo Multi Bem Estar não encontrada.`);
+    }
+    backgrounds.set(page, source);
+  }
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: false });
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+    const mm = (value) => value * 72 / 25.4;
+    const write = (value, x, y, { size = 10, width = null, minSize = 6 } = {}) => {
+      const content = text(value);
+      if (!content) return;
+      doc.font('Times-Roman').fontSize(size);
+      let fontSize = size;
+      while (width && doc.widthOfString(content) > mm(width) && fontSize > minSize) {
+        fontSize -= 0.5;
+        doc.fontSize(fontSize);
+      }
+      doc.text(content, mm(x + 1), mm(y + 1), {
+        width: width ? mm(width) : undefined,
+        lineBreak: false,
+      });
+    };
+    const writeDate = (value, x, y) => {
+      const date = dateParts(value);
+      if (!date) return;
+      write(date.day, x, y);
+      write(date.month_number, x + 9.5, y);
+      write(date.year, x + 18, y, { size: 9, width: 12 });
+    };
+    const writeDependentDate = (value, y) => {
+      const date = dateParts(value);
+      if (!date) return;
+      write(date.day, 150, y, { size: 8.5 });
+      write(date.month_number, 156.5, y, { size: 8.5 });
+      write(date.year, 162.5, y, { size: 8.5, width: 9 });
+    };
+    const writeCep = (value, y) => {
+      digits(value).slice(0, 8).split('').forEach((digit, index) => {
+        const positions = [36, 41, 46, 50, 55, 63, 67, 72];
+        write(digit, positions[index], y, { size: 10 });
+      });
+    };
+    const writeIssueDate = (issue, y, { x = 32, shortYear = false } = {}) => {
+      if (!issue) return;
+      write(issue.day, x, y, { size: 11 });
+      write(issue.month, x + 13, y, { size: 11, width: 28 });
+      write(shortYear ? issue.year.slice(-2) : issue.year, x + (shortYear ? 59 : 35), y, { size: 11 });
+    };
+    const writeForm = () => {
+      write(money(data.adhesion), 29, 39.5, { size: 11 });
+      write(money(data.standard_value), 52, 39.5, { size: 11 });
+      write(money(data.dependent_value), 75, 39.5, { size: 11 });
+      write(money(data.monthly_value), 100, 39.5, { size: 11 });
+      const dueX = { 10: 24.5, 15: 47.5, 20: 71, 25: 94 }[Number(data.due_day)];
+      if (dueX) write('X', dueX, 48);
+      write(data.name, 24, 56.5, { width: 118 });
+      if (data.sex === 'MASCULINO') write('X', 153, 56.5);
+      if (data.sex === 'FEMININO') write('X', 157, 56.5);
+      const civilX = { SOLTEIRO: 163, CASADO: 168, OUTROS: 173 }[data.marital_status];
+      if (civilX) write('X', civilX, 56.5);
+      writeDate(data.birth_date, 180, 56.5);
+      write(data.cpf, 24, 63, { width: 88 });
+      write(data.rg, 116, 63, { width: 88 });
+      write([data.address, data.complement].filter(Boolean).join(' - '), 24, 69.5, { width: 157 });
+      write(data.number, 188, 69.5, { width: 18 });
+      write(data.district, 24, 75.5, { width: 78 });
+      write(data.city, 107, 75.5, { width: 93 });
+      write(data.state, 24, 82.5);
+      writeCep(data.cep, 82.5);
+      write(data.phone, 78, 82.5, { width: 52 });
+      write(data.phone2, 135, 82.5, { width: 67 });
+      write(data.profession, 24, 89, { width: 43 });
+      write(data.income, 70, 89, { width: 35 });
+      write(data.email, 107, 89, { size: 9, width: 95 });
+      if (data.vehicle) {
+        write(data.vehicle.manufacturer, 25, 104.5, { width: 88 });
+        write(data.vehicle.model, 115, 104.5, { width: 88 });
+        write(data.vehicle.color, 25, 110.5, { width: 65 });
+        write(data.vehicle.year, 92, 110.5, { width: 35 });
+        write(data.vehicle.plate, 132, 110.5, { width: 40 });
+      }
+      if (data.driver) {
+        write(data.driver.name, 24, 117.5, { width: 118 });
+        writeDate(data.driver.birth_date, 181, 117.5);
+        write(data.driver.cpf, 24, 123.5, { width: 88 });
+        write(data.driver.phone, 115, 123.5, { width: 52 });
+      }
+      if (data.pet) {
+        write(data.pet.name, 24, 137.5, { width: 118 });
+        if (data.pet.sex === 'M') write('X', 158, 137.5);
+        if (data.pet.sex === 'F') write('X', 163, 137.5);
+        write(data.pet.breed, 24, 144, { width: 65 });
+        write(data.pet.color, 107, 144, { width: 45 });
+        write(petAge(data.pet.birth_date, data.issue_date), 154, 144, { size: 9, width: 32 });
+        const sizeX = { PEQUENO: 190, MEDIO: 194, GRANDE: 199 }[data.pet.size];
+        if (sizeX) write('X', sizeX, 142, { size: 9 });
+      }
+      (data.dependents || []).forEach((dependent, index) => {
+        const y = 169 + (index * 4) + (index >= 3 ? 5 : 0);
+        write(dependent.name, 30, y, { size: 9, width: 82 });
+        write(dependent.cpf, 115, y, { size: 9, width: 23 });
+        if (dependent.sex === 'F') write('X', 140, y, { size: 9 });
+        if (dependent.sex === 'M') write('X', 146, y, { size: 9 });
+        writeDependentDate(dependent.birth_date, y);
+        write(dependent.phone, 172, y, { size: 8.5, width: 21 });
+        if (dependent.price > 1) write(money(dependent.price), 194, y, { size: 8.5 });
+      });
+      write(money(data.dependent_value), 180, 228, { size: 11 });
+      const category = comboMultiWellbeingPaymentCategory(data.payment_plan_id);
+      if (category === 'bank') write('X', 165, 239);
+      if (category === 'credit_card') write('X', 185, 239);
+    };
+    const issue = dateParts(data.issue_date) || dateParts(new Date());
+    try {
+      for (let page = 1; page <= pageCount; page += 1) {
+        doc.addPage();
+        doc.image(backgrounds.get(page), 0, 0, { width: 595.28, height: 841.89 });
+        doc.fillColor('#111');
+        if (page === 1 || page === 9) {
+          writeForm();
+          writeIssueDate(issue, 238);
+        }
+        if (page === 8) writeIssueDate(issue, 217, { x: 132, shortYear: true });
+        if (page === 16) writeIssueDate(issue, 210, { x: 132, shortYear: true });
+        if (page === 17) writeIssueDate(issue, 244, { x: 122, shortYear: true });
+      }
+      doc.end();
+    } catch (error) {
+      doc.end();
+      reject(error);
+    }
+  });
+}
