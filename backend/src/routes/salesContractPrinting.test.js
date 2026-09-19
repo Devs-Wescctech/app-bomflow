@@ -16,6 +16,10 @@ import {
   validateBomMedContractData,
 } from '../services/bomMedContract.js';
 import {
+  renderConvalescencaPdf,
+  validateConvalescencaContractData,
+} from '../services/convalescencaContract.js';
+import {
   COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
   NEW_COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
   buildComboMultiWellbeingContractData,
@@ -220,6 +224,45 @@ test('recognizes and validates the Bom Med contract without treating it as Essen
     }).join(' '),
     /Sexo ausente ou inválido para o dependente 1/i,
   );
+});
+
+test('recognizes, validates and renders Convalescença as a contact contract', async () => {
+  const data = {
+    contact: '1401641',
+    name: 'ANTONIO CLAUDIO COLETO',
+    cpf: '867.268.208-44',
+    address: '',
+    complement: '',
+    number: '',
+    district: '',
+    city: '',
+    phone: '19981496767',
+    equipment: 'Cadeira de Rodas',
+    equipment_quantity: 1,
+    withdrawal_date: '2026-09-19',
+    expected_return_date: '2026-12-19',
+    return_date: null,
+    lessee: 'SIRLEI LEANDRO',
+    monthly_value: 0,
+    grace_days: 30,
+    generation_date: new Date('2026-09-19T12:00:00Z'),
+  };
+  const classified = classifyDocument({
+    pedido: '375262406',
+    numero_pedido: '1401641',
+    product_key: 'convalescenca',
+  });
+  assert.equal(CONTRACT_PRODUCTS.CONVALESCENCA, 'convalescenca');
+  assert.equal(classified.product, 'Convalescença');
+  assert.equal(classified.label, 'Contato 1401641');
+  assert.deepEqual(validateConvalescencaContractData(data), []);
+  assert.match(
+    validateConvalescencaContractData({ ...data, equipment: '' }).join(' '),
+    /equipamento/i,
+  );
+  const pdf = await renderConvalescencaPdf(data);
+  assert.equal(pdf.subarray(0, 4).toString(), '%PDF');
+  assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 1);
 });
 
 test('orders Bom Med dependents like the legacy PHP when prices are equal', () => {
@@ -1193,6 +1236,13 @@ test('selects the approved document template and exact payload for each contract
     holderName: 'CLIENTE TESTE',
     displayNumber: '1',
     documentUrl: 'https://example.com/contract.pdf',
+  }), /sem template/i);
+  assert.equal(CONTRACT_WHATSAPP_TEMPLATES[CONTRACT_PRODUCTS.CONVALESCENCA], undefined);
+  assert.throws(() => buildContractWhatsAppDelivery({
+    productKey: CONTRACT_PRODUCTS.CONVALESCENCA,
+    holderName: 'CLIENTE TESTE',
+    displayNumber: '1401641',
+    documentUrl: 'https://example.com/convalescenca.pdf',
   }), /sem template/i);
 });
 

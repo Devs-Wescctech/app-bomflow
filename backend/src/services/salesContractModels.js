@@ -69,6 +69,7 @@ export const CONTRACT_PRODUCTS = Object.freeze({
   BOM_PET_SAUDE_3PETS: 'bom_pet_saude_3pets',
   COMBO_MULTI_WELLBEING: 'combo_multi_bem_estar',
   NEW_COMBO_MULTI_WELLBEING: 'novo_combo_multi_bem_estar',
+  CONVALESCENCA: 'convalescenca',
 });
 
 export const BOM_PET_PET_LAYOUT = Object.freeze({
@@ -131,6 +132,7 @@ const PRODUCT_LABELS = Object.freeze({
   [CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS]: 'Bom Pet Saúde - 3 Pets',
   [CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING]: 'Combo Multi Bem Estar',
   [CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING]: 'Novo Combo Multi Bem Estar',
+  [CONTRACT_PRODUCTS.CONVALESCENCA]: 'Convalescença',
 });
 const BRAZILIAN_STATES = new Set([
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO',

@@ -58,8 +58,8 @@ const hasWhatsAppTemplate = (row) => {
     .toLowerCase()
     .replace(/[\s-]+/g, "_");
   const productName = String(row?.product || "").trim().toLowerCase();
-  return !["bom_corp", "bom_ideal", "bom_med"].includes(productKey)
-    && !["bom corp", "bom ideal", "bom med"].includes(productName);
+  return !["bom_corp", "bom_ideal", "bom_med", "convalescenca"].includes(productKey)
+    && !["bom corp", "bom ideal", "bom med", "convalescença"].includes(productName);
 };
 const whatsappUnavailableMessage = (row) => {
   const product = String(row?.product || "").trim() || "Este produto";
@@ -315,7 +315,7 @@ export default function SalesContractPrinting() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div><h1 className="text-2xl font-semibold">Impressão de Contratos - Recepção</h1>
-        <p className="text-muted-foreground">Consulte contratos Bom Auto, Bom Corp, Bom Med, Essencial, Bom Pet, Combo e Novo Combo Multi Bem Estar pelo documento ou pelo pedido/orçamento.</p></div>
+        <p className="text-muted-foreground">Consulte contratos Bom Auto, Bom Corp, Bom Med, Essencial, Bom Pet, Combo, Novo Combo Multi Bem Estar e Convalescença pelo documento ou pela referência.</p></div>
       <Card><CardHeader><CardTitle className="flex items-center gap-2"><Search className="w-5 h-5" />Buscar titular</CardTitle></CardHeader>
         <CardContent><form onSubmit={search} className="space-y-4 max-w-xl">
           <div className="space-y-2">
@@ -324,8 +324,8 @@ export default function SalesContractPrinting() {
             <p className="text-xs text-muted-foreground">Informe o CPF do titular ou o CNPJ da empresa.</p>
           </div>
           <div className="space-y-2">
-            <label htmlFor="contract-reference" className="block text-sm font-semibold">Pedido/orçamento/contrato</label>
-            <Input id="contract-reference" className="eloom-field" value={reference} onChange={(e) => setReference(e.target.value.replace(/\D/g, "").slice(0, 18))} placeholder="Número do pedido, orçamento ou contrato" inputMode="numeric" />
+            <label htmlFor="contract-reference" className="block text-sm font-semibold">Pedido/orçamento/contrato/contato</label>
+            <Input id="contract-reference" className="eloom-field" value={reference} onChange={(e) => setReference(e.target.value.replace(/\D/g, "").slice(0, 18))} placeholder="Número do pedido, orçamento, contrato ou contato" inputMode="numeric" />
           </div>
           <button type="submit" className="action-pill-primary" disabled={state.loading}>{state.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Pesquisar"}</button>
         </form></CardContent>

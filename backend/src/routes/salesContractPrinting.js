@@ -69,6 +69,11 @@ import {
   renderNewComboMultiWellbeingPdf,
   validateComboMultiWellbeingContractData,
 } from '../services/comboMultiWellbeingContract.js';
+import {
+  loadConvalescencaFromErp,
+  renderConvalescencaPdf,
+  validateConvalescencaContractData,
+} from '../services/convalescencaContract.js';
 
 const router = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -176,18 +181,19 @@ export const bomAutoPaymentCategory = (value) => {
   return null;
 };
 export const classifyDocument = (row) => {
-  const kind = row.contrato ? 'contrato' : 'pedido';
-  const displayNumber = row.contrato || row.numero_pedido || row.pedido;
   const productKey = normalizeContractProduct(
     row.product_key || row.productKey || CONTRACT_PRODUCTS.BOM_AUTO,
   );
+  const isConvalescenca = productKey === CONTRACT_PRODUCTS.CONVALESCENCA;
+  const kind = isConvalescenca ? 'contato' : row.contrato ? 'contrato' : 'pedido';
+  const displayNumber = row.contrato || row.numero_pedido || row.pedido;
   return {
     ...row,
     productKey,
     product: contractProductLabel(productKey),
     kind,
     displayNumber: displayNumber ? String(displayNumber) : null,
-    label: `${kind === 'contrato' ? 'Contrato' : 'Pedido'} ${displayNumber}`,
+    label: `${kind === 'contrato' ? 'Contrato' : kind === 'contato' ? 'Contato' : 'Pedido'} ${displayNumber}`,
     date: row.issue_date || row.order_date || null,
   };
 };
@@ -716,6 +722,20 @@ export async function findOrders(cpf, page, pageSize, reference = null) {
       ) model ON TRUE
       GROUP BY p.id,p.pedido,p.contrato_id,cs.contrato_servicos,cs.data_contrato,p.data_emissao,
                p.data_inclusao,holder.nome_completo,model.product_key
+      UNION ALL
+      SELECT DISTINCT c.id AS pedido,
+             NULLIF(regexp_replace(c.contato::text, '\\D', '', 'g'), '')::bigint AS numero_pedido,
+             NULL::bigint AS contrato_id,
+             NULL::bigint AS contrato, COALESCE(c.data_contato, c.data_inclusao) AS issue_date,
+             NULLIF(TRIM(person.nome_completo), '') AS name,
+             'convalescenca'::text AS product_key
+        FROM contatos c
+        JOIN pessoas person ON person.id = c.pessoa_id
+        JOIN documentos_pessoas contact_doc ON contact_doc.pessoa_id = c.pessoa_id
+         AND contact_doc.tipo_documento_id = 580
+       WHERE c.tipo_contato_id = 152825519
+         AND regexp_replace(contact_doc.documento, '\\D', '', 'g') = $1
+         AND ($2::text IS NULL OR c.id::text = $2 OR c.contato::text = $2)
   )
   SELECT *, COUNT(*) OVER() AS total FROM base
    ORDER BY issue_date DESC NULLS LAST, pedido DESC, product_key ASC LIMIT $3 OFFSET $4`;
@@ -844,6 +864,20 @@ export async function findOrdersByReference(reference, page, pageSize) {
       ) model ON TRUE
      GROUP BY p.id,p.pedido,p.contrato_id,cs.contrato_servicos,cs.data_contrato,
                p.data_emissao,p.data_inclusao,holder.nome_completo,d.cpf_owner,model.product_key
+      UNION ALL
+      SELECT DISTINCT c.id AS pedido,
+             NULLIF(regexp_replace(c.contato::text, '\\D', '', 'g'), '')::bigint AS numero_pedido,
+             NULL::bigint AS contrato_id,
+             NULL::bigint AS contrato, COALESCE(c.data_contato, c.data_inclusao) AS issue_date,
+             NULLIF(TRIM(person.nome_completo), '') AS name,
+             regexp_replace(contact_doc.documento, '\\D', '', 'g') AS cpf_owner,
+             'convalescenca'::text AS product_key
+        FROM contatos c
+        JOIN pessoas person ON person.id = c.pessoa_id
+        JOIN documentos_pessoas contact_doc ON contact_doc.pessoa_id = c.pessoa_id
+         AND contact_doc.tipo_documento_id = 580
+       WHERE c.tipo_contato_id = 152825519
+         AND (c.id::text = $1 OR c.contato::text = $1)
   )
   SELECT *, COUNT(*) OVER() AS total FROM base
    ORDER BY issue_date DESC NULLS LAST, pedido DESC, product_key ASC LIMIT $2 OFFSET $3`;
@@ -1132,6 +1166,57 @@ export async function loadBomMedContractData(claims) {
   return loadBomMedFromErp(row.documento, claims.numeroPedido || row.numero_pedido);
 }
 
+export async function loadConvalescencaContractData(claims) {
+  const db = getErpPool();
+  const result = await db.query(
+    `SELECT c.contato::text AS contato, dp.documento
+       FROM contatos c
+       JOIN documentos_pessoas dp ON dp.pessoa_id = c.pessoa_id
+        AND dp.tipo_documento_id = 580
+      WHERE c.id::text = $1
+        AND c.tipo_contato_id = 152825519
+      ORDER BY dp.id DESC
+      LIMIT 1`,
+    [String(claims.pedido || '')],
+  );
+  const row = result.rows[0];
+  const cpf = normalizeCpf(row?.documento);
+  if (!cpf || protectCpf(cpf) !== claims.cpf) {
+    const error = new Error('O titular do contato não corresponde ao CPF consultado.');
+    error.statusCode = 422;
+    throw error;
+  }
+  return loadConvalescencaFromErp(row.documento, claims.numeroPedido || row.contato);
+}
+
+const STANDALONE_ERP_PRODUCTS = new Set([
+  CONTRACT_PRODUCTS.BOM_CORP,
+  CONTRACT_PRODUCTS.BOM_IDEAL,
+  CONTRACT_PRODUCTS.BOM_MED,
+  CONTRACT_PRODUCTS.CONVALESCENCA,
+]);
+
+const loadStandaloneContractData = async (productKey, claims) => {
+  if (productKey === CONTRACT_PRODUCTS.BOM_CORP) return loadBomCorpContractData(claims);
+  if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return loadBomIdealContractData(claims);
+  if (productKey === CONTRACT_PRODUCTS.BOM_MED) return loadBomMedContractData(claims);
+  return loadConvalescencaContractData(claims);
+};
+
+const validateStandaloneContractData = (productKey, data) => {
+  if (productKey === CONTRACT_PRODUCTS.BOM_CORP) return validateBomCorpContractData(data);
+  if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return validateBomIdealContractData(data);
+  if (productKey === CONTRACT_PRODUCTS.BOM_MED) return validateBomMedContractData(data);
+  return validateConvalescencaContractData(data);
+};
+
+const renderStandaloneContract = (productKey, data) => {
+  if (productKey === CONTRACT_PRODUCTS.BOM_CORP) return renderBomCorpPdf(data);
+  if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return renderBomIdealPdf(data);
+  if (productKey === CONTRACT_PRODUCTS.BOM_MED) return renderBomMedPdf(data);
+  return renderConvalescencaPdf(data);
+};
+
 router.use(authMiddleware, loadAgentMiddleware, requireSalesContractPrinting);
 
 router.get('/contracts/search', async (req, res) => {
@@ -1194,6 +1279,9 @@ const validateProductContractData = (data, productKey) => {
   if (productKey === CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING) {
     return validateComboMultiWellbeingContractData(data);
   }
+  if (productKey === CONTRACT_PRODUCTS.CONVALESCENCA) {
+    return validateConvalescencaContractData(data);
+  }
   if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return validateBomIdealContractData(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_MED) return validateBomMedContractData(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_CORP) return validateBomCorpContractData(data);
@@ -1219,6 +1307,9 @@ const renderProductContract = (
   }
   if (productKey === CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING) {
     return renderNewComboMultiWellbeingPdf(data);
+  }
+  if (productKey === CONTRACT_PRODUCTS.CONVALESCENCA) {
+    return renderConvalescencaPdf(data);
   }
   if (productKey === CONTRACT_PRODUCTS.BOM_CORP) return renderBomCorpPdf(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return renderBomIdealPdf(data);
@@ -1247,6 +1338,7 @@ const contractFileProduct = (productKey) => ({
   [CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS]: 'bom_pet_saude_3pets',
   [CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING]: 'combo_multi_bem_estar',
   [CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING]: 'novo_combo_multi_bem_estar',
+  [CONTRACT_PRODUCTS.CONVALESCENCA]: 'convalescenca',
 })[productKey];
 
 router.post('/contracts/validate', async (req, res) => {
@@ -1267,17 +1359,9 @@ router.post('/contracts/validate', async (req, res) => {
         message: 'Identificador de produto inválido ou expirado. Faça uma nova busca.',
       });
     }
-    if ([CONTRACT_PRODUCTS.BOM_CORP, CONTRACT_PRODUCTS.BOM_IDEAL, CONTRACT_PRODUCTS.BOM_MED].includes(productKey)) {
-      const data = productKey === CONTRACT_PRODUCTS.BOM_CORP
-        ? await loadBomCorpContractData(claims)
-        : productKey === CONTRACT_PRODUCTS.BOM_IDEAL
-          ? await loadBomIdealContractData(claims)
-          : await loadBomMedContractData(claims);
-      const errors = productKey === CONTRACT_PRODUCTS.BOM_CORP
-        ? validateBomCorpContractData(data)
-        : productKey === CONTRACT_PRODUCTS.BOM_IDEAL
-          ? validateBomIdealContractData(data)
-          : validateBomMedContractData(data);
+    if (STANDALONE_ERP_PRODUCTS.has(productKey)) {
+      const data = await loadStandaloneContractData(productKey, claims);
+      const errors = validateStandaloneContractData(productKey, data);
       if (errors.length) {
         await audit(req, `hash:${claims.cpf}`, claims, 'validation_error', 'validation');
         return res.status(422).json({ message: 'Dados do ERP incompletos ou inconsistentes.', errors });
@@ -1334,26 +1418,14 @@ router.post('/contracts/generate', async (req, res) => {
         message: 'Identificador de produto inválido ou expirado. Faça uma nova busca.',
       });
     }
-    if ([CONTRACT_PRODUCTS.BOM_CORP, CONTRACT_PRODUCTS.BOM_IDEAL, CONTRACT_PRODUCTS.BOM_MED].includes(productKey)) {
-      const data = productKey === CONTRACT_PRODUCTS.BOM_CORP
-        ? await loadBomCorpContractData(claims)
-        : productKey === CONTRACT_PRODUCTS.BOM_IDEAL
-          ? await loadBomIdealContractData(claims)
-          : await loadBomMedContractData(claims);
-      const errors = productKey === CONTRACT_PRODUCTS.BOM_CORP
-        ? validateBomCorpContractData(data)
-        : productKey === CONTRACT_PRODUCTS.BOM_IDEAL
-          ? validateBomIdealContractData(data)
-          : validateBomMedContractData(data);
+    if (STANDALONE_ERP_PRODUCTS.has(productKey)) {
+      const data = await loadStandaloneContractData(productKey, claims);
+      const errors = validateStandaloneContractData(productKey, data);
       if (errors.length) {
         await audit(req, `hash:${claims.cpf}`, claims, 'validation_error', 'generation');
         return res.status(422).json({ message: 'Dados do ERP incompletos ou inconsistentes.', errors });
       }
-      const pdf = productKey === CONTRACT_PRODUCTS.BOM_CORP
-        ? await renderBomCorpPdf(data)
-        : productKey === CONTRACT_PRODUCTS.BOM_IDEAL
-          ? await renderBomIdealPdf(data)
-          : await renderBomMedPdf(data);
+      const pdf = await renderStandaloneContract(productKey, data);
       await audit(req, `hash:${claims.cpf}`, claims, 'success', 'generation', { required: true });
       return res.type('application/pdf')
         .set('Content-Disposition', `inline; filename="contrato_${contractFileProduct(productKey)}_${claims.contrato || claims.numeroPedido || claims.pedido}.pdf"`)
