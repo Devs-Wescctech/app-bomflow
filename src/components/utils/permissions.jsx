@@ -380,12 +380,6 @@ export function filterMenuItems(agent, menuItems, user = null) {
   // Get allowed submenus from agent type config (loaded from database)
   const allowedSubmenus = agent.allowedSubmenus || [];
   const hasSubmenuRestrictions = allowedSubmenus.length > 0;
-  const hasPreSalesDashboardAccess = isAdmin ||
-    (isSupervisor && teamName === 'auditoria') ||
-    allowedSubmenus.includes('PreSalesDashboard');
-  const hasPostSalesDashboardAccess = isAdmin ||
-    agentType === 'post_sales' ||
-    allowedSubmenus.includes('PosVendasDashboard');
   
   return menuItems
     .filter(item => {
@@ -408,11 +402,7 @@ export function filterMenuItems(agent, menuItems, user = null) {
         const isPostSales = agentType === 'post_sales';
         if (hasPostSalesReport && isPostSales) return true;
         const hasPostsalesDashboard = (item.items || []).some(si => si.postsalesDashboard);
-        if (hasPostsalesDashboard && hasPostSalesDashboardAccess) return true;
-        const hasPresalesDashboard = (item.items || []).some(si =>
-          si.requiredSubmenu === 'PreSalesDashboard'
-        );
-        if (hasPresalesDashboard && hasPreSalesDashboardAccess) return true;
+        if (hasPostsalesDashboard && isPostsalesLeadership) return true;
         return false;
       }
       
@@ -446,9 +436,8 @@ export function filterMenuItems(agent, menuItems, user = null) {
 
         // Relatório de auditoria: visível somente a usuários elegíveis
         // (admin / tipo auditoria / supervisor do time Auditoria).
-        if (subItem.requiredSubmenu === 'PreSalesDashboard') return hasPreSalesDashboardAccess;
         if (subItem.auditReport) return isAuditEligible && hasRequiredExplicitGrant;
-        if (subItem.postsalesDashboard) return hasPostSalesDashboardAccess;
+        if (subItem.postsalesDashboard) return isPostsalesLeadership && hasRequiredExplicitGrant;
         // Relatórios de utilizações liberados ao perfil Pós-Vendas. A regra é
         // avaliada antes das restrições de submenu para garantir o acesso do
         // perfil sem liberar outras páginas dos módulos Bom Pet/Bom Auto.

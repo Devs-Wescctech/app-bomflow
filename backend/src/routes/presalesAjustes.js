@@ -1,6 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { loadAgentMiddleware, requireDashboardAccess } from '../middleware/permissions.js';
+import { loadAgentMiddleware, requireExplicitSubmenuAccess } from '../middleware/permissions.js';
 import { pool, query } from '../config/database.js';
 import { createNotification } from '../services/notificationService.js';
 import { addBusinessDays, brtDateStr, preloadHolidays } from '../services/businessDaysService.js';
@@ -106,8 +106,7 @@ async function resolveAuditor(req) {
   const teamName = (agent.team_name || '').trim().toLowerCase();
   const isAuditTeamSupervisor = isSupervisor && teamName === 'auditoria';
 
-  const hasDashboardGrant = (req.agent?.allowedSubmenus || []).includes('PreSalesDashboard');
-  return { eligible: isAdmin || isAuditoria || isAuditTeamSupervisor || hasDashboardGrant, agent };
+  return { eligible: isAdmin || isAuditoria || isAuditTeamSupervisor, agent };
 }
 
 // E-mails dos supervisores do vendedor (via time).
@@ -604,7 +603,7 @@ router.get(
   '/dashboard',
   authMiddleware,
   loadAgentMiddleware,
-  requireDashboardAccess('PreSalesDashboard'),
+  requireExplicitSubmenuAccess('PreSalesDashboard'),
   async (req, res) => {
   try {
     const { eligible } = await resolveAuditor(req);

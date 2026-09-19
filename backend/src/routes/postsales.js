@@ -1,6 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
-import { loadAgentMiddleware, requireDashboardAccess } from '../middleware/permissions.js';
+import { loadAgentMiddleware, requireExplicitSubmenuAccess } from '../middleware/permissions.js';
 import { pool, query } from '../config/database.js';
 import { createNotification } from '../services/notificationService.js';
 import { addBusinessDays, brtDateStr } from '../services/businessDaysService.js';
@@ -1021,13 +1021,10 @@ router.get(
   '/dashboard',
   authMiddleware,
   loadAgentMiddleware,
-  requireDashboardAccess('PosVendasDashboard'),
+  requireExplicitSubmenuAccess('PosVendasDashboard'),
   async (req, res) => {
   try {
-    const hasDashboardGrant = (req.agent?.allowedSubmenus || []).includes('PosVendasDashboard');
-    const isAutomaticPostsales = req.agent?.agentType === 'post_sales';
-    const { eligible: operationallyEligible } = await resolveLeitura(req);
-    const eligible = operationallyEligible || hasDashboardGrant || isAutomaticPostsales;
+    const { eligible } = await resolveLeitura(req);
     if (!eligible) return res.status(403).json({ error: 'Acesso restrito à liderança e à equipe de Pós-Vendas.' });
 
     const startDate = req.query.start_date ? String(req.query.start_date) : null;
