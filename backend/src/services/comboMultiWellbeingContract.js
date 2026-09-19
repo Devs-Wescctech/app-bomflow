@@ -5,9 +5,23 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pagesDir = path.resolve(__dirname, '../../public/combo-multi-wellbeing-contract');
+const newPagesDir = path.resolve(__dirname, '../../public/new-combo-multi-wellbeing-contract');
 
 export const COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS = Object.freeze([70690724]);
+export const NEW_COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS = Object.freeze([250208807]);
 export const COMBO_MULTI_WELLBEING_ADHESION = 60;
+export const NEW_COMBO_OPTIONAL_PRODUCTS = Object.freeze({
+  crown: Object.freeze([47843900, 47989280, 114742914]),
+  cremation: Object.freeze([52247142]),
+  thanatopraxy: Object.freeze([214147174, 48337202]),
+  mileage: Object.freeze([203567296, 203567310, 203567429, 203567456, 52247119]),
+});
+const NEW_COMBO_OPTIONAL_TEMPLATE_FILES = Object.freeze({
+  crown: '01_coroa.jpg',
+  cremation: 'cremacao.jpg',
+  thanatopraxy: 'tanatopraxia.jpg',
+  mileage: 'quilometragem.jpg',
+});
 
 const BANK_PAYMENT_PLAN_IDS = new Set([
   25451, 48296791, 40564923, 48286734, 1643483, 48295856, 82623870,
@@ -47,7 +61,7 @@ export const sortComboMultiWellbeingDependents = (rows) => [...rows].sort((left,
   || compareLegacyValue(left.sex, right.sex));
 
 const productAmount = (product) => {
-  if (product?.valor_total != null) return amount(product.valor_total);
+  if (amount(product?.valor_total) > 0) return amount(product.valor_total);
   return amount(product?.preco) * amount(product?.quantidade);
 };
 
@@ -95,13 +109,15 @@ export function comboMultiWellbeingPaymentCategory(planId) {
   return null;
 }
 
-export function buildComboMultiWellbeingContractData(detail = {}) {
+export function buildComboMultiWellbeingContractData(detail = {}, { newCombo = false } = {}) {
   const holder = detail.titular || {};
   const address = detail.endereco || {};
   const products = Array.isArray(detail.produtos) ? detail.produtos : [];
   const people = Array.isArray(detail.pessoas) ? detail.pessoas : [];
-  const baseProduct = products.find((product) =>
-    COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS.includes(Number(product?.id)));
+  const baseIds = newCombo
+    ? NEW_COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS
+    : COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS;
+  const baseProduct = products.find((product) => baseIds.includes(Number(product?.id)));
   const dependentProducts = products.filter((product) =>
     isBomMedDependent(normalized(product?.descricao)));
   const dependentPrices = dependentProducts.flatMap((product) =>
@@ -135,6 +151,19 @@ export function buildComboMultiWellbeingContractData(detail = {}) {
     ? text(vehicle?.telefone || people.find((person) => !person?.is_titular)?.telefone)
     : '';
   const standardValue = rounded(productAmount(baseProduct));
+  const optionalServices = newCombo
+    ? Object.fromEntries(Object.entries(NEW_COMBO_OPTIONAL_PRODUCTS).map(([key, ids]) => {
+        const matching = products.filter((product) => ids.includes(Number(product?.id)));
+        return [key, {
+          present: matching.length > 0,
+          quantity: matching.reduce((total, product) => total + amount(product?.quantidade), 0),
+          value: rounded(matching.reduce((total, product) => total + productAmount(product), 0)),
+        }];
+      }))
+    : {};
+  const optionalMonthlyValue = Object.entries(optionalServices)
+    .filter(([key]) => key !== 'thanatopraxy')
+    .reduce((total, [, service]) => total + service.value, 0);
 
   return {
     issue_date: detail.data_emissao || null,
@@ -160,9 +189,11 @@ export function buildComboMultiWellbeingContractData(detail = {}) {
     adhesion: COMBO_MULTI_WELLBEING_ADHESION,
     standard_value: standardValue,
     dependent_value: dependentValue,
-    monthly_value: rounded(standardValue + dependentValue),
+    monthly_value: rounded(standardValue + dependentValue + optionalMonthlyValue),
     payment_plan_id: detail.plano_pagamento_id || null,
     due_day: text(detail.dia_vencimento),
+    new_combo: newCombo,
+    optional_services: optionalServices,
     dependents,
     pet: pets[0] || null,
     vehicle: vehicle ? {
@@ -220,6 +251,14 @@ export function validateComboMultiWellbeingContractData(data) {
   if ((data?.dependents || []).length > 13) {
     errors.push('O contrato Combo Multi Bem Estar comporta no máximo 13 dependentes.');
   }
+  if (data?.new_combo) {
+    for (const [key, service] of Object.entries(data.optional_services || {})) {
+      const fileName = NEW_COMBO_OPTIONAL_TEMPLATE_FILES[key];
+      if (service?.present && !fs.existsSync(path.join(newPagesDir, fileName))) {
+        errors.push(`Modelo do serviço opcional ausente: ${fileName}.`);
+      }
+    }
+  }
   return errors;
 }
 
@@ -261,11 +300,11 @@ const money = (value) => amount(value).toLocaleString('pt-BR', {
   maximumFractionDigits: 2,
 });
 
-export async function renderComboMultiWellbeingPdf(data) {
+async function renderComboMultiWellbeingPdfFrom(data, contractPagesDir) {
   const pageCount = data.pet ? 17 : 16;
   const backgrounds = new Map();
   for (let page = 1; page <= pageCount; page += 1) {
-    const source = path.join(pagesDir, `page-${page}.jpg`);
+    const source = path.join(contractPagesDir, `page-${page}.jpg`);
     if (!fs.existsSync(source)) {
       throw new Error(`Página ${page} do contrato Combo Multi Bem Estar não encontrada.`);
     }
@@ -444,3 +483,9 @@ export async function renderComboMultiWellbeingPdf(data) {
     }
   });
 }
+
+export const renderComboMultiWellbeingPdf = (data) =>
+  renderComboMultiWellbeingPdfFrom(data, pagesDir);
+
+export const renderNewComboMultiWellbeingPdf = (data) =>
+  renderComboMultiWellbeingPdfFrom(data, newPagesDir);

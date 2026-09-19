@@ -315,7 +315,7 @@ export default function SalesContractPrinting() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div><h1 className="text-2xl font-semibold">Impressão de Contratos - Recepção</h1>
-        <p className="text-muted-foreground">Consulte contratos Bom Auto, Bom Corp, Bom Med, Essencial, Bom Pet e Combo Multi Bem Estar pelo documento ou pelo pedido/orçamento.</p></div>
+        <p className="text-muted-foreground">Consulte contratos Bom Auto, Bom Corp, Bom Med, Essencial, Bom Pet, Combo e Novo Combo Multi Bem Estar pelo documento ou pelo pedido/orçamento.</p></div>
       <Card><CardHeader><CardTitle className="flex items-center gap-2"><Search className="w-5 h-5" />Buscar titular</CardTitle></CardHeader>
         <CardContent><form onSubmit={search} className="space-y-4 max-w-xl">
           <div className="space-y-2">

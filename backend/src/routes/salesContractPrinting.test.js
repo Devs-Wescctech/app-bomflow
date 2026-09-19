@@ -17,10 +17,12 @@ import {
 } from '../services/bomMedContract.js';
 import {
   COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
+  NEW_COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
   buildComboMultiWellbeingContractData,
   calculateComboPetAge,
   comboMultiWellbeingPaymentCategory,
   renderComboMultiWellbeingPdf,
+  renderNewComboMultiWellbeingPdf,
   sortComboMultiWellbeingDependents,
   validateComboMultiWellbeingContractData,
 } from '../services/comboMultiWellbeingContract.js';
@@ -1068,6 +1070,47 @@ test('calculates Combo pet age at contract generation instead of the old order d
     calculateComboPetAge('2015-08-07', '2026-09-19'),
     '11 anos 1 mês',
   );
+});
+
+test('recognizes and renders Novo Combo with its own product and model files', async () => {
+  const detail = {
+    data_emissao: '2026-06-12',
+    titular_is_canonical: true,
+    titular: {
+      nome: 'CLIENTE NOVO COMBO', cpf: '529.982.247-25', rg: '123456',
+      data_nascimento: '1980-04-10', sexo: 'F', estado_civil: 'CASADO',
+      telefone: '19999999999', email: 'cliente@example.com',
+    },
+    endereco: {
+      logradouro: 'RUA TESTE', numero: '10', bairro: 'CENTRO',
+      cidade: 'CAMPINAS', uf: 'SP', cep: '13000000',
+    },
+    plano_pagamento_id: 25451,
+    dia_vencimento: '20',
+    produtos: [
+      { id: NEW_COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS[0], quantidade: 1, preco: 79.9, valor_total: 0 },
+      { id: 55482336, descricao: 'BOM MED - DEPENDENTE 0,00', quantidade: 1, preco: 0.01 },
+    ],
+    pessoas: [
+      { is_titular: true, nome: 'CLIENTE NOVO COMBO', produtos: ['NOVO COMBO MULTI BEM ESTAR'] },
+      { nome: 'DEPENDENTE', cpf: '111.111.111-11', data_nascimento: '2000-01-01', telefone: '19988888888', sexo: 'F', produtos: ['BOM MED - DEPENDENTE 0,00'] },
+      { nome: 'PET/RAÇA', data_nascimento: '2020-01-01', sexo: 'M', produtos: ['BOM PET - NOME DO PET'] },
+    ],
+    veiculos: [{
+      descricao: 'MODELO/ABC1D23/PRETO', data_nascimento: '2020-01-01',
+      telefone: '19988888888',
+    }],
+  };
+  assert.equal(
+    detailMatchesContractProduct(detail, CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING),
+    true,
+  );
+  const data = buildComboMultiWellbeingContractData(detail, { newCombo: true });
+  assert.equal(data.standard_value, 79.9);
+  assert.equal(data.monthly_value, 79.9);
+  assert.deepEqual(validateComboMultiWellbeingContractData(data), []);
+  const pdf = await renderNewComboMultiWellbeingPdf(data);
+  assert.equal(pdf.subarray(0, 4).toString(), '%PDF');
 });
 
 test('selects the approved document template and exact payload for each contract product', () => {

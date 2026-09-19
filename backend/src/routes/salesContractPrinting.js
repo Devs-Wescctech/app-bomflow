@@ -63,8 +63,10 @@ import {
 } from '../services/bomMedContract.js';
 import {
   COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
+  NEW_COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
   buildComboMultiWellbeingContractData,
   renderComboMultiWellbeingPdf,
+  renderNewComboMultiWellbeingPdf,
   validateComboMultiWellbeingContractData,
 } from '../services/comboMultiWellbeingContract.js';
 
@@ -94,6 +96,11 @@ export const CONTRACT_WHATSAPP_TEMPLATES = Object.freeze({
     name: 'boas_vindas_bom_pet_saude',
   }),
   [CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING]: Object.freeze({
+    id: '69ed0d552e1d23a0987f42bb',
+    name: 'boas_vindas_multi_bem_star',
+    documentHeader: false,
+  }),
+  [CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING]: Object.freeze({
     id: '69ed0d552e1d23a0987f42bb',
     name: 'boas_vindas_multi_bem_star',
     documentHeader: false,
@@ -350,9 +357,13 @@ export function buildContractWhatsAppDelivery({
   const isBomPet = productKey === CONTRACT_PRODUCTS.BOM_PET;
   const isBomPetHealth = productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL
     || productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS;
-  const isCombo = productKey === CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING;
+  const isCombo = productKey === CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING
+    || productKey === CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING;
   const productName = isEssential ? 'Essencial' : isBomPet ? 'Bom Pet'
-    : isBomPetHealth ? 'Bom Pet Saúde' : isCombo ? 'Combo Multi Bem Estar' : 'Bom Auto';
+    : isBomPetHealth ? 'Bom Pet Saúde'
+      : productKey === CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING
+        ? 'Novo Combo Multi Bem Estar'
+        : isCombo ? 'Combo Multi Bem Estar' : 'Bom Auto';
   const fileName = `Contrato ${productName} ${displayNumber}.pdf`
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -643,6 +654,10 @@ export async function findOrders(cpf, page, pageSize, reference = null) {
             SELECT 1 FROM itens_pedidos combo_ip
              WHERE combo_ip.pedido_id=p.id AND combo_ip.produto_id = ANY($11::bigint[])
           )
+           AND NOT EXISTS (
+             SELECT 1 FROM itens_pedidos combo_ip
+              WHERE combo_ip.pedido_id=p.id AND combo_ip.produto_id = ANY($12::bigint[])
+           )
         UNION ALL
         SELECT 'essencial'::text
          WHERE EXISTS (
@@ -680,6 +695,13 @@ export async function findOrders(cpf, page, pageSize, reference = null) {
                AND ip.produto_id = ANY($11::bigint[])
           )
          UNION ALL
+         SELECT 'novo_combo_multi_bem_estar'::text
+          WHERE EXISTS (
+            SELECT 1 FROM itens_pedidos ip
+             WHERE ip.pedido_id=p.id
+               AND ip.produto_id = ANY($12::bigint[])
+          )
+         UNION ALL
          SELECT 'bom_pet_saude_individual'::text
           WHERE EXISTS (
             SELECT 1 FROM itens_pedidos ip
@@ -709,6 +731,7 @@ export async function findOrders(cpf, page, pageSize, reference = null) {
     BOM_IDEAL_BASE_PRODUCT_IDS,
     BOM_MED_BASE_PRODUCT_IDS,
     COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
+    NEW_COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
   ]);
   return {
     rows: result.rows.map((r) => classifyDocument({
@@ -759,6 +782,10 @@ export async function findOrdersByReference(reference, page, pageSize) {
             SELECT 1 FROM itens_pedidos combo_ip
              WHERE combo_ip.pedido_id=p.id AND combo_ip.produto_id = ANY($10::bigint[])
           )
+           AND NOT EXISTS (
+             SELECT 1 FROM itens_pedidos combo_ip
+              WHERE combo_ip.pedido_id=p.id AND combo_ip.produto_id = ANY($11::bigint[])
+           )
         UNION ALL
         SELECT 'essencial'::text
          WHERE EXISTS (
@@ -796,6 +823,13 @@ export async function findOrdersByReference(reference, page, pageSize) {
                AND ip.produto_id = ANY($10::bigint[])
           )
          UNION ALL
+         SELECT 'novo_combo_multi_bem_estar'::text
+          WHERE EXISTS (
+            SELECT 1 FROM itens_pedidos ip
+             WHERE ip.pedido_id=p.id
+               AND ip.produto_id = ANY($11::bigint[])
+          )
+         UNION ALL
          SELECT 'bom_pet_saude_individual'::text
           WHERE EXISTS (
             SELECT 1 FROM itens_pedidos ip
@@ -824,6 +858,7 @@ export async function findOrdersByReference(reference, page, pageSize) {
     BOM_IDEAL_BASE_PRODUCT_IDS,
     BOM_MED_BASE_PRODUCT_IDS,
     COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
+    NEW_COMBO_MULTI_WELLBEING_BASE_PRODUCT_IDS,
   ]);
   return {
     rows: result.rows.map((r) => classifyDocument({
@@ -1138,6 +1173,9 @@ const buildProductContractData = (detail, productKey) => {
   if (productKey === CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING) {
     return buildComboMultiWellbeingContractData(detail);
   }
+  if (productKey === CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING) {
+    return buildComboMultiWellbeingContractData(detail, { newCombo: true });
+  }
   if (productKey === CONTRACT_PRODUCTS.ESSENCIAL) return buildEssentialContractData(detail);
   if (productKey === CONTRACT_PRODUCTS.BOM_PET) return buildBomPetContractData(detail);
   if (productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL) {
@@ -1151,6 +1189,9 @@ const buildProductContractData = (detail, productKey) => {
 
 const validateProductContractData = (data, productKey) => {
   if (productKey === CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING) {
+    return validateComboMultiWellbeingContractData(data);
+  }
+  if (productKey === CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING) {
     return validateComboMultiWellbeingContractData(data);
   }
   if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return validateBomIdealContractData(data);
@@ -1175,6 +1216,9 @@ const renderProductContract = (
 ) => {
   if (productKey === CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING) {
     return renderComboMultiWellbeingPdf(data);
+  }
+  if (productKey === CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING) {
+    return renderNewComboMultiWellbeingPdf(data);
   }
   if (productKey === CONTRACT_PRODUCTS.BOM_CORP) return renderBomCorpPdf(data);
   if (productKey === CONTRACT_PRODUCTS.BOM_IDEAL) return renderBomIdealPdf(data);
@@ -1202,6 +1246,7 @@ const contractFileProduct = (productKey) => ({
   [CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL]: 'bom_pet_saude_individual',
   [CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS]: 'bom_pet_saude_3pets',
   [CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING]: 'combo_multi_bem_estar',
+  [CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING]: 'novo_combo_multi_bem_estar',
 })[productKey];
 
 router.post('/contracts/validate', async (req, res) => {
