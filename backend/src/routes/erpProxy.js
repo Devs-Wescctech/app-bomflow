@@ -1200,7 +1200,7 @@ router.get('/lookup-cpf', authMiddleware, async (req, res) => {
 // real que o criou. O ERP atribui todos os orçamentos criados via API à conta do token
 // (acesso.api), então este registro é a ÚNICA fonte confiável de "quem/qual módulo".
 // Best-effort: nunca derruba a criação do orçamento se a gravação falhar.
-async function recordBomflowOrcamento(req, { erpPedidoId, erpNumero, modulo, clienteNome, clienteCpf, valor, leadId }) {
+async function recordBomflowOrcamento(req, { erpPedidoId, erpNumero, modulo, clienteNome, clienteCpf, valor, leadId, catalogContractId, catalogTitle }) {
   try {
     if (!erpPedidoId) return;
     if (!modulo || !VALID_MODULOS.includes(modulo)) {
@@ -1214,8 +1214,9 @@ async function recordBomflowOrcamento(req, { erpPedidoId, erpNumero, modulo, cli
     }
     await query(
       `INSERT INTO bomflow_orcamentos
-         (erp_pedido_id, erp_numero, modulo, agent_id, agent_name, cliente_nome, cliente_cpf, valor_criacao, lead_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          (erp_pedido_id, erp_numero, modulo, agent_id, agent_name, cliente_nome, cliente_cpf, valor_criacao, lead_id,
+           catalog_contract_id, catalog_title)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (erp_pedido_id) DO UPDATE SET
          erp_numero   = EXCLUDED.erp_numero,
          modulo       = EXCLUDED.modulo,
@@ -1225,6 +1226,8 @@ async function recordBomflowOrcamento(req, { erpPedidoId, erpNumero, modulo, cli
          cliente_cpf  = EXCLUDED.cliente_cpf,
          valor_criacao = EXCLUDED.valor_criacao,
           lead_id      = COALESCE(EXCLUDED.lead_id, bomflow_orcamentos.lead_id),
+           catalog_contract_id = COALESCE(EXCLUDED.catalog_contract_id, bomflow_orcamentos.catalog_contract_id),
+           catalog_title = COALESCE(EXCLUDED.catalog_title, bomflow_orcamentos.catalog_title),
           erp_approval_sync_status = CASE
             WHEN EXCLUDED.lead_id IS NOT NULL
              AND EXCLUDED.lead_id IS DISTINCT FROM bomflow_orcamentos.lead_id
@@ -1247,6 +1250,8 @@ async function recordBomflowOrcamento(req, { erpPedidoId, erpNumero, modulo, cli
         clienteCpf || null,
         valor != null ? Number(valor) : null,
         leadId || null,
+        catalogContractId != null ? Number(catalogContractId) : null,
+        String(catalogTitle || '').trim() || null,
       ]
     );
     console.log(`[bomflow_orcamentos] registrado pedido ${erpPedidoId} (nº ${erpNumero}) módulo=${modulo} agente=${agentName} lead=${leadId || '-'}`);
@@ -1508,6 +1513,8 @@ router.post('/orcamento', authMiddleware, async (req, res) => {
       clienteCpf: headerPayload.cpf || headerPayload.contratante_cpf || null,
       valor: data?.valor_total ?? null,
       leadId: trackedBinding.leadId,
+      catalogContractId: contratoId,
+      catalogTitle: headerPayloadFromClient.titulo_contrato,
     });
 
     return res.json({ ...data, numeroPedido, erpId: pedidoInternalId, dbInserted: dbResult, fechamento: fechamentoResult });
@@ -1559,6 +1566,8 @@ router.post('/pre-proposta', authMiddleware, async (req, res) => {
         clienteCpf: payload.cpf || payload.contratante_cpf || null,
         valor: data?.valor_total ?? null,
         leadId: trackedBinding.leadId,
+        catalogContractId: payload.contrato_id,
+        catalogTitle: payload.titulo_contrato,
       });
     }
 

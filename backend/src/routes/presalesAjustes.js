@@ -24,6 +24,7 @@ import {
 } from '../services/presalesAdjustmentAddressService.js';
 import {
   applyPostsalesCompleteCorrection,
+  addCorrectionCatalogContext,
   getPostsalesCorrectionContext,
 } from '../services/postsalesCorrectionService.js';
 import {
@@ -991,10 +992,13 @@ router.get('/:id/correcao', authMiddleware, async (req, res) => {
         error: 'Este ajuste deve ser tratado no endereço do orçamento.',
       });
     }
-    const context = await getPostsalesCorrectionContext(
-      getErpPool(),
-      Number(ajuste.erp_pedido_id),
-      null
+    const context = await addCorrectionCatalogContext(
+      await getPostsalesCorrectionContext(
+        getErpPool(),
+        Number(ajuste.erp_pedido_id),
+        null
+      ),
+      query
     );
     return res.json({
       erp_pedido_id: Number(ajuste.erp_pedido_id),

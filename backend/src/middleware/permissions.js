@@ -122,9 +122,8 @@ export function requireSubmenuAccess(submenuId) {
     return res.status(403).json({ message: `Access denied: ${submenuId}` });
   };
 }
-
-// Recursos gerenciais sensíveis: somente o administrador master herda acesso.
-// Qualquer outro perfil precisa de concessão explícita no tipo de agente.
+// Recursos gerenciais sensíveis exigem concessão explícita no tipo de agente.
+// Apenas o administrador master herda acesso sem a concessão.
 export function requireExplicitSubmenuAccess(submenuId) {
   return (req, res, next) => {
     if (!req.agent) {

@@ -140,15 +140,13 @@ export async function cleanupBomPetOrphanFiles({ minAgeMs = 60 * 60 * 1000 } = {
 
 // ── Autorização por perfil no BACKEND (não só na UI) ──────────────────────
 // O JWT carrega apenas id/email/role; o tipo de agente vem do banco.
-const ALLOWED_AGENT_TYPES = ['admin', 'bom_pet_supervisor', 'bom_pet_atendente', 'post_sales'];
+const ALLOWED_AGENT_TYPES = ['admin', 'bom_pet_supervisor', 'bom_pet_atendente'];
+const REPORT_ONLY_AGENT_TYPES = ['post_sales'];
 
-async function bomPetAuth(req, res, next) {
-  try {
-    if (req.user?.role === 'admin') {
-      req.bomPetAgent = { email: req.user.email, agent_type: 'admin', name: req.user.email };
-      return next();
-    }
-    const result = await query(
+export function createBomPetAuthorizer(queryFn = query) {
+  return async function authorizeBomPet(req, res, next, { allowReportOnly = false } = {}) {
+    try {
+      const result = await queryFn(
       `SELECT a.id, a.email, a.name, a.agent_type, a.role,
               EXISTS (
                 SELECT 1
@@ -168,45 +166,66 @@ async function bomPetAuth(req, res, next) {
           AND a.active = true`,
       [req.user.id]
     );
-    const agent = result.rows[0];
-    if (!agent) return res.status(403).json({ message: 'Acesso negado ao módulo Bom Pet.' });
+      const agent = result.rows[0];
+      if (!agent) return res.status(403).json({ message: 'Acesso negado ao módulo Bom Pet.' });
 
-    const typeResult = await query(
-      'SELECT label, modules, allowed_submenus FROM agent_types WHERE key = $1',
-      [agent.agent_type]
-    );
-    const agentTypeLabel = typeResult.rows[0]?.label || '';
-    const modules = typeResult.rows[0]?.modules || [];
-    const allowedSubmenus = typeResult.rows[0]?.allowed_submenus || [];
-    const hasModule = ALLOWED_AGENT_TYPES.includes(agent.agent_type);
-    const hasDynamicModule = Array.isArray(modules)
-      && (modules.includes('bom_pet') || modules.includes('all'));
-    if (!hasModule && !hasDynamicModule) {
-      return res.status(403).json({ message: 'Acesso negado ao módulo Bom Pet.' });
+      const typeResult = await queryFn(
+        'SELECT label, modules, allowed_submenus FROM agent_types WHERE key = $1',
+        [agent.agent_type]
+      );
+      const agentTypeLabel = typeResult.rows[0]?.label || '';
+      const modules = typeResult.rows[0]?.modules || [];
+      const allowedSubmenus = typeResult.rows[0]?.allowed_submenus || [];
+      const hasModule = ALLOWED_AGENT_TYPES.includes(agent.agent_type);
+      const isReportOnly = REPORT_ONLY_AGENT_TYPES.includes(agent.agent_type);
+      const hasDynamicModule = Array.isArray(modules)
+        && (modules.includes('bom_pet') || modules.includes('all'));
+      const canAccessOperationalModule = !isReportOnly && (hasModule || hasDynamicModule);
+      if (!canAccessOperationalModule && !(allowReportOnly && isReportOnly)) {
+        return res.status(403).json({ message: 'Acesso negado ao módulo Bom Pet.' });
+      }
+      req.bomPetAgent = {
+        ...agent,
+        agentTypeLabel,
+        modules,
+        allowedSubmenus,
+        reportOnly: isReportOnly,
+      };
+      next();
+    } catch (err) {
+      console.error('[BomPet] Erro na autorização:', err.message);
+      res.status(500).json({ message: 'Erro ao validar permissões.' });
     }
-    req.bomPetAgent = { ...agent, agentTypeLabel, modules, allowedSubmenus };
-    next();
-  } catch (err) {
-    console.error('[BomPet] Erro na autorização:', err.message);
-    res.status(500).json({ message: 'Erro ao validar permissões.' });
-  }
+  };
 }
 
-function isBomPetSupervisor(req) {
+const authorizeBomPet = createBomPetAuthorizer();
+
+function bomPetAuth(req, res, next) {
+  return authorizeBomPet(req, res, next);
+}
+
+function bomPetReportAuth(req, res, next) {
+  return authorizeBomPet(req, res, next, { allowReportOnly: true });
+}
+
+export function isBomPetSupervisor(req) {
   const t = req.bomPetAgent?.agent_type;
+  if (req.bomPetAgent?.reportOnly === true || t === 'post_sales') return false;
   return t === 'admin'
     || t === 'bom_pet_supervisor'
-    || t === 'post_sales'
     || t?.endsWith('_supervisor')
     || req.bomPetAgent?.role === 'supervisor'
     || req.bomPetAgent?.is_team_supervisor === true
-    || String(req.bomPetAgent?.agentTypeLabel || '').toLowerCase().includes('supervisor')
-    || req.user?.role === 'admin'
-    || req.user?.role === 'supervisor';
+    || String(req.bomPetAgent?.agentTypeLabel || '').toLowerCase().includes('supervisor');
+}
+
+function canViewAllBomPetReport(req) {
+  return isBomPetSupervisor(req) || req.bomPetAgent?.reportOnly === true;
 }
 
 function isBomPetAdmin(req) {
-  return req.bomPetAgent?.agent_type === 'admin' || req.user?.role === 'admin';
+  return req.bomPetAgent?.agent_type === 'admin';
 }
 
 function requireBomPetAdmin(req, res, next) {
@@ -245,6 +264,13 @@ async function loadAuthorizedAtendimento(req, res, id) {
 function requireSupervisor(req, res, next) {
   if (!isBomPetSupervisor(req)) {
     return res.status(403).json({ message: 'Acesso restrito a supervisores e administradores.' });
+  }
+  next();
+}
+
+function requireBomPetReport(req, res, next) {
+  if (!canViewAllBomPetReport(req)) {
+    return res.status(403).json({ message: 'Acesso restrito ao relatório do Bom Pet.' });
   }
   next();
 }
@@ -1241,7 +1267,7 @@ router.post('/atendimentos', authMiddleware, bomPetAuth, (req, res, next) => {
   }
 });
 
-router.get('/atendimentos/atendentes', authMiddleware, bomPetAuth, requireSupervisor, async (req, res) => {
+router.get('/atendimentos/atendentes', authMiddleware, bomPetReportAuth, requireBomPetReport, async (req, res) => {
   try {
     const result = await query(
       `SELECT DISTINCT usuario FROM bom_pet_atendimentos WHERE usuario IS NOT NULL ORDER BY usuario ASC`
@@ -1338,7 +1364,7 @@ router.get('/atendimentos/:id(\\d+)', authMiddleware, bomPetAuth, async (req, re
   }
 });
 
-router.get('/atendimentos', authMiddleware, bomPetAuth, async (req, res) => {
+router.get('/atendimentos', authMiddleware, bomPetReportAuth, async (req, res) => {
   try {
     const {
       documento, status, data_inicio, data_fim, nome, pet, atendente, origem,
@@ -1351,7 +1377,7 @@ router.get('/atendimentos', authMiddleware, bomPetAuth, async (req, res) => {
 
     // Atendente só lista os próprios atendimentos (escopo aplicado no servidor);
     // o filtro "atendente" fica reservado a supervisores/admins.
-    if (!isBomPetSupervisor(req)) {
+    if (!canViewAllBomPetReport(req)) {
       sql += ` AND LOWER(usuario) = LOWER($${paramIndex++})`;
       params.push(currentUsuario(req));
     }
@@ -1407,7 +1433,7 @@ router.get('/atendimentos', authMiddleware, bomPetAuth, async (req, res) => {
       sql += ` AND data_hora < ${bomPetDayBoundarySql(`$${paramIndex++}`, { nextDay: true })}`;
       params.push(data_fim);
     }
-    if (atendente && isBomPetSupervisor(req)) {
+    if (atendente && canViewAllBomPetReport(req)) {
       sql += ` AND usuario ILIKE $${paramIndex++}`;
       params.push(`%${atendente}%`);
     }

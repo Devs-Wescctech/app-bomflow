@@ -75,6 +75,8 @@ ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS erp_approval_sync_status
 ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS erp_approval_last_checked_at TIMESTAMPTZ;
 ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS erp_approval_last_situacao VARCHAR(10);
 ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS erp_approval_last_error TEXT;
+ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS catalog_contract_id BIGINT;
+ALTER TABLE bomflow_orcamentos ADD COLUMN IF NOT EXISTS catalog_title TEXT;
 CREATE INDEX IF NOT EXISTS idx_bomflow_orcamentos_modulo ON bomflow_orcamentos(modulo);
 CREATE INDEX IF NOT EXISTS idx_bomflow_orcamentos_agent ON bomflow_orcamentos(agent_id);
 CREATE INDEX IF NOT EXISTS idx_bomflow_orcamentos_lead ON bomflow_orcamentos(lead_id);

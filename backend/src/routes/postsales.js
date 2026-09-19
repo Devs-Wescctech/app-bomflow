@@ -31,6 +31,7 @@ import {
 import {
   applyPostsalesContactCorrection,
   applyPostsalesCompleteCorrection,
+  addCorrectionCatalogContext,
   getPostsalesCorrectionContext,
   postsalesCorrectionType,
   withPostsalesCorrectionLock,
@@ -109,6 +110,58 @@ async function resolvePostsalesAuditor(req) {
   if (isAdmin || agentType === 'post_sales') return { eligible: true, isAdmin, agent };
   const mods = await agentTypeModules(agent.agent_type);
   return { eligible: mods.includes('post_sales'), isAdmin: false, agent };
+}
+
+function isSupervisorAgent(agent) {
+  const agentType = String(agent?.agent_type || '').toLowerCase();
+  return agentType === 'supervisor' || agentType.endsWith('_supervisor');
+}
+
+function canCorrectActiveVerification({ verification, actor, isAdmin }) {
+  if (isAdmin) return true;
+  const isOwner = !!verification.auditor_id
+    && String(verification.auditor_id) === String(actor?.id);
+  const isScopedSupervisor = isSupervisorAgent(actor)
+    && !!actor?.team_id
+    && String(actor.team_id) === String(verification.vendedor_team_id || '');
+  return isOwner || isScopedSupervisor;
+}
+
+async function loadActiveCorrectionVerification(req, id) {
+  const access = await resolvePostsalesAuditor(req);
+  if (!access.eligible) {
+    const error = new Error('Acesso restrito à equipe de Pós-Vendas.');
+    error.statusCode = 403;
+    throw error;
+  }
+  const result = await query(
+    `SELECT v.*, seller.team_id AS vendedor_team_id
+       FROM postsales_verificacoes v
+       LEFT JOIN agents seller ON seller.id = v.vendedor_id
+      WHERE v.id = $1`,
+    [id]
+  );
+  const verification = result.rows[0];
+  if (!verification) {
+    const error = new Error('Verificação não encontrada.');
+    error.statusCode = 404;
+    throw error;
+  }
+  if (!canCorrectActiveVerification({
+    verification,
+    actor: access.agent,
+    isAdmin: access.isAdmin,
+  })) {
+    const error = new Error('Somente o auditor responsável ou uma liderança autorizada pode corrigir este pedido.');
+    error.statusCode = 403;
+    throw error;
+  }
+  if (verification.status !== 'em_verificacao') {
+    const error = new Error('A correção direta só está disponível enquanto o pedido está em verificação.');
+    error.statusCode = 409;
+    throw error;
+  }
+  return { verification, agent: access.agent };
 }
 
 // Coordenador/supervisor do vendedor: admin vê tudo; supervisores veem as devoluções
@@ -221,7 +274,8 @@ async function ingestAprovados() {
 // GET /fila — fila de verificação do Pós-Vendas (com ingestão dos aprovados).
 router.get('/fila', authMiddleware, async (req, res) => {
   try {
-    const { eligible } = await resolvePostsalesAuditor(req);
+    const access = await resolvePostsalesAuditor(req);
+    const { eligible } = access;
     if (!eligible) return res.status(403).json({ error: 'Acesso restrito à equipe de Pós-Vendas.' });
 
     const startDate = req.query.start_date ? String(req.query.start_date) : null;
@@ -260,10 +314,11 @@ router.get('/fila', authMiddleware, async (req, res) => {
     }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const r = await query(
-      `SELECT v.*, pa.concluida_at AS aprovado_at,
+      `SELECT v.*, pa.concluida_at AS aprovado_at, seller.team_id AS vendedor_team_id,
               COALESCE(pa.concluida_at, v.created_at) AS data_fila
          FROM postsales_verificacoes v
          LEFT JOIN presales_auditorias pa ON pa.erp_pedido_id = v.erp_pedido_id
+         LEFT JOIN agents seller ON seller.id = v.vendedor_id
         ${where}
         ORDER BY CASE v.status
                    WHEN 'aguardando_cancelamento' THEN 0
@@ -291,7 +346,14 @@ router.get('/fila', authMiddleware, async (req, res) => {
     });
 
     return res.json({
-      items: enrichedRows.map((row) => shapeItem(row, req.user.id)),
+      items: enrichedRows.map((row) => ({
+        ...shapeItem(row, req.user.id),
+        can_correct: row.status === 'em_verificacao' && canCorrectActiveVerification({
+          verification: row,
+          actor: access.agent,
+          isAdmin: access.isAdmin,
+        }),
+      })),
       counts,
       motivos: POSTSALES_MOTIVOS,
       prazo_dias: DEVOLUCAO_PRAZO_DIAS,
@@ -307,11 +369,25 @@ router.get('/fila', authMiddleware, async (req, res) => {
 // orçamento está fora do período atualmente filtrado na fila.
 router.get('/:id/state', authMiddleware, async (req, res) => {
   try {
-    const { eligible } = await resolvePostsalesAuditor(req);
+    const access = await resolvePostsalesAuditor(req);
+    const { eligible } = access;
     if (!eligible) return res.status(403).json({ error: 'Acesso restrito à equipe de Pós-Vendas.' });
     const item = await getVerificacao(req.params.id);
     if (!item) return res.status(404).json({ error: 'Verificação não encontrada.' });
-    return res.json({ item: shapeItem(item, req.user.id) });
+    const seller = item.vendedor_id
+      ? await query(`SELECT team_id FROM agents WHERE id = $1`, [item.vendedor_id])
+      : { rows: [] };
+    const scoped = { ...item, vendedor_team_id: seller.rows[0]?.team_id || null };
+    return res.json({
+      item: {
+        ...shapeItem(scoped, req.user.id),
+        can_correct: scoped.status === 'em_verificacao' && canCorrectActiveVerification({
+          verification: scoped,
+          actor: access.agent,
+          isAdmin: access.isAdmin,
+        }),
+      },
+    });
   } catch (e) {
     console.error('[postsales] GET /state error:', e.message);
     return res.status(500).json({ error: 'Falha ao carregar o estado da verificação.' });
@@ -361,14 +437,14 @@ router.post('/:id/liberar-trava', authMiddleware, async (req, res) => {
     const { eligible, agent } = await resolvePostsalesAuditor(req);
     if (!eligible) return res.status(403).json({ error: 'Acesso restrito à equipe de Pós-Vendas.' });
 
-    const r = await query(
-      `UPDATE postsales_verificacoes
-          SET status = 'fila', auditor_id = NULL, auditor_nome = NULL, auditor_email = NULL,
-              assumido_at = NULL, updated_at = NOW()
-        WHERE id = $1 AND status = 'em_verificacao' AND auditor_id = $2
-        RETURNING *`,
-      [req.params.id, agent.id]
-    );
+    const r = await withPostsalesCorrectionLock(pool, req.params.id, () => query(
+        `UPDATE postsales_verificacoes
+            SET status = 'fila', auditor_id = NULL, auditor_nome = NULL, auditor_email = NULL,
+                assumido_at = NULL, updated_at = NOW()
+          WHERE id = $1 AND status = 'em_verificacao' AND auditor_id = $2
+          RETURNING *`,
+        [req.params.id, agent.id]
+      ));
     if (!r.rows[0]) return res.status(409).json({ error: 'Apenas o auditor que assumiu pode liberar a trava.' });
     await addEvento(r.rows[0].id, r.rows[0].erp_pedido_id, 'trava_liberada', `Trava liberada por ${agent.name}; orçamento voltou à fila.`, agent);
     return res.json({ item: shapeItem(r.rows[0], req.user.id) });
@@ -384,13 +460,13 @@ router.post('/:id/concluir', authMiddleware, async (req, res) => {
     const { eligible, agent } = await resolvePostsalesAuditor(req);
     if (!eligible) return res.status(403).json({ error: 'Acesso restrito à equipe de Pós-Vendas.' });
 
-    const r = await query(
-      `UPDATE postsales_verificacoes
-          SET status = 'concluida', concluida_at = NOW(), updated_at = NOW()
-        WHERE id = $1 AND status = 'em_verificacao' AND auditor_id = $2
-        RETURNING *`,
-      [req.params.id, agent.id]
-    );
+    const r = await withPostsalesCorrectionLock(pool, req.params.id, () => query(
+        `UPDATE postsales_verificacoes
+            SET status = 'concluida', concluida_at = NOW(), updated_at = NOW()
+          WHERE id = $1 AND status = 'em_verificacao' AND auditor_id = $2
+          RETURNING *`,
+        [req.params.id, agent.id]
+      ));
     if (!r.rows[0]) return res.status(409).json({ error: 'Assuma a verificação antes de concluí-la (apenas o auditor responsável pode concluir).' });
     await addEvento(r.rows[0].id, r.rows[0].erp_pedido_id, 'concluida', `Pós-venda concluído com sucesso por ${agent.name}.`, agent);
     return res.json({ item: shapeItem(r.rows[0], req.user.id) });
@@ -423,16 +499,16 @@ router.post('/:id/devolver', authMiddleware, async (req, res) => {
       prazoYmd = d.toISOString().slice(0, 10);
     }
 
-    const r = await query(
-      `UPDATE postsales_verificacoes
-          SET status = 'devolvida', motivo_devolucao = $3, devolucao_obs = $4,
-              devolvida_at = NOW(), prazo_ymd = $5,
-              resolvida_at = NULL, resolvida_por_id = NULL, resolvida_por_nome = NULL, resolucao_obs = NULL,
-              updated_at = NOW()
-        WHERE id = $1 AND status = 'em_verificacao' AND auditor_id = $2
-        RETURNING *`,
-      [req.params.id, agent.id, motivo, observacao, prazoYmd]
-    );
+    const r = await withPostsalesCorrectionLock(pool, req.params.id, () => query(
+        `UPDATE postsales_verificacoes
+            SET status = 'devolvida', motivo_devolucao = $3, devolucao_obs = $4,
+                devolvida_at = NOW(), prazo_ymd = $5,
+                resolvida_at = NULL, resolvida_por_id = NULL, resolvida_por_nome = NULL, resolucao_obs = NULL,
+                updated_at = NOW()
+          WHERE id = $1 AND status = 'em_verificacao' AND auditor_id = $2
+          RETURNING *`,
+        [req.params.id, agent.id, motivo, observacao, prazoYmd]
+      ));
     if (!r.rows[0]) return res.status(409).json({ error: 'Assuma a verificação antes de devolver (apenas o auditor responsável pode devolver).' });
     const v = r.rows[0];
 
@@ -542,10 +618,13 @@ async function loadCoordinatorVerification(req, id) {
 router.get('/:id/correcao', authMiddleware, async (req, res) => {
   try {
     const { verificacao } = await loadCoordinatorVerification(req, req.params.id);
-    const context = await getPostsalesCorrectionContext(
-      getErpPool(),
-      Number(verificacao.erp_pedido_id),
-      verificacao.motivo_devolucao
+    const context = await addCorrectionCatalogContext(
+      await getPostsalesCorrectionContext(
+        getErpPool(),
+        Number(verificacao.erp_pedido_id),
+        verificacao.motivo_devolucao
+      ),
+      query
     );
     const history = await query(
       `SELECT id, tipo, status, actor_nome, created_at, applied_at, error_message
@@ -600,6 +679,61 @@ router.patch('/:id/correcao', authMiddleware, async (req, res) => {
     console.error('[postsales] PATCH /:id/correcao error:', e.message);
     return res.status(e.statusCode || 500).json({
       error: e.statusCode ? e.message : 'Falha ao atualizar o orçamento no ERP.',
+      fields: e.fields || undefined,
+    });
+  }
+});
+
+// Correção direta pela fila ativa: preserva status, auditor e etapa do Pós-Vendas.
+router.get('/:id/correcao-direta', authMiddleware, async (req, res) => {
+  try {
+    const { verification } = await loadActiveCorrectionVerification(req, req.params.id);
+    const context = await addCorrectionCatalogContext(
+      await getPostsalesCorrectionContext(
+        getErpPool(),
+        Number(verification.erp_pedido_id),
+        verification.motivo_devolucao
+      ),
+      query
+    );
+    return res.json({
+      erp_pedido_id: Number(verification.erp_pedido_id),
+      origem: 'pos_vendas_direto',
+      motivo_nome: 'Correção direta no Pós-Vendas',
+      observacao: 'A correção será aplicada somente ao pedido ERP, sem alterar a Pessoa global ou o andamento da verificação.',
+      ...context,
+    });
+  } catch (e) {
+    console.error('[postsales] GET /:id/correcao-direta error:', e.message);
+    return res.status(e.statusCode || 500).json({
+      error: e.statusCode ? e.message : 'Falha ao carregar a correção direta.',
+    });
+  }
+});
+
+router.patch('/:id/correcao-direta', authMiddleware, async (req, res) => {
+  try {
+    const result = await withPostsalesCorrectionLock(pool, req.params.id, async () => {
+      const { verification, agent } = await loadActiveCorrectionVerification(req, req.params.id);
+      return applyPostsalesCompleteCorrection({
+        localQuery: query,
+        erpDb: getErpPool(),
+        verification,
+        actor: agent,
+        input: req.body || {},
+        eventDetailPrefix: 'Correção direta no Pós-Vendas',
+      });
+    });
+    return res.json({
+      tipo: result.tipo,
+      alterado: result.changed,
+      ja_aplicado: result.alreadyApplied,
+      editor: result.editor,
+    });
+  } catch (e) {
+    console.error('[postsales] PATCH /:id/correcao-direta error:', e.message);
+    return res.status(e.statusCode || 500).json({
+      error: e.statusCode ? e.message : 'Falha ao atualizar o pedido no ERP.',
       fields: e.fields || undefined,
     });
   }
@@ -981,13 +1115,21 @@ router.get(
 // por pedido e mantém o escopo exatamente na fila do Pós-Vendas.
 router.get('/:id/detalhe', authMiddleware, async (req, res) => {
   try {
-    const { eligible } = await resolvePostsalesAuditor(req);
+    const access = await resolvePostsalesAuditor(req);
+    const { eligible } = access;
     if (!eligible) {
       return res.status(403).json({ error: 'Acesso restrito à equipe de Pós-Vendas.' });
     }
 
     const verificacao = await getVerificacao(req.params.id);
     if (!verificacao) return res.status(404).json({ error: 'Verificação não encontrada.' });
+    const seller = verificacao.vendedor_id
+      ? await query(`SELECT team_id FROM agents WHERE id = $1`, [verificacao.vendedor_id])
+      : { rows: [] };
+    const scopedVerification = {
+      ...verificacao,
+      vendedor_team_id: seller.rows[0]?.team_id || null,
+    };
 
     const pedidoId = Number(verificacao.erp_pedido_id);
     if (!Number.isSafeInteger(pedidoId) || pedidoId <= 0) {
@@ -1037,7 +1179,15 @@ router.get('/:id/detalhe', authMiddleware, async (req, res) => {
 
     return res.json({
       erp_pedido_id: pedidoId,
-      item: shapeItem(verificacao, req.user.id),
+      item: {
+        ...shapeItem(scopedVerification, req.user.id),
+        can_correct: scopedVerification.status === 'em_verificacao'
+          && canCorrectActiveVerification({
+            verification: scopedVerification,
+            actor: access.agent,
+            isAdmin: access.isAdmin,
+          }),
+      },
       produto,
       detalhe,
       documentos,
