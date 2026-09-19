@@ -24,6 +24,25 @@ const digits = (value) => text(value).replace(/\D/g, '');
 const amount = (value) => Number(value || 0);
 const rounded = (value) => Math.round((amount(value) + Number.EPSILON) * 100) / 100;
 const first = (value) => (Array.isArray(value) ? value[0] : null);
+const normalizeSex = (value) => {
+  const normalized = text(value).toUpperCase();
+  if (normalized === 'F' || normalized === 'FEMININO') return 'F';
+  if (normalized === 'M' || normalized === 'MASCULINO') return 'M';
+  return '';
+};
+const compareLegacyValue = (left, right) => text(left).localeCompare(
+  text(right),
+  'pt-BR',
+  { numeric: true, sensitivity: 'base' },
+);
+export const sortBomMedDependents = (rows) => [...rows].sort((left, right) =>
+  amount(left.price) - amount(right.price)
+  || compareLegacyValue(left.phone, right.phone)
+  || compareLegacyValue(left.birth_date, right.birth_date)
+  || compareLegacyValue(left.name, right.name)
+  || compareLegacyValue(left.cpf, right.cpf)
+  || compareLegacyValue(left.pedido, right.pedido)
+  || compareLegacyValue(left.sex, right.sex));
 const normalizeRows = (body) => {
   if (Array.isArray(body)) return body;
   if (Array.isArray(body?.results)) return body.results;
@@ -74,14 +93,15 @@ export async function loadBomMedFromErp(cpf, pedido) {
   const holder = first(holderRows) || {};
   const mainBilling = billingRows.filter((row) => amount(row.total_valor) > 3);
   const billing = first(mainBilling) || first(billingRows) || {};
-  const dependents = dependentRows.map((row) => ({
+  const dependents = sortBomMedDependents(dependentRows.map((row) => ({
     name: text(row.nome_pessoa),
     cpf: text(row.cpf_dependente || row.cpf),
     birth_date: row.data_nascimento || null,
     phone: text(row.telefone),
-    sex: text(row.sexo).toUpperCase(),
+    sex: normalizeSex(row.sexo),
     price: rounded(row.preco),
-  })).sort((left, right) => left.price - right.price);
+    pedido: text(row.pedido),
+  })));
   const dependentTotal = dependents
     .filter((dependent) => dependent.price > 1)
     .reduce((total, dependent) => total + dependent.price, 0);
@@ -145,6 +165,11 @@ export function validateBomMedContractData(data) {
   if ((data?.dependents || []).length > 9) {
     errors.push('O contrato Bom Med comporta no máximo 9 dependentes.');
   }
+  (data?.dependents || []).forEach((dependent, index) => {
+    if (!['F', 'M'].includes(normalizeSex(dependent?.sex))) {
+      errors.push(`Sexo ausente ou inválido para o dependente ${index + 1}.`);
+    }
+  });
   return errors;
 }
 
@@ -200,10 +225,10 @@ export async function renderBomMedPdf(data) {
       const date = dateParts(value);
       if (!date) return;
       write(date.day, x, y, { size: 10 });
-      write(date.month_number, x + (compact ? 9 : 10), y, { size: 10 });
-      write(date.year, x + (compact ? 15.5 : 18), y, {
-        size: compact ? 6.5 : 9,
-        width: compact ? 7 : 12,
+      write(date.month_number, x + (compact ? 7 : 10), y, { size: 10 });
+      write(date.year, x + (compact ? 13.2 : 18), y, {
+        size: compact ? 10 : 9,
+        width: compact ? 7.5 : 12,
       });
     };
     const issue = dateParts(data.issue_date) || dateParts(new Date());
@@ -238,9 +263,9 @@ export async function renderBomMedPdf(data) {
           write(data.phone2, 125, 103, { width: 67 });
           write(data.profession, 16, 111, { width: 43 });
           write(data.income, 60, 111, { width: 38 });
-          write(data.email, 99, 111, { size: 8, width: 95 });
+          write(data.email, 99, 112, { size: 9.5, width: 95 });
           (data.dependents || []).forEach((dependent, index) => {
-            const y = 132 + (index * 6.4) + (index >= 3 ? 6 : 0);
+            const y = 132 + (index * 6.5) + (index >= 3 ? 6 : 0) - (index >= 4 ? 1 : 0);
             write(dependent.name, 22, y, { size: 9, width: 76 });
             write(dependent.cpf, 100, y, { size: 9, width: 22 });
             if (dependent.sex === 'F') write('X', 123, y, { size: 10 });
@@ -260,7 +285,7 @@ export async function renderBomMedPdf(data) {
         if (page === 6 && issue) {
           write(issue.day, 115, 195, { size: 12 });
           write(issue.month, 133, 195, { size: 12, width: 38 });
-          write(issue.year.slice(-2), 174, 195, { size: 12 });
+          write(issue.year.slice(-2), 174, 196, { size: 12 });
         }
       }
       doc.end();

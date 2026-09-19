@@ -12,6 +12,7 @@ import {
 import {
   BOM_MED_BASE_PRODUCT_IDS,
   renderBomMedPdf,
+  sortBomMedDependents,
   validateBomMedContractData,
 } from '../services/bomMedContract.js';
 import {
@@ -199,6 +200,28 @@ test('recognizes and validates the Bom Med contract without treating it as Essen
   assert.match(
     validateBomMedContractData({ ...data, dependents: Array(10).fill(data.dependents[0]) }).join(' '),
     /máximo 9 dependentes/i,
+  );
+  assert.match(
+    validateBomMedContractData({
+      ...data,
+      dependents: [{ ...data.dependents[0], sex: '' }],
+    }).join(' '),
+    /Sexo ausente ou inválido para o dependente 1/i,
+  );
+});
+
+test('orders Bom Med dependents like the legacy PHP when prices are equal', () => {
+  const rows = [
+    { name: 'MARILENE', price: 0.01, phone: '19999999999', birth_date: '1972-06-26', sex: 'F' },
+    { name: 'ANTONIO', price: 0.01, phone: '19999999999', birth_date: '1980-12-21', sex: 'M' },
+    { name: 'REINALDO', price: 0.01, phone: '19999999999', birth_date: '1986-03-04', sex: 'M' },
+    { name: 'MARIA', price: 0.01, phone: '19999999999', birth_date: '1962-06-14', sex: 'F' },
+    { name: 'FABRICIO', price: 0.01, phone: '19999999999', birth_date: '2007-09-15', sex: 'M' },
+    { name: 'KAIO', price: 0.01, phone: '19999999999', birth_date: '2003-02-24', sex: 'M' },
+  ];
+  assert.deepEqual(
+    sortBomMedDependents(rows).map((dependent) => dependent.name),
+    ['MARIA', 'MARILENE', 'ANTONIO', 'REINALDO', 'KAIO', 'FABRICIO'],
   );
 });
 
