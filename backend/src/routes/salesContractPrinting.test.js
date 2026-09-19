@@ -20,6 +20,7 @@ import {
   buildComboMultiWellbeingContractData,
   comboMultiWellbeingPaymentCategory,
   renderComboMultiWellbeingPdf,
+  sortComboMultiWellbeingDependents,
   validateComboMultiWellbeingContractData,
 } from '../services/comboMultiWellbeingContract.js';
 import {
@@ -1052,6 +1053,15 @@ test('uses the approved text template and a follow-up document for Combo Multi B
   assert.match(buildComboMultiWellbeingWhatsAppMessage('CLIENTE TESTE'), /^Olá, CLIENTE TESTE!/);
 });
 
+test('orders Combo Multi Bem Estar dependents with the legacy Bom Med rule', () => {
+  const ordered = sortComboMultiWellbeingDependents([
+    { name: 'TAINA', phone: '19995170041', birth_date: new Date('1995-08-10T00:00:00Z'), price: 0.01 },
+    { name: 'JACOB', phone: '19995170041', birth_date: new Date('1967-10-22T00:00:00Z'), price: 0.01 },
+    { name: 'JULIANO', phone: '19995170041', birth_date: new Date('1982-04-11T00:00:00Z'), price: 0.01 },
+  ]);
+  assert.deepEqual(ordered.map((dependent) => dependent.name), ['JACOB', 'JULIANO', 'TAINA']);
+});
+
 test('selects the approved document template and exact payload for each contract product', () => {
   assert.equal(CONTRACT_WHATSAPP_TEMPLATES.essencial.name, 'bom_vindas_funeral');
   assert.equal(CONTRACT_WHATSAPP_TEMPLATES.bom_auto.name, 'bom_auto_boas_vindas');
@@ -1150,6 +1160,7 @@ test('WhatsApp contract sending is authenticated, regenerated and sent as tempor
   assert.match(routeSource, /storeContractForWhatsApp\(pdf, temporaryObject, \{ baseUrl \}\)/);
   assert.match(routeSource, /\{ optimizeForWhatsapp: true \}/);
   assert.match(routeSource, /sendTemplate\(/);
+  assert.match(routeSource, /sendMedia\(/);
   assert.match(routeSource, /BOM_AUTO_CONTRACT_WHATSAPP_TOKEN/);
   assert.doesNotMatch(routeSource, /RUDO_WHATSAPP_TOKEN/);
   assert.match(routeSource, /name: 'bom_auto_boas_vindas'/);

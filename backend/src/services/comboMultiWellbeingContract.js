@@ -25,6 +25,27 @@ const normalized = (value) => text(value)
   .replace(/[\u0300-\u036f]/g, '')
   .toUpperCase();
 
+const compareLegacyValue = (left, right) => text(left).localeCompare(
+  text(right),
+  'pt-BR',
+  { numeric: true, sensitivity: 'base' },
+);
+const comparableDate = (value) => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  return text(value);
+};
+
+export const sortComboMultiWellbeingDependents = (rows) => [...rows].sort((left, right) =>
+  amount(left.price) - amount(right.price)
+  || compareLegacyValue(left.phone, right.phone)
+  || compareLegacyValue(comparableDate(left.birth_date), comparableDate(right.birth_date))
+  || compareLegacyValue(left.name, right.name)
+  || compareLegacyValue(left.cpf, right.cpf)
+  || compareLegacyValue(left.pedido, right.pedido)
+  || compareLegacyValue(left.sex, right.sex));
+
 const productAmount = (product) => {
   if (product?.valor_total != null) return amount(product.valor_total);
   return amount(product?.preco) * amount(product?.quantidade);
@@ -88,7 +109,7 @@ export function buildComboMultiWellbeingContractData(detail = {}) {
       { length: Math.max(1, Number(product?.quantidade) || 1) },
       () => rounded(product?.preco),
     ));
-  const dependents = people
+  const dependents = sortComboMultiWellbeingDependents(people
     .filter((person) => !person?.is_titular && linkedTo(person, isBomMedDependent))
     .map((person, index) => ({
       name: text(person.nome),
@@ -97,7 +118,7 @@ export function buildComboMultiWellbeingContractData(detail = {}) {
       phone: text(person.telefone),
       sex: normalizeSex(person.sexo).slice(0, 1),
       price: dependentPrices[index] ?? 0,
-    }));
+    })));
   const dependentValue = rounded(dependents
     .filter((dependent) => dependent.price > 1)
     .reduce((total, dependent) => total + dependent.price, 0));
@@ -110,6 +131,9 @@ export function buildComboMultiWellbeingContractData(detail = {}) {
   // criaram uma linha separada de condutor; o gerador oficial usava o titular.
   const legacyComboVehicle = legacyVehicleParts.length === 3 && !vehicle?.cpf;
   const driver = vehicle?.driver || (legacyComboVehicle && detail.titular_is_canonical ? holder : null);
+  const legacyOrderPhone = legacyComboVehicle
+    ? text(vehicle?.telefone || people.find((person) => !person?.is_titular)?.telefone)
+    : '';
   const standardValue = rounded(productAmount(baseProduct));
 
   return {
@@ -120,7 +144,7 @@ export function buildComboMultiWellbeingContractData(detail = {}) {
     birth_date: holder.data_nascimento || null,
     sex: normalizeSex(holder.sexo),
     marital_status: normalizeCivilStatus(holder.estado_civil),
-    profession: text(holder.profissao),
+    profession: text(holder.profissao) || 'Outros',
     income: holder.renda ?? null,
     address: text(address.logradouro),
     complement: text(address.complemento),
@@ -129,8 +153,8 @@ export function buildComboMultiWellbeingContractData(detail = {}) {
     city: text(address.cidade),
     state: normalized(address.uf),
     cep: digits(address.cep),
-    phone: text(holder.telefone),
-    phone2: text(detail.telefone_secundario),
+    phone: legacyOrderPhone || text(holder.telefone),
+    phone2: legacyComboVehicle ? text(holder.telefone) : text(detail.telefone_secundario),
     email: text(holder.email || detail.email),
     adhesion: COMBO_MULTI_WELLBEING_ADHESION,
     standard_value: standardValue,
@@ -153,7 +177,7 @@ export function buildComboMultiWellbeingContractData(detail = {}) {
       name: text(driver.nome),
       cpf: text(driver.cpf),
       birth_date: driver.data_nascimento || null,
-      phone: text(driver.telefone),
+      phone: legacyOrderPhone || text(driver.telefone),
       sex: normalizeSex(driver.sexo),
       marital_status: normalizeCivilStatus(driver.estado_civil),
     } : null,
@@ -264,19 +288,24 @@ export async function renderComboMultiWellbeingPdf(data) {
         lineBreak: false,
       });
     };
-    const writeDate = (value, x, y) => {
+    const writeDate = (
+      value,
+      x,
+      y,
+      { monthOffset = 8, yearOffset = 16 } = {},
+    ) => {
       const date = dateParts(value);
       if (!date) return;
       write(date.day, x, y);
-      write(date.month_number, x + 9.5, y);
-      write(date.year, x + 18, y, { size: 9, width: 12 });
+      write(date.month_number, x + monthOffset, y);
+      write(date.year, x + yearOffset, y, { size: 10, width: 12 });
     };
     const writeDependentDate = (value, y) => {
       const date = dateParts(value);
       if (!date) return;
-      write(date.day, 150, y, { size: 8.5 });
-      write(date.month_number, 156.5, y, { size: 8.5 });
-      write(date.year, 162.5, y, { size: 8.5, width: 9 });
+      write(date.day, 150, y, { size: 9 });
+      write(date.month_number, 158, y, { size: 9 });
+      write(date.year, 163.5, y, { size: 9, width: 8 });
     };
     const writeCep = (value, y) => {
       digits(value).slice(0, 8).split('').forEach((digit, index) => {
@@ -284,13 +313,22 @@ export async function renderComboMultiWellbeingPdf(data) {
         write(digit, positions[index], y, { size: 10 });
       });
     };
-    const writeIssueDate = (issue, y, { x = 32, shortYear = false } = {}) => {
+    const writeIssueDate = (
+      issue,
+      y,
+      { x = 32, shortYear = false, monthOffset = 13, yearOffset = null } = {},
+    ) => {
       if (!issue) return;
       write(issue.day, x, y, { size: 11 });
-      write(issue.month, x + 13, y, { size: 11, width: 28 });
-      write(shortYear ? issue.year.slice(-2) : issue.year, x + (shortYear ? 59 : 35), y, { size: 11 });
+      write(issue.month, x + monthOffset, y, { size: 11, width: 28 });
+      write(
+        shortYear ? issue.year.slice(-2) : issue.year,
+        x + (yearOffset ?? (shortYear ? 59 : 35)),
+        y,
+        { size: 11 },
+      );
     };
-    const writeForm = () => {
+    const writeForm = (pageNumber) => {
       write(money(data.adhesion), 29, 39.5, { size: 11 });
       write(money(data.standard_value), 52, 39.5, { size: 11 });
       write(money(data.dependent_value), 75, 39.5, { size: 11 });
@@ -302,7 +340,7 @@ export async function renderComboMultiWellbeingPdf(data) {
       if (data.sex === 'FEMININO') write('X', 157, 56.5);
       const civilX = { SOLTEIRO: 163, CASADO: 168, OUTROS: 173 }[data.marital_status];
       if (civilX) write('X', civilX, 56.5);
-      writeDate(data.birth_date, 180, 56.5);
+      writeDate(data.birth_date, 180, 56.15);
       write(data.cpf, 24, 63, { width: 88 });
       write(data.rg, 116, 63, { width: 88 });
       write([data.address, data.complement].filter(Boolean).join(' - '), 24, 69.5, { width: 157 });
@@ -325,22 +363,31 @@ export async function renderComboMultiWellbeingPdf(data) {
       }
       if (data.driver) {
         write(data.driver.name, 24, 117.5, { width: 118 });
-        writeDate(data.driver.birth_date, 181, 117.5);
+        if (data.driver.sex === 'MASCULINO') write('X', 152, 117.5);
+        if (data.driver.sex === 'FEMININO') write('X', 157, 117.5);
+        const driverCivilX = { SOLTEIRO: 163, CASADO: 168, OUTROS: 173 }[data.driver.marital_status];
+        if (driverCivilX) write('X', driverCivilX, 117.5);
+        writeDate(data.driver.birth_date, 181, 117.5, {
+          monthOffset: 7.75,
+          yearOffset: 14.5,
+        });
         write(data.driver.cpf, 24, 123.5, { width: 88 });
         write(data.driver.phone, 115, 123.5, { width: 52 });
       }
       if (data.pet) {
-        write(data.pet.name, 24, 137.5, { width: 118 });
-        if (data.pet.sex === 'M') write('X', 158, 137.5);
-        if (data.pet.sex === 'F') write('X', 163, 137.5);
-        write(data.pet.breed, 24, 144, { width: 65 });
-        write(data.pet.color, 107, 144, { width: 45 });
-        write(petAge(data.pet.birth_date, data.issue_date), 154, 144, { size: 9, width: 32 });
+        const petNameY = pageNumber === 9 ? 138.6 : 139.1;
+        const petDetailsY = pageNumber === 9 ? 145.1 : 146.1;
+        write(data.pet.name, 24, petNameY, { width: 118 });
+        if (data.pet.sex === 'M') write('X', 158, petNameY);
+        if (data.pet.sex === 'F') write('X', 163, petNameY);
+        write(data.pet.breed, 24, petDetailsY, { width: 65 });
+        write(data.pet.color, 107, petDetailsY, { width: 45 });
+        write(petAge(data.pet.birth_date, data.issue_date), 154, petDetailsY, { size: 9, width: 32 });
         const sizeX = { PEQUENO: 190, MEDIO: 194, GRANDE: 199 }[data.pet.size];
         if (sizeX) write('X', sizeX, 142, { size: 9 });
       }
       (data.dependents || []).forEach((dependent, index) => {
-        const y = 169 + (index * 4) + (index >= 3 ? 5 : 0);
+        const y = 169.3 + (index * 4) + (index >= 3 ? 5 : 0);
         write(dependent.name, 30, y, { size: 9, width: 82 });
         write(dependent.cpf, 115, y, { size: 9, width: 23 });
         if (dependent.sex === 'F') write('X', 140, y, { size: 9 });
@@ -361,12 +408,24 @@ export async function renderComboMultiWellbeingPdf(data) {
         doc.image(backgrounds.get(page), 0, 0, { width: 595.28, height: 841.89 });
         doc.fillColor('#111');
         if (page === 1 || page === 9) {
-          writeForm();
+          writeForm(page);
           writeIssueDate(issue, 238);
         }
-        if (page === 8) writeIssueDate(issue, 217, { x: 132, shortYear: true });
-        if (page === 16) writeIssueDate(issue, 210, { x: 132, shortYear: true });
-        if (page === 17) writeIssueDate(issue, 244, { x: 122, shortYear: true });
+        if (page === 8) {
+          writeIssueDate(issue, 209.75, {
+            x: 132, shortYear: true, monthOffset: 18, yearOffset: 59,
+          });
+        }
+        if (page === 16) {
+          writeIssueDate(issue, 216.75, {
+            x: 132, shortYear: true, monthOffset: 18, yearOffset: 59,
+          });
+        }
+        if (page === 17) {
+          writeIssueDate(issue, 243.75, {
+            x: 122, shortYear: true, monthOffset: 19, yearOffset: 60,
+          });
+        }
       }
       doc.end();
     } catch (error) {

@@ -9,11 +9,10 @@ import { authMiddleware } from '../middleware/auth.js';
 import { loadAgentMiddleware, requireSalesContractPrinting } from '../middleware/permissions.js';
 import { query } from '../config/database.js';
 import { getErpPool, getOrcamentoDetalhe } from '../services/erpDbService.js';
-import { sendTemplate } from '../services/attendanceWhuClient.js';
+import { sendMedia, sendTemplate } from '../services/attendanceWhuClient.js';
 import {
   getContactByPhone,
   getMessageDeliveryInfo,
-  sendDocumentWithToken,
   setContactAttributes,
 } from '../services/whatsappService.js';
 import { emitAttendanceEvent } from '../services/attendanceEvents.js';
@@ -373,6 +372,7 @@ export function buildContractWhatsAppDelivery({
         : buildBomAutoWhatsAppMessage(holderName),
     separateDocument: template.documentHeader === false,
     documentUrl,
+    documentCaption: `Contrato ${productName} ${displayNumber}`,
     components: [
       ...(template.documentHeader === false ? [] : [{
         type: 'header',
@@ -1483,12 +1483,13 @@ router.post('/contracts/send-whatsapp', async (req, res) => {
       components,
     );
     const response = deliveryConfig.separateDocument
-      ? await sendDocumentWithToken({
-          number: phone,
-          documentUrl: deliveryConfig.documentUrl,
-          caption,
-          filename: fileName,
-        }, channelToken)
+      ? await sendMedia(
+          channelToken,
+          phone,
+          deliveryConfig.documentUrl,
+          deliveryConfig.documentCaption,
+          { fileName, extension: 'pdf' },
+        )
       : templateResponse;
     scheduleContractDeletion(temporaryObject);
     temporaryObject = null;

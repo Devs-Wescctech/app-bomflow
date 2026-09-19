@@ -324,34 +324,6 @@ export async function sendDocument(params) {
   return responseData;
 }
 
-export async function sendDocumentWithToken(params, channelToken) {
-  if (!channelToken) {
-    throw new Error('No WhatsApp channel token provided');
-  }
-  const { number, documentUrl, caption, filename } = params;
-  const response = await fetch(`${RUDO_API_BASE}/chats/send-media`, {
-    method: 'POST',
-    headers: {
-      'access-token': channelToken,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-    body: JSON.stringify({
-      number: normalizeBrazilPhone(number),
-      url: documentUrl,
-      caption: caption || '',
-      filename: filename || 'contrato.pdf',
-      type: 'document',
-      forceSend: true,
-    }),
-  });
-  const responseData = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(`Failed to send document: ${responseData.msg || response.statusText}`);
-  }
-  return responseData;
-}
-
 export async function sendTextMessageWithToken({ number, message, channelToken }) {
   if (!channelToken) {
     throw new Error('No WhatsApp channel token provided');
