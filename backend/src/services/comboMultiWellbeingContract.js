@@ -500,6 +500,7 @@ async function renderComboMultiWellbeingPdfFrom(data, contractPagesDir) {
           write('REAIS', 77, 157, { size: 11 });
           write(issue.day, 125, 241, { size: 12 });
           write(issue.month, 143, 241, { size: 12, width: 28 });
+          write(issue.year.slice(-2), 182, 241, { size: 12 });
         });
         addOptionalPage('mileage', (service) => {
           // O gerador legado imprime 2.000 km para qualquer faixa contratada.
@@ -509,6 +510,7 @@ async function renderComboMultiWellbeingPdfFrom(data, contractPagesDir) {
           write('REAIS', 128, 128, { size: 10 });
           write(issue.day, 125, 220, { size: 12 });
           write(issue.month, 143, 220, { size: 12, width: 28 });
+          write(issue.year.slice(-2), 182, 220, { size: 12 });
         });
         addOptionalPage('crown', (service) => {
           // O campo de quantidade permanecia vazio no PDF oficial.
