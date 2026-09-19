@@ -1,5 +1,30 @@
 import { isValidPhone, normalizePhone } from '../utils/leadImportValidation.js';
+import { fetchErpAllPages } from '../utils/erpPagination.js';
+import { assessCatalogSelection } from '../utils/erpCatalogValidation.js';
 import { createHash } from 'node:crypto';
+
+const ERP_PRODUCTS_URL = 'http://erp.wescctech.com.br:8080/BP_MULTI/api/API_MV_API_PRODUTOS';
+const CORRECTION_CATALOG_TITLES = new Set([
+  'BOM CORP',
+  'BOM PASTOR',
+  'BOM PASTOR - BOM AUTO',
+  'BOM PASTOR - BOM DESCANSO FAMILIA',
+  'BOM PASTOR - BOM MED',
+  'BOM PASTOR - BOM PET',
+  'BOM PASTOR - COB',
+  'BOM PASTOR - COMBO MULTI ESPECIAL',
+  'BOM PASTOR - COMBO MULTI SELEÇÃO',
+  'BOM PASTOR - DIGITAL',
+  'BOM PASTOR - ESSENCIAL',
+  'BOM PASTOR - IDEAL',
+  'BOM PASTOR - PEROLA',
+  'BOM PASTOR - RUBI',
+  'BOM PASTOR - SAFIRA',
+  'BOM PASTOR - TOPAZIO',
+  'BOM PASTOR - TOTAL +',
+  'BOM SAMBA',
+  'EXPLORER CALLCENTER',
+]);
 
 const EDITABLE_REASON_TYPES = {
   telefone_incorreto: 'telefone',
@@ -152,7 +177,8 @@ export function validateCompleteCorrection(input = {}) {
   const pessoas = editor.pessoas.map((person, index) => {
     const cpf = digits(person.cpf);
     if (!String(person.nome || '').trim()) throw invalidCorrection('Nome da pessoa é obrigatório.', [`editor.pessoas.${index}.nome`]);
-    if (cpf && cpf.length !== 11) throw invalidCorrection('CPF deve conter 11 dígitos.', [`editor.pessoas.${index}.cpf`]);
+    if (person.is_titular && cpf.length !== 11) throw invalidCorrection('CPF do titular deve conter 11 dígitos.', [`editor.pessoas.${index}.cpf`]);
+    if (!person.is_titular && cpf && cpf.length !== 11) throw invalidCorrection('CPF deve conter 11 dígitos ou ficar em branco.', [`editor.pessoas.${index}.cpf`]);
     if (cpf && keys.has(cpf)) throw invalidCorrection('CPF duplicado no orçamento.', ['editor.pessoas']);
     if (cpf) keys.add(cpf);
     if (person.telefone && !isValidPhone(normalizePhone(person.telefone))) throw invalidCorrection('Informe um telefone válido com DDD.', [`editor.pessoas.${index}.telefone`]);
@@ -182,6 +208,245 @@ export function validateCompleteCorrection(input = {}) {
   }
   return { ...editor, revision: expectedRevision, endereco, email, observacoes: String(editor.observacoes || '').trim() || null,
     numero_parcelas: editor.numero_parcelas == null || editor.numero_parcelas === '' ? null : Number(editor.numero_parcelas), pessoas, itens };
+}
+
+function bindingKey(contractId, title) {
+  return `${String(contractId ?? '')}\u0000${String(title ?? '').trim()}`;
+}
+
+export function resolveCorrectionCatalogBinding(beforeEditor, rows, trackedBinding = null) {
+  const trackedContractId = Number(trackedBinding?.contractId);
+  const trackedTitle = String(trackedBinding?.title || '').trim();
+  if (Number.isSafeInteger(trackedContractId) && trackedContractId > 0 && trackedTitle) {
+    return { contractId: trackedContractId, title: trackedTitle };
+  }
+  const groups = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const contractId = Number(row?.contrato_id);
+    const title = String(row?.titulo_contrato || '').trim();
+    if (!Number.isSafeInteger(contractId) || contractId <= 0 || !title) continue;
+    const key = bindingKey(contractId, title);
+    if (!groups.has(key)) groups.set(key, { contractId, title, rows: [] });
+    groups.get(key).rows.push(row);
+  }
+  const productCandidates = [...groups.values()].filter((group) =>
+    (beforeEditor?.itens || []).every((item) =>
+      group.rows.some((row) =>
+        String(row.produto_id) === String(item.produto_id)
+      )
+    )
+  );
+  if (productCandidates.length === 1) {
+    return { contractId: productCandidates[0].contractId, title: productCandidates[0].title };
+  }
+  // The same product id can exceptionally appear in more than one title. In
+  // that case, use the original order prices only as a disambiguator. Price is
+  // not required when the product set already identifies one title because the
+  // ERP catalog can legitimately change after the order was created.
+  const priceCandidates = productCandidates.filter((group) =>
+    (beforeEditor?.itens || []).every((item) =>
+      group.rows.some((row) =>
+        String(row.produto_id) === String(item.produto_id) &&
+        money(row.preco_informado, 'catalog.preco') === money(item.preco, 'editor.itens.preco')
+      )
+    )
+  );
+  return priceCandidates.length === 1
+    ? { contractId: priceCandidates[0].contractId, title: priceCandidates[0].title }
+    : null;
+}
+
+export function eligibleCorrectionCatalogRows(rows, binding) {
+  if (!binding) return [];
+  return (Array.isArray(rows) ? rows : []).filter((row) =>
+    String(row.contrato_id) === String(binding.contractId) &&
+    String(row.titulo_contrato || '').trim() === binding.title
+  );
+}
+
+export function correctionCatalogChoices(rows) {
+  const choices = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const contractId = Number(row?.contrato_id);
+    const title = String(row?.titulo_contrato || '').trim();
+    if (!Number.isSafeInteger(contractId) || contractId <= 0 || !CORRECTION_CATALOG_TITLES.has(title)) continue;
+    const key = bindingKey(contractId, title);
+    if (!choices.has(key)) choices.set(key, { contract_id: contractId, title, products: [] });
+    choices.get(key).products.push(row);
+  }
+  return [...choices.values()].sort((a, b) => a.title.localeCompare(b.title, 'pt-BR'));
+}
+
+function requestedCorrectionCatalogBinding(editor, rows) {
+  const contractId = Number(editor?.catalog_contract_id);
+  const title = String(editor?.catalog_title || '').trim();
+  if (!contractId && !title) return null;
+  if (!Number.isSafeInteger(contractId) || contractId <= 0 || !CORRECTION_CATALOG_TITLES.has(title)) {
+    throw invalidCorrection('Título do contrato inválido.', ['editor.catalog_title']);
+  }
+  if (!eligibleCorrectionCatalogRows(rows, { contractId, title }).length) {
+    throw invalidCorrection('O título selecionado não está disponível no catálogo atual do ERP.', ['editor.catalog_title']);
+  }
+  return { contractId, title };
+}
+
+function catalogItemFromEditor(item, editor) {
+  const titular = editor.pessoas.find((person) => person.is_titular);
+  const refs = new Set((item.pessoa_refs || []).map(String));
+  return {
+    produtoId: item.produto_id,
+    preco: item.preco,
+    incluirTitular: !!titular && refs.has(String(titular.id ?? titular.client_key)),
+    beneficiarios: editor.pessoas
+      .filter((person) => !person.is_titular && refs.has(String(person.id ?? person.client_key)))
+      .map((person) => ({ nome: person.nome })),
+  };
+}
+
+function normalizedItemRefs(item, field) {
+  return [...(item?.[field] || [])].map(String).sort();
+}
+
+export function itemNeedsCatalogValidation(item, previous) {
+  if (!previous || String(previous.produto_id) !== String(item.produto_id)) return true;
+  return JSON.stringify(normalizedItemRefs(item, 'pessoa_refs'))
+    !== JSON.stringify(normalizedItemRefs(previous, 'pessoa_ids'));
+}
+
+export function validateCorrectionIdentityNamespace(editor, beforeEditor) {
+  const existingPersonIds = new Set(
+    (beforeEditor?.pessoas || [])
+      .filter((person) => person.id != null)
+      .map((person) => String(person.id))
+  );
+  const submittedPersonRefs = new Set();
+  for (let index = 0; index < editor.pessoas.length; index++) {
+    const person = editor.pessoas[index];
+    const isExisting = person.id != null;
+    const ref = String(isExisting ? person.id : person.client_key || '').trim();
+    if (!ref) {
+      throw invalidCorrection('Cada nova pessoa precisa de um identificador temporário.', [`editor.pessoas.${index}.client_key`]);
+    }
+    if (!isExisting && existingPersonIds.has(ref)) {
+      throw invalidCorrection('O identificador temporário de uma pessoa não pode reutilizar um vínculo existente.', [`editor.pessoas.${index}.client_key`]);
+    }
+    if (submittedPersonRefs.has(ref)) {
+      throw invalidCorrection('Há pessoas com identificadores duplicados no orçamento.', ['editor.pessoas']);
+    }
+    submittedPersonRefs.add(ref);
+  }
+
+  const submittedItemIds = new Set();
+  for (let index = 0; index < editor.itens.length; index++) {
+    const item = editor.itens[index];
+    if (item.id != null) {
+      const id = String(item.id);
+      if (submittedItemIds.has(id)) {
+        throw invalidCorrection('O mesmo item não pode ser enviado mais de uma vez.', ['editor.itens']);
+      }
+      submittedItemIds.add(id);
+    }
+    for (const ref of item.pessoa_refs) {
+      if (!submittedPersonRefs.has(String(ref))) {
+        throw invalidCorrection('Pessoa do item não pertence ao orçamento.', [`editor.itens.${index}.pessoa_refs`]);
+      }
+    }
+  }
+  return editor;
+}
+
+export function enforceAuthoritativeItemPrices(editor, beforeEditor, catalogRows = [], binding = null) {
+  const previousItems = new Map((beforeEditor?.itens || [])
+    .filter((item) => item.id != null)
+    .map((item) => [String(item.id), item]));
+  return {
+    ...editor,
+    itens: editor.itens.map((item, index) => {
+      const field = `editor.itens.${index}.preco`;
+      const previous = item.id == null ? null : previousItems.get(String(item.id));
+      const needsCatalogValidation = itemNeedsCatalogValidation(item, previous);
+      let authoritativePrice;
+      if (!needsCatalogValidation) {
+        authoritativePrice = money(previous.preco, field);
+      } else {
+        if (!binding) {
+          throw invalidCorrection('Não foi possível identificar o contrato e o título deste orçamento. Os produtos e vínculos atuais podem ser mantidos, mas não alterados.', ['editor.itens']);
+        }
+        const selection = assessCatalogSelection({
+          contractId: binding.contractId,
+          title: binding.title,
+          items: [catalogItemFromEditor(item, editor)],
+          rows: catalogRows,
+        });
+        if (!selection.ok) throw invalidCorrection(selection.error, [field]);
+        authoritativePrice = selection.items[0].preco;
+      }
+      if (money(item.preco, field) !== authoritativePrice) {
+        throw invalidCorrection('O preço do produto é definido pelo ERP e não pode ser alterado manualmente.', [field]);
+      }
+      return { ...item, preco: authoritativePrice };
+    }),
+  };
+}
+
+export async function loadFreshProductCatalog() {
+  const token = process.env.ERP_AUTH_TOKEN;
+  if (!token) {
+    const error = new Error('Não foi possível validar os preços porque a integração com o ERP não está configurada.');
+    error.statusCode = 503;
+    throw error;
+  }
+  return fetchErpAllPages(ERP_PRODUCTS_URL, `Bearer ${token}`, {
+    label: 'ERP validação de preços da correção',
+  });
+}
+
+async function loadTrackedCatalogBinding(localQuery, pedidoId) {
+  const result = await localQuery(
+    `SELECT catalog_contract_id, catalog_title
+       FROM bomflow_orcamentos WHERE erp_pedido_id = $1`,
+    [pedidoId]
+  ).catch(() => ({ rows: [] }));
+  const row = result.rows[0];
+  return row ? { contractId: row.catalog_contract_id, title: row.catalog_title } : null;
+}
+
+export async function addCorrectionCatalogContext(context, localQuery, {
+  loadProductCatalog = loadFreshProductCatalog,
+} = {}) {
+  let rows;
+  try {
+    rows = await loadProductCatalog();
+  } catch {
+    return {
+      ...context,
+      catalog_binding: null,
+      catalog_products: [],
+      catalog_status: 'unavailable',
+      catalog_message: 'O catálogo do ERP está indisponível. Tente novamente para incluir ou trocar produtos.',
+    };
+  }
+  const tracked = await loadTrackedCatalogBinding(localQuery, context.editor.erp_pedido_id);
+  const binding = resolveCorrectionCatalogBinding(context.editor, rows, tracked);
+  if (binding && (!tracked?.contractId || !String(tracked?.title || '').trim())) {
+    await localQuery(
+      `UPDATE bomflow_orcamentos
+          SET catalog_contract_id = $2, catalog_title = $3
+        WHERE erp_pedido_id = $1
+          AND (catalog_contract_id IS NULL OR NULLIF(TRIM(catalog_title), '') IS NULL)`,
+      [context.editor.erp_pedido_id, binding.contractId, binding.title]
+    ).catch(() => {});
+  }
+  return {
+    ...context,
+    catalog_binding: binding,
+    catalog_products: eligibleCorrectionCatalogRows(rows, binding),
+    catalog_choices: correctionCatalogChoices(rows),
+    catalog_status: binding ? 'available' : 'unidentified',
+    catalog_message: binding
+      ? null
+      : 'Selecione o mesmo título do contrato usado na criação para carregar a lista completa de produtos.',
+  };
 }
 
 export async function updatePostsalesBudgetContact(db, pedidoId, reason, input) {
@@ -362,10 +627,27 @@ export async function applyPostsalesCompleteCorrection({
   actor,
   input,
   auditKind = 'postsales',
+  eventDetailPrefix = 'Orçamento completo corrigido no ERP',
+  loadProductCatalog = loadFreshProductCatalog,
 }) {
   const isPresalesAudit = auditKind === 'presales';
-  const editor = validateCompleteCorrection(input);
+  let editor = validateCompleteCorrection(input);
   const before = await getPostsalesCorrectionContext(erpDb, Number(verification.erp_pedido_id), verification.motivo_devolucao);
+  editor = validateCorrectionIdentityNamespace(editor, before.editor);
+  const previousItems = new Map(before.editor.itens.map((item) => [String(item.id), item]));
+  const needsCatalog = editor.itens.some((item) => {
+    const previous = item.id == null ? null : previousItems.get(String(item.id));
+    return itemNeedsCatalogValidation(item, previous);
+  });
+  const catalogRows = needsCatalog ? await loadProductCatalog() : [];
+  const trackedBinding = needsCatalog
+    ? await loadTrackedCatalogBinding(localQuery, verification.erp_pedido_id)
+    : null;
+  const catalogBinding = needsCatalog
+    ? (requestedCorrectionCatalogBinding(editor, catalogRows)
+      || resolveCorrectionCatalogBinding(before.editor, catalogRows, trackedBinding))
+    : null;
+  editor = enforceAuthoritativeItemPrices(editor, before.editor, catalogRows, catalogBinding);
   const canonical = (value) => JSON.stringify({
     email: String(value.email || '').trim().toLowerCase(),
     observacoes: String(value.observacoes || '').trim() || null,
@@ -416,7 +698,7 @@ export async function applyPostsalesCompleteCorrection({
       `INSERT INTO postsales_eventos (verificacao_id, erp_pedido_id, tipo, detalhe, actor_id, actor_nome)
        SELECT $1,$2,'correcao_orcamento',$3,$4,$5
        WHERE NOT EXISTS (SELECT 1 FROM postsales_eventos WHERE verificacao_id=$1 AND detalhe=$3)`,
-      [verification.id, verification.erp_pedido_id, `Orçamento completo corrigido no ERP. Correção #${pending.id}`, actor?.id || null, actor?.name || null]
+       [verification.id, verification.erp_pedido_id, `${eventDetailPrefix}. Correção #${pending.id}`, actor?.id || null, actor?.name || null]
     );
     return { tipo: 'orcamento_completo', changed: false, alreadyApplied: true };
   }
@@ -528,8 +810,8 @@ export async function applyPostsalesCompleteCorrection({
         } else {
           const inserted = await client.query(`INSERT INTO itens_pedidos
              (id,pedido_id,sequencia,sub_item,produto_id,quantidade,preco,situacao,indice,preco_lista,valor_unitario_item,valor_total_item,quantidade_pendente,quantidade_temporaria,quantidade_temporaria_faturar,quantidade_carregar,quantidade_cancelada,quantidade_faturar,quantidade_faturada,qtde_cancelada_faturamento,comissao_item,quantidade_acima_pedido,atualizar_consumo,descricao,tipo_produto_id)
-             VALUES(nextval('pk_sequence'),$1,$2,1,$3,$4,$5,'P',$2,$5,$5,$6,$4,$4,$4,$4,0,$4,0,0,0,0,'S',$7,$8) RETURNING id`,
-            [verification.erp_pedido_id, index + 1, item.produto_id, qty, item.preco, value, product.rows[0].descricao, product.rows[0].tipo_produto_id]);
+             VALUES(nextval('pk_sequence'),$1,$2,1,$3,$4,$5,'P',$9,$5,$10,$6,$4,$4,$4,$4,0,$4,0,0,0,0,'S',$7,$8) RETURNING id`,
+            [verification.erp_pedido_id, index + 1, item.produto_id, qty, item.preco, value, product.rows[0].descricao, product.rows[0].tipo_produto_id, Number(index + 1), item.preco]);
           itemId = Number(inserted.rows[0].id);
         }
         for (let seq = 0; seq < personIds.length; seq++) await client.query(
@@ -553,12 +835,15 @@ export async function applyPostsalesCompleteCorrection({
         const currentAddress = before.editor.endereco;
         const addressSame = canonical({ endereco: currentAddress }) === canonical({ endereco: a });
         if (!addressSame) {
+          // ERP requires enderecos.pessoa_id, so keep an inactive order-only
+          // copy. It remains readable through pedidos.endereco_id but does not
+          // become an active address in the global Pessoa registration.
           const titularPessoaId = canonicalTitular.pessoa_id;
-          if (titularPessoaId == null) throw invalidCorrection('O titular não possui Pessoa global para vincular o endereço.', ['editor.endereco']);
+          if (titularPessoaId == null) throw invalidCorrection('O titular não possui Pessoa global para referenciar o endereço do pedido.', ['editor.endereco']);
           await client.query(`SELECT pg_advisory_xact_lock(hashtext('postsales-address'), hashtext($1::text))`, [titularPessoaId]);
           const insertedAddress = await client.query(`INSERT INTO enderecos
             (id,pessoa_id,sequencia,tipo_endereco_id,codigo_postal,endereco,numero,complemento,bairro,cidade_id,ativo,desconsiderar_inscricao_estadual)
-            VALUES(nextval('pk_sequence'),$1,COALESCE((SELECT MAX(sequencia)+1 FROM enderecos WHERE pessoa_id=$1 AND tipo_endereco_id=577),1),577,$2,$3,$4,$5,$6,$7,'S','N') RETURNING id`,
+            VALUES(nextval('pk_sequence'),$1,COALESCE((SELECT MAX(sequencia)+1 FROM enderecos WHERE pessoa_id=$1 AND tipo_endereco_id=577),1),577,$2,$3,$4,$5,$6,$7,'N','N') RETURNING id`,
             [titularPessoaId, a.cep || null, a.logradouro, a.numero || null, a.complemento || null, a.bairro || null, city.rows[0].id]);
           enderecoId = insertedAddress.rows[0].id;
         }
@@ -587,6 +872,15 @@ export async function applyPostsalesCompleteCorrection({
     throw error;
   }
   try {
+    if (catalogBinding) {
+      await localQuery(
+        `UPDATE bomflow_orcamentos
+            SET catalog_contract_id = $2, catalog_title = $3
+          WHERE erp_pedido_id = $1
+            AND (catalog_contract_id IS NULL OR NULLIF(TRIM(catalog_title), '') IS NULL)`,
+        [verification.erp_pedido_id, catalogBinding.contractId, catalogBinding.title]
+      ).catch(() => {});
+    }
     const after = await getPostsalesCorrectionContext(
       erpDb,
       Number(verification.erp_pedido_id),
@@ -616,7 +910,7 @@ export async function applyPostsalesCompleteCorrection({
       [
         verification.id,
         verification.erp_pedido_id,
-        `Orçamento completo corrigido no ERP. Correção #${correctionId}`,
+        `${eventDetailPrefix}. Correção #${correctionId}`,
         actor?.id || null,
         actor?.name || null,
       ]

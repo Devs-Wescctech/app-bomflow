@@ -374,6 +374,8 @@ export function filterMenuItems(agent, menuItems, user = null) {
   // admin, tipo "auditoria" e supervisores do time "Auditoria".
   const teamName = (agent?.teamName || agent?.team_name || '').trim().toLowerCase();
   const isAuditEligible = isAdmin || agentType === 'auditoria' || (isSupervisor && teamName === 'auditoria');
+  const isPostsalesLeadership = isAdmin || isSupervisor || agentType === 'auditoria' ||
+    agentType === 'post_sales' || (Array.isArray(agent.modules) && agent.modules.includes('post_sales'));
 
   // Get allowed submenus from agent type config (loaded from database)
   const allowedSubmenus = agent.allowedSubmenus || [];
@@ -399,6 +401,8 @@ export function filterMenuItems(agent, menuItems, user = null) {
         const hasPostSalesReport = (item.items || []).some(si => si.postSalesReport);
         const isPostSales = agentType === 'post_sales';
         if (hasPostSalesReport && isPostSales) return true;
+        const hasPostsalesDashboard = (item.items || []).some(si => si.postsalesDashboard);
+        if (hasPostsalesDashboard && isPostsalesLeadership) return true;
         return false;
       }
       
@@ -424,9 +428,16 @@ export function filterMenuItems(agent, menuItems, user = null) {
 
       // Filter sub-items based on permissions (create new array to avoid mutation)
       const filteredItems = item.items.filter(subItem => {
+        const urlPageName = subItem.url ? subItem.url.replace(/^\//, '').split('?')[0] : null;
+        const submenuKey = urlPageName || subItem.title;
+        const lookupKey = subItem.requiredSubmenu || submenuKey;
+        const hasRequiredExplicitGrant = !subItem.requiresExplicitSubmenu ||
+          allowedSubmenus.includes(lookupKey);
+
         // Relatório de auditoria: visível somente a usuários elegíveis
         // (admin / tipo auditoria / supervisor do time Auditoria).
-        if (subItem.auditReport) return isAuditEligible;
+        if (subItem.auditReport) return isAuditEligible && hasRequiredExplicitGrant;
+        if (subItem.postsalesDashboard) return isPostsalesLeadership && hasRequiredExplicitGrant;
         // Relatórios de utilizações liberados ao perfil Pós-Vendas. A regra é
         // avaliada antes das restrições de submenu para garantir o acesso do
         // perfil sem liberar outras páginas dos módulos Bom Pet/Bom Auto.
@@ -455,14 +466,10 @@ export function filterMenuItems(agent, menuItems, user = null) {
         if (subItem.alwaysVisible) return true;
 
         // Extract page name from URL (remove leading slash)
-        const urlPageName = subItem.url ? subItem.url.replace(/^\//, '').split('?')[0] : null;
-        const submenuKey = urlPageName || subItem.title;
-        
         // If allowedSubmenus is configured in ADM, it has PRIORITY over hardcoded flags
         // This allows admin to explicitly grant access to any submenu
         if (hasSubmenuRestrictions) {
           // If item has an explicit requiredSubmenu key, use that for lookup instead of URL-derived key
-          const lookupKey = subItem.requiredSubmenu || submenuKey;
           // If item is explicitly allowed in ADM, show it regardless of other flags
           if (allowedSubmenus.includes(lookupKey)) {
             // Config items still require special permissions even if in allowedSubmenus

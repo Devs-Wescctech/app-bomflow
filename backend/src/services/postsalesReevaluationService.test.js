@@ -221,6 +221,48 @@ test('editor da devolução mantém escopo por equipe e atualiza somente itens d
   assert.match(pageSource, /PostsalesCorrectionModal/);
 });
 
+test('correção direta autoriza responsável e liderança no escopo sem mudar o fluxo', () => {
+  const routeSource = fs.readFileSync(new URL('../routes/postsales.js', import.meta.url), 'utf8');
+  const directStart = routeSource.indexOf("router.get('/:id/correcao-direta'");
+  const directEnd = routeSource.indexOf("router.post('/:id/resolver'", directStart);
+  const directSource = routeSource.slice(directStart, directEnd);
+  const pageSource = fs.readFileSync(
+    new URL('../../../src/pages/PosVendasFila.jsx', import.meta.url),
+    'utf8'
+  );
+  const editorSource = fs.readFileSync(
+    new URL('../../../src/components/postsales/PostsalesCorrectionModal.jsx', import.meta.url),
+    'utf8'
+  );
+
+  assert.ok(directStart >= 0 && directEnd > directStart);
+  assert.match(routeSource, /canCorrectActiveVerification/);
+  assert.match(routeSource, /verification\.auditor_id[\s\S]*actor\?\.id/);
+  assert.match(routeSource, /actor\.team_id[\s\S]*verification\.vendedor_team_id/);
+  assert.match(routeSource, /router\.get\('\/:id\/detalhe'[\s\S]*vendedor_team_id[\s\S]*can_correct:[\s\S]*canCorrectActiveVerification/);
+  assert.match(directSource, /loadActiveCorrectionVerification/);
+  assert.match(directSource, /applyPostsalesCompleteCorrection/);
+  assert.match(directSource, /eventDetailPrefix: 'Correção direta no Pós-Vendas'/);
+  assert.doesNotMatch(directSource, /UPDATE postsales_verificacoes/);
+  assert.match(routeSource, /router\.post\('\/:id\/liberar-trava'[\s\S]*withPostsalesCorrectionLock/);
+  assert.match(routeSource, /router\.post\('\/:id\/concluir'[\s\S]*withPostsalesCorrectionLock/);
+  assert.match(routeSource, /router\.post\('\/:id\/devolver'[\s\S]*withPostsalesCorrectionLock/);
+  assert.match(pageSource, /Corrigir dados do pedido/);
+  assert.match(pageSource, /correcao-direta/);
+  assert.match(pageSource, /setSelected\(\(current\) => current\?\.id === item\.id \? \{ \.\.\.current, \.\.\.item \} : item\)/);
+  assert.match(pageSource, /entry\.id === item\.id \? \{ \.\.\.entry, \.\.\.item \} : entry/);
+  assert.match(editorSource, /buildFinancialImpact/);
+  assert.match(editorSource, /Confirme o impacto financeiro e os vínculos/);
+  assert.match(editorSource, /Reassocie este produto a uma pessoa antes de salvar/);
+  assert.match(editorSource, /setEditor\(\(current\) =>/);
+  assert.match(editorSource, /response\.status === 409/);
+  assert.match(editorSource, /ERP_REFRESH_INTERVAL_MS = 60 \* 60 \* 1000/);
+  assert.match(editorSource, /inputMode="numeric"/);
+  assert.match(editorSource, /placeholder="000\.000\.000-00"/);
+  assert.match(editorSource, /<option value="M">M<\/option><option value="F">F<\/option>/);
+  assert.match(editorSource, /Preço \(definido pelo ERP\)[\s\S]*readOnly/);
+});
+
 test('ajuste de cadastro completo abre o pedido ERP sem redirecionar para o lead', () => {
   const routeSource = fs.readFileSync(new URL('../routes/presalesAjustes.js', import.meta.url), 'utf8');
   const documentsSource = fs.readFileSync(

@@ -8,7 +8,7 @@ import {
   ClipboardCheck, Loader2, CheckCircle2, Undo2, Snowflake, XCircle,
   Lock, Unlock, History, User as UserIcon, X, AlertTriangle, ShieldQuestion,
   UserRound, Calendar, Phone, Mail, MapPin, Package, CreditCard, FileText,
-  Eye, ShoppingBag, Users, Search,
+  Eye, ShoppingBag, Users, Search, PencilLine,
 } from "lucide-react";
 import {
   API_BASE, authHeaders, formatYmd, formatCpf, StatusBadge, PrazoBadge, TrilhaModal,
@@ -16,6 +16,7 @@ import {
 } from "@/components/postsales/shared";
 import { extractApiError } from "@/utils/apiError";
 import { matchesPostSalesSearch } from "@/utils/postsalesSearch";
+import PostsalesCorrectionModal from "@/components/postsales/PostsalesCorrectionModal";
 import {
   POSTSALES_REFRESH_EVENT,
   parsePostsalesQueueTarget,
@@ -331,6 +332,7 @@ function AcaoModal({ item, motivos, onClose, onChanged, onItemChanged }) {
   const [cancelMotivo, setCancelMotivo] = useState("");
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [viewingId, setViewingId] = useState(null);
+  const [correcting, setCorrecting] = useState(false);
   const [detailState, setDetailState] = useState({
     status: "loading",
     detalhe: null,
@@ -534,6 +536,17 @@ function AcaoModal({ item, motivos, onClose, onChanged, onItemChanged }) {
           {emVerif && mine && (
             <>
               <div className="flex flex-wrap gap-2">
+                {item.can_correct && (
+                  <button
+                    type="button"
+                    onClick={() => setCorrecting(true)}
+                    disabled={!!busy}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm hover:bg-teal-700 disabled:opacity-50"
+                  >
+                    <PencilLine className="h-3.5 w-3.5" />
+                    Corrigir dados do pedido
+                  </button>
+                )}
                 <button
                   onClick={() => call("concluir", null, "Pós-venda concluído com sucesso.")}
                   disabled={!!busy}
@@ -598,6 +611,16 @@ function AcaoModal({ item, motivos, onClose, onChanged, onItemChanged }) {
               </div>
             </>
           )}
+          {emVerif && !mine && item.can_correct && (
+            <button
+              type="button"
+              onClick={() => setCorrecting(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3.5 py-2 text-[12.5px] font-semibold text-white shadow-sm hover:bg-teal-700"
+            >
+              <PencilLine className="h-3.5 w-3.5" />
+              Corrigir dados do pedido
+            </button>
+          )}
 
           {/* Decisão final: cancelamento REAL no ERP */}
           {decisaoFinal && (
@@ -631,6 +654,17 @@ function AcaoModal({ item, motivos, onClose, onChanged, onItemChanged }) {
           )}
         </div>
       </div>
+      {correcting && (
+        <PostsalesCorrectionModal
+          item={item}
+          correctionPath={`${API_BASE}/postsales/${item.id}/correcao-direta`}
+          onClose={() => setCorrecting(false)}
+          onSaved={async () => {
+            setCorrecting(false);
+            await Promise.all([loadDetail(), onChanged()]);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -724,12 +758,12 @@ export default function PosVendasFila() {
     setSelected(item);
   }, []);
   const handleItemChanged = useCallback((item) => {
-    setSelected(item);
+    setSelected((current) => current?.id === item.id ? { ...current, ...item } : item);
     setData((current) => {
       if (!current || !Array.isArray(current.items)) return current;
       return {
         ...current,
-        items: current.items.map((entry) => entry.id === item.id ? item : entry),
+        items: current.items.map((entry) => entry.id === item.id ? { ...entry, ...item } : entry),
       };
     });
   }, []);
