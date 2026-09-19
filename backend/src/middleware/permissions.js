@@ -8,7 +8,10 @@ export async function loadAgentMiddleware(req, res, next) {
 
   try {
     const result = await query(
-      'SELECT * FROM agents WHERE (email = $1 OR user_email = $1) AND active = true',
+      `SELECT a.*, t.name AS team_name
+         FROM agents a
+         LEFT JOIN teams t ON t.id = a.team_id
+        WHERE (a.email = $1 OR a.user_email = $1) AND a.active = true`,
       [req.user.email]
     );
 
@@ -19,6 +22,7 @@ export async function loadAgentMiddleware(req, res, next) {
         name: agent.name,
         agentType: agent.agent_type,
         teamId: agent.team_id,
+        teamName: agent.team_name,
         level: agent.level || 'pleno',
         online: agent.online,
         capacity: agent.capacity,
@@ -135,6 +139,33 @@ export function requireExplicitSubmenuAccess(submenuId) {
     }
 
     if ((req.agent.allowedSubmenus || []).includes(submenuId)) {
+      return next();
+    }
+
+    return res.status(403).json({ message: `Access denied: ${submenuId}` });
+  };
+}
+
+// Dashboards operacionais usam concessões aditivas: administrador, perfil
+// automático do dashboard ou concessão explícita configurada no tipo.
+export function requireDashboardAccess(submenuId) {
+  return (req, res, next) => {
+    if (!req.agent) {
+      return res.status(403).json({ message: 'Agent profile required' });
+    }
+
+    const agentType = (req.agent.agentType || '').toLowerCase();
+    const isAdmin = agentType === 'admin' || req.user?.role === 'admin';
+    const hasExplicitGrant = (req.agent.allowedSubmenus || []).includes(submenuId);
+    const teamName = (req.agent.teamName || '').trim().toLowerCase();
+    const isSupervisor = agentType === 'supervisor' ||
+      agentType === 'sales_supervisor' ||
+      agentType.endsWith('_supervisor');
+    const hasAutomaticAccess = submenuId === 'PreSalesDashboard'
+      ? isSupervisor && teamName === 'auditoria'
+      : submenuId === 'PosVendasDashboard' && agentType === 'post_sales';
+
+    if (isAdmin || hasExplicitGrant || hasAutomaticAccess) {
       return next();
     }
 
