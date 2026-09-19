@@ -209,6 +209,8 @@ import AdminApiKeys from "./AdminApiKeys";
 import ErpAuditLogs from "./ErpAuditLogs";
 import LeadImportPF from "./LeadImportPF";
 import LeadImportReferrals from "./LeadImportReferrals";
+import SalesContractPrinting from "./SalesContractPrinting";
+import SalesContractSigning from "./SalesContractSigning";
 
 import SalesWonReport from "./SalesWonReport";
 import SalesPJWonReport from "./SalesPJWonReport";
@@ -233,10 +235,12 @@ import SalesUpsellOrcamentoRelatorio from "./SalesUpsellOrcamentoRelatorio";
 import PreSalesOrcamentoRelatorio from "./PreSalesOrcamentoRelatorio";
 import PreSalesAjustes from "./PreSalesAjustes";
 import PreSalesAjustesMonitor from "./PreSalesAjustesMonitor";
+import PreSalesDashboard from "./PreSalesDashboard";
 import PosVendasFila from "./PosVendasFila";
 import PosVendasDevolucoes from "./PosVendasDevolucoes";
 import PosVendasCongelados from "./PosVendasCongelados";
 import PosVendasMonitor from "./PosVendasMonitor";
+import PosVendasDashboard from "./PosVendasDashboard";
 import PostSalesFila from "./PostSalesFila";
 import ReferralWonReport from "./ReferralWonReport";
 import UpsellLeadRedesignDemo from "./UpsellLeadRedesignDemo";
@@ -452,6 +456,8 @@ const PAGES = {
     ErpAuditLogs: ErpAuditLogs,
     LeadImportPF: LeadImportPF,
     LeadImportReferrals: LeadImportReferrals,
+    SalesContractPrinting: SalesContractPrinting,
+    SalesContractSigning: SalesContractSigning,
 
     SalesWonReport: SalesWonReport,
     SalesPJWonReport: SalesPJWonReport,
@@ -476,10 +482,12 @@ const PAGES = {
     PreSalesOrcamentoRelatorio: PreSalesOrcamentoRelatorio,
     PreSalesAjustes: PreSalesAjustes,
     PreSalesAjustesMonitor: PreSalesAjustesMonitor,
+    PreSalesDashboard: PreSalesDashboard,
     PosVendasFila: PosVendasFila,
     PosVendasDevolucoes: PosVendasDevolucoes,
     PosVendasCongelados: PosVendasCongelados,
     PosVendasMonitor: PosVendasMonitor,
+    PosVendasDashboard: PosVendasDashboard,
     PostSalesFila: PostSalesFila,
     ReferralWonReport: ReferralWonReport,
     UpsellLeadRedesignDemo: UpsellLeadRedesignDemo,
@@ -732,6 +740,8 @@ function PagesContent() {
                 <Route path="/ErpAuditLogs" element={<ErpAuditLogs />} />
                 <Route path="/LeadImportPF" element={<LeadImportPF />} />
                 <Route path="/LeadImportReferrals" element={<LeadImportReferrals />} />
+                 <Route path="/SalesContractPrinting" element={<SalesContractPrinting />} />
+                 <Route path="/SalesContractSigning" element={<SalesContractSigning />} />
                 <Route path="/NewLeadUpsell" element={<NewLeadUpsell />} />
                 <Route path="/LeadsUpsellKanban" element={<LeadsUpsellKanban />} />
                 <Route path="/LeadUpsellDetail" element={<LeadUpsellDetail />} />
@@ -753,10 +763,12 @@ function PagesContent() {
                 <Route path="/PreSalesOrcamentoRelatorio" element={<PreSalesOrcamentoRelatorio />} />
                 <Route path="/PreSalesAjustes" element={<PreSalesAjustes />} />
                 <Route path="/PreSalesAjustesMonitor" element={<PreSalesAjustesMonitor />} />
+                <Route path="/PreSalesDashboard" element={<PreSalesDashboard />} />
                 <Route path="/PosVendasFila" element={<PosVendasFila />} />
                 <Route path="/PosVendasDevolucoes" element={<PosVendasDevolucoes />} />
                 <Route path="/PosVendasCongelados" element={<PosVendasCongelados />} />
                 <Route path="/PosVendasMonitor" element={<PosVendasMonitor />} />
+                <Route path="/PosVendasDashboard" element={<PosVendasDashboard />} />
                 <Route path="/PostSalesFila" element={<PostSalesFila />} />
                 <Route path="/ReferralWonReport" element={<ReferralWonReport />} />
                 <Route path="/UpsellLeadRedesignDemo" element={<UpsellLeadRedesignDemo />} />

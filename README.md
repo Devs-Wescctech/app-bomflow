@@ -328,6 +328,7 @@ O frontend roda em `http://localhost:5000` e o backend em `http://localhost:3001
 | `AUTENTIQUE_TOKEN` | Nao | Token da API Autentique (assinatura digital) |
 | `ERP_AUTH_TOKEN` | Nao | Token do ERP Bom Pastor |
 | `RUDO_WHATSAPP_TOKEN` | Nao | Token da API WHU (WhatsApp) |
+| `BOM_AUTO_CONTRACT_WHATSAPP_TOKEN` | Nao | Token WHU exclusivo para envio de contratos |
 
 ---
 
@@ -410,6 +411,7 @@ O sistema utiliza controle de acesso baseado em funcoes (RBAC) com 7 tipos de ag
 | Integracao | Uso | Configuracao |
 |------------|-----|--------------|
 | **WhatsApp (WHU API)** | Mensagens automaticas, follow-ups, reengajamento | `RUDO_WHATSAPP_TOKEN` |
+| **WhatsApp de contratos (WHU API)** | Envio de contratos em PDF | `BOM_AUTO_CONTRACT_WHATSAPP_TOKEN` |
 | **Autentique** | Assinatura digital de contratos | `AUTENTIQUE_TOKEN` |
 | **ERP Bom Pastor** | Consulta CPF no sistema de indicacoes | `ERP_AUTH_TOKEN` |
 | **OpenAI** | Classificacao de tickets, respostas inteligentes | Via integracao Replit |
@@ -444,17 +446,6 @@ O sistema utiliza controle de acesso baseado em funcoes (RBAC) com 7 tipos de ag
 - Menu hamburger para telas menores
 - Kanban com scroll horizontal touch-friendly
 - Grids responsivos em todas as paginas
-
----
-
-INFOS UTEIS
-
-sup_wescc@srvappsprod:/var/www/html/app-bomflow$ sudo cat .env 
-DATABASE_URL=postgresql://auth_bd:4uth%401307BD@172.17.0.1:5432/bomflow
-JWT_SECRET=2Iz5EHu2ZKRnebbtxV+R/e1JcPxjX/zcF68Xt5q/mXo=
-SESSION_SECRET=2Iz5EHu2ZKRnebbtxV+R/e1JcPxjX/zcF68Xt5q/mXo=
-RUDO_WHATSAPP_TOKEN=696a6cad4817bd38a8efd6b9
-sup_wescc@srvappsprod:/var/www/html/app-bomflow$ 
 
 ## Licenca
 

@@ -335,6 +335,8 @@ pool.query(`
   );
   CREATE INDEX IF NOT EXISTS idx_postsales_verif_status ON postsales_verificacoes(status);
   CREATE INDEX IF NOT EXISTS idx_postsales_verif_vendedor ON postsales_verificacoes(vendedor_id);
+  CREATE INDEX IF NOT EXISTS idx_postsales_verif_created ON postsales_verificacoes(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_postsales_verif_auditor ON postsales_verificacoes(auditor_id) WHERE auditor_id IS NOT NULL;
   CREATE TABLE IF NOT EXISTS postsales_eventos (
     id BIGSERIAL PRIMARY KEY,
     verificacao_id UUID NOT NULL,
@@ -346,6 +348,7 @@ pool.query(`
     created_at TIMESTAMPTZ DEFAULT NOW()
   );
   CREATE INDEX IF NOT EXISTS idx_postsales_eventos_verif ON postsales_eventos(verificacao_id);
+  CREATE INDEX IF NOT EXISTS idx_postsales_eventos_verif_created ON postsales_eventos(verificacao_id, created_at DESC);
   CREATE TABLE IF NOT EXISTS postsales_correcoes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     verificacao_id UUID NOT NULL REFERENCES postsales_verificacoes(id),

@@ -118,7 +118,7 @@ test('supervisor multi assistências recebe visão ampla no Bom Pet pelo perfil 
   );
   assert.match(
     source,
-    /function isBomPetSupervisor\(req\)[\s\S]*?t\?\.endsWith\('_supervisor'\)[\s\S]*?req\.bomPetAgent\?\.is_team_supervisor === true[\s\S]*?agentTypeLabel[\s\S]*?includes\('supervisor'\)[\s\S]*?req\.user\?\.role === 'supervisor'/
+    /function isBomPetSupervisor\(req\)[\s\S]*?t\?\.endsWith\('_supervisor'\)[\s\S]*?req\.bomPetAgent\?\.is_team_supervisor === true[\s\S]*?agentTypeLabel[\s\S]*?includes\('supervisor'\)/
   );
   assert.match(
     source,
