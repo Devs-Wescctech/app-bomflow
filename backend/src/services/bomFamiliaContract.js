@@ -96,6 +96,24 @@ export async function loadBomFamiliaFromErp(cpf, pedido) {
   ));
   const detail = billing.pedido_id ? await getOrcamentoDetalhe(Number(billing.pedido_id)) : null;
   const products = Array.isArray(detail?.produtos) ? detail.produtos : [];
+  const detailDependents = (Array.isArray(detail?.pessoas) ? detail.pessoas : [])
+    .filter((person) => !person.is_titular);
+  const mapDetailPerson = (person) => ({
+    name: text(person.nome),
+    cpf: text(person.cpf),
+    birth_date: person.data_nascimento || null,
+    phone: text(person.telefone),
+    sex: text(person.sexo).toUpperCase().slice(0, 1),
+    relationship: text(person.parentesco),
+  });
+  const hasProduct = (person, pattern) => (person.produtos || [])
+    .some((description) => pattern.test(text(description)));
+  const detailedFamilyDependents = detailDependents
+    .filter((person) => hasProduct(person, /BD FAMILIA.*DEPENDENTE/i))
+    .map(mapDetailPerson);
+  const detailedBomMedDependents = detailDependents
+    .filter((person) => hasProduct(person, /BOM MED.*DEPENDENTE/i))
+    .map(mapDetailPerson);
   const productTotal = (product) => amount(product?.valor_total)
     || amount(product?.preco) * amount(product?.quantidade || 1);
   const thanatopraxyProducts = products.filter((product) => /TANATO/i.test(text(product.descricao)));
@@ -140,8 +158,8 @@ export async function loadBomFamiliaFromErp(cpf, pedido) {
     )),
     payment_plan_id: billing.plano_pagamento || null,
     due_day: text(billing.dia_vencimento),
-    dependents: unique(familyRows),
-    bom_med_dependents: unique(bomMedRows),
+    dependents: detailedFamilyDependents.length ? detailedFamilyDependents : unique(familyRows),
+    bom_med_dependents: detailedBomMedDependents.length ? detailedBomMedDependents : unique(bomMedRows),
   };
 }
 
@@ -224,8 +242,12 @@ export async function renderBomFamiliaPdf(data) {
       const birth = dateParts(person.birth_date);
       if (birth) {
         const x = bomMed ? 179 : 142;
-        write(birth.day, x, y, { size: 9 }); write(birth.month_number, x + 9, y, { size: 9 });
-        write(birth.year, x + 16, y, { size: 9 });
+        const monthX = bomMed ? x + 7 : x + 9;
+        const yearX = bomMed ? x + 13 : x + 16;
+        const dateSize = bomMed ? 8 : 9;
+        write(birth.day, x, y, { size: dateSize });
+        write(birth.month_number, monthX, y, { size: dateSize });
+        write(birth.year, yearX, y, { size: dateSize });
       }
       if (bomMed) write('X', 198, y);
     };
@@ -252,7 +274,7 @@ export async function renderBomFamiliaPdf(data) {
             write(digit, [36, 41, 46, 50, 55, 63, 67, 72][index], 100, { size: 10 }));
           write(digits(data.phone), 78, 100); write(digits(data.phone2), 133, 100);
           write(data.profession, 25, 108); write(data.income, 70, 108);
-          write(data.email, 110, 108, { size: 8, width: 94 });
+          write(data.email, 110, 108, { size: 9, width: 94 });
           (data.dependents || []).forEach((person, index) => writePerson(person, 153 + index * 5.5));
           const paymentX = { cpfl: 111, bank: 148.5, credit_card: 166.5 }[
             bomFamiliaPaymentCategory(data.payment_plan_id)];
@@ -283,7 +305,7 @@ export async function renderBomFamiliaPdf(data) {
           [...digits(data.cep).slice(0, 8)].forEach((digit, index) =>
             write(digit, [36, 41, 45, 50, 54, 63, 67, 72][index], 91.5, { size: 10 }));
           write(digits(data.phone), 80, 91.5); write(digits(data.phone2), 135, 91.5);
-          write(data.profession, 25, 98.5); write(data.email, 106, 98.5, { size: 9 });
+          write(data.profession, 25, 98.5); write(data.email, 106, 98.5, { size: 10, width: 98 });
           const relatives = new Map([
             ['PAI', 107], ['MÃE', 115], ['MAE', 115], ['SOGRO', 122],
             ['SOGRA', 129], ['CÔNJUGE', 136], ['CONJUGE', 136],
