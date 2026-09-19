@@ -263,7 +263,7 @@ export async function renderBomMedPdf(data) {
           write(data.phone2, 125, 103, { width: 67 });
           write(data.profession, 16, 111, { width: 43 });
           write(data.income, 60, 111, { width: 38 });
-          write(data.email, 99, 112, { size: 9.5, width: 95 });
+          write(data.email, 99, 111.5, { size: 9.5, width: 95 });
           (data.dependents || []).forEach((dependent, index) => {
             const y = 132 + (index * 6.5) + (index >= 3 ? 6 : 0) - (index >= 4 ? 1 : 0);
             write(dependent.name, 22, y, { size: 9, width: 76 });
