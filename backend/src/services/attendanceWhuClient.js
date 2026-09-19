@@ -88,13 +88,6 @@ export async function sendText(token, number, text) {
   });
 }
 
-export function normalizeMediaExtension(extension, fileName = '') {
-  const candidate =
-    extension || (fileName.includes('.') ? fileName.split('.').pop().toLowerCase() : '');
-  if (!candidate) return '';
-  return `.${String(candidate).replace(/^\.+/, '').toLowerCase()}`;
-}
-
 // Envia mídia por URL pública (o WHU busca a fileUrl externamente).
 export async function sendMedia(token, number, fileUrl, caption = '', { fileName, extension } = {}) {
   const brazilNumber = normalizeBrazilPhone(number);
@@ -102,7 +95,8 @@ export async function sendMedia(token, number, fileUrl, caption = '', { fileName
   if (!fileUrl) throw new Error('fileUrl é obrigatório');
 
   const inferredName = fileName || fileUrl.split('/').pop() || 'arquivo';
-  const inferredExt = normalizeMediaExtension(extension, inferredName);
+  const inferredExt =
+    extension || (inferredName.includes('.') ? inferredName.split('.').pop().toLowerCase() : '');
 
   return whuRequest(token, '/chats/send-media', {
     method: 'POST',

@@ -80,7 +80,6 @@ import {
   Users,
   Shield,
   FileCheck,
-  FileSignature,
   Plug,
   Trophy,
   List,
@@ -231,8 +230,6 @@ const menuModules = [
       { title: "Automações", url: createPageUrl("LeadAutomations"), icon: Zap, supervisorOnly: true },
       { title: "Tarefas", url: createPageUrl("SalesTasks"), icon: CheckSquare },
       { title: "Templates", url: createPageUrl("ProposalTemplates"), icon: FileText, supervisorOnly: true },
-      { title: "Impressão de Contratos - Recepção", url: createPageUrl("SalesContractPrinting"), icon: FileCheck, requiredSubmenu: "SalesContractPrinting", requiresExplicitSubmenu: true },
-      { title: "Assinatura de Contrato", url: createPageUrl("SalesContractSigning"), icon: FileSignature, requiredSubmenu: "SalesContractPrinting", requiresExplicitSubmenu: true },
     ]
   },
   {

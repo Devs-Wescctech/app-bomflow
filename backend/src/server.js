@@ -38,7 +38,6 @@ import { recoverStuckQueues } from './services/whatsappQueueService.js';
 import { deactivateInactiveAgents } from './services/inactivityService.js';
 import { runErpApprovalReconciliation } from './services/erpApprovalReconciliationService.js';
 import { reconcilePendingErpAtendimentos } from './services/erpAtendimentoService.js';
-import salesContractPrintingRoutes from './routes/salesContractPrinting.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -112,7 +111,6 @@ app.use('/api/attendance/connections', attendanceConnectionsRoutes);
 app.use('/api/attendance', attendanceChatRoutes);
 app.use('/api/webhooks/attendance', attendanceWebhookRoutes);
 app.use('/api/bom-auto', bomAutoRoutes);
-app.use('/api/sales-pf', salesContractPrintingRoutes);
 app.use('/api/bom-pet', bomPetRoutes);
 app.use('/api/erp', erpProxyRoutes);
 app.use('/api/orcamento-documentos', orcamentoDocumentosRoutes);
@@ -264,7 +262,7 @@ initDatabase()
     setInterval(reconcileAtendimentos, 60 * 1000);
 
     try {
-        const reconciliation = await runPostsalesReconciliarResolvidas();
+      const reconciliation = await runPostsalesReconciliarResolvidas();
       console.log(
         `[PosVendas ReconciliarResolvidas] Inicialização concluída. verificadas=${reconciliation.checked} ` +
         `reconciliadas=${reconciliation.reconciled} ambíguas=${reconciliation.ambiguous.length} ` +

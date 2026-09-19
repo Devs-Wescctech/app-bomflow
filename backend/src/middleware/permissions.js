@@ -24,21 +24,17 @@ export async function loadAgentMiddleware(req, res, next) {
         capacity: agent.capacity,
         queueIds: agent.queue_ids,
         permissions: agent.permissions || {},
-        modules: null,
         allowedSubmenus: []
       };
       req.permissions = getPermissions(agent.agent_type);
 
       try {
         const typeResult = await query(
-          'SELECT allowed_submenus, modules FROM agent_types WHERE key = $1',
+          'SELECT allowed_submenus FROM agent_types WHERE key = $1',
           [agent.agent_type]
         );
         if (typeResult.rows.length > 0) {
           req.agent.allowedSubmenus = typeResult.rows[0].allowed_submenus || [];
-          req.agent.modules = Array.isArray(typeResult.rows[0].modules)
-            ? typeResult.rows[0].modules
-            : null;
         }
       } catch (e) {
         console.error('Error loading agent type submenus:', e);
@@ -140,24 +136,6 @@ export function requireExplicitSubmenuAccess(submenuId) {
 
     return res.status(403).json({ message: `Access denied: ${submenuId}` });
   };
-}
-
-// Proteção explícita para recursos sensíveis que não podem herdar o fallback
-// permissivo de supervisores. A concessão precisa existir no tipo do agente.
-export function requireSalesContractPrinting(req, res, next) {
-  if (!req.user) return res.status(401).json({ message: 'Autenticação necessária' });
-  if (req.user.role === 'admin' || req.agent?.agentType === 'admin') return next();
-  const configuredModules = req.agent?.modules;
-  const hasSalesModule = Array.isArray(configuredModules)
-    ? configuredModules.includes('sales') || configuredModules.includes('all')
-    : canAccessModule(req.agent?.agentType, 'sales');
-  if (!req.agent || !hasSalesModule) {
-    return res.status(403).json({ message: 'Acesso negado ao módulo Vendas PF' });
-  }
-  if (!(req.agent.allowedSubmenus || []).includes('SalesContractPrinting')) {
-    return res.status(403).json({ message: 'Acesso negado ao submenu Impressão de Contratos - Recepção' });
-  }
-  return next();
 }
 
 export function requireRole(...roles) {

@@ -44,9 +44,9 @@ COPY --from=backend-deps /app/backend/node_modules ./backend/node_modules
 COPY --from=frontend-build /app/dist ./dist
 
 RUN mkdir -p /app/backend/public/proposals /app/backend/public/signatures /app/backend/public/uploads \
-      /var/dados/bomflow/treinamentos /var/dados/bomflow/contratos-temporarios \
+      /var/dados/bomflow/treinamentos \
     && chown -R appuser:appgroup /app \
-    && chown -R appuser:appgroup /var/dados/bomflow/treinamentos /var/dados/bomflow/contratos-temporarios \
+    && chown -R appuser:appgroup /var/dados/bomflow/treinamentos \
     && chmod -R 777 /app/backend/public/proposals /app/backend/public/signatures /app/backend/public/uploads
 
 USER appuser

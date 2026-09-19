@@ -3,84 +3,6 @@ import { logErpDbQuery } from './erpAuditService.js';
 import { appendCanalCondition } from '../utils/erpReportFilters.js';
 const { Pool } = pkg;
 
-export const isBomAutoVehicleProduct = (description) => /BOM AUTO.*DADOS DO VE[IÍ]CULO/i.test(String(description || ''));
-export const isBomAutoDriverProduct = (description) => /BOM AUTO.*DADOS DO CONDUTOR/i.test(String(description || ''));
-export const pairBomAutoPeople = (vehicles, drivers) => vehicles.map((vehicle, index) => ({
-  ...vehicle,
-  driver: drivers[index] || null,
-}));
-export const calculateBomAutoMonthlyFee = (products = []) => products
-  .filter((product) => !isBomAutoVehicleProduct(product.descricao) && !isBomAutoDriverProduct(product.descricao))
-  .reduce((total, product) => total + Number(product.valor_total || 0), 0);
-export const parseBomAutoVehicle = (value) => {
-  const source = String(value || '').trim();
-  const parts = source.split('/').map((item) => item.trim());
-  if (parts.length >= 5) {
-    // Formato histórico: ANO/COR/FABRICANTE/PLACA/MODELO.
-    if (/^(19|20)\d{2}$/.test(parts[0])) {
-      return {
-        descricao: source || null,
-        fabricante: parts[2] || null,
-        modelo: parts[4] || null,
-        cor: parts[1] || null,
-        placa: parts[3] || null,
-        ano: parts[0] || null,
-      };
-    }
-    // Formato atual do ERP: FABRICANTE+MODELO/VERSÃO/COR/ANO/PLACA.
-    // O primeiro termo não possui delimitador entre fabricante e modelo.
-    if (/^(19|20)\d{2}$/.test(parts[3])) {
-      const [fabricante, ...modeloParts] = parts[0].split(/\s+/).filter(Boolean);
-      const modelo = [...modeloParts, parts[1]].filter(Boolean).join(' ');
-      return {
-        descricao: source || null,
-        fabricante: fabricante || null,
-        modelo: modelo || parts[0] || null,
-        cor: parts[2] || null,
-        placa: parts[4] || null,
-        ano: parts[3] || null,
-      };
-    }
-    return {
-      descricao: source || null,
-      fabricante: parts[2] || null,
-      modelo: parts[4] || null,
-      cor: parts[1] || null,
-      placa: parts[3] || null,
-      ano: parts[0] || null,
-    };
-  }
-  return {
-    descricao: source || null,
-    fabricante: null,
-    modelo: parts[0] || null,
-    cor: parts[1] || null,
-    placa: parts[2] || null,
-    ano: parts[3] || null,
-  };
-};
-const comparableDigits = (value) => String(value || '').replace(/\D/g, '');
-export const canUseHolderAsLegacyDriver = (vehiclePerson, holder) => {
-  if (!vehiclePerson || !holder) return false;
-  return comparableDigits(vehiclePerson.data_nascimento) === comparableDigits(holder.data_nascimento)
-    && comparableDigits(vehiclePerson.telefone) === comparableDigits(holder.telefone)
-    && String(vehiclePerson.sexo || '').trim().toUpperCase()
-      === String(holder.sexo || '').trim().toUpperCase();
-};
-export const applyHolderContactFallbacks = (holder, { email, endereco, telefone } = {}) => {
-  if (!holder) return holder;
-  holder.email = email || holder.email || null;
-  holder.endereco = endereco || holder.endereco || null;
-  if (!holder.telefone && telefone) holder.telefone = telefone;
-  return holder;
-};
-export const selectOrderHolder = (rows = []) => {
-  const canonical = rows.find((row) => row.is_canonical_holder === true);
-  if (canonical) return { row: canonical, isCanonical: true };
-  const legacy = rows.find((row) => row.pessoa_id != null);
-  return { row: legacy || rows[0] || null, isCanonical: false };
-};
-
 let pool = null;
 
 // Cronometra e audita uma query direta ao banco ERP (best-effort; nunca quebra a chamada).
@@ -413,8 +335,7 @@ export async function getOrcamentoDetalhe(pedidoId) {
   const db = getPool();
 
   const itensRes = await db.query(
-    `SELECT ip.produto_id,
-            ip.sequencia,
+    `SELECT ip.sequencia,
             COALESCE(NULLIF(TRIM(p.descricao), ''), NULLIF(TRIM(ip.descricao), '')) AS descricao,
             ip.quantidade::numeric            AS quantidade,
             ip.preco::double precision        AS preco,
@@ -427,8 +348,7 @@ export async function getOrcamentoDetalhe(pedidoId) {
   );
 
   const pessoasRes = await db.query(
-     `SELECT pp.id            AS pessoa_row_id,
-             (pp.pessoa_id = pe.cliente_id) AS is_canonical_holder,
+    `SELECT pp.id            AS pessoa_row_id,
             pp.nome_pessoa,
             pp.cpf,
             pp.parentesco,
@@ -436,44 +356,46 @@ export async function getOrcamentoDetalhe(pedidoId) {
             pp.sexo,
             pp.telefone,
             pp.pessoa_id,
-            ppp.id AS link_id,
-            ppp.item_pedido_id,
-            ppp.sequencia AS link_sequence,
-            ipx.sequencia AS item_sequence,
             COALESCE(NULLIF(TRIM(pr.descricao), ''), NULLIF(TRIM(ipx.descricao), '')) AS produto_descricao
        FROM pedidos_pessoas pp
-       JOIN pedidos pe ON pe.id = pp.pedido_id
        LEFT JOIN pedidos_pessoas_produtos ppp ON ppp.titular_id = pp.id AND ppp.pedido_id = pp.pedido_id
        LEFT JOIN itens_pedidos ipx ON ipx.id = ppp.item_pedido_id
        LEFT JOIN produtos pr ON pr.id = ipx.produto_id
       WHERE pp.pedido_id = $1
-      ORDER BY ipx.sequencia NULLS LAST, ppp.sequencia NULLS LAST, pp.id`,
+      ORDER BY pp.id`,
     [id]
   );
 
   const produtos = itensRes.rows.map((r) => ({
-    id: r.produto_id != null ? Number(r.produto_id) : null,
     descricao: r.descricao || null,
     quantidade: r.quantidade != null ? Number(r.quantidade) : null,
     preco: r.preco != null ? Number(r.preco) : null,
     valor_total: r.valor_total != null ? Number(r.valor_total) : null,
   }));
 
-  // Impressão usa a marca isCanonical para exigir cliente_id. O fallback
-  // preserva consumidores legados deste serviço compartilhado.
-  const holderSelection = selectOrderHolder(pessoasRes.rows);
-  const titularRowId = holderSelection.row ? Number(holderSelection.row.pessoa_row_id) : null;
-  const contratantePessoaId = holderSelection.row ? Number(holderSelection.row.pessoa_id) : null;
+  // 1ª pessoa (menor id) com pessoa_id NOT NULL = titular/contratante.
+  let titularRowId = null;
+  let contratantePessoaId = null;
+  for (const row of pessoasRes.rows) {
+    if (row.pessoa_id != null) {
+      titularRowId = Number(row.pessoa_row_id);
+      contratantePessoaId = Number(row.pessoa_id);
+      break;
+    }
+  }
+  // Orçamentos legados podem não ter pessoa_id em nenhuma linha. Nesses casos,
+  // o primeiro inscrito ainda é o melhor retrato disponível do contratante.
+  if (titularRowId == null && pessoasRes.rows[0]) {
+    titularRowId = Number(pessoasRes.rows[0].pessoa_row_id);
+  }
 
   // Cabeçalho do pedido: e-mail de contato, endereço do contratante e plano de pagamento.
   // A API REST do ERP ignora esses campos; eles são gravados via DB no fechamento, então
   // lemos direto da base para a auditoria refletir 100% dos obrigatórios do formulário.
   const headerRes = await db.query(
-    `SELECT pe.email_contato, pe.data_emissao, pe.data_inclusao, pe.valor_total,
-            pe.dia_vencimento,
+    `SELECT pe.email_contato,
             pe.endereco_id,
             pe.prazo_pagamento_id,
-             pe.observacoes,
             pl.plano_pagamento
        FROM pedidos pe
        LEFT JOIN planos_pagamentos pl ON pl.id = pe.prazo_pagamento_id
@@ -483,10 +405,9 @@ export async function getOrcamentoDetalhe(pedidoId) {
   );
   const header = headerRes.rows[0] || {};
 
-  // O gerador oficial usa o endereço eletrônico principal (tipo 566).
-  // O e-mail do cabeçalho do pedido permanece como fallback para cadastros novos.
-  let email = null;
-  if (contratantePessoaId) {
+  // E-mail: pedidos.email_contato; fallback para o contato de e-mail (tipo 566) do contratante.
+  let email = header.email_contato || null;
+  if (!email && contratantePessoaId) {
     const r = await db.query(
       `SELECT endereco FROM enderecos
         WHERE pessoa_id = $1 AND tipo_endereco_id = 566 AND ativo = 'S'
@@ -495,14 +416,12 @@ export async function getOrcamentoDetalhe(pedidoId) {
     );
     email = r.rows[0]?.endereco || null;
   }
-  if (!email) email = header.email_contato || null;
 
   // Endereço físico: pelo endereco_id do pedido; fallback para o residencial (tipo 577) do contratante.
   let enderecoRow = null;
   if (header.endereco_id) {
     const r = await db.query(
-      `SELECT en.codigo_postal, en.endereco, en.numero, en.complemento, en.bairro,
-              c.cidade
+      `SELECT en.codigo_postal, en.endereco, en.numero, en.complemento, en.bairro, c.cidade
          FROM enderecos en
          LEFT JOIN cidades c ON c.id = en.cidade_id
         WHERE en.id = $1 LIMIT 1`,
@@ -512,8 +431,7 @@ export async function getOrcamentoDetalhe(pedidoId) {
   }
   if (!enderecoRow && contratantePessoaId) {
     const r = await db.query(
-      `SELECT en.codigo_postal, en.endereco, en.numero, en.complemento, en.bairro,
-             c.cidade
+      `SELECT en.codigo_postal, en.endereco, en.numero, en.complemento, en.bairro, c.cidade
          FROM enderecos en
          LEFT JOIN cidades c ON c.id = en.cidade_id
         WHERE en.pessoa_id = $1 AND en.tipo_endereco_id = 577 AND en.ativo = 'S'
@@ -522,7 +440,6 @@ export async function getOrcamentoDetalhe(pedidoId) {
     );
     enderecoRow = r.rows[0] || null;
   }
-  const cityMatch = String(enderecoRow?.cidade || '').trim().match(/^(.*?)\s*-\s*([A-Z]{2})$/i);
   const endereco = enderecoRow
     ? {
         cep: enderecoRow.codigo_postal || null,
@@ -530,57 +447,35 @@ export async function getOrcamentoDetalhe(pedidoId) {
         numero: enderecoRow.numero || null,
         complemento: enderecoRow.complemento || null,
         bairro: enderecoRow.bairro || null,
-        cidade: cityMatch?.[1]?.trim() || enderecoRow.cidade || null,
-        uf: cityMatch?.[2]?.toUpperCase() || null,
+        cidade: enderecoRow.cidade || null,
       }
     : null;
 
   // Plano de pagamento: prazo_pagamento_id do pedido; fallback para modos_pagamentos.
   let plano = header.plano_pagamento || null;
-  let planoId = header.prazo_pagamento_id ? Number(header.prazo_pagamento_id) : null;
   if (!plano) {
     const r = await db.query(
-      `SELECT pl.id, pl.plano_pagamento
+      `SELECT pl.plano_pagamento
          FROM modos_pagamentos mp
          JOIN planos_pagamentos pl ON pl.id = mp.plano_pagamento_id
         WHERE mp.pedido_id = $1 LIMIT 1`,
       [id]
     );
     plano = r.rows[0]?.plano_pagamento || null;
-    planoId = r.rows[0]?.id ? Number(r.rows[0].id) : null;
   }
 
   // Telefone: pedidos_pessoas.telefone é praticamente sempre NULL neste fluxo; o ERP grava o
   // número de contato em enderecos (tipo 565) do contratante. Fazemos o mesmo fallback usado
   // para e-mail (566) e endereço (577) para a auditoria reconhecer o telefone preenchido.
   let telefoneContratante = null;
-  let telefoneSecundario = null;
   if (contratantePessoaId) {
     const r = await db.query(
-      `SELECT tipo_endereco_id, endereco FROM enderecos
-        WHERE pessoa_id = $1
-          AND tipo_endereco_id IN (565, 12190362, 574, 573)
-          AND ativo = 'S'
-        ORDER BY CASE tipo_endereco_id
-                   WHEN 565 THEN 1
-                   WHEN 12190362 THEN 2
-                   WHEN 574 THEN 3
-                   WHEN 573 THEN 4
-                   ELSE 5
-                 END,
-                 id DESC`,
+      `SELECT endereco FROM enderecos
+        WHERE pessoa_id = $1 AND tipo_endereco_id = 565 AND ativo = 'S'
+        ORDER BY id DESC LIMIT 1`,
       [contratantePessoaId]
     );
-    const contacts = r.rows
-      .map((row) => row.endereco)
-      .filter(Boolean)
-      .filter((value, index, values) => {
-        const digits = String(value).replace(/\D/g, '');
-        return digits && values.findIndex((candidate) =>
-          String(candidate).replace(/\D/g, '') === digits) === index;
-      });
-    telefoneContratante = contacts[0] || null;
-    telefoneSecundario = contacts[1] || null;
+    telefoneContratante = r.rows[0]?.endereco || null;
   }
 
   // Agrupa por pessoa: uma mesma pessoa pode estar vinculada a vários itens.
@@ -589,14 +484,12 @@ export async function getOrcamentoDetalhe(pedidoId) {
     const key = Number(row.pessoa_row_id);
     if (!pessoaMap.has(key)) {
       pessoaMap.set(key, {
-        source_order: key,
         nome: row.nome_pessoa || null,
         cpf: row.cpf || null,
         parentesco: row.parentesco || null,
         data_nascimento: row.data_nascimento || null,
         sexo: row.sexo || null,
         telefone: row.telefone || null,
-        pessoa_id: row.pessoa_id || null,
         is_titular: key === titularRowId,
         produtos: [],
       });
@@ -608,120 +501,13 @@ export async function getOrcamentoDetalhe(pedidoId) {
 
   const pessoas = Array.from(pessoaMap.values());
   const titularObj = pessoas.find((p) => p.is_titular);
-  // Campos cadastrais que não fazem parte de pedidos_pessoas. A leitura é
-  // defensiva para manter compatibilidade com ERPs legados, mas nunca inventa
-  // valores: o gerador valida os obrigatórios antes de produzir o PDF.
-  if (contratantePessoaId && titularObj) {
-    try {
-      const identity = await db.query(
-        `SELECT p.nome_completo, vc.estado_civil, vc.profissao, c.renda_mensal,
-                MAX(CASE WHEN dp.tipo_documento_id = 580 THEN dp.documento END) AS cpf,
-                MAX(CASE WHEN dp.tipo_documento_id = 584 THEN dp.documento END) AS rg
-           FROM pessoas p
-           LEFT JOIN clientes c ON c.id = p.id
-           LEFT JOIN documentos_pessoas dp ON dp.pessoa_id = p.id
-           LEFT JOIN vw_caracteristicas vc ON vc.pessoa_id = p.id
-          WHERE p.id = $1
-          GROUP BY p.id, p.nome_completo, vc.estado_civil, vc.profissao, c.renda_mensal`,
-        [contratantePessoaId]
-      );
-      Object.assign(titularObj, {
-        nome: identity.rows[0]?.nome_completo || titularObj.nome,
-        cpf: identity.rows[0]?.cpf || titularObj.cpf,
-        rg: identity.rows[0]?.rg || null,
-        estado_civil: identity.rows[0]?.estado_civil || null,
-        profissao: identity.rows[0]?.profissao || null,
-         renda: identity.rows[0]?.renda_mensal ?? null,
-      });
-    } catch (error) {
-      console.warn('[erpDbService] Campos cadastrais opcionais indisponíveis:', error.message);
-    }
+  if (titularObj) {
+    titularObj.email = email;
+    titularObj.endereco = endereco;
+    if (!titularObj.telefone && telefoneContratante) titularObj.telefone = telefoneContratante;
   }
-  // Contact fallbacks must be applied before any legacy driver copy is made.
-  applyHolderContactFallbacks(titularObj, {
-    email,
-    endereco,
-    telefone: telefoneContratante,
-  });
-  const vehicleProduct = isBomAutoVehicleProduct;
-  const driverProduct = isBomAutoDriverProduct;
-  const condutorPeople = pessoas.filter((p) => p.produtos.some(driverProduct));
-  // The legacy PHP form falls back to titular birth date/phone when the
-  // conductor-specific values are absent. Preserve that documented behavior,
-  // but enrich marital status/profession from the related ERP person.
-  for (const driver of condutorPeople) {
-    const relatedId = driver.pessoa_id;
-    if (relatedId) {
-      try {
-        const characteristics = await db.query(
-          `SELECT estado_civil, profissao
-             FROM vw_caracteristicas
-            WHERE pessoa_id = $1
-            LIMIT 1`,
-          [relatedId]
-        );
-        Object.assign(driver, characteristics.rows[0] || {});
-      } catch (error) {
-        console.warn('[erpDbService] Características do condutor indisponíveis:', error.message);
-      }
-    }
-    if (!driver.data_nascimento && titularObj?.data_nascimento) driver.data_nascimento = titularObj.data_nascimento;
-    if (!driver.telefone) driver.telefone = titularObj?.telefone || telefoneContratante || null;
-  }
-  // Preserve one occurrence per pedidos_pessoas_produtos link. The same
-  // pedidos_pessoas row can legitimately be linked to multiple item
-  // occurrences (for example, one driver assigned to two vehicles).
-  const condutores = pessoasRes.rows
-    .filter((row) => driverProduct(row.produto_descricao))
-    .map((row) => ({ ...pessoaMap.get(Number(row.pessoa_row_id)) }));
-  const veiculos = pessoasRes.rows
-    .filter((row) => vehicleProduct(row.produto_descricao))
-    .map((row) => {
-      const p = pessoaMap.get(Number(row.pessoa_row_id));
-      // No fluxo legado o item é gravado como texto delimitado em
-      // pedidos_pessoas.nome_pessoa; instalações novas podem trazer o mesmo
-      // texto como descrição do item.
-      const source = p.nome || p.produtos.find(vehicleProduct) || '';
-      return {
-        ...p,
-        ...parseBomAutoVehicle(source),
-      };
-    });
-  const pairedVehicles = pairBomAutoPeople(veiculos, condutores).map((vehicle) => {
-    if (vehicle.driver || !holderSelection.isCanonical) return vehicle;
-    return canUseHolderAsLegacyDriver(vehicle, titularObj)
-      ? { ...vehicle, driver: { ...titularObj } }
-      : vehicle;
-  });
-  // UF e emissão são campos do cabeçalho em instalações novas; aliases
-  // permitem que o consumidor trate ambos os formatos sem heurística.
-  let issueDate = null;
-  try {
-    const issue = await db.query(
-      `SELECT p.data_emissao, p.data_inclusao, p.valor_total
-         FROM pedidos p
-        WHERE p.id = $1 LIMIT 1`,
-      [id]
-    );
-    issueDate = issue.rows[0] || null;
-  } catch (error) {
-    console.warn('[erpDbService] Data/UF de emissão indisponíveis:', error.message);
-  }
-  return {
-    produtos, pessoas, email, endereco, plano_pagamento: plano,
-    plano_pagamento_id: planoId,
-    telefone_secundario: telefoneSecundario,
-    observacoes: header.observacoes || null,
-    titular: titularObj || null,
-    titular_is_canonical: holderSelection.isCanonical,
-    veiculos: pairedVehicles,
-    data_emissao: header.data_emissao || issueDate?.data_emissao || header.data_inclusao || issueDate?.data_inclusao || null,
-    dia_vencimento: header.dia_vencimento || null,
-    valor_total: header.valor_total ?? issueDate?.valor_total ?? null,
-    // Os itens técnicos de veículo/condutor custam R$ 0,01 apenas para
-    // estabelecer os vínculos no ERP e não compõem a mensalidade contratual.
-    valor_mensal: calculateBomAutoMonthlyFee(produtos),
-  };
+
+  return { produtos, pessoas, email, endereco, plano_pagamento: plano };
 }
 
 const CONTRATO_ANTERIOR_STATUS = Object.freeze({

@@ -113,7 +113,6 @@ const MENU_MODULES = [
       { id: "AutomationLogs", title: "Logs de Automações" },
       { id: "SalesTasks", title: "Tarefas" },
       { id: "ProposalTemplates", title: "Templates" },
-      { id: "SalesContractPrinting", title: "Impressão de Contratos - Recepção" },
     ]
   },
   {
