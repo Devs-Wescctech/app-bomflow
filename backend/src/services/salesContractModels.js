@@ -1,0 +1,1375 @@
+import PDFDocument from 'pdfkit';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { execFile } from 'child_process';
+import { fileURLToPath } from 'url';
+import { promisify } from 'util';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const essentialPages = path.resolve(__dirname, '../../public/essential-contract');
+const bomCorpPages = path.resolve(__dirname, '../../public/bom-corp-contract');
+const bomPetPages = path.resolve(__dirname, '../../public/bom-pet-contract');
+const bomPetHealthIndividualPages = path.resolve(__dirname, '../../public/bom-pet-health-individual-contract');
+const bomPetHealthThreePages = path.resolve(__dirname, '../../public/bom-pet-health-three-contract');
+const execFileAsync = promisify(execFile);
+const optimizedBackgrounds = new Map();
+
+async function contractBackground(source, optimizeForWhatsapp) {
+  if (!optimizeForWhatsapp) return source;
+  if (optimizedBackgrounds.has(source)) return optimizedBackgrounds.get(source);
+  const pending = (async () => {
+    const outputDir = path.join(os.tmpdir(), 'bomflow-whatsapp-contract-pages');
+    await fs.promises.mkdir(outputDir, { recursive: true });
+    const output = path.join(
+      outputDir,
+      `whatsapp-150dpi-q72-${path.basename(path.dirname(source))}-${path.basename(source)}`,
+    );
+    const sourceStat = await fs.promises.stat(source);
+    const outputStat = await fs.promises.stat(output).catch(() => null);
+    if (!outputStat || outputStat.mtimeMs < sourceStat.mtimeMs) {
+      const temporary = `${output}.${process.pid}.tmp.jpg`;
+      try {
+        await execFileAsync('magick', [
+          source,
+          '-strip',
+          '-resize', '1400x1979>',
+          '-sampling-factor', '4:2:0',
+          '-quality', '72',
+          temporary,
+        ]);
+        await fs.promises.rename(temporary, output);
+      } catch (error) {
+        await fs.promises.rm(temporary, { force: true }).catch(() => {});
+        throw new Error(`Não foi possível otimizar o contrato para WhatsApp: ${error.message}`);
+      }
+    }
+    return output;
+  })();
+  optimizedBackgrounds.set(source, pending);
+  return pending;
+}
+
+async function prepareContractBackgrounds(pagesDir, pages, optimizeForWhatsapp) {
+  return new Map(await Promise.all(pages.map(async (page) => {
+    const source = path.join(pagesDir, `page-${page}.jpg`);
+    if (!fs.existsSync(source)) throw new Error(`Página ${page} do modelo de contrato não encontrada.`);
+    return [page, await contractBackground(source, optimizeForWhatsapp)];
+  })));
+}
+
+export const CONTRACT_PRODUCTS = Object.freeze({
+  BOM_AUTO: 'bom_auto',
+  BOM_CORP: 'bom_corp',
+  BOM_IDEAL: 'bom_ideal',
+  BOM_MED: 'bom_med',
+  BOM_FAMILIA: 'bom_familia',
+  BOM_FAMILIA_PORTABILITY: 'bom_familia_portabilidade',
+  ESSENCIAL: 'essencial',
+  PEROLA: 'perola',
+  RUBI: 'rubi',
+  SAFIRA: 'safira',
+  TOPAZIO: 'topazio',
+  TOTAL_MAIS_BOM_FARMA: 'total_mais_bom_farma',
+  BOM_PET: 'bom_pet',
+  BOM_PET_SAUDE_INDIVIDUAL: 'bom_pet_saude_individual',
+  BOM_PET_SAUDE_3PETS: 'bom_pet_saude_3pets',
+  COMBO_MULTI_WELLBEING: 'combo_multi_bem_estar',
+  NEW_COMBO_MULTI_WELLBEING: 'novo_combo_multi_bem_estar',
+  COMBO_MULTI_SELECTION: 'combo_multi_selecao',
+  CONVALESCENCA: 'convalescenca',
+});
+
+export const BOM_PET_PET_LAYOUT = Object.freeze({
+  firstRowY: 135.8,
+  rowGap: 21.5,
+  nameSize: 8.5,
+  detailsOffsetY: 8.7,
+  detailsSize: 8,
+  rowOffsetY: Object.freeze([0, 0.7, 1.3]),
+  detailsRowOffsetY: Object.freeze([0, 0.3, 0.6]),
+});
+
+export const ESSENTIAL_BASE_PRODUCT_IDS = Object.freeze([
+  47843569,
+  47843600,
+  47987576,
+  47212241,
+  52246882,
+  52246915,
+  52246948,
+  203596104,
+  203596587,
+  203596810,
+  47892111, // POÇOS DE CALDAS - ESSENCIAL
+  47225080, // CAMPINAS - ESSENCIAL
+]);
+
+export const PEROLA_BASE_PRODUCT_IDS = Object.freeze([
+  40617313, // PEROLA
+  47224861, // LIMEIRA - PEROLA
+  47225032, // CAMPINAS - PEROLA
+  47892026, // REGIÃO CAMPINAS - PEROLA
+  47892236, // POÇOS DE CALDAS - PEROLA
+  51875693, // CAMPINAS - PEROLA C/ JAZIGO
+]);
+
+export const RUBI_BASE_PRODUCT_IDS = Object.freeze([
+  40617292, // REGIÃO LIMEIRA - RUBI
+  47224838, // LIMEIRA - RUBI
+  47225009, // CAMPINAS - RUBI
+  47225188, // REGIÃO CAMPINAS - RUBI
+]);
+
+export const SAFIRA_BASE_PRODUCT_IDS = Object.freeze([
+  47892174, // POÇOS DE CALDAS - SAFIRA
+  82856809, // POÇOS DE CALDAS - SAFIRA - RESGATE
+]);
+
+export const TOPAZIO_BASE_PRODUCT_IDS = Object.freeze([
+  40571997, 40604709, 47224724, 47224967, 47225161, 47892201,
+]);
+
+// Produtos-base do contrato legado "Bom Pet - Pequeno Amigo".
+// Itens técnicos de nome do pet e produtos "Bom Pet Saúde" não entram aqui.
+export const BOM_PET_BASE_PRODUCT_IDS = Object.freeze([
+  47225321, // BOM PET (3 PETS)
+  47225213, // BOM PET (1 PET)
+  47225134, // CAMPINAS - BOM PET (3 PETS)
+  47224940, // LIMEIRA - BOM PET (3 PETS)
+  47892080, // POÇOS DE CALDAS - BOM PET (3 PETS)
+  47225103, // CAMPINAS - BOM PET (1 PET)
+  58947582, // CAMPINAS - BOM PET 2
+  58947899, // CAMPINAS - BOM PET 4
+]);
+export const BOM_PET_HEALTH_INDIVIDUAL_PRODUCT_IDS = Object.freeze([79080540, 203567263]);
+export const BOM_PET_HEALTH_THREE_PRODUCT_IDS = Object.freeze([87982247, 206547783]);
+export const BOM_PET_HEALTH_PET_LINK_PRODUCT_ID = 79080781;
+
+// Valor homologado pelo PDF original. O gerador legado lia este campo por
+// pedido; substituir a constante quando o acesso à API de totais for retomado.
+export const ESSENTIAL_ADHESION_VALUE = 60;
+
+const ESSENTIAL_PAYMENT_PLAN_IDS = Object.freeze({
+  cpfl: new Set([32922780]),
+  bank: new Set([25451, 48296791, 40564923, 48286734, 1643483, 48295856, 82623870]),
+  credit_card: new Set([46285, 47214448, 48395023, 88733784]),
+});
+
+const PRODUCT_LABELS = Object.freeze({
+  [CONTRACT_PRODUCTS.BOM_AUTO]: 'Bom Auto',
+  [CONTRACT_PRODUCTS.BOM_CORP]: 'Bom Corp',
+  [CONTRACT_PRODUCTS.BOM_IDEAL]: 'Bom Ideal',
+  [CONTRACT_PRODUCTS.BOM_MED]: 'Bom Med',
+  [CONTRACT_PRODUCTS.BOM_FAMILIA]: 'Plano Família',
+  [CONTRACT_PRODUCTS.BOM_FAMILIA_PORTABILITY]: 'Plano Família-Portabilidade',
+  [CONTRACT_PRODUCTS.ESSENCIAL]: 'Essencial',
+  [CONTRACT_PRODUCTS.PEROLA]: 'Plano Pérola',
+  [CONTRACT_PRODUCTS.RUBI]: 'Plano Rubi',
+  [CONTRACT_PRODUCTS.SAFIRA]: 'Plano Safira',
+  [CONTRACT_PRODUCTS.TOPAZIO]: 'Plano Topázio',
+  [CONTRACT_PRODUCTS.TOTAL_MAIS_BOM_FARMA]: 'Total Mais e Bom Farma',
+  [CONTRACT_PRODUCTS.BOM_PET]: 'Bom Pet',
+  [CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL]: 'Bom Pet Saúde',
+  [CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS]: 'Bom Pet Saúde - 3 Pets',
+  [CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING]: 'Combo Multi Bem Estar',
+  [CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING]: 'Novo Combo Multi Bem Estar',
+  [CONTRACT_PRODUCTS.COMBO_MULTI_SELECTION]: 'Combo Multi Seleção',
+  [CONTRACT_PRODUCTS.CONVALESCENCA]: 'Convalescença',
+});
+const BRAZILIAN_STATES = new Set([
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO',
+  'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI',
+  'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
+]);
+
+const normalizeText = (value) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim()
+  .toUpperCase();
+
+const amountOf = (product) => {
+  if (product?.valor_total != null) return Number(product.valor_total);
+  return Number(product?.preco || 0) * Number(product?.quantidade || 0);
+};
+
+const roundCurrency = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+
+const productMatches = (product, matcher) => matcher(normalizeText(product?.descricao));
+
+export const contractProductLabel = (productKey) =>
+  PRODUCT_LABELS[productKey] || null;
+
+export const buildBomCorpContractData = (source = {}) => ({
+  company_name: String(source.company_name || '').trim(),
+  cnpj: String(source.cnpj || '').replace(/\D/g, ''),
+  state_registration: String(source.state_registration || '').trim(),
+  address: String(source.address || '').trim(),
+  number: String(source.number || '').trim(),
+  complement: String(source.complement || '').trim(),
+  district: String(source.district || '').trim(),
+  city: String(source.city || '').trim(),
+  state: String(source.state || '').trim().toUpperCase(),
+  cep: String(source.cep || '').trim(),
+  phone: String(source.phone || '').trim(),
+  phone2: String(source.phone2 || '').trim(),
+  email: String(source.email || '').trim(),
+  contract: String(source.contract || '').replace(/\D/g, ''),
+  plan: String(source.plan || '').trim(),
+  issue_date: source.issue_date || null,
+  contract_value: Number(source.contract_value || 0),
+  observations: String(source.observations || '').trim(),
+  employees: Array.isArray(source.employees)
+    ? source.employees.map((employee) => ({
+        id: String(employee?.id || '').trim(),
+        name: String(employee?.name || '').trim(),
+        cpf: String(employee?.cpf || '').trim(),
+        birth_date: employee?.birth_date || null,
+        phone: String(employee?.phone || '').trim(),
+      })).filter((employee) => employee.name)
+    : [],
+});
+
+export const validateBomCorpContractData = (data) => {
+  const errors = [];
+  if (!data?.company_name) errors.push('Razão social da empresa ausente.');
+  if (!/^\d{14}$/.test(String(data?.cnpj || ''))) errors.push('CNPJ da empresa inválido.');
+  if (!data?.contract) errors.push('Número do contrato Bom Corp ausente.');
+  if (!data?.employees?.length) errors.push('Nenhum colaborador foi encontrado para o contrato Bom Corp.');
+  return errors;
+};
+
+export const normalizeContractProduct = (value) =>
+  Object.values(CONTRACT_PRODUCTS).includes(value) ? value : null;
+
+export function detailMatchesContractProduct(detail, productKey) {
+  const products = Array.isArray(detail?.produtos) ? detail.produtos : [];
+  if (productKey === CONTRACT_PRODUCTS.ESSENCIAL) {
+    return products.some((product) => ESSENTIAL_BASE_PRODUCT_IDS.includes(Number(product?.id)));
+  }
+  if (productKey === CONTRACT_PRODUCTS.PEROLA) {
+    return products.some((product) => PEROLA_BASE_PRODUCT_IDS.includes(Number(product?.id)));
+  }
+  if (productKey === CONTRACT_PRODUCTS.RUBI) {
+    return products.some((product) => RUBI_BASE_PRODUCT_IDS.includes(Number(product?.id)));
+  }
+  if (productKey === CONTRACT_PRODUCTS.SAFIRA) {
+    return products.some((product) => SAFIRA_BASE_PRODUCT_IDS.includes(Number(product?.id)));
+  }
+  if (productKey === CONTRACT_PRODUCTS.TOPAZIO) {
+    return products.some((product) => TOPAZIO_BASE_PRODUCT_IDS.includes(Number(product?.id)));
+  }
+  if (productKey === CONTRACT_PRODUCTS.TOTAL_MAIS_BOM_FARMA) {
+    return products.some((product) =>
+      product?.status === 'P'
+      && [
+        40617334, 88958582, 222993462, 222994403,
+        47224884, 47225055, 47892263, 222010875, 222012256,
+      ].includes(Number(product?.id)));
+  }
+  if (productKey === CONTRACT_PRODUCTS.BOM_AUTO) {
+    return products.some((product) => productMatches(product, (description) =>
+      description.includes('BOM AUTO') && description.includes('DADOS DO VEICULO')));
+  }
+  if (productKey === CONTRACT_PRODUCTS.BOM_PET) {
+    return products.some((product) => BOM_PET_BASE_PRODUCT_IDS.includes(Number(product?.id)));
+  }
+  if (productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_INDIVIDUAL) {
+    return products.some((product) => BOM_PET_HEALTH_INDIVIDUAL_PRODUCT_IDS.includes(Number(product?.id)));
+  }
+  if (productKey === CONTRACT_PRODUCTS.BOM_PET_SAUDE_3PETS) {
+    return products.some((product) => BOM_PET_HEALTH_THREE_PRODUCT_IDS.includes(Number(product?.id)));
+  }
+  if (productKey === CONTRACT_PRODUCTS.COMBO_MULTI_WELLBEING) {
+    return products.some((product) => Number(product?.id) === 70690724);
+  }
+  if (productKey === CONTRACT_PRODUCTS.NEW_COMBO_MULTI_WELLBEING) {
+    return products.some((product) => Number(product?.id) === 250208807);
+  }
+  if (productKey === CONTRACT_PRODUCTS.COMBO_MULTI_SELECTION) {
+    return products.some((product) => Number(product?.id) === 299528429);
+  }
+  return false;
+}
+
+const normalizeCivilStatus = (value) => {
+  const normalized = normalizeText(value);
+  if (normalized === 'SO' || normalized.includes('SOLTEIR')) return 'SOLTEIRO';
+  if (normalized === 'CA' || normalized.includes('CASAD')) return 'CASADO';
+  return 'OUTROS';
+};
+
+const petFromPerson = (person) => {
+  const rawName = String(person?.nome || '').trim();
+  const slashParts = rawName
+    .split(/\s*\/\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (slashParts.length >= 4) {
+    return {
+      name: slashParts[0] || '',
+      type: slashParts[1] || '',
+      breed: slashParts[2] || '',
+      color: slashParts[3] || '',
+      size: slashParts[4] || person?.porte || '',
+      birth_date: person?.data_nascimento || null,
+      sex: person?.sexo || null,
+    };
+  }
+  const parts = rawName
+    .split(/\s+-\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return {
+    name: parts[0] || '',
+    type: person?.tipo || '',
+    breed: parts[1] || '',
+    color: parts.slice(2).join(' - '),
+    size: person?.porte || '',
+    birth_date: person?.data_nascimento || null,
+    sex: person?.sexo || null,
+  };
+};
+
+const isBomPetNameLink = (person) => (person?.produtos || []).some((description) => {
+  const normalized = normalizeText(description);
+  return normalized.includes('BOM PET')
+    && normalized.includes('NOME DO PET')
+    && !normalized.includes('SAUDE');
+});
+
+const saoPauloDate = (value) => {
+  if (!(value instanceof Date)) return value;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: 'America/Sao_Paulo',
+  }).formatToParts(value);
+  const get = (type) => parts.find((part) => part.type === type)?.value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+};
+
+export function buildBomPetContractData(detail, generatedAt = new Date()) {
+  const products = Array.isArray(detail?.produtos) ? detail.produtos : [];
+  const people = Array.isArray(detail?.pessoas) ? detail.pessoas : [];
+  const holder = detail?.titular || people.find((person) => person?.is_titular);
+  const baseProducts = products.filter((product) =>
+    BOM_PET_BASE_PRODUCT_IDS.includes(Number(product?.id)));
+  return {
+    name: holder?.nome || null,
+    cpf: holder?.cpf || null,
+    rg: holder?.rg || null,
+    birth_date: holder?.data_nascimento || null,
+    sex: holder?.sexo || null,
+    marital_status: normalizeCivilStatus(holder?.estado_civil),
+    profession: holder?.profissao || 'Outros',
+    address: detail?.endereco?.logradouro || holder?.endereco?.logradouro || null,
+    complement: detail?.endereco?.complemento || holder?.endereco?.complemento || null,
+    number: detail?.endereco?.numero || holder?.endereco?.numero || null,
+    district: detail?.endereco?.bairro || holder?.endereco?.bairro || null,
+    city: detail?.endereco?.cidade || holder?.endereco?.cidade || null,
+    state: detail?.endereco?.uf || holder?.endereco?.uf || null,
+    cep: detail?.endereco?.cep || holder?.endereco?.cep || null,
+    phone: holder?.telefone || null,
+    // O modelo legado repete o telefone do pedido em Comercial/Recado.
+    // Não associe um segundo contato genérico do cadastro a esse campo.
+    phone2: holder?.telefone || null,
+    email: detail?.email || holder?.email || null,
+    payment_plan: detail?.plano_pagamento || null,
+    generated_at: saoPauloDate(generatedAt),
+    monthly_value: roundCurrency(baseProducts.reduce((total, product) => total + amountOf(product), 0)),
+    pets: people.filter((person) => !person?.is_titular && isBomPetNameLink(person)).map(petFromPerson),
+  };
+}
+
+const isHealthPetLink = (person) => (person?.produtos || []).some((description) => {
+  const normalized = normalizeText(description);
+  return normalized.includes('BOM PET SAUDE') && normalized.includes('NOME DO PET');
+});
+const isHealthAdditionalLink = (person) => (person?.produtos || []).some((description) => {
+  const normalized = normalizeText(description);
+  return normalized.includes('BOM PET SAUDE') && normalized.includes('ADICIONAL PET');
+});
+const healthData = (detail, generatedAt, pets, monthlyValue, variant) => {
+  const holder = detail?.titular || (detail?.pessoas || []).find((person) => person?.is_titular);
+  return {
+    name: holder?.nome || null, cpf: holder?.cpf || null, rg: holder?.rg || null,
+    birth_date: holder?.data_nascimento || null, sex: holder?.sexo || null,
+    marital_status: normalizeCivilStatus(holder?.estado_civil), profession: holder?.profissao || 'Outros',
+    address: detail?.endereco?.logradouro || holder?.endereco?.logradouro || null,
+    complement: detail?.endereco?.complemento || holder?.endereco?.complemento || null,
+    number: detail?.endereco?.numero || holder?.endereco?.numero || null,
+    district: detail?.endereco?.bairro || holder?.endereco?.bairro || null,
+    city: detail?.endereco?.cidade || holder?.endereco?.cidade || null,
+    state: detail?.endereco?.uf || holder?.endereco?.uf || null,
+    cep: detail?.endereco?.cep || holder?.endereco?.cep || null,
+    phone: holder?.telefone || null, phone2: holder?.telefone || null,
+    email: detail?.email || holder?.email || null, payment_plan: detail?.plano_pagamento || null,
+    payment_plan_id: detail?.plano_pagamento_id || null,
+    generated_at: saoPauloDate(generatedAt), monthly_value: roundCurrency(monthlyValue),
+    adhesion: variant === 'three' ? 60 : 0, pets,
+  };
+};
+
+export function buildBomPetHealthIndividualContractData(detail, generatedAt = new Date()) {
+  const products = Array.isArray(detail?.produtos) ? detail.produtos : [];
+  const people = Array.isArray(detail?.pessoas) ? detail.pessoas : [];
+  const hasAdditional = products.some((product) => Number(product?.id) === 203567263);
+  const linked = people.filter((person) => !person?.is_titular && isHealthPetLink(person));
+  const candidates = hasAdditional
+    ? linked.filter(isHealthAdditionalLink)
+    : linked;
+  const selected = [...candidates]
+    .sort((left, right) => Number(left?.source_order || 0) - Number(right?.source_order || 0))
+    .at(-1);
+  const valueIds = hasAdditional ? [203567263] : [79080540];
+  const value = products.filter((product) => valueIds.includes(Number(product?.id)))
+    .reduce((total, product) => total + amountOf(product), 0);
+  return healthData(detail, generatedAt, selected ? [petFromPerson(selected)] : [], value, 'individual');
+}
+
+export function buildBomPetHealthThreeContractData(detail, generatedAt = new Date()) {
+  const products = Array.isArray(detail?.produtos) ? detail.produtos : [];
+  const people = Array.isArray(detail?.pessoas) ? detail.pessoas : [];
+  const value = products
+    .filter((product) => [
+      ...BOM_PET_HEALTH_THREE_PRODUCT_IDS,
+      203567263,
+    ].includes(Number(product?.id)))
+    .reduce((total, product) => total + amountOf(product), 0);
+  return healthData(
+    detail,
+    generatedAt,
+    people
+      .filter((person) => !person?.is_titular && isHealthPetLink(person))
+      .map(petFromPerson),
+    value,
+    'three',
+  );
+}
+
+export function validateBomPetHealthContractData(data, variant = 'individual') {
+  const errors = [];
+  for (const [label, value] of [
+    ['nome do titular', data?.name], ['CPF do titular', data?.cpf], ['data de nascimento do titular', data?.birth_date],
+    ['sexo do titular', data?.sex], ['endereço', data?.address], ['número do endereço', data?.number],
+    ['bairro', data?.district], ['cidade', data?.city], ['estado', data?.state], ['CEP', data?.cep],
+    ['telefone', data?.phone], ['e-mail', data?.email], ['plano de pagamento', data?.payment_plan],
+    ['data de geração', data?.generated_at],
+  ]) if (!String(value ?? '').trim()) errors.push(`Campo obrigatório ausente: ${label}.`);
+  if (!isValidCpfValue(data?.cpf)) errors.push('CPF do titular inválido.');
+  if (data?.sex && !/^[FM]$/i.test(String(data.sex))) errors.push('Sexo do titular inválido.');
+  if (!BRAZILIAN_STATES.has(normalizeText(data?.state))) errors.push('Estado do endereço inválido.');
+  if (!/^\d{8}$/.test(String(data?.cep || '').replace(/\D/g, ''))) errors.push('CEP inválido.');
+  if (!/^\d{10,11}$/.test(String(data?.phone || '').replace(/\D/g, ''))) errors.push('Telefone inválido.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(data?.email || '').trim())) errors.push('E-mail inválido.');
+  if (!bomPetPaymentCategory(data?.payment_plan, data?.payment_plan_id)) errors.push('A forma de pagamento do Bom Pet Saúde não corresponde às opções do contrato.');
+  if (!Number.isFinite(Number(data?.monthly_value)) || Number(data.monthly_value) <= 0) errors.push('Valor mensal do Bom Pet Saúde inválido.');
+  const pets = Array.isArray(data?.pets) ? data.pets : [];
+  const max = variant === 'three' ? 13 : 1;
+  if (!pets.length) errors.push('Nenhum pet vinculado ao produto Bom Pet Saúde foi encontrado.');
+  if (pets.length > max) errors.push(`O contrato comporta no máximo ${max} pets.`);
+  pets.forEach((pet, index) => {
+    if (!pet?.name) errors.push(`Pet ${index + 1}: nome ausente.`);
+    if (!pet?.breed) errors.push(`Pet ${index + 1}: raça ausente.`);
+    if (!pet?.birth_date) errors.push(`Pet ${index + 1}: data de nascimento ausente.`);
+    if (!pet?.sex) errors.push(`Pet ${index + 1}: sexo ausente.`);
+  });
+  return errors;
+}
+
+const isValidCpfValue = (value) => {
+  const cpf = String(value || '').replace(/\D/g, '');
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+  const digits = cpf.split('').map(Number);
+  const calc = (length) => {
+    const total = digits.slice(0, length).reduce((sum, digit, index) => sum + digit * (length + 1 - index), 0);
+    const rest = (total * 10) % 11;
+    return rest === 10 ? 0 : rest;
+  };
+  return calc(9) === digits[9] && calc(10) === digits[10];
+};
+
+export const bomPetPaymentCategory = (description, planId = null) => {
+  if (planId != null && String(planId).trim() !== '') {
+    const id = Number(planId);
+    if ([46285, 47214448, 48395023, 88733784].includes(id)) return 'credit_card';
+    if ([25451, 48296791, 40564923, 48286734, 1643483, 48295856, 82623870].includes(id)) return 'bank';
+    return null;
+  }
+  const normalized = normalizeText(description);
+  if (normalized.includes('COBRADOR')) return 'collector';
+  if ([
+    'BOLETO',
+    'BANCARI',
+    'BANCO',
+    'CONTA CORRENTE',
+    'PIX',
+    'CARNE',
+  ].some((term) => normalized.includes(term))) return 'bank';
+  return null;
+};
+
+export function validateBomPetContractData(data) {
+  const errors = [];
+  const required = [
+    ['nome do titular', data?.name],
+    ['CPF do titular', data?.cpf],
+    ['data de nascimento do titular', data?.birth_date],
+    ['sexo do titular', data?.sex],
+    ['endereço', data?.address],
+    ['número do endereço', data?.number],
+    ['bairro', data?.district],
+    ['cidade', data?.city],
+    ['estado', data?.state],
+    ['CEP', data?.cep],
+    ['telefone', data?.phone],
+    ['e-mail', data?.email],
+    ['plano de pagamento', data?.payment_plan],
+    ['data de geração', data?.generated_at],
+  ];
+  required.forEach(([label, value]) => {
+    if (!String(value ?? '').trim()) errors.push(`Campo obrigatório ausente: ${label}.`);
+  });
+  const cpf = String(data?.cpf || '').replace(/\D/g, '');
+  const cpfNumbers = cpf.split('').map(Number);
+  const cpfDigit = (length) => {
+    const total = cpfNumbers.slice(0, length)
+      .reduce((sum, digit, index) => sum + digit * (length + 1 - index), 0);
+    const rest = (total * 10) % 11;
+    return rest === 10 ? 0 : rest;
+  };
+  if (cpf.length !== 11
+    || /^(\d)\1{10}$/.test(cpf)
+    || cpfDigit(9) !== cpfNumbers[9]
+    || cpfDigit(10) !== cpfNumbers[10]) {
+    errors.push('CPF do titular inválido.');
+  }
+  const parsedDate = (value) => {
+    const match = String(value instanceof Date ? value.toISOString() : value || '')
+      .match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return null;
+    const parsed = new Date(`${match[1]}-${match[2]}-${match[3]}T12:00:00Z`);
+    if (Number.isNaN(parsed.valueOf())
+      || parsed.getUTCFullYear() !== Number(match[1])
+      || parsed.getUTCMonth() + 1 !== Number(match[2])
+      || parsed.getUTCDate() !== Number(match[3])) return null;
+    return parsed;
+  };
+  const generatedDate = parsedDate(data?.generated_at);
+  const holderBirthDate = parsedDate(data?.birth_date);
+  if (data?.generated_at && !generatedDate) errors.push('Data de geração inválida.');
+  if (data?.birth_date && !holderBirthDate) errors.push('Data de nascimento do titular inválida.');
+  if (generatedDate && holderBirthDate && holderBirthDate > generatedDate) {
+    errors.push('Data de nascimento do titular posterior à geração do contrato.');
+  }
+  if (data?.sex && !/^[FM]$/i.test(String(data.sex).trim())) errors.push('Sexo do titular inválido.');
+  if (!BRAZILIAN_STATES.has(normalizeText(data?.state))) errors.push('Estado do endereço inválido.');
+  if (!/^\d{8}$/.test(String(data?.cep || '').replace(/\D/g, ''))) errors.push('CEP inválido.');
+  if (!/^\d{10,11}$/.test(String(data?.phone || '').replace(/\D/g, ''))) errors.push('Telefone inválido.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(data?.email || '').trim())) errors.push('E-mail inválido.');
+  if (data?.payment_plan && !bomPetPaymentCategory(data.payment_plan)) {
+    errors.push('A forma de pagamento do Bom Pet não corresponde às opções do contrato.');
+  }
+  if (!Number.isFinite(Number(data?.monthly_value)) || Number(data?.monthly_value) <= 0) {
+    errors.push('Valor mensal do Bom Pet inválido.');
+  }
+  const pets = Array.isArray(data?.pets) ? data.pets : [];
+  if (pets.length === 0) errors.push('Nenhum pet vinculado ao produto Bom Pet foi encontrado.');
+  if (pets.length > 3) errors.push('O modelo Bom Pet comporta no máximo 3 pets.');
+  pets.forEach((pet, index) => {
+    const prefix = `Pet ${index + 1}`;
+    if (!pet?.name) errors.push(`${prefix}: nome ausente.`);
+    if (!pet?.breed) errors.push(`${prefix}: raça ausente.`);
+    if (!pet?.color) errors.push(`${prefix}: cor ausente.`);
+    if (!pet?.birth_date) errors.push(`${prefix}: data de nascimento ausente.`);
+    if (!pet?.sex) errors.push(`${prefix}: sexo ausente.`);
+    const petBirthDate = parsedDate(pet?.birth_date);
+    if (pet?.birth_date && !petBirthDate) errors.push(`${prefix}: data de nascimento inválida.`);
+    if (generatedDate && petBirthDate && petBirthDate > generatedDate) {
+      errors.push(`${prefix}: data de nascimento posterior à geração do contrato.`);
+    }
+    if (pet?.sex && !/^[FM]$/i.test(String(pet.sex).trim())) errors.push(`${prefix}: sexo inválido.`);
+  });
+  return errors;
+}
+
+const relationLabel = (value) => ({
+  P: 'Pai',
+  M: 'Mãe',
+  F: 'Filho/Filha',
+  S: 'Sogro/Sogra',
+  C: 'Cônjuge',
+  D: 'Dependente',
+}[normalizeText(value)] || null);
+
+export const essentialPaymentCategory = (value, planId = null) => {
+  const hasPlanId = planId != null && String(planId).trim() !== '';
+  const numericPlanId = Number(planId);
+  if (hasPlanId) {
+    if (!Number.isFinite(numericPlanId)) return null;
+    for (const [category, ids] of Object.entries(ESSENTIAL_PAYMENT_PLAN_IDS)) {
+      if (ids.has(numericPlanId)) return category;
+    }
+    return null;
+  }
+  const payment = normalizeText(value);
+  if (payment.includes('CPFL')) return 'cpfl';
+  if (payment.includes('CARTAO') && payment.includes('CREDITO')) return 'credit_card';
+  if (payment.includes('BOLETO')
+    || payment.includes('BANCARI')
+    || payment.includes('BANCO')
+    || payment.includes('PIX')
+    || payment.includes('CARNE')) return 'bank';
+  return null;
+};
+
+export const essentialLowerDueCheckX = (day) => ({
+  10: 306.14,
+  15: 360,
+  20: 413.86,
+  25: 467.72,
+})[Number(day)] ?? null;
+
+export const essentialUpperDueCheckX = (day) => ({
+  10: 72.25,
+  15: 146.75,
+  20: 221.25,
+  25: 295.75,
+})[Number(day)] ?? null;
+
+export const essentialCivilCheckX = (value) => {
+  const civil = normalizeText(value);
+  if (civil.includes('SOLTEIR')) return 450;
+  if (civil.includes('CASAD')) return 467.5;
+  return 482.5;
+};
+
+const linkedEssentialProducts = (person) => (person?.produtos || [])
+  .map(normalizeText)
+  .filter((description) => description.includes('ESSENCIAL DEPENDENTE'));
+
+export function buildEssentialContractData(detail) {
+  const products = Array.isArray(detail?.produtos) ? detail.produtos : [];
+  const people = Array.isArray(detail?.pessoas) ? detail.pessoas : [];
+  const holder = detail?.titular || people.find((person) => person?.is_titular);
+  const findAmount = (matcher) => products
+    .filter((product) => productMatches(product, matcher))
+    .reduce((total, product) => total + amountOf(product), 0);
+  const baseProduct = products.find((product) => ESSENTIAL_BASE_PRODUCT_IDS.includes(Number(product?.id)));
+  const dependents = people
+    .filter((person) => !person?.is_titular && linkedEssentialProducts(person).length > 0)
+    .sort((left, right) => Number(right?.source_order || 0) - Number(left?.source_order || 0))
+    .map((person) => {
+      const linked = linkedEssentialProducts(person);
+      const price = products
+        .filter((product) => linked.includes(normalizeText(product?.descricao)))
+        .reduce((total, product) => total + Number(product?.preco || 0), 0);
+      return {
+        name: person.nome,
+        sex: person.sexo,
+        relationship: relationLabel(person.parentesco),
+        birth_date: person.data_nascimento,
+        phone: person.telefone,
+        price,
+      };
+    });
+  const dependentTotal = dependents.reduce((total, dependent) => total + Number(dependent.price || 0), 0);
+  const cremationValue = findAmount((description) => description.includes('CREMAC'));
+  const flowersValue = findAmount((description) => description.includes('COROA DE FLORES'));
+  const mileageValue = findAmount((description) => description.includes('QUILOMETR'));
+  const totalValue = detail?.valor_total ?? detail?.valor_mensal;
+  const residualBaseValue = totalValue == null
+    ? null
+    : roundCurrency(Number(totalValue) - dependentTotal - cremationValue - flowersValue - mileageValue);
+  return {
+    name: holder?.nome,
+    cpf: holder?.cpf,
+    rg: holder?.rg,
+    birth_date: holder?.data_nascimento,
+    sex: holder?.sexo,
+    marital_status: holder?.estado_civil,
+    profession: holder?.profissao,
+    address: detail?.endereco?.logradouro,
+    number: detail?.endereco?.numero,
+    complement: detail?.endereco?.complemento,
+    district: detail?.endereco?.bairro,
+    city: detail?.endereco?.cidade,
+    state: detail?.endereco?.uf || detail?.endereco?.estado,
+    cep: detail?.endereco?.cep,
+    phone: holder?.telefone,
+    phone2: detail?.telefone_secundario,
+    email: detail?.email,
+    payment_plan: detail?.plano_pagamento,
+    payment_plan_id: detail?.plano_pagamento_id,
+    due_day: detail?.dia_vencimento,
+    issue_date: detail?.data_emissao,
+    observations: detail?.observacoes,
+    income: holder?.renda ?? detail?.renda ?? null,
+    adhesion: ESSENTIAL_ADHESION_VALUE,
+    base_value: Number.isFinite(residualBaseValue)
+      ? residualBaseValue
+      : (baseProduct ? amountOf(baseProduct) : null),
+    dependent_value: dependentTotal,
+    cremation_value: cremationValue,
+    flowers_value: flowersValue,
+    mileage_value: mileageValue,
+    total_value: totalValue,
+    dependents,
+  };
+}
+
+export function validateEssentialContractData(data) {
+  const required = [
+    ['name', 'nome do titular'],
+    ['cpf', 'CPF'],
+    ['birth_date', 'data de nascimento'],
+    ['sex', 'sexo'],
+    ['address', 'endereço'],
+    ['number', 'número'],
+    ['district', 'bairro'],
+    ['city', 'cidade'],
+    ['state', 'UF'],
+    ['cep', 'CEP'],
+    ['phone', 'telefone'],
+    ['email', 'e-mail'],
+    ['payment_plan', 'plano de pagamento'],
+    ['issue_date', 'data de emissão'],
+    ['base_value', 'valor do plano base'],
+    ['total_value', 'valor mensal total'],
+  ];
+  const missing = required
+    .filter(([key]) => data?.[key] == null || String(data[key]).trim() === '')
+    .map(([, label]) => label);
+  const errors = missing.length ? [`Dados obrigatórios ausentes: ${missing.join(', ')}.`] : [];
+  const cpf = String(data?.cpf || '').replace(/\D/g, '');
+  const cpfDigits = cpf.split('').map(Number);
+  const cpfDigit = (length) => {
+    const total = cpfDigits.slice(0, length)
+      .reduce((sum, digit, index) => sum + digit * (length + 1 - index), 0);
+    const rest = (total * 10) % 11;
+    return rest === 10 ? 0 : rest;
+  };
+  if (cpf.length !== 11
+    || /^(\d)\1{10}$/.test(cpf)
+    || cpfDigit(9) !== cpfDigits[9]
+    || cpfDigit(10) !== cpfDigits[10]) {
+    errors.push('O CPF do titular é inválido.');
+  }
+  const isValidDate = (value) => {
+    const match = String(value instanceof Date ? value.toISOString() : value || '')
+      .match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return false;
+    const parsed = new Date(`${match[1]}-${match[2]}-${match[3]}T12:00:00Z`);
+    return !Number.isNaN(parsed.valueOf())
+      && parsed.getUTCFullYear() === Number(match[1])
+      && parsed.getUTCMonth() + 1 === Number(match[2])
+      && parsed.getUTCDate() === Number(match[3]);
+  };
+  if (data?.birth_date && !isValidDate(data.birth_date)) errors.push('A data de nascimento do titular é inválida.');
+  if (data?.issue_date && !isValidDate(data.issue_date)) errors.push('A data de emissão é inválida.');
+  if (data?.sex && !/^[FM]$/i.test(String(data.sex).trim())) errors.push('O sexo do titular é inválido.');
+  if (data?.state && !BRAZILIAN_STATES.has(String(data.state).trim().toUpperCase())) {
+    errors.push('A UF do titular é inválida.');
+  }
+  if (data?.cep && !/^\d{8}$/.test(String(data.cep).replace(/\D/g, ''))) errors.push('O CEP do titular é inválido.');
+  if (data?.phone && !/^\d{10,11}$/.test(String(data.phone).replace(/\D/g, ''))) {
+    errors.push('O telefone do titular é inválido.');
+  }
+  if (data?.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(data.email).trim())) {
+    errors.push('O e-mail do titular é inválido.');
+  }
+  const paymentCategory = essentialPaymentCategory(data?.payment_plan, data?.payment_plan_id);
+  if (data?.payment_plan && !paymentCategory) {
+    errors.push('A forma de pagamento do Essencial não corresponde às opções homologadas.');
+  }
+  if (paymentCategory !== 'cpfl' && !/^(10|15|20|25)$/.test(String(data?.due_day || ''))) {
+    errors.push('O vencimento do Essencial deve ser nos dias 10, 15, 20 ou 25.');
+  }
+  if ((data?.dependents || []).length > 20) {
+    errors.push('O contrato Essencial suporta no máximo 20 dependentes.');
+  }
+  if (String(data?.observations || '').trim().length > 240) {
+    errors.push('As observações do Essencial excedem o espaço disponível no contrato.');
+  }
+  for (const [index, dependent] of (data?.dependents || []).entries()) {
+    const absent = [
+      ['name', 'nome'],
+      ['sex', 'sexo'],
+      ['relationship', 'grau de parentesco'],
+      ['birth_date', 'data de nascimento'],
+      ['phone', 'celular'],
+      ['price', 'valor'],
+    ].filter(([key]) => dependent?.[key] == null || String(dependent[key]).trim() === '')
+      .map(([, label]) => label);
+    if (absent.length) errors.push(`Dependente ${index + 1}: campos ausentes: ${absent.join(', ')}.`);
+    if (dependent?.sex && !/^[FM]$/i.test(String(dependent.sex).trim())) {
+      errors.push(`Dependente ${index + 1}: sexo inválido.`);
+    }
+    if (dependent?.birth_date && !isValidDate(dependent.birth_date)) {
+      errors.push(`Dependente ${index + 1}: data de nascimento inválida.`);
+    }
+    if (dependent?.phone && !/^\d{10,11}$/.test(String(dependent.phone).replace(/\D/g, ''))) {
+      errors.push(`Dependente ${index + 1}: celular inválido.`);
+    }
+  }
+  const monetaryFields = [
+    ['adhesion', 'adesão'],
+    ['base_value', 'plano base'],
+    ['dependent_value', 'dependentes'],
+    ['cremation_value', 'cremação'],
+    ['flowers_value', 'coroa de flores'],
+    ['mileage_value', 'quilometragem'],
+    ['total_value', 'mensalidade total'],
+  ];
+  for (const [key, label] of monetaryFields) {
+    const value = Number(data?.[key]);
+    if (!Number.isFinite(value) || value < 0) errors.push(`O valor de ${label} é inválido.`);
+  }
+  for (const [index, dependent] of (data?.dependents || []).entries()) {
+    if (!Number.isFinite(Number(dependent?.price)) || Number(dependent.price) < 0) {
+      errors.push(`Dependente ${index + 1}: valor inválido.`);
+    }
+  }
+  const composedTotal = [
+    data?.base_value,
+    data?.dependent_value,
+    data?.cremation_value,
+    data?.flowers_value,
+    data?.mileage_value,
+  ].reduce((total, value) => total + Number(value || 0), 0);
+  if (Number.isFinite(Number(data?.total_value))
+    && Number.isFinite(composedTotal)
+    && Math.abs(composedTotal - Number(data.total_value)) > 0.05) {
+    errors.push('Os valores dos produtos do Essencial não correspondem ao total mensal do pedido.');
+  }
+  return errors;
+}
+
+const dateParts = (value) => {
+  if (!value) return null;
+  const match = String(value instanceof Date ? value.toISOString() : value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const month = new Intl.DateTimeFormat('pt-BR', {
+    month: 'long',
+    timeZone: 'America/Sao_Paulo',
+  }).format(new Date(`${match[1]}-${match[2]}-${match[3]}T12:00:00-03:00`));
+  return {
+    year: match[1],
+    month_number: match[2],
+    month: month.charAt(0).toUpperCase() + month.slice(1),
+    day: match[3],
+  };
+};
+
+const money = (value) => {
+  const amount = Number(value || 0);
+  if (amount === 0) return '0.00';
+  return amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const formatCpf = (value) => {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 11);
+  return digits.length === 11
+    ? digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+    : String(value || '');
+};
+
+const formatCnpj = (value) => {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 14);
+  return digits.length === 14
+    ? digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
+    : String(value || '');
+};
+
+const formatPhone = (value) => {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 11);
+  if (digits.length === 11) return digits.replace(/(\d{2})(\d{5})(\d{4})/, '$1 $2-$3');
+  if (digits.length === 10) return digits.replace(/(\d{2})(\d{4})(\d{4})/, '$1 $2-$3');
+  return String(value || '');
+};
+
+export async function renderBomCorpPdf(data) {
+  const backgrounds = await prepareContractBackgrounds(
+    bomCorpPages,
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    false,
+  );
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: false });
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+    const mm = (value) => value * 72 / 25.4;
+    const write = (value, x, y, { size = 10, width = null, minSize = 6 } = {}) => {
+      const content = String(value ?? '').trim();
+      if (!content) return;
+      doc.font('Times-Roman').fontSize(size);
+      let fontSize = size;
+      while (width && doc.widthOfString(content) > mm(width) && fontSize > minSize) {
+        fontSize -= 0.5;
+        doc.fontSize(fontSize);
+      }
+      doc.text(content, mm(x + 1), mm(y + 1), {
+        width: width ? mm(width) : undefined,
+        lineBreak: false,
+      });
+    };
+    const addPage = (page) => {
+      doc.addPage();
+      doc.image(backgrounds.get(page), 0, 0, { width: 595.28, height: 841.89 });
+      doc.fillColor('#111');
+    };
+    const issue = dateParts(data.issue_date) || dateParts(new Date());
+    const plan = normalizeText(data.plan);
+    const planX = plan.includes('ESSENTIAL') ? 29
+      : plan.includes('PLUS') ? 65
+        : plan.includes('PRIME') ? 101
+          : plan.includes('TOTAL') ? 137
+            : plan.includes('FLEX') ? 172
+              : null;
+    const employees = data.employees || [];
+    const employeePages = Math.max(1, Math.ceil(employees.length / 22));
+    const writeEnrollmentPage = (pageIndex) => {
+      addPage(3);
+      if (planX != null) write('X', planX, 44, { size: 15 });
+      write(data.company_name, 25, 56, { size: 11, width: 118 });
+      write(formatCnpj(data.cnpj), 25, 64, { size: 11, width: 88 });
+      write(data.state_registration, 115, 64, { size: 11, width: 85 });
+      write([data.address, data.complement].filter(Boolean).join(' - '), 25, 71.5, {
+        size: 11,
+        width: 157,
+      });
+      write(data.number, 186, 71.5, { size: 11, width: 18 });
+      write(data.district, 25, 78.5, { size: 11, width: 78 });
+      write(data.city, 108, 78.5, { size: 11, width: 93 });
+      write(data.state, 25, 85.5, { size: 11, width: 8 });
+      const cep = String(data.cep || '').replace(/\D/g, '').slice(0, 8);
+      [36, 41, 46, 50, 55, 63, 67, 72]
+        .forEach((x, index) => write(cep[index], x, 85.5, { size: 10 }));
+      write(String(data.phone || '').replace(/\D/g, ''), 78, 85.5, { size: 11, width: 52 });
+      write(String(data.phone2 || '').replace(/\D/g, ''), 133, 85.5, { size: 11, width: 67 });
+      write(data.email, 25, 92.5, { size: 10, width: 100 });
+      employees.slice(pageIndex * 22, pageIndex * 22 + 22).forEach((employee, index) => {
+        const y = 100 + index * (index >= 2 ? 5.5 : 6);
+        write(employee.name, 25, y, { size: 9, width: 78 });
+        write(formatCpf(employee.cpf), 105, y, { size: 9, width: 37 });
+        const birth = dateParts(employee.birth_date);
+        if (birth) {
+          const birthY = y + 0.6;
+          write(birth.day, 144, birthY, { size: 9, width: 7 });
+          write(birth.month_number, 154, birthY, { size: 9, width: 7 });
+          write(birth.year, 161, birthY, { size: 9, width: 11 });
+        }
+        write(formatPhone(employee.phone), 175, y, { size: 9, width: 28 });
+      });
+      write(data.observations, 35, 222, { size: 9, width: 165 });
+      if (issue) {
+        write(issue.day, 36, 242, { size: 11 });
+        write(issue.month, 50, 242, { size: 11, width: 22 });
+        write(issue.year, 74, 242, { size: 11 });
+      }
+      write(employees.length, 115, 242, { size: 11 });
+      write(money(data.contract_value), 165, 242, { size: 11 });
+    };
+    try {
+      addPage(1);
+      addPage(2);
+      for (let pageIndex = 0; pageIndex < employeePages; pageIndex += 1) {
+        writeEnrollmentPage(pageIndex);
+      }
+      for (let page = 4; page <= 11; page += 1) {
+        addPage(page);
+        if (page === 11 && issue) {
+          write(issue.day, 115, 230, { size: 12 });
+          write(issue.month, 131, 230, { size: 12, width: 40 });
+          write(issue.year.slice(-2), 173, 230.8, { size: 12 });
+        }
+      }
+      doc.end();
+    } catch (error) {
+      doc.end();
+      reject(error);
+    }
+  });
+}
+
+export function renderEssentialPdf(data) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: false });
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+    const write = (value, x, y, {
+      size = 11,
+      width = null,
+      align = 'left',
+      minSize = 6,
+    } = {}) => {
+      const content = String(value ?? '').trim();
+      if (!content) return;
+      doc.font('Times-Roman');
+      let fontSize = size;
+      doc.fontSize(fontSize);
+      while (width && doc.widthOfString(content) > width && fontSize > minSize) {
+        fontSize -= 0.5;
+        doc.fontSize(fontSize);
+      }
+      doc.text(content, x, y, {
+        width: width || undefined,
+        align,
+        lineBreak: false,
+      });
+    };
+    const writeMultiline = (value, x, y, {
+      size = 9,
+      width,
+      height,
+      minSize = 5,
+    }) => {
+      const content = String(value ?? '').trim();
+      if (!content) return;
+      doc.font('Times-Roman');
+      let fontSize = size;
+      doc.fontSize(fontSize);
+      while (doc.heightOfString(content, { width, lineGap: 0 }) > height && fontSize > minSize) {
+        fontSize -= 0.5;
+        doc.fontSize(fontSize);
+      }
+      if (doc.heightOfString(content, { width, lineGap: 0 }) > height) {
+        throw new Error('As observações excedem o espaço disponível no contrato Essencial.');
+      }
+      doc.text(content, x, y, { width, height, lineGap: 0 });
+    };
+    const issue = dateParts(data.issue_date);
+    const addBackgroundPage = (page) => {
+      doc.addPage();
+      const background = path.join(essentialPages, `page-${page}.jpg`);
+      if (!fs.existsSync(background)) {
+        throw new Error(`Página ${page} do modelo Essencial não encontrada.`);
+      }
+      doc.image(background, 0, 0, { width: 595.28, height: 841.89 });
+      doc.fillColor('#111');
+    };
+    const writePageFive = (dependentOffset = 0) => {
+        write(money(data.adhesion), 82.21, 119.1);
+        write(money(data.base_value), 153.07, 119.1);
+        write(money(data.dependent_value), 229.61, 119.1);
+        write(money(data.cremation_value), 300.47, 119.1);
+        write(money(data.flowers_value), 374.17, 119.1);
+        write(money(data.mileage_value), 447.87, 119.1);
+        write(money(data.total_value), 525.83, 119.1);
+        const dueCheckX = essentialUpperDueCheckX(data.due_day);
+        if (dueCheckX != null) write('X', dueCheckX, 147.44);
+        write(data.name, 73.7, 172.96, { width: 330 });
+        const holderSexX = normalizeText(data.sex).startsWith('F') ? 433.7 : 416.7;
+        write('X', holderSexX, 172.96);
+        write('X', essentialCivilCheckX(data.marital_status), 172.96);
+        if (issue) {
+          const birth = dateParts(data.birth_date);
+          if (birth) {
+            write(birth.day, 510.24, 172.96);
+            write(birth.month_number, 532.24, 172.96);
+            write(birth.year, 554.24, 172.96);
+          }
+        }
+        write(formatCpf(data.cpf), 73.7, 192.8);
+        write(data.rg, 328.82, 192.8);
+        write([data.address, data.complement].filter(Boolean).join(' - '), 73.7, 212.64, { width: 450 });
+        write(data.number, 532.91, 212.64, { width: 42 });
+        write(data.district, 73.7, 229.65, { width: 210 });
+        write(data.city, 308.98, 229.65, { width: 225 });
+        write(data.state, 73.7, 251.48);
+        const cep = String(data.cep || '').replace(/\D/g, '').slice(0, 8);
+        [102.05, 116.22, 130.39, 141.73, 155.91, 178.58, 189.92, 204.09]
+          .forEach((x, index) => write(cep[index], x, 251.48));
+        write(String(data.phone || '').replace(/\D/g, ''), 229.61, 251.48, { width: 135 });
+        write(String(data.phone2 || '').replace(/\D/g, ''), 382.68, 251.48, { width: 135 });
+        write(data.profession || 'Outros', 73.7, 269.9, { width: 150 });
+        write(data.income, 198.43, 269.9, { width: 95 });
+        write(data.email, 306.14, 269.9, { width: 265 });
+        (data.dependents || []).slice(dependentOffset, dependentOffset + 10).forEach((dependent, index) => {
+          const y = 327.49 + index * 18.43;
+          write(dependent.name, 90.71, y, { size: 9, width: 215 });
+          write('X', normalizeText(dependent.sex).startsWith('F') ? 314.65 : 331.65, y - 0.76, { size: 11 });
+          write(dependent.relationship, 351.5, y, { size: 9, width: 61 });
+          const birth = dateParts(dependent.birth_date);
+          if (birth) {
+            write(birth.day, 416.69, y, { size: 9 });
+            write(birth.month_number, 434.69, y, { size: 9 });
+            write(birth.year, 452.69, y, { size: 9 });
+          }
+          write(formatPhone(dependent.phone), 479.06, y, { size: 9, width: 68 });
+          write(money(dependent.price), 548, y, { size: 9, width: 24, align: 'right' });
+        });
+        write(money(data.dependent_value), 545.01, 521.62, { width: 25, align: 'right' });
+        writeMultiline(data.observations, 96.38, 532.91, {
+          width: 480,
+          height: 21.25,
+        });
+        const paymentCategory = essentialPaymentCategory(data.payment_plan, data.payment_plan_id);
+        const paymentCheckX = {
+          cpfl: 320,
+          bank: 423.78,
+          credit_card: 478,
+        }[paymentCategory];
+        write('X', paymentCheckX, 557.81, { size: 9 });
+        if (issue) {
+          write(issue.day, 104.88, 572.64);
+          write(issue.month, 144.57, 572.64);
+          write(issue.year, 212.6, 572.64);
+        }
+        const lowerDueX = essentialLowerDueCheckX(data.due_day);
+        if (paymentCategory !== 'cpfl' && lowerDueX != null) write('X', lowerDueX, 599.57);
+    };
+    try {
+      for (let page = 1; page <= 14; page += 1) {
+        addBackgroundPage(page);
+        if (page === 5) {
+          writePageFive(0);
+          if ((data.dependents || []).length > 10) {
+            addBackgroundPage(5);
+            writePageFive(10);
+          }
+        }
+        if (page === 14 && issue) {
+          write(issue.day, 371.34, 637.45, { size: 12 });
+          write(issue.month, 422.36, 637.45, { size: 12 });
+          write(issue.year.slice(-2), 547.09, 637.45, { size: 12 });
+        }
+      }
+      doc.end();
+    } catch (error) {
+      doc.end();
+      reject(error);
+    }
+  });
+}
+
+const petAge = (birthDate, referenceDate) => {
+  const birth = dateParts(birthDate);
+  const reference = dateParts(referenceDate);
+  if (!birth || !reference) return '';
+  let years = Number(reference.year) - Number(birth.year);
+  let months = Number(reference.month_number) - Number(birth.month_number);
+  if (Number(reference.day) < Number(birth.day)) months -= 1;
+  if (months < 0) {
+    years -= 1;
+    months += 12;
+  }
+  return `${Math.max(0, years)} anos ${String(Math.max(0, months)).padStart(2, '0')} meses`;
+};
+
+export async function renderBomPetPdf(data, { optimizeForWhatsapp = false } = {}) {
+  const backgrounds = await prepareContractBackgrounds(
+    bomPetPages,
+    [1, 2, 3, 4, 5, 6, 7],
+    optimizeForWhatsapp,
+  );
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: false });
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+    const mm = (value) => value * 72 / 25.4;
+    const write = (value, x, y, { size = 11, width = null, minSize = 6 } = {}) => {
+      const content = String(value ?? '').trim();
+      if (!content) return;
+      doc.font('Times-Roman').fontSize(size);
+      let fontSize = size;
+      while (width && doc.widthOfString(content) > mm(width) && fontSize > minSize) {
+        fontSize -= 0.5;
+        doc.fontSize(fontSize);
+      }
+      doc.text(content, mm(x + 1), mm(y + 1), {
+        width: width ? mm(width) : undefined,
+        lineBreak: false,
+      });
+    };
+    const addBackgroundPage = (page) => {
+      doc.addPage();
+      const background = backgrounds.get(page);
+      doc.image(background, 0, 0, { width: 595.28, height: 841.89 });
+      doc.fillColor('#111');
+    };
+    try {
+      const generated = dateParts(data.generated_at);
+      const birth = dateParts(data.birth_date);
+      for (let page = 1; page <= 7; page += 1) {
+        addBackgroundPage(page);
+        if (page === 3) {
+          write(data.name, 25, 69, { width: 118 });
+          write('X', normalizeText(data.sex).startsWith('F') ? 151 : 146, 69);
+          const civil = normalizeText(data.marital_status);
+          write('X', civil.includes('SOLTEIR') ? 159 : (civil.includes('CASAD') ? 164 : 169), 69);
+          if (birth) write(`${birth.day}    ${birth.month_number}    ${birth.year}`, 179, 69);
+          write(formatCpf(data.cpf), 25, 77, { width: 88 });
+          write(data.rg, 115, 77, { width: 85 });
+          write([data.address, data.complement].filter(Boolean).join(' - '), 25, 85, { width: 157 });
+          write(data.number, 185, 85, { width: 18 });
+          write(data.district, 25, 93, { width: 78 });
+          write(data.city, 108, 93, { width: 93 });
+          write(data.state, 25, 100);
+          write(data.cep, 36, 100, { width: 38 });
+          write(String(data.phone || '').replace(/\D/g, ''), 78, 100, { width: 52 });
+          write(String(data.phone2 || '').replace(/\D/g, ''), 133, 100, { width: 67 });
+          write(data.profession || 'Outros', 25, 108, { width: 75 });
+          write(data.email, 107, 108, { width: 95 });
+          (data.pets || []).slice(0, 3).forEach((pet, index) => {
+            const baseY = BOM_PET_PET_LAYOUT.firstRowY + index * BOM_PET_PET_LAYOUT.rowGap;
+            const y = baseY + BOM_PET_PET_LAYOUT.rowOffsetY[index];
+            write(pet.name, 25, y, { size: BOM_PET_PET_LAYOUT.nameSize, width: 118 });
+            write('X', normalizeText(pet.sex).startsWith('F') ? 159.5 : 154.5, y, { size: 9 });
+            const detailsY = baseY
+              + BOM_PET_PET_LAYOUT.detailsOffsetY
+              + BOM_PET_PET_LAYOUT.detailsRowOffsetY[index];
+            write(pet.breed, 25, detailsY, { size: BOM_PET_PET_LAYOUT.detailsSize, width: 65 });
+            write(pet.color, 95, detailsY, { size: BOM_PET_PET_LAYOUT.detailsSize, width: 48 });
+            write(petAge(pet.birth_date, data.generated_at), 148, detailsY, {
+              size: BOM_PET_PET_LAYOUT.detailsSize,
+              width: 38,
+            });
+            const size = normalizeText(pet.size);
+            const sizeX = size.startsWith('P') ? 180 : (size.startsWith('M') ? 186 : (size.startsWith('G') ? 192 : null));
+            if (sizeX) write('X', sizeX, y + 8.5, { size: 9 });
+          });
+          write(money(data.monthly_value), 175, 210, { width: 25 });
+          if (generated) {
+            write(generated.day, 35, 213);
+            write(generated.month, 50, 213, { width: 20 });
+            write(generated.year, 75, 213);
+          }
+          write('X', bomPetPaymentCategory(data.payment_plan) === 'collector' ? 190.5 : 169.5, 216);
+        }
+        if (page === 7 && generated) {
+          write(generated.day, 115, 221, { size: 12 });
+          write(generated.month, 131, 221, { size: 12, width: 40 });
+          write(generated.year.slice(-2), 173, 221, { size: 12 });
+        }
+      }
+      doc.end();
+    } catch (error) {
+      doc.end();
+      reject(error);
+    }
+  });
+}
+
+export async function renderBomPetHealthPdf(
+  data,
+  variant = 'individual',
+  { optimizeForWhatsapp = false } = {},
+) {
+  const pagesDir = variant === 'three' ? bomPetHealthThreePages : bomPetHealthIndividualPages;
+  const backgrounds = await prepareContractBackgrounds(
+    pagesDir,
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    optimizeForWhatsapp,
+  );
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: false });
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+    const mm = (value) => value * 72 / 25.4;
+    const write = (value, x, y, options = {}) => {
+      const content = String(value ?? '').trim();
+      if (!content) return;
+      let size = options.size || 11;
+      doc.font('Times-Roman').fontSize(size);
+      while (options.width && doc.widthOfString(content) > mm(options.width) && size > (options.minSize || 6)) {
+        size -= 0.5; doc.fontSize(size);
+      }
+      doc.text(content, mm(x + 1), mm(y + 1), { width: options.width ? mm(options.width) : undefined, lineBreak: false });
+    };
+    const addPage = (page) => {
+      doc.addPage();
+      const background = backgrounds.get(page);
+      doc.image(background, 0, 0, { width: 595.28, height: 841.89 });
+      doc.fillColor('#111');
+    };
+    const writeCommon = () => {
+      const birth = dateParts(data.birth_date);
+      write(data.name, 25, variant === 'three' ? 75 : 79.5, { width: 118 });
+      const y = variant === 'three' ? 75 : 79.5;
+      write('X', normalizeText(data.sex).startsWith('F') ? 151 : 146, y);
+      const civil = normalizeText(data.marital_status);
+      write('X', civil.includes('SOLTEIR') ? 159 : civil.includes('CASAD') ? 164 : 169, y);
+      if (birth) write(`${birth.day}    ${birth.month_number}    ${birth.year}`, 179, y);
+      write(formatCpf(data.cpf), 25, y + 8, { width: 88 }); write(data.rg, 115, y + 8, { width: 85 });
+      write([data.address, data.complement].filter(Boolean).join(' - '), 25, y + 16, { width: 157 });
+      write(data.number, 185, y + 16, { width: 18 });
+      write(data.district, 25, y + 24, { width: 78 }); write(data.city, 108, y + 24, { width: 93 });
+      write(data.state, 25, y + 31);
+      if (variant === 'three') {
+        const cep = String(data.cep || '').replace(/\D/g, '').slice(0, 8);
+        [36, 41, 46, 51, 56, 63, 68, 73]
+          .forEach((x, index) => write(cep[index], x, y + 31.5, { size: 10 }));
+      } else {
+        write(data.cep, 36, y + 31, { width: 38 });
+      }
+      write(String(data.phone || '').replace(/\D/g, ''), 78, y + 31, { width: 52 });
+      write(String(data.phone2 || '').replace(/\D/g, ''), 133, y + 31, { width: 67 });
+      write(data.profession || 'Outros', 25, y + 39, { width: 75 }); write(data.email, 107, y + 39, { width: 95 });
+    };
+    const writePets = (pets, pageIndex) => {
+      const start = pageIndex === 0 ? 0 : 3 + (pageIndex - 1) * 2;
+      const pagePets = pets.slice(start, pageIndex === 0 ? 3 : start + 2);
+      // PDFKit posiciona o topo da fonte, enquanto o PHP legado posicionava
+      // a linha-base. O deslocamento evita sobrepor os rótulos impressos.
+      const animalTextOffsetY = pageIndex === 0
+        ? (variant === 'three' ? 0 : 2)
+        : -2;
+      let y = (pageIndex === 0 ? (variant === 'three' ? 133 : 149.5) : 163)
+        + animalTextOffsetY;
+      pagePets.forEach((pet, index) => {
+        write(pet.name, 25, y, { size: 9, width: 118 });
+        write('X', normalizeText(pet.sex).startsWith('F') ? 158 : 153, y, { size: 9 });
+        const detailY = y + 8;
+        write(pet.breed, 25, detailY, { size: 9, width: 65 });
+        write(pet.color, 95, detailY, { size: 9, width: 48 });
+        write(petAge(pet.birth_date, data.generated_at), 148, detailY, { size: 9, width: 38 });
+        y += pageIndex === 0
+          ? (index === 0 ? 28 : 18)
+          : 18;
+      });
+    };
+    try {
+      const petPages = variant === 'three' ? Math.max(1, 1 + Math.ceil(Math.max(0, data.pets.length - 3) / 2)) : 1;
+      for (let page = 1; page <= 3; page += 1) addPage(page);
+      for (let group = 0; group < petPages; group += 1) {
+        addPage(4); writeCommon();
+        if (variant === 'three') {
+          write('60.00', 30, 47); write('X', 83, 44); write(money(data.monthly_value), 89, 47);
+        }
+        writePets(data.pets, group);
+        write(money(data.monthly_value), 160, variant === 'three' ? 216 : 187);
+        const generated = dateParts(data.generated_at);
+        if (generated) {
+          const dateY = variant === 'three' ? 219 : 190;
+          write(generated.day, 35, dateY); write(generated.month, 50, dateY, { width: 20 }); write(generated.year, 75, dateY);
+        }
+        const payment = bomPetPaymentCategory(data.payment_plan, data.payment_plan_id);
+        const paymentY = variant === 'three' ? 222 : 193;
+        const paymentX = payment === 'credit_card' ? 148 : payment === 'bank' ? 178 : null;
+        if (paymentX != null) write('X', paymentX, paymentY);
+      }
+      for (let page = 5; page <= 10; page += 1) {
+        addPage(page);
+        if (page === 10) {
+          const generated = dateParts(data.generated_at);
+          if (generated) {
+            write(generated.day, 115, 181); write(generated.month, 135, 181, { width: 30 }); write(generated.year.slice(-2), 175, 181);
+          }
+        }
+      }
+      doc.end();
+    } catch (error) { doc.end(); reject(error); }
+  });
+}

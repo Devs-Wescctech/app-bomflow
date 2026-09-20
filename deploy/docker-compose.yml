@@ -14,10 +14,12 @@ services:
       - ORCAMENTO_DOCS_DIR=/var/dados/bomflow/orcamento-documentos
       - TRAINING_STORAGE_DRIVER=local
       - TRAINING_STORAGE_DIR=/var/dados/bomflow/treinamentos
+      - CONTRACT_STORAGE_DIR=/var/dados/bomflow/contratos-temporarios
     volumes:
       - ./uploads:/app/uploads
       - /var/dados/bomflow/orcamento-documentos:/var/dados/bomflow/orcamento-documentos
       - bomflow-training-data:/var/dados/bomflow/treinamentos
+      - bomflow-contract-data:/var/dados/bomflow/contratos-temporarios
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -30,3 +32,5 @@ services:
 volumes:
   bomflow-training-data:
     name: bomflow-training-data
+  bomflow-contract-data:
+    name: bomflow-contract-data

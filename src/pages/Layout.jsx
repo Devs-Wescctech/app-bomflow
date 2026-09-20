@@ -80,6 +80,7 @@ import {
   Users,
   Shield,
   FileCheck,
+  FileSignature,
   Plug,
   Trophy,
   List,
@@ -163,6 +164,8 @@ const menuModules = [
       { title: "Dashboard NPS", url: createPageUrl("NPSDashboard"), icon: TrendingUp },
       { title: "Meus Tickets", url: createPageUrl("MyTickets"), icon: CheckSquare },
       { title: "Base de Conhecimento", url: createPageUrl("KnowledgeBase"), icon: BookOpen },
+      { title: "Impressão de Contratos - Recepção", url: createPageUrl("SalesContractPrinting"), icon: FileCheck, contractExclusive: true },
+      { title: "Assinatura de Contrato", url: createPageUrl("SalesContractSigning"), icon: FileSignature, contractExclusive: true },
     ]
   },
   {
@@ -875,6 +878,11 @@ function LayoutContent({ children, currentPageName }) {
       a.user_email === user?.email
     ) ||
     null;
+  const isContractExclusiveUser = user?.email?.trim().toLowerCase() === 'admin@wescctech.com';
+  const isRestrictedContractPage = [
+    createPageUrl("SalesContractPrinting"),
+    createPageUrl("SalesContractSigning"),
+  ].includes(location.pathname);
 
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
@@ -891,6 +899,12 @@ function LayoutContent({ children, currentPageName }) {
       setIsRedirecting(false);
     }
   }, [isRedirecting, isPublicPage, user]);
+
+  useEffect(() => {
+    if (user && isRestrictedContractPage && !isContractExclusiveUser) {
+      navigate(createPageUrl("Dashboard"), { replace: true });
+    }
+  }, [user, isRestrictedContractPage, isContractExclusiveUser, navigate]);
 
   const toggleModule = (moduleId) => {
     setExpandedModules(prev =>
@@ -927,10 +941,16 @@ function LayoutContent({ children, currentPageName }) {
     }
   }, [location.pathname, isPublicPage, lastSalesModule]);
 
+  const menuModulesForUser = isContractExclusiveUser
+    ? menuModules
+    : menuModules.map((module) => module.items ? ({
+        ...module,
+        items: module.items.filter((item) => !item.contractExclusive),
+      }) : module);
   const filteredMenuModules = isAdminUser(user, currentAgent)
-    ? filterMenuItems({ ...(currentAgent || {}), agent_type: 'admin' }, menuModules, user)
+    ? filterMenuItems({ ...(currentAgent || {}), agent_type: 'admin' }, menuModulesForUser, user)
     : currentAgent
-      ? filterMenuItems(currentAgent, menuModules, user)
+      ? filterMenuItems(currentAgent, menuModulesForUser, user)
       : [];
 
   if (isPublicPage) {
@@ -968,6 +988,10 @@ function LayoutContent({ children, currentPageName }) {
   }
 
   if (userError || !user) {
+    return null;
+  }
+
+  if (isRestrictedContractPage && !isContractExclusiveUser) {
     return null;
   }
 
