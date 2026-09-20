@@ -10,6 +10,32 @@ import {
 import { Loader2, FileText, Search, AlertCircle, Send, CheckCircle2, Info } from "lucide-react";
 
 const token = () => localStorage.getItem("accessToken") || localStorage.getItem("auth_token");
+
+const PRODUCT_TAG_STYLES = Object.freeze({
+  bom_auto: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-300",
+  bom_corp: "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300",
+  bom_ideal: "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300",
+  bom_med: "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-800 dark:bg-cyan-950/50 dark:text-cyan-300",
+  bom_familia: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300",
+  bom_familia_portabilidade: "border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950/50 dark:text-teal-300",
+  essencial: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300",
+  perola: "border-pink-200 bg-pink-50 text-pink-700 dark:border-pink-800 dark:bg-pink-950/50 dark:text-pink-300",
+  rubi: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300",
+  safira: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-300",
+  topazio: "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950/50 dark:text-orange-300",
+  total_mais_bom_farma: "border-lime-200 bg-lime-50 text-lime-800 dark:border-lime-800 dark:bg-lime-950/50 dark:text-lime-300",
+  bom_pet: "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-300",
+  bom_pet_saude_individual: "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-800 dark:bg-purple-950/50 dark:text-purple-300",
+  bom_pet_saude_3pets: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 dark:border-fuchsia-800 dark:bg-fuchsia-950/50 dark:text-fuchsia-300",
+  combo_multi_bem_estar: "border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950/50 dark:text-green-300",
+  novo_combo_multi_bem_estar: "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-300",
+  combo_multi_selecao: "border-yellow-200 bg-yellow-50 text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950/50 dark:text-yellow-300",
+  convalescenca: "border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-300",
+});
+
+const productTagStyle = (productKey) =>
+  PRODUCT_TAG_STYLES[productKey]
+  || "border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-300";
 const documentMask = (value) => {
   const digits = value.replace(/\D/g, "").slice(0, 14);
   if (digits.length <= 11) {
@@ -313,44 +339,64 @@ export default function SalesContractPrinting() {
     }
   };
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6 p-6">
       <div><h1 className="text-2xl font-semibold">Impressão de Contratos - Recepção</h1>
-        <p className="text-muted-foreground">Consulte contratos Bom Auto, Bom Corp, Bom Med, Essencial, Plano Pérola, Bom Pet, Combo, Novo Combo Multi Bem Estar e Convalescença pelo documento ou pela referência.</p></div>
-      <Card><CardHeader><CardTitle className="flex items-center gap-2"><Search className="w-5 h-5" />Buscar titular</CardTitle></CardHeader>
-        <CardContent><form onSubmit={search} className="space-y-4 max-w-xl">
-          <div className="space-y-2">
-            <label htmlFor="contract-document" className="block text-sm font-semibold">Documento</label>
-            <Input id="contract-document" className="eloom-field" value={document} onChange={(e) => setDocument(documentMask(e.target.value))} placeholder="Digite o CPF ou CNPJ" inputMode="numeric" />
-            <p className="text-xs text-muted-foreground">Informe o CPF do titular ou o CNPJ da empresa.</p>
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="contract-reference" className="block text-sm font-semibold">Pedido/orçamento/contrato/contato</label>
-            <Input id="contract-reference" className="eloom-field" value={reference} onChange={(e) => setReference(e.target.value.replace(/\D/g, "").slice(0, 18))} placeholder="Número do pedido, orçamento, contrato ou contato" inputMode="numeric" />
-          </div>
-          <button type="submit" className="action-pill-primary" disabled={state.loading}>{state.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Pesquisar"}</button>
-        </form></CardContent>
+        <p className="text-muted-foreground">Encontre o contrato usando o CPF, CNPJ ou número de referência. Depois, você pode imprimir ou enviar pelo WhatsApp.</p></div>
+      <Card><CardHeader><CardTitle className="flex items-center gap-2"><Search className="w-5 h-5" />Pesquisar contrato</CardTitle></CardHeader>
+        <CardContent>
+          <form onSubmit={search} className="grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
+            <div className="space-y-2">
+              <label htmlFor="contract-document" className="block text-sm font-semibold">Documento</label>
+              <Input id="contract-document" className="eloom-field" value={document} onChange={(e) => setDocument(documentMask(e.target.value))} placeholder="Digite o CPF ou CNPJ" inputMode="numeric" />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="contract-reference" className="block text-sm font-semibold">Pedido/contrato</label>
+              <Input id="contract-reference" className="eloom-field" value={reference} onChange={(e) => setReference(e.target.value.replace(/\D/g, "").slice(0, 18))} placeholder="Número do pedido ou contrato" inputMode="numeric" />
+            </div>
+            <button type="submit" className="action-pill-primary" disabled={state.loading}>
+              {state.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              {state.loading ? "Pesquisando..." : "Pesquisar"}
+            </button>
+          </form>
+          <p className="mt-3 text-xs text-muted-foreground">Informe o CPF/CNPJ ou o número do pedido/contrato.</p>
+        </CardContent>
       </Card>
       {state.error && <div className="p-4 rounded-md bg-destructive/10 text-destructive flex gap-2"><AlertCircle className="w-5 h-5 shrink-0" /><div>{Array.isArray(state.error) ? <ul className="list-disc pl-5 space-y-1">{state.error.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : state.error}</div></div>}
       {!state.loading && !state.error && state.results.length === 0
         && (documentDigits(document).length >= 11 || reference.length > 0)
         && <p className="text-muted-foreground">Nenhum pedido ou contrato disponível para impressão foi encontrado.</p>}
-      {state.results.length > 0 && <Card><CardHeader><CardTitle>{state.total} resultado(s)</CardTitle></CardHeader><CardContent className="space-y-3">
-        {state.results.map((row) => <div key={row.generationId} className="border rounded-lg p-4 flex items-center justify-between gap-4">
-           <div className="space-y-1.5">
-             <div className="flex items-center gap-2">
-               <div className="font-medium">{row.label}</div>
-               <span className="inline-flex rounded-md border-[1.5px] border-primary px-2 py-0.5 text-[11px] font-semibold text-primary">
-                  {row.product}
-               </span>
-             </div>
-             <div className="text-sm text-muted-foreground">{row.name || "Titular não informado"} · {row.date ? new Date(row.date).toLocaleDateString("pt-BR") : "Data não informada"}</div>
-           </div>
-           <div className="flex flex-wrap items-center justify-end gap-2">
+      {state.results.length > 0 && <Card><CardHeader><CardTitle>{state.total} resultado(s)</CardTitle></CardHeader><CardContent className="space-y-4">
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full min-w-[1080px] text-left text-sm">
+            <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="w-[26%] px-4 py-3 font-semibold">Pedido</th>
+                <th className="w-[24%] px-4 py-3 font-semibold">Cliente</th>
+                <th className="w-[16%] px-4 py-3 font-semibold">Data do contrato</th>
+                <th className="w-[34%] whitespace-nowrap px-4 py-3 text-right font-semibold">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {state.results.map((row) => <tr key={row.generationId} className="transition-colors hover:bg-muted/30">
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-foreground">{row.label}</span>
+                    <span className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-semibold ${productTagStyle(row.productKey)}`}>
+                      {row.product}
+                    </span>
+                  </div>
+                </td>
+                <td className="px-4 py-3 font-medium text-foreground">{row.name || "Titular não informado"}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                  {row.date ? new Date(row.date).toLocaleDateString("pt-BR") : "Data não informada"}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3">
+                  <div className="flex flex-nowrap items-center justify-end gap-2">
                 <button
                   type="button"
                   className={row.pdfAvailable === false
-                    ? "action-pill-ghost h-10 cursor-not-allowed border-border bg-muted px-4 text-muted-foreground opacity-100 shadow-none"
-                    : "action-pill-primary h-10 px-4"}
+                    ? "action-pill-ghost h-10 shrink-0 cursor-not-allowed border-border bg-muted px-4 text-muted-foreground opacity-100 shadow-none"
+                    : "action-pill-primary action-pill-blue h-10 shrink-0 px-4"}
                   disabled={row.pdfAvailable === false || generatingId === row.generationId}
                   onClick={() => generate(row)}
                 >
@@ -363,7 +409,7 @@ export default function SalesContractPrinting() {
                  {hasWhatsAppTemplate(row) ? (
                   <button
                     type="button"
-                     className="action-pill-primary h-10 px-4"
+                     className="action-pill-primary h-10 shrink-0 px-4"
                      disabled={whatsapp.checkingGenerationId === row.generationId}
                      aria-label="Enviar contrato pelo WhatsApp"
                     onClick={() => openWhatsapp(row)}
@@ -378,13 +424,13 @@ export default function SalesContractPrinting() {
                      <Tooltip>
                        <TooltipTrigger asChild>
                          <span
-                           className="inline-flex rounded-full focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15"
+                           className="inline-flex shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15"
                            tabIndex={0}
                            aria-label={`Enviar WhatsApp indisponível. ${whatsappUnavailableMessage(row)}`}
                          >
                            <button
                              type="button"
-                             className="action-pill-primary h-10 cursor-not-allowed px-4 !bg-muted !text-muted-foreground !opacity-100 !shadow-none hover:!translate-y-0"
+                             className="action-pill-primary h-10 shrink-0 cursor-not-allowed px-4 !bg-muted !text-muted-foreground !opacity-100 !shadow-none hover:!translate-y-0"
                              disabled
                            >
                              <Send className="h-4 w-4" />
@@ -410,8 +456,12 @@ export default function SalesContractPrinting() {
                      </Tooltip>
                    </TooltipProvider>
                  )}
-           </div>
-        </div>)}
+                  </div>
+                </td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>
          {totalPages > 1 && (
            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
              <span className="text-sm text-muted-foreground">
