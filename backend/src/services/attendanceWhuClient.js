@@ -6,6 +6,19 @@ import { normalizeBrazilPhone } from '../utils/phone.js';
 
 const WHU_API_BASE = 'https://api.wescctech.com.br/core/v2/api';
 
+function whuErrorMessage(data, fallback) {
+  const providerError = data?.error || data?.data?.error || data?.response?.error;
+  const details = providerError?.error_data?.details
+    || providerError?.details
+    || data?.details;
+  const message = providerError?.message
+    || data?.msg
+    || data?.message
+    || fallback;
+  const code = providerError?.code || data?.code;
+  return [message, details, code ? `código ${code}` : null].filter(Boolean).join(' — ');
+}
+
 async function whuRequest(token, path, { method = 'GET', body, timeoutMs = 10000 } = {}) {
   if (!token) throw new Error('Token do canal é obrigatório');
   const controller = new AbortController();
@@ -23,10 +36,11 @@ async function whuRequest(token, path, { method = 'GET', body, timeoutMs = 10000
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const msg = data.msg || data.message || response.statusText;
+      const msg = whuErrorMessage(data, response.statusText);
       const error = new Error(`WHU ${method} ${path} falhou: ${msg}`);
       error.apiMessage = msg;
       error.statusCode = response.status;
+      error.providerCode = data?.error?.code || data?.data?.error?.code || null;
       throw error;
     }
     return data;
@@ -88,6 +102,13 @@ export async function sendText(token, number, text) {
   });
 }
 
+export function normalizeMediaExtension(extension, fileName = '') {
+  const candidate =
+    extension || (fileName.includes('.') ? fileName.split('.').pop().toLowerCase() : '');
+  if (!candidate) return '';
+  return `.${String(candidate).replace(/^\.+/, '').toLowerCase()}`;
+}
+
 // Envia mídia por URL pública (o WHU busca a fileUrl externamente).
 export async function sendMedia(token, number, fileUrl, caption = '', { fileName, extension } = {}) {
   const brazilNumber = normalizeBrazilPhone(number);
@@ -95,8 +116,7 @@ export async function sendMedia(token, number, fileUrl, caption = '', { fileName
   if (!fileUrl) throw new Error('fileUrl é obrigatório');
 
   const inferredName = fileName || fileUrl.split('/').pop() || 'arquivo';
-  const inferredExt =
-    extension || (inferredName.includes('.') ? inferredName.split('.').pop().toLowerCase() : '');
+  const inferredExt = normalizeMediaExtension(extension, inferredName);
 
   return whuRequest(token, '/chats/send-media', {
     method: 'POST',

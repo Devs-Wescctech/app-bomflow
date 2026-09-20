@@ -8,7 +8,10 @@ export async function loadAgentMiddleware(req, res, next) {
 
   try {
     const result = await query(
-      'SELECT * FROM agents WHERE (email = $1 OR user_email = $1) AND active = true',
+      `SELECT a.*, t.name AS team_name
+         FROM agents a
+         LEFT JOIN teams t ON t.id = a.team_id
+        WHERE (a.email = $1 OR a.user_email = $1) AND a.active = true`,
       [req.user.email]
     );
 
@@ -19,22 +22,27 @@ export async function loadAgentMiddleware(req, res, next) {
         name: agent.name,
         agentType: agent.agent_type,
         teamId: agent.team_id,
+        teamName: agent.team_name,
         level: agent.level || 'pleno',
         online: agent.online,
         capacity: agent.capacity,
         queueIds: agent.queue_ids,
         permissions: agent.permissions || {},
+        modules: null,
         allowedSubmenus: []
       };
       req.permissions = getPermissions(agent.agent_type);
 
       try {
         const typeResult = await query(
-          'SELECT allowed_submenus FROM agent_types WHERE key = $1',
+          'SELECT allowed_submenus, modules FROM agent_types WHERE key = $1',
           [agent.agent_type]
         );
         if (typeResult.rows.length > 0) {
           req.agent.allowedSubmenus = typeResult.rows[0].allowed_submenus || [];
+          req.agent.modules = Array.isArray(typeResult.rows[0].modules)
+            ? typeResult.rows[0].modules
+            : null;
         }
       } catch (e) {
         console.error('Error loading agent type submenus:', e);
@@ -136,6 +144,43 @@ export function requireExplicitSubmenuAccess(submenuId) {
 
     return res.status(403).json({ message: `Access denied: ${submenuId}` });
   };
+}
+
+// Dashboards operacionais usam concessões aditivas: administrador, perfil
+// automático do dashboard ou concessão explícita configurada no tipo.
+export function requireDashboardAccess(submenuId) {
+  return (req, res, next) => {
+    if (!req.agent) {
+      return res.status(403).json({ message: 'Agent profile required' });
+    }
+
+    const agentType = (req.agent.agentType || '').toLowerCase();
+    const isAdmin = agentType === 'admin' || req.user?.role === 'admin';
+    const hasExplicitGrant = (req.agent.allowedSubmenus || []).includes(submenuId);
+    const teamName = (req.agent.teamName || '').trim().toLowerCase();
+    const isSupervisor = agentType === 'supervisor' ||
+      agentType === 'sales_supervisor' ||
+      agentType.endsWith('_supervisor');
+    const hasAutomaticAccess = submenuId === 'PreSalesDashboard'
+      ? isSupervisor && teamName === 'auditoria'
+      : submenuId === 'PosVendasDashboard' && agentType === 'post_sales';
+
+    if (isAdmin || hasExplicitGrant || hasAutomaticAccess) {
+      return next();
+    }
+
+    return res.status(403).json({ message: `Access denied: ${submenuId}` });
+  };
+}
+
+// Proteção explícita para recursos sensíveis que não podem herdar o fallback
+// permissivo de supervisores. A concessão precisa existir no tipo do agente.
+export function requireSalesContractPrinting(req, res, next) {
+  if (!req.user) return res.status(401).json({ message: 'Autenticação necessária' });
+  if (String(req.user.email || '').trim().toLowerCase() === 'admin@wescctech.com') return next();
+  return res.status(403).json({
+    message: 'Impressão e assinatura de contratos estão temporariamente indisponíveis para este usuário',
+  });
 }
 
 export function requireRole(...roles) {
