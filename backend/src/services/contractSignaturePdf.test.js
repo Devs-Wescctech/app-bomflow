@@ -25,3 +25,10 @@ test('Essencial aplica a assinatura no protocolo e no encerramento do contrato',
     [5, 14],
   );
 });
+
+test('Bom Família aplica a assinatura no contrato e nos três termos adicionais', () => {
+  assert.deepEqual(
+    CONTRACT_SIGNATURE_LAYOUTS.bom_familia.map((layout) => layout.page),
+    [15, 17, 18, 19],
+  );
+});
