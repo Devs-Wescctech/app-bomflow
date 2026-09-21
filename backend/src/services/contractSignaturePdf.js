@@ -30,7 +30,7 @@ export const CONTRACT_SIGNATURE_LAYOUTS = Object.freeze({
   ],
   bom_pet: [placement(7, 105, 225, 82, 17)],
   bom_pet_saude_individual: [placement(10, 105, 216, 82, 18)],
-  bom_pet_saude_3pets: [placement(10, 105, 216, 82, 18)],
+  bom_pet_saude_3pets: [placement(10, 105, 196, 82, 18)],
   combo_multi_bem_estar: [
     placement(16, 121, 230, 76, 18),
     placement(17, 121, 251, 76, 18),
