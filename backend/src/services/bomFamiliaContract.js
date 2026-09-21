@@ -473,20 +473,23 @@ async function renderBomFamilia(data, { portability = false } = {}) {
           throw new Error(`Adendo ${file} do contrato ${modelLabel} não encontrado.`);
         }
         addPage(source);
-        write(data.pedido, 145, file === 'mileage.jpg' ? 65 : 55, { size: 10, width: 38 });
+        const contractPosition = file === 'mileage.jpg'
+          ? { x: 145, y: 65 }
+          : portability ? { x: 145, y: 55 } : { x: 162, y: 53 };
+        write(data.pedido, contractPosition.x, contractPosition.y, { size: 10, width: 32 });
         fill();
       };
       const writeIssue = (x, y) => {
         if (!issue) return;
         write(issue.day, x, y);
         write(issue.month, x + (portability ? 18 : 13), y, { width: 38 });
-        write(issue.year.slice(-2), x + (portability ? 59 : 54), y);
+        write(issue.year.slice(-2), x + (portability ? 59 : 58), y);
       };
       if (amount(data.wreath_value) > 0) {
         addAdendum('wreath.jpg', () => {
-          if (!portability) write(data.wreath_quantity || 1, 58, 95);
-          write(money(data.wreath_value), portability ? 128 : 132, 123);
-          writeIssue(portability ? 124 : 111, portability ? 242 : 247);
+          if (!portability) write(data.wreath_quantity || 1, 24, 91);
+          write(money(data.wreath_value), portability ? 128 : 138, portability ? 123 : 119);
+          writeIssue(124, portability ? 242 : 240);
         });
       }
       if (amount(data.thanatopraxy_value) > 0) {
@@ -498,9 +501,9 @@ async function renderBomFamilia(data, { portability = false } = {}) {
       }
       if (amount(data.cremation_value) > 0) {
         addAdendum('cremation.jpg', () => {
-          write(money(data.cremation_value), portability ? 60 : 113, portability ? 157 : 166);
+          write(money(data.cremation_value), 60, 157);
           if (portability) write('REAIS', 77, 157);
-          writeIssue(portability ? 125 : 111, portability ? 241 : 250);
+          writeIssue(portability ? 125 : 124, portability ? 241 : 243);
         });
       }
       if (amount(data.mileage_value) > 0) {
