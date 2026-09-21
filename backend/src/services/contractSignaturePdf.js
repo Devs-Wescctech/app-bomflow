@@ -59,7 +59,7 @@ export const CONTRACT_SIGNATURE_LAYOUTS = Object.freeze({
     placement(18, 112, 248, 82, 16),
     placement(19, 112, 243, 82, 16),
   ],
-  convalescenca: [placement(1, 112, 250, 76, 16)],
+  convalescenca: [placement(1, 112, 246, 76, 16)],
 });
 
 export async function applyContractSignature(pdfBuffer, signatureBuffer, productKey) {
