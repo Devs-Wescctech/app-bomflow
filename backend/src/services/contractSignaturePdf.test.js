@@ -60,3 +60,10 @@ test('Novo Combo Multi Bem Estar assina protocolo, contratos e anexos', () => {
     [1, 8, 9, 16, 17, 18, 19],
   );
 });
+
+test('Combo Multi Seleção assina protocolo e encerramentos contratuais', () => {
+  assert.deepEqual(
+    CONTRACT_SIGNATURE_LAYOUTS.combo_multi_selecao.map((layout) => layout.page),
+    [1, 8, 9, 16],
+  );
+});

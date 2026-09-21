@@ -50,7 +50,12 @@ export const CONTRACT_SIGNATURE_LAYOUTS = Object.freeze({
     placement(18, 112, 233, 82, 16),
     placement(19, 112, 243, 82, 16),
   ],
-  combo_multi_selecao: [placement(16, 121, 230, 76, 18)],
+  combo_multi_selecao: [
+    placement(1, 128, 270, 74, 12),
+    placement(8, 121, 222, 76, 18),
+    placement(9, 128, 270, 74, 12),
+    placement(16, 121, 222, 76, 18),
+  ],
   convalescenca: [placement(1, 112, 253, 76, 16)],
 });
 
