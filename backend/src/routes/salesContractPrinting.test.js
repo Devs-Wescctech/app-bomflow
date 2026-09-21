@@ -979,7 +979,9 @@ test('classifies and builds both Bom Pet Saúde products with PHP-compatible val
     ...['A','B','C','D','E','F','G','JULIA'].map((name, index) => ({
       source_order: index + 1, nome: `${name} / SRD / PRETO / GRANDE /`,
       data_nascimento: '2020-01-01', sexo: index === 7 ? 'F' : 'M',
-      produtos: ['BOM PET SAÚDE - NOME DO PET', ...(index === 7 ? ['BOM PET SAÚDE - ADICIONAL PET'] : [])],
+      produtos: [index === 7
+        ? 'BOM PET SAÚDE - ADICIONAL PET'
+        : 'BOM PET SAÚDE - NOME DO PET'],
     })),
   ];
   const detail = {

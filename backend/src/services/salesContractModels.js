@@ -386,7 +386,8 @@ export function buildBomPetContractData(detail, generatedAt = new Date()) {
 
 const isHealthPetLink = (person) => (person?.produtos || []).some((description) => {
   const normalized = normalizeText(description);
-  return normalized.includes('BOM PET SAUDE') && normalized.includes('NOME DO PET');
+  return normalized.includes('BOM PET SAUDE')
+    && (normalized.includes('NOME DO PET') || normalized.includes('ADICIONAL PET'));
 });
 const isHealthAdditionalLink = (person) => (person?.produtos || []).some((description) => {
   const normalized = normalizeText(description);
