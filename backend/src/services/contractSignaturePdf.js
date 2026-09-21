@@ -6,7 +6,7 @@ const placement = (page, x, top, width, height) => ({ page, x, top, width, heigh
 export const CONTRACT_SIGNATURE_LAYOUTS = Object.freeze({
   bom_auto: [placement(7, 103, 245, 84, 18)],
   bom_corp: [placement(11, 112, 244, 76, 18)],
-  bom_ideal: [placement(16, 112, 238, 76, 19)],
+  bom_ideal: [placement(16, 121, 219, 76, 17)],
   bom_med: [placement(6, 105, 235, 82, 20)],
   bom_familia: [
     placement(15, 105, 203, 82, 17),

@@ -32,3 +32,10 @@ test('Bom Família aplica a assinatura no contrato e nos três termos adicionais
     [15, 17, 18, 19],
   );
 });
+
+test('Bom Ideal aplica a assinatura no encerramento do contrato', () => {
+  assert.deepEqual(
+    CONTRACT_SIGNATURE_LAYOUTS.bom_ideal.map((layout) => layout.page),
+    [16],
+  );
+});
