@@ -489,7 +489,7 @@ async function renderBomFamilia(data, { portability = false } = {}) {
         addAdendum('wreath.jpg', () => {
           if (!portability) write(data.wreath_quantity || 1, 24, 91);
           write(money(data.wreath_value), portability ? 128 : 138, portability ? 123 : 119);
-          writeIssue(124, portability ? 242 : 237);
+          writeIssue(124, portability ? 242 : 238.5);
         });
       }
       if (amount(data.thanatopraxy_value) > 0) {
@@ -503,7 +503,7 @@ async function renderBomFamilia(data, { portability = false } = {}) {
         addAdendum('cremation.jpg', () => {
           write(money(data.cremation_value), 60, 157);
           if (portability) write('REAIS', 77, 157);
-          writeIssue(portability ? 125 : 124, portability ? 241 : 240);
+          writeIssue(portability ? 125 : 124, portability ? 241 : 241.5);
         });
       }
       if (amount(data.mileage_value) > 0) {
