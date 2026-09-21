@@ -254,7 +254,13 @@ export default function SalesContractSigning() {
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        throw new Error(body.message || "Não foi possível gerar o modelo assinado.");
+        const details = Array.isArray(body.errors)
+          ? body.errors.filter(Boolean).join(" ")
+          : "";
+        throw new Error([
+          body.message || "Não foi possível gerar o modelo assinado.",
+          details,
+        ].filter(Boolean).join(" "));
       }
       const url = URL.createObjectURL(await response.blob());
       if (!previewWindow) {
