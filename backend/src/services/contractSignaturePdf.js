@@ -55,8 +55,8 @@ export const CONTRACT_SIGNATURE_LAYOUTS = Object.freeze({
     placement(8, 121, 226, 76, 18),
     placement(9, 128, 270, 74, 12),
     placement(16, 121, 222, 76, 18),
-    placement(18, 112, 250, 82, 16),
-    placement(19, 112, 250, 82, 16),
+    placement(18, 112, 233, 82, 16),
+    placement(19, 112, 243, 82, 16),
   ],
   convalescenca: [placement(1, 112, 253, 76, 16)],
 });
