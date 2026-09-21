@@ -26,6 +26,9 @@ import {
 } from '../services/contractObjectStorage.js';
 import { normalizeBrazilPhone } from '../utils/phone.js';
 import { decrypt } from '../utils/encryption.js';
+import { signatureBufferFromDataUrl } from '../services/signatureImage.js';
+import { readTestSignature, saveTestSignature } from '../services/legacySignatureStorage.js';
+import { applyContractSignature } from '../services/contractSignaturePdf.js';
 import {
   CONTRACT_PRODUCTS,
   BOM_PET_BASE_PRODUCT_IDS,
@@ -1585,6 +1588,23 @@ const renderStandaloneContract = (productKey, data) => {
 
 router.use(authMiddleware, loadAgentMiddleware, requireSalesContractPrinting);
 
+router.post('/contracts/signature-test', async (req, res) => {
+  try {
+    const signature = signatureBufferFromDataUrl(req.body?.signatureDataUrl);
+    const stored = await saveTestSignature(signature);
+    return res.json({
+      success: true,
+      fileName: stored.fileName,
+      size: stored.size,
+      message: 'Assinatura de teste salva. Uma nova captura substituirá este arquivo.',
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 502).json({
+      message: error.statusCode ? error.message : 'Não foi possível salvar a assinatura de teste.',
+    });
+  }
+});
+
 router.get('/contracts/search', async (req, res) => {
   const rawDocument = String(req.query.document || req.query.cpf || '').trim();
   const cpf = normalizeCpf(rawDocument);
@@ -1829,6 +1849,9 @@ router.post('/contracts/generate', async (req, res) => {
         message: 'Identificador de produto inválido ou expirado. Faça uma nova busca.',
       });
     }
+    const signatureImage = req.body?.useTestSignature === true
+      ? await readTestSignature()
+      : null;
     if (STANDALONE_ERP_PRODUCTS.has(productKey)) {
       const data = await loadStandaloneContractData(productKey, claims);
       const errors = validateStandaloneContractData(productKey, data);
@@ -1836,7 +1859,10 @@ router.post('/contracts/generate', async (req, res) => {
         await audit(req, `hash:${claims.cpf}`, claims, 'validation_error', 'generation');
         return res.status(422).json({ message: 'Dados do ERP incompletos ou inconsistentes.', errors });
       }
-      const pdf = await renderStandaloneContract(productKey, data);
+      const unsignedPdf = await renderStandaloneContract(productKey, data);
+      const pdf = signatureImage
+        ? await applyContractSignature(unsignedPdf, signatureImage, productKey)
+        : unsignedPdf;
       await audit(req, `hash:${claims.cpf}`, claims, 'success', 'generation', { required: true });
       return res.type('application/pdf')
         .set('Content-Disposition', `inline; filename="contrato_${contractFileProduct(productKey)}_${claims.contrato || claims.numeroPedido || claims.pedido}.pdf"`)
@@ -1874,7 +1900,10 @@ router.post('/contracts/generate', async (req, res) => {
         errors,
       });
     }
-    const pdf = await renderProductContract(data, productKey, claims.pedido);
+    const unsignedPdf = await renderProductContract(data, productKey, claims.pedido);
+    const pdf = signatureImage
+      ? await applyContractSignature(unsignedPdf, signatureImage, productKey)
+      : unsignedPdf;
     await audit(req, `hash:${claims.cpf}`, claims, 'success', 'generation', { required: true });
     const fileProduct = contractFileProduct(productKey);
     res.type('application/pdf')
@@ -1882,7 +1911,11 @@ router.post('/contracts/generate', async (req, res) => {
       .send(pdf);
   } catch (error) {
     await audit(req, `hash:${claims.cpf}`, claims, 'error', 'generation');
-    res.status(error.statusCode || 503).json({ message: 'Não foi possível carregar os dados completos do ERP.' });
+    res.status(error.statusCode || 503).json({
+      message: error.statusCode
+        ? error.message
+        : 'Não foi possível carregar os dados completos do ERP.',
+    });
   }
 });
 
