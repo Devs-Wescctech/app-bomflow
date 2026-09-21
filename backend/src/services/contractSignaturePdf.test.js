@@ -50,6 +50,6 @@ test('Bom Pet Saúde Individual assina o protocolo e o encerramento do contrato'
 test('Combo Multi Bem Estar assina os encerramentos dos blocos contratuais', () => {
   assert.deepEqual(
     CONTRACT_SIGNATURE_LAYOUTS.combo_multi_bem_estar.map((layout) => layout.page),
-    [8, 16, 17],
+    [1, 8, 16, 17],
   );
 });
