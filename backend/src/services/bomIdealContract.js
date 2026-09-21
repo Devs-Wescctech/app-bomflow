@@ -319,9 +319,9 @@ export async function renderBomIdealPdf(data) {
           }
         }
         if (page === 16 && issue) {
-          write(issue.day, 129, 209, { size: 12 });
-          write(issue.month, 149, 209, { size: 12, width: 38 });
-          write(issue.year.slice(-2), 190, 209, { size: 12 });
+          write(issue.day, 129, 208.5, { size: 12 });
+          write(issue.month, 149, 208.5, { size: 12, width: 38 });
+          write(issue.year.slice(-2), 190, 208.5, { size: 12 });
         }
       }
       doc.end();
