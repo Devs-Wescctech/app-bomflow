@@ -53,3 +53,10 @@ test('Combo Multi Bem Estar assina os encerramentos dos blocos contratuais', () 
     [1, 8, 9, 16, 17],
   );
 });
+
+test('Novo Combo Multi Bem Estar assina protocolo, contratos e anexos', () => {
+  assert.deepEqual(
+    CONTRACT_SIGNATURE_LAYOUTS.novo_combo_multi_bem_estar.map((layout) => layout.page),
+    [1, 8, 9, 16, 17, 18, 19],
+  );
+});
