@@ -10,7 +10,10 @@ export const CONTRACT_SIGNATURE_LAYOUTS = Object.freeze({
   bom_med: [placement(6, 105, 235, 82, 20)],
   bom_familia: [placement(15, 105, 226, 82, 18)],
   bom_familia_portabilidade: [placement(15, 105, 226, 82, 18)],
-  essencial: [placement(14, 121, 229, 76, 17)],
+  essencial: [
+    placement(5, 121, 258, 76, 17),
+    placement(14, 121, 229, 76, 17),
+  ],
   perola: [placement(7, 121, 245, 76, 18)],
   rubi: [placement(7, 121, 245, 76, 18)],
   safira: [placement(10, 121, 235, 76, 18)],

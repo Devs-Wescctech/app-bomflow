@@ -18,3 +18,10 @@ test('posições usam páginas e caixas válidas', () => {
     assert.ok(layout.top + layout.height <= 297);
   });
 });
+
+test('Essencial aplica a assinatura no protocolo e no encerramento do contrato', () => {
+  assert.deepEqual(
+    CONTRACT_SIGNATURE_LAYOUTS.essencial.map((layout) => layout.page),
+    [5, 14],
+  );
+});
