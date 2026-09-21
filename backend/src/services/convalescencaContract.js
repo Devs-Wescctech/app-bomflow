@@ -52,10 +52,10 @@ async function request(endpoint, cpf, contact = null) {
 }
 
 export async function loadConvalescencaFromErp(cpf, contact) {
-  const [contractRows, addressRows] = await Promise.all([
-    request('API_PESQUISA_ASSINATURA_CONVALESCENCA', cpf, contact),
-    request('API_PESQUISA_ASSINATURA_CONVALESCENCA_ENDERECO', cpf),
-  ]);
+  // Estes endpoints legados compartilham estado no ERP e podem responder 502
+  // quando são consultados simultaneamente para o mesmo documento.
+  const contractRows = await request('API_PESQUISA_ASSINATURA_CONVALESCENCA', cpf, contact);
+  const addressRows = await request('API_PESQUISA_ASSINATURA_CONVALESCENCA_ENDERECO', cpf);
   const contract = first(contractRows) || {};
   const address = first(addressRows) || {};
   const equipment = text(contract.resposta_2);
