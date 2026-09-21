@@ -1428,7 +1428,19 @@ test('builds, validates and renders the historical Combo Multi Bem Estar represe
   assert.equal(data.driver.name, 'CLIENTE TESTE');
   assert.equal(data.pet.name, 'LHASA APSO');
   assert.equal(data.pet.breed, 'TOBBY');
+  assert.equal(data.has_pet_product, true);
   assert.deepEqual(validateComboMultiWellbeingContractData(data), []);
+
+  const historicalWithoutPet = buildComboMultiWellbeingContractData({
+    ...detail,
+    produtos: detail.produtos.filter((product) =>
+      !String(product.descricao || '').includes('NOME DO PET')),
+    pessoas: detail.pessoas.filter((person) =>
+      !(person.produtos || []).some((description) => description.includes('NOME DO PET'))),
+  });
+  assert.equal(historicalWithoutPet.has_pet_product, false);
+  assert.equal(historicalWithoutPet.pet, null);
+  assert.deepEqual(validateComboMultiWellbeingContractData(historicalWithoutPet), []);
   assert.equal(comboMultiWellbeingPaymentCategory(data.payment_plan_id), 'bank');
   const pdf = await renderComboMultiWellbeingPdf(data);
   assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 17);

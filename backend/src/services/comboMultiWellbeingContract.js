@@ -172,6 +172,7 @@ export function buildComboMultiWellbeingContractData(
     : rounded(dependents
       .filter((dependent) => dependent.price > 1)
       .reduce((total, dependent) => total + dependent.price, 0));
+  const hasPetProduct = products.some((product) => isPetName(normalized(product?.descricao)));
   const pets = people
     .filter((person) => linkedTo(person, isPetName))
     .map((person) => parsePet(person, { selectionCombo }));
@@ -241,6 +242,7 @@ export function buildComboMultiWellbeingContractData(
       monthly_value: rounded(standardValue + optionalMonthlyValue),
     } : null,
     dependents,
+    has_pet_product: hasPetProduct,
     pet: pets[0] || null,
     vehicle: vehicle ? {
       manufacturer: selectionCombo
@@ -302,7 +304,9 @@ export function validateComboMultiWellbeingContractData(data) {
   if (!data?.new_combo && !data?.selection_combo) {
     if (!data?.vehicle) errors.push('Nenhum veículo foi encontrado para o Combo Multi Bem Estar.');
     if (!data?.driver) errors.push('Nenhum condutor foi encontrado para o Combo Multi Bem Estar.');
-    if (!data?.pet) errors.push('Nenhum pet foi encontrado para o Combo Multi Bem Estar.');
+    if (data?.has_pet_product !== false && !data?.pet) {
+      errors.push('Nenhum pet foi encontrado para o Combo Multi Bem Estar.');
+    }
   }
   if ((data?.dependents || []).length > 13) {
     errors.push('O contrato Combo Multi Bem Estar comporta no máximo 13 dependentes.');
