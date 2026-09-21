@@ -235,6 +235,13 @@ export default function SalesContractSigning() {
 
   const viewModel = async (row) => {
     const rowId = row.generationId || row.id || row.label;
+    const previewWindow = window.open("", "_blank");
+    if (previewWindow) {
+      previewWindow.document.title = "Gerando modelo do contrato";
+      previewWindow.document.body.style.fontFamily = "system-ui, sans-serif";
+      previewWindow.document.body.style.padding = "32px";
+      previewWindow.document.body.textContent = "Gerando modelo assinado, aguarde...";
+    }
     setModelState({ loadingId: rowId, error: "" });
     try {
       const response = await fetch("/api/sales-pf/contracts/generate", {
@@ -250,14 +257,15 @@ export default function SalesContractSigning() {
         throw new Error(body.message || "Não foi possível gerar o modelo assinado.");
       }
       const url = URL.createObjectURL(await response.blob());
-      const link = document.createElement("a");
-      link.href = url;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.click();
+      if (!previewWindow) {
+        URL.revokeObjectURL(url);
+        throw new Error("O navegador bloqueou a abertura do modelo. Libere pop-ups para este endereço e tente novamente.");
+      }
+      previewWindow.location.replace(url);
       window.setTimeout(() => URL.revokeObjectURL(url), 60000);
       setModelState({ loadingId: "", error: "" });
     } catch (previewError) {
+      previewWindow?.close();
       setModelState({ loadingId: "", error: previewError.message });
     }
   };
