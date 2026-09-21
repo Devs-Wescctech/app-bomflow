@@ -39,3 +39,10 @@ test('Bom Ideal aplica a assinatura no encerramento do contrato', () => {
     [16],
   );
 });
+
+test('Bom Pet Saúde Individual assina o protocolo e o encerramento do contrato', () => {
+  assert.deepEqual(
+    CONTRACT_SIGNATURE_LAYOUTS.bom_pet_saude_individual.map((layout) => layout.page),
+    [4, 10],
+  );
+});
