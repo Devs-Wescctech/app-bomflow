@@ -6,6 +6,7 @@ const testFileName = () => process.env.LEGACY_SIGNATURE_TEST_FILE
   || 'codex-bomflow-dev-signature-preview.png';
 const remoteDirectory = () => process.env.LEGACY_SIGNATURE_SSH_PATH || '/assinaturas';
 const remoteTestPath = () => path.posix.join(remoteDirectory(), testFileName());
+const MIN_SIGNATURE_SIZE = 2007;
 
 const connection = () => {
   const config = {
@@ -31,8 +32,8 @@ const requireTestMode = () => {
   }
 };
 
-async function withClient(action) {
-  requireTestMode();
+async function withClient(action, { testOnly = true } = {}) {
+  if (testOnly) requireTestMode();
   const client = new SftpClient('bomflow-signature-test');
   try {
     await client.connect(connection());
@@ -40,6 +41,42 @@ async function withClient(action) {
   } finally {
     await client.end().catch(() => {});
   }
+}
+
+export function signatureFileNameFromReference(fileReference) {
+  const normalized = String(fileReference || '').trim().replaceAll('\\', '/');
+  const fileName = path.posix.basename(normalized);
+  if (!/^\d+\.png$/i.test(fileName)) {
+    const error = new Error('A referência do arquivo de assinatura é inválida.');
+    error.statusCode = 409;
+    throw error;
+  }
+  return fileName;
+}
+
+export async function readLegacySignatureFile(fileReference) {
+  const fileName = signatureFileNameFromReference(fileReference);
+  const remotePath = path.posix.join(remoteDirectory(), fileName);
+  return withClient(async (client) => {
+    const exists = await client.exists(remotePath);
+    if (!exists) {
+      const error = new Error('A assinatura está registrada, mas o arquivo não foi encontrado.');
+      error.statusCode = 409;
+      throw error;
+    }
+    const stat = await client.stat(remotePath);
+    if (Number(stat.size) <= MIN_SIGNATURE_SIZE) {
+      const error = new Error('O arquivo de assinatura registrado está vazio ou incompleto.');
+      error.statusCode = 409;
+      throw error;
+    }
+    const data = await client.get(remotePath);
+    return {
+      buffer: Buffer.isBuffer(data) ? data : Buffer.from(data),
+      fileName,
+      size: Number(stat.size),
+    };
+  }, { testOnly: false });
 }
 
 export async function saveTestSignature(buffer) {

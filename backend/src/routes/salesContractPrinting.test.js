@@ -861,7 +861,7 @@ test('search uses only the canonical pedido holder and UI renders validation det
   assert.match(routeSource, /body\.errors|errors/);
   assert.match(pageSource, /Array\.isArray\(body\.errors\)/);
   assert.match(pageSource, /list-disc/);
-  assert.match(pageSource, /Pedido\/orçamento/);
+  assert.match(pageSource, /Pedido\/contrato/);
   assert.match(pageSource, /params\.set\("document", document\)/);
   assert.match(pageSource, /params\.set\("reference", reference\)/);
   assert.doesNotMatch(pageSource, /searchType/);

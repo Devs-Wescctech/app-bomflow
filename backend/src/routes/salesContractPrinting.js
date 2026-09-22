@@ -28,6 +28,7 @@ import { normalizeBrazilPhone } from '../utils/phone.js';
 import { decrypt } from '../utils/encryption.js';
 import { signatureBufferFromDataUrl } from '../services/signatureImage.js';
 import { readTestSignature, saveTestSignature } from '../services/legacySignatureStorage.js';
+import { readLegacyContractSignature } from '../services/legacyContractSignature.js';
 import { applyContractSignature } from '../services/contractSignaturePdf.js';
 import {
   CONTRACT_PRODUCTS,
@@ -1851,7 +1852,7 @@ router.post('/contracts/generate', async (req, res) => {
     }
     const signatureImage = req.body?.useTestSignature === true
       ? await readTestSignature()
-      : null;
+      : await readLegacyContractSignature(claims, productKey);
     if (STANDALONE_ERP_PRODUCTS.has(productKey)) {
       const data = await loadStandaloneContractData(productKey, claims);
       const errors = validateStandaloneContractData(productKey, data);
