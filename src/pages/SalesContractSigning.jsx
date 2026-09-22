@@ -446,11 +446,14 @@ export default function SalesContractSigning() {
   };
 
   const saveSignature = async (signatureDataUrl) => {
-    const definitive = signing.mode === "definitive";
+    const definitive = signing.mode === "definitive" || signing.mode === "redo";
+    const redo = signing.mode === "redo";
     const persistLegacyTest = definitive && Boolean(signing.row?.isLegacySignatureTest);
-    const endpoint = definitive && !persistLegacyTest
-      ? "/api/sales-pf/contracts/signature"
-      : "/api/sales-pf/contracts/signature-test";
+    const endpoint = redo
+      ? "/api/sales-pf/contracts/signature/redo"
+      : definitive && !persistLegacyTest
+        ? "/api/sales-pf/contracts/signature"
+        : "/api/sales-pf/contracts/signature-test";
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -773,7 +776,15 @@ export default function SalesContractSigning() {
                             <FileSignature className="h-4 w-4" />
                             {signed ? "Assinado" : "Assinar"}
                           </button>
-                          <DisabledAction icon={RefreshCw} explanation="A regra de substituição ou criação de uma nova versão será definida na próxima etapa.">Refazer assinatura</DisabledAction>
+                          <button
+                            type="button"
+                            className="action-pill-ghost h-10 px-4"
+                            disabled={!signed}
+                            title={signed ? "Substitui o arquivo atual sem criar outra linha." : "Assine o contrato primeiro."}
+                            onClick={() => setSigning({ open: true, row, mode: "redo" })}
+                          >
+                            <RefreshCw className="h-4 w-4" />Refazer assinatura
+                          </button>
                           <button
                             type="button"
                             className="action-pill-ghost h-10 px-4"
@@ -825,11 +836,13 @@ export default function SalesContractSigning() {
       <Dialog open={signing.open} onOpenChange={(open) => setSigning((current) => ({ ...current, open }))}>
         <DialogContent className="rounded-2xl border-border sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle className="font-display text-2xl">{signing.mode === "definitive" ? "Assinar contrato" : "Capturar assinatura de teste"}</DialogTitle>
+            <DialogTitle className="font-display text-2xl">{signing.mode === "redo" ? "Refazer assinatura" : signing.mode === "definitive" ? "Assinar contrato" : "Capturar assinatura de teste"}</DialogTitle>
             <DialogDescription>{signing.row?.label || signing.row?.reference} · {signing.row?.name || "Titular não informado"}</DialogDescription>
           </DialogHeader>
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-muted-foreground">
-            {signing.mode === "definitive"
+            {signing.mode === "redo"
+              ? "Ao salvar, o arquivo atual será substituído. A mesma linha do banco será mantida."
+              : signing.mode === "definitive"
               ? "Ao salvar, a imagem será armazenada no servidor legado e um novo registro será criado para este contrato."
               : "Esta captura é temporária e compartilhada entre os modelos. Cada nova captura substitui a anterior."}
           </div>
@@ -837,10 +850,12 @@ export default function SalesContractSigning() {
             key={`${signing.mode}-${signing.row?.generationId || signing.row?.id || "signature"}`}
             onCancel={() => setSigning((current) => ({ ...current, open: false }))}
             onSave={saveSignature}
-            helperText={signing.mode === "definitive"
+            helperText={signing.mode === "redo"
+              ? "Confira a nova assinatura. A imagem anterior será substituída."
+              : signing.mode === "definitive"
               ? "Confira a assinatura antes de salvar. O registro será permanente."
               : "Use esta captura para validar o posicionamento nos modelos."}
-            saveLabel={signing.mode === "definitive" ? "Salvar assinatura" : "Salvar teste"}
+            saveLabel={signing.mode === "redo" ? "Substituir assinatura" : signing.mode === "definitive" ? "Salvar assinatura" : "Salvar teste"}
           />
         </DialogContent>
       </Dialog>

@@ -123,6 +123,21 @@ export async function saveContractSignature(buffer, reference) {
   }, { testOnly: false });
 }
 
+export async function replaceContractSignature(buffer, reference) {
+  const fileName = signatureFileNameFromReference(`${reference}.png`);
+  if (!Buffer.isBuffer(buffer) || buffer.length <= MIN_SIGNATURE_SIZE) {
+    const error = new Error('A assinatura capturada está vazia ou incompleta.');
+    error.statusCode = 422;
+    throw error;
+  }
+  const remotePath = path.posix.join(remoteDirectory(), fileName);
+  return withClient(async (client) => {
+    await client.put(buffer, remotePath);
+    const stat = await client.stat(remotePath);
+    return { fileName, size: Number(stat.size) || buffer.length };
+  }, { testOnly: false });
+}
+
 const documentExtension = (mimeType) => ({
   'image/jpeg': 'jpg',
   'image/png': 'png',

@@ -30,6 +30,7 @@ import { decrypt, encrypt } from '../utils/encryption.js';
 import { signatureBufferFromDataUrl } from '../services/signatureImage.js';
 import {
   readTestSignature,
+  replaceContractSignature,
   saveContractDocument,
   saveContractSignature,
   savePersistentTestSignature,
@@ -49,6 +50,7 @@ import {
   findLatestLegacySignature,
   findLatestLegacySignatures,
   insertLegacySignatureSnapshot,
+  updateLegacySignatureRecord,
 } from '../services/legacySignatureRepository.js';
 import { applyContractSignature } from '../services/contractSignaturePdf.js';
 import {
@@ -1641,16 +1643,26 @@ router.post('/contracts/signature-test', async (req, res) => {
         throw error;
       }
       const stored = await savePersistentTestSignature(signature, testContract.reference);
-      const inserted = await insertLegacySignatureSnapshot({
-        reference: testContract.reference,
-        cpf: '000.000.000-00',
-        contractFile: existing?.contrato_arquivo || '',
-        signatureFile: stored.fileName,
-      });
+      let recordId = existing?.codigo || null;
+      if (existing) {
+        await updateLegacySignatureRecord({
+          id: existing.codigo,
+          cpf: '000.000.000-00',
+          signatureFile: stored.fileName,
+          touchDate: true,
+        });
+      } else {
+        const inserted = await insertLegacySignatureSnapshot({
+          reference: testContract.reference,
+          cpf: '000.000.000-00',
+          signatureFile: stored.fileName,
+        });
+        recordId = inserted.id;
+      }
       return res.json({
         success: true,
         persistent: true,
-        recordId: inserted.id,
+        recordId,
         fileName: stored.fileName,
         size: stored.size,
         message: 'Assinatura e registro de homologação salvos no legado.',
@@ -1688,17 +1700,27 @@ router.post('/contracts/signature', async (req, res) => {
       });
     }
     const stored = await saveContractSignature(signature, identity.reference);
-    const inserted = await insertLegacySignatureSnapshot({
-      reference: identity.reference,
-      cpf: identity.document,
-      contractFile: existing?.contrato_arquivo || '',
-      signatureFile: stored.fileName,
-    });
+    let recordId = existing?.codigo || null;
+    if (existing) {
+      await updateLegacySignatureRecord({
+        id: existing.codigo,
+        cpf: identity.document,
+        signatureFile: stored.fileName,
+        touchDate: true,
+      });
+    } else {
+      const inserted = await insertLegacySignatureSnapshot({
+        reference: identity.reference,
+        cpf: identity.document,
+        signatureFile: stored.fileName,
+      });
+      recordId = inserted.id;
+    }
     await audit(req, `hash:${identity.claims.cpf}`, identity.claims, 'success', 'signature', { required: true });
     return res.json({
       success: true,
       persistent: true,
-      recordId: inserted.id,
+      recordId,
       fileName: stored.fileName,
       size: stored.size,
       message: 'Assinatura salva e vinculada ao contrato.',
@@ -1707,6 +1729,59 @@ router.post('/contracts/signature', async (req, res) => {
     await audit(req, `hash:${identity.claims.cpf}`, identity.claims, 'error', 'signature');
     return res.status(error.statusCode || 502).json({
       message: error.statusCode ? error.message : 'Não foi possível salvar a assinatura.',
+    });
+  }
+});
+
+router.post('/contracts/signature/redo', async (req, res) => {
+  let identity;
+  try {
+    if (req.body?.persistLegacyTest === true) {
+      const testContract = assertLegacySignatureTestContract(req.body?.reference, req.body?.cpf);
+      identity = {
+        claims: null,
+        document: '000.000.000-00',
+        reference: testContract.reference,
+      };
+    } else {
+      identity = verifiedContractIdentity(req, req.body?.generationId);
+    }
+  } catch {
+    return res.status(422).json({
+      message: 'Identificador de assinatura inválido ou expirado. Faça uma nova busca.',
+    });
+  }
+  try {
+    const signature = signatureBufferFromDataUrl(req.body?.signatureDataUrl);
+    const existing = await findLatestLegacySignature(identity.reference);
+    if (!existing?.assinatura_arquivo) {
+      return res.status(409).json({ message: 'Este contrato ainda não possui uma assinatura para refazer.' });
+    }
+    const stored = await replaceContractSignature(signature, identity.reference);
+    await updateLegacySignatureRecord({
+      id: existing.codigo,
+      cpf: identity.document,
+      signatureFile: stored.fileName,
+      touchDate: true,
+    });
+    if (identity.claims) {
+      await audit(req, `hash:${identity.claims.cpf}`, identity.claims, 'success', 'signature_redo', { required: true });
+    }
+    return res.json({
+      success: true,
+      persistent: true,
+      replaced: true,
+      recordId: Number(existing.codigo),
+      fileName: stored.fileName,
+      size: stored.size,
+      message: 'Assinatura refeita e arquivo anterior substituído.',
+    });
+  } catch (error) {
+    if (identity.claims) {
+      await audit(req, `hash:${identity.claims.cpf}`, identity.claims, 'error', 'signature_redo');
+    }
+    return res.status(error.statusCode || 502).json({
+      message: error.statusCode ? error.message : 'Não foi possível refazer a assinatura.',
     });
   }
 });
@@ -1742,19 +1817,28 @@ router.post('/contracts/document', contractDocumentUpload.single('document'), as
       identity.reference,
       req.file.mimetype,
     );
-    const inserted = await insertLegacySignatureSnapshot({
-      reference: identity.reference,
-      cpf: identity.document,
-      contractFile: stored.fileName,
-      signatureFile: existing?.assinatura_arquivo || '',
-    });
+    let recordId = existing?.codigo || null;
+    if (existing) {
+      await updateLegacySignatureRecord({
+        id: existing.codigo,
+        cpf: identity.document,
+        contractFile: stored.fileName,
+      });
+    } else {
+      const inserted = await insertLegacySignatureSnapshot({
+        reference: identity.reference,
+        cpf: identity.document,
+        contractFile: stored.fileName,
+      });
+      recordId = inserted.id;
+    }
     if (identity.claims) {
       await audit(req, `hash:${identity.claims.cpf}`, identity.claims, 'success', 'document', { required: true });
     }
     return res.json({
       success: true,
       persistent: true,
-      recordId: inserted.id,
+      recordId,
       fileName: stored.fileName,
       size: stored.size,
       message: 'Documento salvo e vinculado ao contrato.',

@@ -128,6 +128,62 @@ export async function insertLegacySignatureSnapshot({
   }
 }
 
+export async function updateLegacySignatureRecord({
+  id,
+  cpf,
+  contractFile,
+  signatureFile,
+  touchDate = false,
+}) {
+  const database = connectionPool();
+  if (!database) {
+    const error = new Error('O banco legado de assinaturas não está configurado.');
+    error.statusCode = 503;
+    throw error;
+  }
+  const recordId = Number(id);
+  if (!Number.isInteger(recordId) || recordId <= 0) {
+    const error = new Error('O registro de assinatura é inválido.');
+    error.statusCode = 422;
+    throw error;
+  }
+  const assignments = [];
+  const values = [];
+  if (cpf !== undefined) {
+    assignments.push('titular_cpf = ?');
+    values.push(String(cpf || '').trim().slice(0, 14));
+  }
+  if (contractFile !== undefined) {
+    assignments.push('contrato_arquivo = ?');
+    values.push(String(contractFile || '').trim().slice(0, 50));
+  }
+  if (signatureFile !== undefined) {
+    assignments.push('assinatura_arquivo = ?');
+    values.push(String(signatureFile || '').trim().slice(0, 50));
+  }
+  if (touchDate) assignments.push('data = CURRENT_DATE()');
+  if (!assignments.length) return { affectedRows: 0 };
+  values.push(recordId);
+  try {
+    const [result] = await database.execute(
+      `UPDATE contratos_assinaturas SET ${assignments.join(', ')} WHERE codigo = ?`,
+      values,
+    );
+    if (Number(result.affectedRows) !== 1) {
+      const error = new Error('O registro de assinatura não foi encontrado.');
+      error.statusCode = 409;
+      throw error;
+    }
+    return { affectedRows: Number(result.affectedRows) };
+  } catch (cause) {
+    if (cause?.statusCode) throw cause;
+    const error = new Error('Não foi possível atualizar o registro de assinatura.');
+    error.statusCode = 503;
+    error.cause = cause;
+    throw error;
+  }
+}
+
 export async function insertLegacySignature({
   reference,
   cpf,
