@@ -860,12 +860,13 @@ export default function SalesContractSigning() {
                           </button>
                           <button
                             type="button"
-                            className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-violet-500/30 bg-violet-500/10 px-4 text-[13px] font-semibold text-violet-700 shadow-sm transition-all hover:-translate-y-px hover:bg-violet-500/20 disabled:pointer-events-none disabled:opacity-45"
+                            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-700 shadow-sm transition-all hover:-translate-y-px hover:bg-violet-500/20 disabled:pointer-events-none disabled:opacity-45"
                             disabled={!signature.documentStored || documentPreview.loading}
                             onClick={() => viewDocument(row)}
+                            title={signature.documentStored ? "Ver documento" : "Nenhum documento armazenado"}
+                            aria-label={signature.documentStored ? "Ver documento" : "Nenhum documento armazenado"}
                           >
                             {documentPreview.loading && documentPreview.row === row ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
-                            {documentPreview.loading && documentPreview.row === row ? "Abrindo..." : "Ver documento"}
                           </button>
                           {!signed || row.isLegacySignatureTest ? (
                             <DisabledAction icon={FileText} explanation={row.isLegacySignatureTest ? "O contrato sintético não possui um modelo de PDF." : "Assine o contrato antes de gerar o PDF nesta tela."}>Gerar PDF</DisabledAction>
