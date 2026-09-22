@@ -22,7 +22,11 @@ export const CONTRACT_SIGNATURE_LAYOUTS = Object.freeze({
   perola: [placement(7, 121, 245, 76, 18)],
   rubi: [placement(7, 121, 245, 76, 18)],
   safira: [placement(10, 121, 235, 76, 18)],
-  topazio: [placement(10, 121, 238, 76, 18)],
+  topazio: [
+    placement(10, 121, 233, 76, 18),
+    placement(11, 121, 238, 76, 18),
+    placement(12, 121, 238, 76, 18),
+  ],
   total_mais_bom_farma: [
     placement(12, 121, 237, 76, 18),
     placement(18, 121, 246, 76, 18),
