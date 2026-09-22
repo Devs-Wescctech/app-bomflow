@@ -112,7 +112,8 @@ export async function getPostsalesCorrectionContext(db, pedidoId, reason) {
   }
   const p = pedido.rows[0];
   const [people, items, address] = await Promise.all([
-    db.query(`SELECT id, nome_pessoa, cpf, data_nascimento, sexo, telefone, parentesco, pessoa_id
+    db.query(`SELECT id, nome_pessoa, cpf, to_char(data_nascimento, 'YYYY-MM-DD') AS data_nascimento,
+                     sexo, telefone, parentesco, pessoa_id
                 FROM pedidos_pessoas WHERE pedido_id = $1 ORDER BY id`, [pedidoId]),
     db.query(`SELECT i.id, i.produto_id, COALESCE(NULLIF(TRIM(pr.descricao), ''), i.descricao) descricao,
                      i.preco, i.quantidade, i.valor_total_item,
