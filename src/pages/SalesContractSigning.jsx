@@ -458,10 +458,9 @@ export default function SalesContractSigning() {
   const [cpf, setCpf] = useState("");
   const [reference, setReference] = useState("");
   const [state, setState] = useState({ loading: false, searched: false, error: "", results: [], total: 0, page: 1, pageSize: PAGE_SIZE });
-  const [signing, setSigning] = useState({ open: false, row: null, mode: "preview" });
+  const [signing, setSigning] = useState({ open: false, row: null, mode: "definitive" });
   const [documentCapture, setDocumentCapture] = useState({ open: false, row: null });
   const [documentPreview, setDocumentPreview] = useState({ open: false, row: null, url: "", type: "", loading: false, error: "" });
-  const [modelState, setModelState] = useState({ loadingId: "", error: "" });
   const [generatingId, setGeneratingId] = useState("");
   const [whatsapp, setWhatsapp] = useState({
     open: false, row: null, phone: "", sending: false, error: "", sent: false,
@@ -632,49 +631,6 @@ export default function SalesContractSigning() {
     }
   };
 
-  const viewModel = async (row) => {
-    const rowId = row.generationId || row.id || row.label;
-    const previewWindow = window.open("", "_blank");
-    if (previewWindow) {
-      previewWindow.document.title = "Gerando modelo do contrato";
-      previewWindow.document.body.style.fontFamily = "system-ui, sans-serif";
-      previewWindow.document.body.style.padding = "32px";
-      previewWindow.document.body.textContent = "Gerando modelo assinado, aguarde...";
-    }
-    setModelState({ loadingId: rowId, error: "" });
-    try {
-      const response = await fetch("/api/sales-pf/contracts/generate", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token()}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ generationId: row.generationId, useTestSignature: true }),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        const details = Array.isArray(body.errors)
-          ? body.errors.filter(Boolean).join(" ")
-          : "";
-        throw new Error([
-          body.message || "Não foi possível gerar o modelo assinado.",
-          details,
-        ].filter(Boolean).join(" "));
-      }
-      const url = URL.createObjectURL(await response.blob());
-      if (!previewWindow) {
-        URL.revokeObjectURL(url);
-        throw new Error("O navegador bloqueou a abertura do modelo. Libere pop-ups para este endereço e tente novamente.");
-      }
-      previewWindow.location.replace(url);
-      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
-      setModelState({ loadingId: "", error: "" });
-    } catch (previewError) {
-      previewWindow?.close();
-      setModelState({ loadingId: "", error: previewError.message });
-    }
-  };
-
   const searchPage = async (page = 1) => {
     if (!cpf && !reference) {
       setState((current) => ({ ...current, searched: true, error: "Informe o CPF, CNPJ ou o pedido/orçamento para pesquisar." }));
@@ -789,12 +745,6 @@ export default function SalesContractSigning() {
         </div>
       )}
 
-      {modelState.error && (
-        <div role="alert" className="flex gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-          <AlertCircle className="h-5 w-5 shrink-0" />{modelState.error}
-        </div>
-      )}
-
       {state.loading && (
         <Card><CardContent className="space-y-3 p-6">
           {[1, 2].map((item) => <div key={item} className="h-20 animate-pulse rounded-xl bg-muted" />)}
@@ -884,17 +834,6 @@ export default function SalesContractSigning() {
                               {whatsapp.checkingGenerationId === row.generationId ? "Validando..." : "Enviar WhatsApp"}
                             </button>
                           )}
-                          <button type="button" className="action-pill-ghost h-10 px-4" onClick={() => setSigning({ open: true, row, mode: "preview" })}>
-                            <FileSignature className="h-4 w-4" />Captura teste
-                          </button>
-                          {row.isLegacySignatureTest ? (
-                            <DisabledAction icon={Eye} explanation="O contrato sintético valida somente a gravação da assinatura e do registro legado.">Ver modelo</DisabledAction>
-                          ) : (
-                            <button type="button" className="action-pill-ghost h-10 px-4" disabled={Boolean(modelState.loadingId)} onClick={() => viewModel(row)}>
-                              {modelState.loadingId === (row.generationId || row.id || row.label) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
-                              {modelState.loadingId === (row.generationId || row.id || row.label) ? "Gerando..." : "Ver modelo"}
-                            </button>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -910,15 +849,13 @@ export default function SalesContractSigning() {
       <Dialog open={signing.open} onOpenChange={(open) => setSigning((current) => ({ ...current, open }))}>
         <DialogContent className="rounded-2xl border-border sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle className="font-display text-2xl">{signing.mode === "redo" ? "Refazer assinatura" : signing.mode === "definitive" ? "Assinar contrato" : "Capturar assinatura de teste"}</DialogTitle>
+            <DialogTitle className="font-display text-2xl">{signing.mode === "redo" ? "Refazer assinatura" : "Assinar contrato"}</DialogTitle>
             <DialogDescription>{signing.row?.label || signing.row?.reference} · {signing.row?.name || "Titular não informado"}</DialogDescription>
           </DialogHeader>
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-muted-foreground">
             {signing.mode === "redo"
               ? "Ao salvar, o arquivo atual será substituído. A mesma linha do banco será mantida."
-              : signing.mode === "definitive"
-              ? "Ao salvar, a imagem será armazenada no servidor legado e um novo registro será criado para este contrato."
-              : "Esta captura é temporária e compartilhada entre os modelos. Cada nova captura substitui a anterior."}
+              : "Ao salvar, a imagem será armazenada no servidor legado e um novo registro será criado para este contrato."}
           </div>
           <SignatureCanvas
             key={`${signing.mode}-${signing.row?.generationId || signing.row?.id || "signature"}`}
@@ -926,10 +863,8 @@ export default function SalesContractSigning() {
             onSave={saveSignature}
             helperText={signing.mode === "redo"
               ? "Confira a nova assinatura. A imagem anterior será substituída."
-              : signing.mode === "definitive"
-              ? "Confira a assinatura antes de salvar. O registro será permanente."
-              : "Use esta captura para validar o posicionamento nos modelos."}
-            saveLabel={signing.mode === "redo" ? "Substituir assinatura" : signing.mode === "definitive" ? "Salvar assinatura" : "Salvar teste"}
+              : "Confira a assinatura antes de salvar. O registro será permanente."}
+            saveLabel={signing.mode === "redo" ? "Substituir assinatura" : "Salvar assinatura"}
           />
         </DialogContent>
       </Dialog>
