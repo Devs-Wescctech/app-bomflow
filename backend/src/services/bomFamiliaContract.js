@@ -473,9 +473,13 @@ async function renderBomFamilia(data, { portability = false } = {}) {
           throw new Error(`Adendo ${file} do contrato ${modelLabel} não encontrado.`);
         }
         addPage(source);
-        const contractPosition = file === 'mileage.jpg'
-          ? { x: 145, y: 65 }
-          : portability ? { x: 145, y: 55 } : { x: 162, y: 53 };
+        const contractPosition = portability
+          ? file === 'mileage.jpg'
+            ? { x: 145, y: 55 }
+            : { x: 153, y: 45 }
+          : file === 'mileage.jpg'
+            ? { x: 145, y: 65 }
+            : { x: 162, y: 53 };
         write(data.pedido, contractPosition.x, contractPosition.y, { size: 10, width: 32 });
         fill();
       };
@@ -489,7 +493,7 @@ async function renderBomFamilia(data, { portability = false } = {}) {
         addAdendum('wreath.jpg', () => {
           if (!portability) write(data.wreath_quantity || 1, 24, 91);
           write(money(data.wreath_value), portability ? 128 : 138, portability ? 123 : 119);
-          writeIssue(124, portability ? 242 : 238.5);
+          writeIssue(124, portability ? 234 : 238.5);
         });
       }
       if (amount(data.thanatopraxy_value) > 0) {
