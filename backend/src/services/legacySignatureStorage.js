@@ -145,7 +145,43 @@ const documentExtension = (mimeType) => ({
   'application/pdf': 'pdf',
 })[String(mimeType || '').toLowerCase()];
 
-export async function saveContractDocument(buffer, reference, mimeType) {
+const documentContentType = (extension) => ({
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  pdf: 'application/pdf',
+})[String(extension || '').toLowerCase()];
+
+export async function readContractDocument(fileReference) {
+  const normalized = String(fileReference || '').trim().replaceAll('\\', '/');
+  const fileName = path.posix.basename(normalized);
+  const match = fileName.match(/^[a-zA-Z0-9._-]+\.(jpe?g|png|webp|pdf)$/i);
+  const contentType = documentContentType(match?.[1]);
+  if (!match || !contentType) {
+    const error = new Error('A referência do documento é inválida.');
+    error.statusCode = 409;
+    throw error;
+  }
+  const remotePath = path.posix.join(remoteDirectory(), fileName);
+  return withClient(async (client) => {
+    if (!await client.exists(remotePath)) {
+      const error = new Error('O documento está registrado, mas o arquivo não foi encontrado.');
+      error.statusCode = 404;
+      throw error;
+    }
+    const stat = await client.stat(remotePath);
+    const data = await client.get(remotePath);
+    return {
+      buffer: Buffer.isBuffer(data) ? data : Buffer.from(data),
+      contentType,
+      fileName,
+      size: Number(stat.size),
+    };
+  }, { testOnly: false });
+}
+
+export async function saveContractDocument(buffer, reference, mimeType, { replaceExisting = false } = {}) {
   const normalizedReference = String(reference || '').replace(/\D/g, '');
   const extension = documentExtension(mimeType);
   if (!/^\d{1,10}$/.test(normalizedReference) || !extension) {
@@ -161,7 +197,7 @@ export async function saveContractDocument(buffer, reference, mimeType) {
   const fileName = `doc_${normalizedReference}.${extension}`;
   const remotePath = path.posix.join(remoteDirectory(), fileName);
   return withClient(async (client) => {
-    if (await client.exists(remotePath)) {
+    if (!replaceExisting && await client.exists(remotePath)) {
       const error = new Error('Este contrato já possui um documento armazenado.');
       error.statusCode = 409;
       throw error;

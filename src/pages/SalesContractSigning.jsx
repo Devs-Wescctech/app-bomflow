@@ -253,7 +253,7 @@ function DisabledAction({ children, icon: Icon, explanation }) {
   return (
     <button
       type="button"
-      className="action-pill-ghost h-10 px-3"
+      className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-border bg-muted px-3 text-[13px] font-semibold text-muted-foreground shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
       disabled
       title={explanation}
       aria-label={`${children}. ${explanation}`}
@@ -387,8 +387,11 @@ function DocumentCaptureDialog({ open, row, onOpenChange, onSaved }) {
     <Dialog open={open} onOpenChange={close}>
       <DialogContent className="rounded-2xl border-border sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="font-display text-2xl">Foto do documento</DialogTitle>
-          <DialogDescription>{row?.label} · {row?.name || "Titular não informado"}</DialogDescription>
+          <DialogTitle className="font-display text-2xl">{row?.signature?.documentStored ? "Reenviar documento" : "Foto do documento"}</DialogTitle>
+          <DialogDescription>
+            {row?.label} · {row?.name || "Titular não informado"}
+            {row?.signature?.documentStored ? " · O novo envio substituirá o vínculo atual." : ""}
+          </DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap gap-2">
           <button
@@ -473,6 +476,7 @@ export default function SalesContractSigning() {
   const [state, setState] = useState({ loading: false, searched: false, error: "", results: [], total: 0, page: 1, pageSize: PAGE_SIZE });
   const [signing, setSigning] = useState({ open: false, row: null, mode: "preview" });
   const [documentCapture, setDocumentCapture] = useState({ open: false, row: null });
+  const [documentPreview, setDocumentPreview] = useState({ open: false, row: null, url: "", type: "", loading: false, error: "" });
   const [modelState, setModelState] = useState({ loadingId: "", error: "" });
   const [generatingId, setGeneratingId] = useState("");
   const [whatsapp, setWhatsapp] = useState({
@@ -529,6 +533,37 @@ export default function SalesContractSigning() {
           : row
       )),
     }));
+  };
+
+  const viewDocument = async (row) => {
+    if (documentPreview.url) URL.revokeObjectURL(documentPreview.url);
+    setDocumentPreview({ open: true, row, url: "", type: "", loading: true, error: "" });
+    try {
+      const persistLegacyTest = Boolean(row?.isLegacySignatureTest);
+      const response = await fetch("/api/sales-pf/contracts/document/view", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          persistLegacyTest,
+          generationId: persistLegacyTest ? undefined : row?.generationId,
+          reference: persistLegacyTest ? row?.displayNumber : undefined,
+          cpf: persistLegacyTest ? "000.000.000-00" : undefined,
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.message || "Não foi possível abrir o documento.");
+      }
+      const blob = await response.blob();
+      setDocumentPreview((current) => ({ ...current, url: URL.createObjectURL(blob), type: blob.type, loading: false }));
+    } catch (previewError) {
+      setDocumentPreview((current) => ({ ...current, loading: false, error: previewError.message }));
+    }
+  };
+
+  const closeDocumentPreview = (open) => {
+    if (!open && documentPreview.url) URL.revokeObjectURL(documentPreview.url);
+    setDocumentPreview((current) => ({ ...current, open, url: open ? current.url : "", type: open ? current.type : "", error: open ? current.error : "" }));
   };
 
   const generatePdf = async (row) => {
@@ -824,7 +859,7 @@ export default function SalesContractSigning() {
                           </button>
                           <button
                             type="button"
-                            className="action-pill-ghost h-10 px-4"
+                            className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-amber-500/35 bg-amber-500/10 px-4 text-[13px] font-semibold text-amber-700 shadow-sm transition-all hover:-translate-y-px hover:bg-amber-500/20 disabled:pointer-events-none disabled:opacity-45"
                             disabled={!signed}
                             title={signed ? "Substitui o arquivo atual sem criar outra linha." : "Assine o contrato primeiro."}
                             onClick={() => setSigning({ open: true, row, mode: "redo" })}
@@ -833,12 +868,20 @@ export default function SalesContractSigning() {
                           </button>
                           <button
                             type="button"
-                            className="action-pill-ghost h-10 px-4"
-                            disabled={Boolean(signature.documentStored)}
+                            className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-sky-500/30 bg-sky-500/10 px-4 text-[13px] font-semibold text-sky-700 shadow-sm transition-all hover:-translate-y-px hover:bg-sky-500/20"
                             onClick={() => setDocumentCapture({ open: true, row })}
                           >
                             <Camera className="h-4 w-4" />
-                            {signature.documentStored ? "Documento salvo" : "Foto documento"}
+                            {signature.documentStored ? "Reenviar documento" : "Foto documento"}
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-violet-500/30 bg-violet-500/10 px-4 text-[13px] font-semibold text-violet-700 shadow-sm transition-all hover:-translate-y-px hover:bg-violet-500/20 disabled:pointer-events-none disabled:opacity-45"
+                            disabled={!signature.documentStored || documentPreview.loading}
+                            onClick={() => viewDocument(row)}
+                          >
+                            {documentPreview.loading && documentPreview.row === row ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                            {documentPreview.loading && documentPreview.row === row ? "Abrindo..." : "Ver documento"}
                           </button>
                           {!signed || row.isLegacySignatureTest ? (
                             <DisabledAction icon={FileText} explanation={row.isLegacySignatureTest ? "O contrato sintético não possui um modelo de PDF." : "Assine o contrato antes de gerar o PDF nesta tela."}>Gerar PDF</DisabledAction>
@@ -912,6 +955,22 @@ export default function SalesContractSigning() {
         onOpenChange={(open) => setDocumentCapture((current) => ({ ...current, open }))}
         onSaved={markDocumentSaved}
       />
+
+      <Dialog open={documentPreview.open} onOpenChange={closeDocumentPreview}>
+        <DialogContent className="rounded-2xl border-border sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">Documento atual</DialogTitle>
+            <DialogDescription>{documentPreview.row?.label} · {documentPreview.row?.name || "Titular não informado"}</DialogDescription>
+          </DialogHeader>
+          {documentPreview.loading && <div className="flex min-h-64 items-center justify-center gap-3 text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" />Carregando documento...</div>}
+          {documentPreview.error && <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">{documentPreview.error}</div>}
+          {documentPreview.url && documentPreview.type === "application/pdf" && <iframe title="Prévia do documento" src={documentPreview.url} className="h-[70vh] w-full rounded-xl border border-border" />}
+          {documentPreview.url && documentPreview.type !== "application/pdf" && <div className="flex max-h-[70vh] justify-center overflow-auto rounded-xl border border-border bg-muted/20 p-3"><img src={documentPreview.url} alt="Documento atual" className="max-h-[66vh] max-w-full object-contain" /></div>}
+          <DialogFooter>
+            <button type="button" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-border bg-muted px-[18px] text-[13px] font-semibold text-foreground shadow-sm transition-all hover:-translate-y-px hover:bg-muted/70" onClick={() => closeDocumentPreview(false)}><X className="h-4 w-4" />Fechar</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={whatsapp.open} onOpenChange={(open) => {
         if (!whatsapp.sending) setWhatsapp((current) => ({ ...current, open }));

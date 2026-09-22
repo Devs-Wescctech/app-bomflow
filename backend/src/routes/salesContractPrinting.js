@@ -30,6 +30,7 @@ import { decrypt, encrypt } from '../utils/encryption.js';
 import { signatureBufferFromDataUrl } from '../services/signatureImage.js';
 import {
   readTestSignature,
+  readContractDocument,
   replaceContractSignature,
   saveContractDocument,
   saveContractSignature,
@@ -1809,13 +1810,12 @@ router.post('/contracts/document', contractDocumentUpload.single('document'), as
       return res.status(422).json({ message: 'Selecione ou capture um documento para enviar.' });
     }
     const existing = await findLatestLegacySignature(identity.reference);
-    if (existing?.contrato_arquivo) {
-      return res.status(409).json({ message: 'Este contrato já possui um documento armazenado.' });
-    }
+    const replacingDocument = Boolean(existing?.contrato_arquivo);
     const stored = await saveContractDocument(
       req.file.buffer,
       identity.reference,
       req.file.mimetype,
+      { replaceExisting: replacingDocument },
     );
     let recordId = existing?.codigo || null;
     if (existing) {
@@ -1841,7 +1841,10 @@ router.post('/contracts/document', contractDocumentUpload.single('document'), as
       recordId,
       fileName: stored.fileName,
       size: stored.size,
-      message: 'Documento salvo e vinculado ao contrato.',
+      replaced: replacingDocument,
+      message: replacingDocument
+        ? 'Documento reenviado e vínculo atualizado.'
+        : 'Documento salvo e vinculado ao contrato.',
     });
   } catch (error) {
     if (identity.claims) {
@@ -1849,6 +1852,38 @@ router.post('/contracts/document', contractDocumentUpload.single('document'), as
     }
     return res.status(error.statusCode || 502).json({
       message: error.statusCode ? error.message : 'Não foi possível salvar o documento.',
+    });
+  }
+});
+
+router.post('/contracts/document/view', async (req, res) => {
+  let identity;
+  try {
+    if (req.body?.persistLegacyTest === true) {
+      const testContract = assertLegacySignatureTestContract(req.body?.reference, req.body?.cpf);
+      identity = { reference: testContract.reference };
+    } else {
+      identity = verifiedContractIdentity(req, req.body?.generationId);
+    }
+  } catch {
+    return res.status(422).json({
+      message: 'Identificador do documento inválido ou expirado. Faça uma nova busca.',
+    });
+  }
+  try {
+    const existing = await findLatestLegacySignature(identity.reference);
+    if (!existing?.contrato_arquivo) {
+      return res.status(404).json({ message: 'Este contrato ainda não possui documento armazenado.' });
+    }
+    const document = await readContractDocument(existing.contrato_arquivo);
+    res.setHeader('Content-Type', document.contentType);
+    res.setHeader('Content-Length', String(document.size));
+    res.setHeader('Content-Disposition', `inline; filename="${document.fileName}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.send(document.buffer);
+  } catch (error) {
+    return res.status(error.statusCode || 502).json({
+      message: error.statusCode ? error.message : 'Não foi possível abrir o documento.',
     });
   }
 });

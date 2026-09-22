@@ -38,8 +38,13 @@ test('document capture accepts camera or upload and persists the database refere
   assert.match(routeSource, /router\.post\('\/contracts\/document'/);
   assert.match(routeSource, /saveContractDocument/);
   assert.match(routeSource, /contractFile: stored\.fileName/);
+  assert.match(routeSource, /replaceExisting: replacingDocument/);
+  assert.match(routeSource, /router\.post\('\/contracts\/document\/view'/);
+  assert.match(routeSource, /readContractDocument/);
   assert.match(pageSource, /navigator\.mediaDevices/);
   assert.match(pageSource, /Foto documento/);
+  assert.match(pageSource, /Reenviar documento/);
+  assert.match(pageSource, /Ver documento/);
   assert.match(pageSource, /Salvar documento/);
 });
 
