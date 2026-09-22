@@ -417,14 +417,7 @@ function DocumentCaptureDialog({ open, row, onOpenChange, onSaved }) {
             <Camera className="h-4 w-4" />Abrir câmera
           </button>
         </div>
-        {mode === "upload" ? (
-          <label className="flex min-h-40 cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/20 p-6 text-center">
-            <Upload className="h-8 w-8 text-primary" />
-            <span className="font-semibold">Escolher foto ou PDF</span>
-            <span className="text-sm text-muted-foreground">JPG, PNG, WEBP ou PDF, até 10 MB</span>
-            <input type="file" className="sr-only" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={chooseFile} />
-          </label>
-        ) : (
+        {mode === "camera" && (
           <div className="space-y-3">
             <video ref={videoRef} muted playsInline className="max-h-[360px] w-full rounded-xl bg-black object-contain" />
             {cameraError && <p className="text-sm text-amber-700">{cameraError}</p>}
