@@ -67,6 +67,67 @@ export async function findLatestLegacySignature(reference) {
   }
 }
 
+export async function findLatestLegacySignatures(references) {
+  const database = connectionPool();
+  if (!database) return [];
+  const normalized = [...new Set((references || []).map(contractReference))];
+  if (!normalized.length) return [];
+  const placeholders = normalized.map(() => '?').join(',');
+  try {
+    const [rows] = await database.execute(
+      `SELECT current.codigo, current.data, current.contrato_numero,
+              current.titular_cpf, current.contrato_arquivo, current.assinatura_arquivo
+         FROM contratos_assinaturas current
+         JOIN (
+           SELECT contrato_numero, MAX(codigo) AS codigo
+             FROM contratos_assinaturas
+            WHERE contrato_numero IN (${placeholders})
+            GROUP BY contrato_numero
+         ) latest ON latest.codigo = current.codigo`,
+      normalized,
+    );
+    return rows;
+  } catch (cause) {
+    const error = new Error('Não foi possível consultar as assinaturas no banco legado.');
+    error.statusCode = 503;
+    error.cause = cause;
+    throw error;
+  }
+}
+
+export async function insertLegacySignatureSnapshot({
+  reference,
+  cpf,
+  contractFile = '',
+  signatureFile = '',
+}) {
+  const database = connectionPool();
+  if (!database) {
+    const error = new Error('O banco legado de assinaturas não está configurado.');
+    error.statusCode = 503;
+    throw error;
+  }
+  try {
+    const [result] = await database.execute(
+      `INSERT INTO contratos_assinaturas
+        (data, contrato_numero, titular_cpf, contrato_arquivo, assinatura_arquivo)
+       VALUES (CURRENT_DATE(), ?, ?, ?, ?)`,
+      [
+        contractReference(reference),
+        String(cpf || '').trim().slice(0, 14),
+        String(contractFile || '').trim().slice(0, 50),
+        String(signatureFile || '').trim().slice(0, 50),
+      ],
+    );
+    return { id: Number(result.insertId), affectedRows: Number(result.affectedRows) };
+  } catch (cause) {
+    const error = new Error('Não foi possível registrar os arquivos do contrato no banco legado.');
+    error.statusCode = 503;
+    error.cause = cause;
+    throw error;
+  }
+}
+
 export async function insertLegacySignature({
   reference,
   cpf,

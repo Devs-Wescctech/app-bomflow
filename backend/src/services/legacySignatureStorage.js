@@ -103,6 +103,60 @@ export async function savePersistentTestSignature(buffer, reference) {
   });
 }
 
+export async function saveContractSignature(buffer, reference) {
+  const fileName = signatureFileNameFromReference(`${reference}.png`);
+  if (!Buffer.isBuffer(buffer) || buffer.length <= MIN_SIGNATURE_SIZE) {
+    const error = new Error('A assinatura capturada está vazia ou incompleta.');
+    error.statusCode = 422;
+    throw error;
+  }
+  const remotePath = path.posix.join(remoteDirectory(), fileName);
+  return withClient(async (client) => {
+    if (await client.exists(remotePath)) {
+      const error = new Error('Este contrato já possui um arquivo de assinatura.');
+      error.statusCode = 409;
+      throw error;
+    }
+    await client.put(buffer, remotePath);
+    const stat = await client.stat(remotePath);
+    return { fileName, size: Number(stat.size) || buffer.length };
+  }, { testOnly: false });
+}
+
+const documentExtension = (mimeType) => ({
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'application/pdf': 'pdf',
+})[String(mimeType || '').toLowerCase()];
+
+export async function saveContractDocument(buffer, reference, mimeType) {
+  const normalizedReference = String(reference || '').replace(/\D/g, '');
+  const extension = documentExtension(mimeType);
+  if (!/^\d{1,10}$/.test(normalizedReference) || !extension) {
+    const error = new Error('O arquivo deve ser uma imagem JPG, PNG, WEBP ou um PDF.');
+    error.statusCode = 422;
+    throw error;
+  }
+  if (!Buffer.isBuffer(buffer) || buffer.length < 100) {
+    const error = new Error('O arquivo do documento está vazio ou incompleto.');
+    error.statusCode = 422;
+    throw error;
+  }
+  const fileName = `doc_${normalizedReference}.${extension}`;
+  const remotePath = path.posix.join(remoteDirectory(), fileName);
+  return withClient(async (client) => {
+    if (await client.exists(remotePath)) {
+      const error = new Error('Este contrato já possui um documento armazenado.');
+      error.statusCode = 409;
+      throw error;
+    }
+    await client.put(buffer, remotePath);
+    const stat = await client.stat(remotePath);
+    return { fileName, size: Number(stat.size) || buffer.length };
+  }, { testOnly: false });
+}
+
 export async function readTestSignature() {
   return withClient(async (client) => {
     try {

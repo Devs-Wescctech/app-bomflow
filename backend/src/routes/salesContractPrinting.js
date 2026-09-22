@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
+import multer from 'multer';
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
@@ -25,14 +26,19 @@ import {
   readLocalContract,
 } from '../services/contractObjectStorage.js';
 import { normalizeBrazilPhone } from '../utils/phone.js';
-import { decrypt } from '../utils/encryption.js';
+import { decrypt, encrypt } from '../utils/encryption.js';
 import { signatureBufferFromDataUrl } from '../services/signatureImage.js';
 import {
   readTestSignature,
+  saveContractDocument,
+  saveContractSignature,
   savePersistentTestSignature,
   saveTestSignature,
 } from '../services/legacySignatureStorage.js';
-import { readLegacyContractSignature } from '../services/legacyContractSignature.js';
+import {
+  legacySignatureContractReference,
+  readLegacyContractSignature,
+} from '../services/legacyContractSignature.js';
 import {
   assertLegacySignatureTestContract,
   isLegacySignatureTestLookup,
@@ -41,7 +47,8 @@ import {
 } from '../services/legacySignatureTestContract.js';
 import {
   findLatestLegacySignature,
-  insertLegacySignature,
+  findLatestLegacySignatures,
+  insertLegacySignatureSnapshot,
 } from '../services/legacySignatureRepository.js';
 import { applyContractSignature } from '../services/contractSignaturePdf.js';
 import {
@@ -133,6 +140,10 @@ import {
 } from '../services/bomFamiliaContract.js';
 
 const router = Router();
+const contractDocumentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+});
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const contractPages = path.resolve(__dirname, '../../public/bom-auto-contract');
 const SUBMENU = 'SalesContractPrinting';
@@ -306,11 +317,13 @@ function audit(req, cpf, row, outcome, action, { required = false, recipientHash
 }
 
 function issueId(req, cpf, row) {
+  const normalizedDocument = String(cpf || '').replace(/\D/g, '');
   return jwt.sign({
     jti: crypto.randomUUID(),
     purpose: SUBMENU,
     uid: String(req.user.id),
     cpf: protectCpf(cpf),
+    document: encrypt(normalizedDocument),
     pedido: row.pedido || null,
     contrato: row.contrato || null,
     companyId: row.companyId || null,
@@ -318,6 +331,16 @@ function issueId(req, cpf, row) {
     numeroPedido: row.numero_pedido || null,
     productKey: normalizeContractProduct(row.productKey || CONTRACT_PRODUCTS.BOM_AUTO),
   }, secret(), { expiresIn: '10m' });
+}
+
+function verifiedContractIdentity(req, token) {
+  const claims = jwt.verify(String(token || ''), secret());
+  if (claims.purpose !== SUBMENU || claims.uid !== String(req.user.id)) throw new Error('invalid');
+  const productKey = normalizeContractProduct(claims.productKey);
+  const document = decrypt(claims.document);
+  const reference = legacySignatureContractReference(claims, productKey);
+  if (!productKey || !reference || protectCpf(document) !== claims.cpf) throw new Error('invalid');
+  return { claims, productKey, document, reference };
 }
 
 const protectedRecipient = (phone) => crypto.createHash('sha256')
@@ -1612,15 +1635,16 @@ router.post('/contracts/signature-test', async (req, res) => {
         req.body?.cpf,
       );
       const existing = await findLatestLegacySignature(testContract.reference);
-      if (existing) {
+      if (existing?.assinatura_arquivo) {
         const error = new Error('O contrato de homologação já possui uma assinatura registrada.');
         error.statusCode = 409;
         throw error;
       }
       const stored = await savePersistentTestSignature(signature, testContract.reference);
-      const inserted = await insertLegacySignature({
+      const inserted = await insertLegacySignatureSnapshot({
         reference: testContract.reference,
         cpf: '000.000.000-00',
+        contractFile: existing?.contrato_arquivo || '',
         signatureFile: stored.fileName,
       });
       return res.json({
@@ -1642,6 +1666,105 @@ router.post('/contracts/signature-test', async (req, res) => {
   } catch (error) {
     return res.status(error.statusCode || 502).json({
       message: error.statusCode ? error.message : 'Não foi possível salvar a assinatura de teste.',
+    });
+  }
+});
+
+router.post('/contracts/signature', async (req, res) => {
+  let identity;
+  try {
+    identity = verifiedContractIdentity(req, req.body?.generationId);
+  } catch {
+    return res.status(422).json({
+      message: 'Identificador de assinatura inválido ou expirado. Faça uma nova busca.',
+    });
+  }
+  try {
+    const signature = signatureBufferFromDataUrl(req.body?.signatureDataUrl);
+    const existing = await findLatestLegacySignature(identity.reference);
+    if (existing?.assinatura_arquivo) {
+      return res.status(409).json({
+        message: 'Este contrato já possui uma assinatura. Use Refazer assinatura quando essa função estiver liberada.',
+      });
+    }
+    const stored = await saveContractSignature(signature, identity.reference);
+    const inserted = await insertLegacySignatureSnapshot({
+      reference: identity.reference,
+      cpf: identity.document,
+      contractFile: existing?.contrato_arquivo || '',
+      signatureFile: stored.fileName,
+    });
+    await audit(req, `hash:${identity.claims.cpf}`, identity.claims, 'success', 'signature', { required: true });
+    return res.json({
+      success: true,
+      persistent: true,
+      recordId: inserted.id,
+      fileName: stored.fileName,
+      size: stored.size,
+      message: 'Assinatura salva e vinculada ao contrato.',
+    });
+  } catch (error) {
+    await audit(req, `hash:${identity.claims.cpf}`, identity.claims, 'error', 'signature');
+    return res.status(error.statusCode || 502).json({
+      message: error.statusCode ? error.message : 'Não foi possível salvar a assinatura.',
+    });
+  }
+});
+
+router.post('/contracts/document', contractDocumentUpload.single('document'), async (req, res) => {
+  let identity;
+  try {
+    if (String(req.body?.persistLegacyTest || '').toLowerCase() === 'true') {
+      const testContract = assertLegacySignatureTestContract(req.body?.reference, req.body?.cpf);
+      identity = {
+        claims: null,
+        document: '000.000.000-00',
+        reference: testContract.reference,
+      };
+    } else {
+      identity = verifiedContractIdentity(req, req.body?.generationId);
+    }
+  } catch {
+    return res.status(422).json({
+      message: 'Identificador do contrato inválido ou expirado. Faça uma nova busca.',
+    });
+  }
+  try {
+    if (!req.file?.buffer) {
+      return res.status(422).json({ message: 'Selecione ou capture um documento para enviar.' });
+    }
+    const existing = await findLatestLegacySignature(identity.reference);
+    if (existing?.contrato_arquivo) {
+      return res.status(409).json({ message: 'Este contrato já possui um documento armazenado.' });
+    }
+    const stored = await saveContractDocument(
+      req.file.buffer,
+      identity.reference,
+      req.file.mimetype,
+    );
+    const inserted = await insertLegacySignatureSnapshot({
+      reference: identity.reference,
+      cpf: identity.document,
+      contractFile: stored.fileName,
+      signatureFile: existing?.assinatura_arquivo || '',
+    });
+    if (identity.claims) {
+      await audit(req, `hash:${identity.claims.cpf}`, identity.claims, 'success', 'document', { required: true });
+    }
+    return res.json({
+      success: true,
+      persistent: true,
+      recordId: inserted.id,
+      fileName: stored.fileName,
+      size: stored.size,
+      message: 'Documento salvo e vinculado ao contrato.',
+    });
+  } catch (error) {
+    if (identity.claims) {
+      await audit(req, `hash:${identity.claims.cpf}`, identity.claims, 'error', 'document');
+    }
+    return res.status(error.statusCode || 502).json({
+      message: error.statusCode ? error.message : 'Não foi possível salvar o documento.',
     });
   }
 });
@@ -1681,8 +1804,9 @@ router.get('/contracts/search', async (req, res) => {
         cpfOwner: LEGACY_SIGNATURE_TEST_CPF,
         isLegacySignatureTest: true,
         signature: {
-          signed: Boolean(existing),
+          signed: Boolean(existing?.assinatura_arquivo),
           signedAt: existing?.data || null,
+          documentStored: Boolean(existing?.contrato_arquivo),
         },
       };
       await audit(req, `hash:${protectCpf('legacy-signature-test')}`, null, 'success', 'lookup', { required: true });
@@ -1693,10 +1817,33 @@ router.get('/contracts/search', async (req, res) => {
       : cpf
         ? await findOrders(cpf, page, pageSize, reference || null)
         : await findOrdersByReference(reference, page, pageSize);
-    found.rows = found.rows.map(({ cpfOwner, companyId, ...row }) => ({
+    const issuedRows = found.rows.map(({ cpfOwner, companyId, ...row }) => ({
       ...row,
       generationId: issueId(req, cpf || cnpj || cpfOwner, { ...row, companyId }),
     }));
+    if (String(req.query.includeSignatureStatus || '').toLowerCase() === 'true') {
+      const references = issuedRows
+        .map((row) => legacySignatureContractReference(row, row.productKey))
+        .filter(Boolean);
+      const records = await findLatestLegacySignatures(references);
+      const recordsByReference = new Map(
+        records.map((record) => [String(record.contrato_numero), record]),
+      );
+      found.rows = issuedRows.map((row) => {
+        const signatureReference = legacySignatureContractReference(row, row.productKey);
+        const record = recordsByReference.get(signatureReference);
+        return {
+          ...row,
+          signature: {
+            signed: Boolean(record?.assinatura_arquivo),
+            signedAt: record?.data || null,
+            documentStored: Boolean(record?.contrato_arquivo),
+          },
+        };
+      });
+    } else {
+      found.rows = issuedRows;
+    }
     await audit(req, auditKey, null, found.rows.length ? 'success' : 'empty', 'lookup', { required: true });
     res.json({ ...found, page, pageSize });
   } catch (error) {
@@ -2077,12 +2224,16 @@ router.post('/contracts/send-whatsapp', async (req, res) => {
       });
     }
     sendId = claimed.rows[0].id;
-    const pdf = await renderProductContract(
+    const unsignedPdf = await renderProductContract(
       data,
       productKey,
       claims.pedido,
       { optimizeForWhatsapp: true },
     );
+    const signatureImage = await readLegacyContractSignature(claims, productKey);
+    const pdf = signatureImage
+      ? await applyContractSignature(unsignedPdf, signatureImage, productKey)
+      : unsignedPdf;
     temporaryObject = createContractObjectPath();
     await query(
       `UPDATE bom_auto_contract_whatsapp_sends
