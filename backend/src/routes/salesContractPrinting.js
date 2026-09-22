@@ -27,8 +27,22 @@ import {
 import { normalizeBrazilPhone } from '../utils/phone.js';
 import { decrypt } from '../utils/encryption.js';
 import { signatureBufferFromDataUrl } from '../services/signatureImage.js';
-import { readTestSignature, saveTestSignature } from '../services/legacySignatureStorage.js';
+import {
+  readTestSignature,
+  savePersistentTestSignature,
+  saveTestSignature,
+} from '../services/legacySignatureStorage.js';
 import { readLegacyContractSignature } from '../services/legacyContractSignature.js';
+import {
+  assertLegacySignatureTestContract,
+  isLegacySignatureTestLookup,
+  LEGACY_SIGNATURE_TEST_CPF,
+  LEGACY_SIGNATURE_TEST_REFERENCE,
+} from '../services/legacySignatureTestContract.js';
+import {
+  findLatestLegacySignature,
+  insertLegacySignature,
+} from '../services/legacySignatureRepository.js';
 import { applyContractSignature } from '../services/contractSignaturePdf.js';
 import {
   CONTRACT_PRODUCTS,
@@ -1592,6 +1606,32 @@ router.use(authMiddleware, loadAgentMiddleware, requireSalesContractPrinting);
 router.post('/contracts/signature-test', async (req, res) => {
   try {
     const signature = signatureBufferFromDataUrl(req.body?.signatureDataUrl);
+    if (req.body?.persistLegacyTest === true) {
+      const testContract = assertLegacySignatureTestContract(
+        req.body?.reference,
+        req.body?.cpf,
+      );
+      const existing = await findLatestLegacySignature(testContract.reference);
+      if (existing) {
+        const error = new Error('O contrato de homologação já possui uma assinatura registrada.');
+        error.statusCode = 409;
+        throw error;
+      }
+      const stored = await savePersistentTestSignature(signature, testContract.reference);
+      const inserted = await insertLegacySignature({
+        reference: testContract.reference,
+        cpf: '000.000.000-00',
+        signatureFile: stored.fileName,
+      });
+      return res.json({
+        success: true,
+        persistent: true,
+        recordId: inserted.id,
+        fileName: stored.fileName,
+        size: stored.size,
+        message: 'Assinatura e registro de homologação salvos no legado.',
+      });
+    }
     const stored = await saveTestSignature(signature);
     return res.json({
       success: true,
@@ -1611,10 +1651,11 @@ router.get('/contracts/search', async (req, res) => {
   const cpf = normalizeCpf(rawDocument);
   const cnpj = normalizeCnpj(rawDocument);
   const reference = String(req.query.reference || '').replace(/\D/g, '').slice(0, 18);
+  const isPersistentTestLookup = isLegacySignatureTestLookup(rawDocument, reference);
   if (!rawDocument && !reference) {
     return res.status(422).json({ message: 'Informe um CPF, CNPJ ou número de pedido/orçamento.' });
   }
-  if (rawDocument && !isValidCpf(rawDocument) && !isValidCnpj(rawDocument)) {
+  if (rawDocument && !isPersistentTestLookup && !isValidCpf(rawDocument) && !isValidCnpj(rawDocument)) {
     return res.status(422).json({ message: 'Informe um CPF ou CNPJ válido.' });
   }
   if (reference && !/^\d{1,18}$/.test(reference)) {
@@ -1624,6 +1665,29 @@ router.get('/contracts/search', async (req, res) => {
   const pageSize = Math.min(50, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 20));
   const auditKey = cpf || cnpj || `hash:${protectCpf(`pedido:${reference}`)}`;
   try {
+    if (isPersistentTestLookup) {
+      const existing = await findLatestLegacySignature(LEGACY_SIGNATURE_TEST_REFERENCE);
+      const row = {
+        id: `legacy-signature-test-${LEGACY_SIGNATURE_TEST_REFERENCE}`,
+        pedido: LEGACY_SIGNATURE_TEST_REFERENCE,
+        numero_pedido: LEGACY_SIGNATURE_TEST_REFERENCE,
+        contrato: null,
+        displayNumber: LEGACY_SIGNATURE_TEST_REFERENCE,
+        label: `Pedido ${LEGACY_SIGNATURE_TEST_REFERENCE}`,
+        product: 'Contrato de homologação',
+        productKey: 'legacy_signature_test',
+        name: 'TITULAR DE HOMOLOGAÇÃO',
+        date: null,
+        cpfOwner: LEGACY_SIGNATURE_TEST_CPF,
+        isLegacySignatureTest: true,
+        signature: {
+          signed: Boolean(existing),
+          signedAt: existing?.data || null,
+        },
+      };
+      await audit(req, `hash:${protectCpf('legacy-signature-test')}`, null, 'success', 'lookup', { required: true });
+      return res.json({ rows: [row], total: 1, page: 1, pageSize });
+    }
     const found = cnpj
       ? await findBomCorpContracts(cnpj, page, pageSize, reference || null)
       : cpf

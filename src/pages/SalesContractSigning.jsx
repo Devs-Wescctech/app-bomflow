@@ -151,8 +151,8 @@ function SignatureCanvas({ onCancel, onSave }) {
     setError("");
     setSuccess("");
     try {
-      await onSave(signatureDataUrl);
-      setSuccess("Assinatura de teste salva. A próxima captura substituirá este arquivo.");
+      const saved = await onSave(signatureDataUrl);
+      setSuccess(saved?.message || "Assinatura de teste salva. A próxima captura substituirá este arquivo.");
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -221,16 +221,33 @@ export default function SalesContractSigning() {
   const [modelState, setModelState] = useState({ loadingId: "", error: "" });
 
   const saveTestSignature = async (signatureDataUrl) => {
+    const persistLegacyTest = Boolean(signing.row?.isLegacySignatureTest);
     const response = await fetch("/api/sales-pf/contracts/signature-test", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token()}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ signatureDataUrl }),
+      body: JSON.stringify({
+        signatureDataUrl,
+        persistLegacyTest,
+        reference: persistLegacyTest ? signing.row.displayNumber : undefined,
+        cpf: persistLegacyTest ? "000.000.000-00" : undefined,
+      }),
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.message || "Não foi possível salvar a assinatura de teste.");
+    if (body.persistent) {
+      setState((current) => ({
+        ...current,
+        results: current.results.map((row) => (
+          row.isLegacySignatureTest
+            ? { ...row, signature: { signed: true, signedAt: new Date().toISOString() } }
+            : row
+        )),
+      }));
+    }
+    return body;
   };
 
   const viewModel = async (row) => {
@@ -331,6 +348,7 @@ export default function SalesContractSigning() {
     novo_combo_multi_bem_estar: "Novo Combo Multi Bem Estar",
     combo_multi_selecao: "Combo Multi Seleção",
     convalescenca: "Convalescença",
+    legacy_signature_test: "Contrato de homologação",
   };
   const productName = (row) => row.product || row.productName || productLabels[row.productKey] || "";
   const groupedResults = [...state.results.reduce((groups, row) => {
@@ -427,11 +445,23 @@ export default function SalesContractSigning() {
                           {signed && <p className="flex items-center gap-1.5 text-sm text-primary"><CheckCircle2 className="h-4 w-4" />Assinatura registrada{signature.signedAt ? ` em ${dateLabel(signature.signedAt)}` : ""}</p>}
                         </div>
                         <div className="flex flex-wrap justify-start gap-2 xl:justify-end">
-                          <button type="button" className="action-pill-primary h-10 px-4" onClick={() => setSigning({ open: true, row })}><FileSignature className="h-4 w-4" />Capturar assinatura</button>
-                          <button type="button" className="action-pill-ghost h-10 px-4" disabled={Boolean(modelState.loadingId)} onClick={() => viewModel(row)}>
-                            {modelState.loadingId === (row.generationId || row.id || row.label) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
-                            {modelState.loadingId === (row.generationId || row.id || row.label) ? "Gerando..." : "Ver modelo"}
+                          <button
+                            type="button"
+                            className="action-pill-primary h-10 px-4"
+                            disabled={Boolean(row.isLegacySignatureTest && signed)}
+                            onClick={() => setSigning({ open: true, row })}
+                          >
+                            <FileSignature className="h-4 w-4" />
+                            {row.isLegacySignatureTest && signed ? "Assinatura registrada" : "Capturar assinatura"}
                           </button>
+                          {row.isLegacySignatureTest ? (
+                            <DisabledAction icon={Eye} explanation="O contrato sintético valida somente a gravação da assinatura e do registro legado.">Ver modelo</DisabledAction>
+                          ) : (
+                            <button type="button" className="action-pill-ghost h-10 px-4" disabled={Boolean(modelState.loadingId)} onClick={() => viewModel(row)}>
+                              {modelState.loadingId === (row.generationId || row.id || row.label) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                              {modelState.loadingId === (row.generationId || row.id || row.label) ? "Gerando..." : "Ver modelo"}
+                            </button>
+                          )}
                           <DisabledAction explanation="Indisponível: o armazenamento legado ainda não foi mapeado.">Documentos</DisabledAction>
                           <DisabledAction icon={FileText} explanation="Indisponível: geração de PDF não é executada nesta prévia.">Gerar PDF</DisabledAction>
                           <DisabledAction explanation="Indisponível: envio por WhatsApp não é executado nesta prévia.">Enviar WhatsApp</DisabledAction>
@@ -453,7 +483,11 @@ export default function SalesContractSigning() {
             <DialogTitle className="font-display text-2xl">Capturar assinatura de teste</DialogTitle>
             <DialogDescription>{signing.row?.label || signing.row?.reference} · {signing.row?.name || "Titular não informado"}</DialogDescription>
           </DialogHeader>
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-muted-foreground">O arquivo é temporário e compartilhado entre os modelos. Cada nova captura substitui a anterior; o registro no banco legado continua desabilitado.</div>
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-muted-foreground">
+            {signing.row?.isLegacySignatureTest
+              ? "Este contrato é reservado para homologação. Ao salvar, será criado o arquivo 999999999.png e uma linha permanente no banco legado."
+              : "O arquivo é temporário e compartilhado entre os modelos. Cada nova captura substitui a anterior; o registro no banco legado continua desabilitado."}
+          </div>
           <SignatureCanvas
             key={signing.row?.generationId || signing.row?.id || "signature"}
             onCancel={() => setSigning((current) => ({ ...current, open: false }))}

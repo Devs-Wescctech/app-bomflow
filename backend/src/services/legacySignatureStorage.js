@@ -87,6 +87,22 @@ export async function saveTestSignature(buffer) {
   });
 }
 
+export async function savePersistentTestSignature(buffer, reference) {
+  requireTestMode();
+  const fileName = signatureFileNameFromReference(`${reference}.png`);
+  if (!Buffer.isBuffer(buffer) || buffer.length <= MIN_SIGNATURE_SIZE) {
+    const error = new Error('A assinatura capturada está vazia ou incompleta.');
+    error.statusCode = 422;
+    throw error;
+  }
+  const remotePath = path.posix.join(remoteDirectory(), fileName);
+  return withClient(async (client) => {
+    await client.put(buffer, remotePath);
+    const stat = await client.stat(remotePath);
+    return { fileName, size: Number(stat.size) || buffer.length };
+  });
+}
+
 export async function readTestSignature() {
   return withClient(async (client) => {
     try {

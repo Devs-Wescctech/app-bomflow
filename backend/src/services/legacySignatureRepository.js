@@ -66,3 +66,47 @@ export async function findLatestLegacySignature(reference) {
     throw error;
   }
 }
+
+export async function insertLegacySignature({
+  reference,
+  cpf,
+  contractFile = '',
+  signatureFile,
+}) {
+  const database = connectionPool();
+  if (!database) {
+    const error = new Error('O banco legado de assinaturas não está configurado.');
+    error.statusCode = 503;
+    throw error;
+  }
+  try {
+    const [result] = await database.execute(
+      `INSERT INTO contratos_assinaturas
+        (data, contrato_numero, titular_cpf, contrato_arquivo, assinatura_arquivo)
+       SELECT CURRENT_DATE(), ?, ?, ?, ?
+         FROM DUAL
+        WHERE NOT EXISTS (
+          SELECT 1 FROM contratos_assinaturas WHERE contrato_numero = ?
+        )`,
+      [
+        contractReference(reference),
+        String(cpf || '').trim(),
+        String(contractFile || '').trim(),
+        String(signatureFile || '').trim(),
+        contractReference(reference),
+      ],
+    );
+    if (Number(result.affectedRows) !== 1) {
+      const error = new Error('Este contrato já possui um registro de assinatura.');
+      error.statusCode = 409;
+      throw error;
+    }
+    return { id: Number(result.insertId), affectedRows: Number(result.affectedRows) };
+  } catch (cause) {
+    if (cause?.statusCode) throw cause;
+    const error = new Error('Não foi possível registrar a assinatura no banco legado.');
+    error.statusCode = 503;
+    error.cause = cause;
+    throw error;
+  }
+}
