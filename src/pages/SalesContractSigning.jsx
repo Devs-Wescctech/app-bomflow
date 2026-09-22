@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, Camera, CheckCircle2, Eye, FileSignature, FileText, Info, Loader2, RefreshCw, Search, Send, Trash2, Upload } from "lucide-react";
+import { AlertCircle, Camera, CheckCircle2, Eye, FileSignature, FileText, Info, Loader2, RefreshCw, Search, Send, Trash2, Upload, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -220,10 +220,21 @@ function SignatureCanvas({
       {error && <p role="alert" className="text-sm text-amber-700">{error}</p>}
       {success && <p role="status" className="flex items-center gap-2 text-sm text-primary"><CheckCircle2 className="h-4 w-4" />{success}</p>}
       <DialogFooter className="gap-2 sm:space-x-0">
-        <button type="button" className="action-pill-ghost" onClick={clear} disabled={!pointsRef.current.length}>
+        <button
+          type="button"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-destructive/30 bg-destructive/10 px-[18px] text-[13px] font-semibold text-destructive shadow-sm transition-all duration-200 hover:-translate-y-px hover:bg-destructive/20 focus:outline-none focus:ring-4 focus:ring-destructive/15 disabled:pointer-events-none disabled:opacity-45"
+          onClick={clear}
+          disabled={!pointsRef.current.length}
+        >
           <Trash2 className="h-4 w-4" />Limpar
         </button>
-        <button type="button" className="action-pill-ghost" onClick={onCancel}>Fechar</button>
+        <button
+          type="button"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-border bg-muted px-[18px] text-[13px] font-semibold text-foreground shadow-sm transition-all duration-200 hover:-translate-y-px hover:bg-muted/70 focus:outline-none focus:ring-4 focus:ring-muted-foreground/15"
+          onClick={onCancel}
+        >
+          <X className="h-4 w-4" />Fechar
+        </button>
         <button
           type="button"
           className="action-pill-primary"
@@ -255,6 +266,9 @@ function DisabledAction({ children, icon: Icon, explanation }) {
 
 function DocumentCaptureDialog({ open, row, onOpenChange, onSaved }) {
   const videoRef = useRef(null);
+  const liveCameraAvailable = typeof window !== "undefined"
+    && window.isSecureContext
+    && Boolean(navigator.mediaDevices?.getUserMedia);
   const [mode, setMode] = useState("upload");
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
@@ -265,8 +279,8 @@ function DocumentCaptureDialog({ open, row, onOpenChange, onSaved }) {
 
   useEffect(() => {
     if (!open || mode !== "camera") return undefined;
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError("A câmera ao vivo exige HTTPS. Use o botão de câmera do dispositivo ou envie um arquivo.");
+    if (!liveCameraAvailable) {
+      setCameraError("Use o botão Abrir câmera para fotografar o documento neste dispositivo.");
       return undefined;
     }
     let stream;
@@ -288,7 +302,7 @@ function DocumentCaptureDialog({ open, row, onOpenChange, onSaved }) {
       cancelled = true;
       stream?.getTracks().forEach((track) => track.stop());
     };
-  }, [open, mode]);
+  }, [liveCameraAvailable, open, mode]);
 
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -377,8 +391,37 @@ function DocumentCaptureDialog({ open, row, onOpenChange, onSaved }) {
           <DialogDescription>{row?.label} · {row?.name || "Titular não informado"}</DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={mode === "upload" ? "action-pill-primary" : "action-pill-ghost"} onClick={() => setMode("upload")}><Upload className="h-4 w-4" />Enviar arquivo</button>
-          <button type="button" className={mode === "camera" ? "action-pill-primary" : "action-pill-ghost"} onClick={() => setMode("camera")}><Camera className="h-4 w-4" />Usar câmera</button>
+          <button
+            type="button"
+            className={mode === "upload"
+              ? "action-pill-primary"
+              : "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-border bg-muted px-[18px] text-[13px] font-semibold text-foreground shadow-sm transition-all hover:-translate-y-px hover:bg-muted/70"}
+            onClick={() => setMode("upload")}
+          >
+            <Upload className="h-4 w-4" />Enviar arquivo
+          </button>
+          {liveCameraAvailable ? (
+            <button
+              type="button"
+              className={mode === "camera"
+                ? "action-pill-primary action-pill-blue"
+                : "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-sky-500/30 bg-sky-500/10 px-[18px] text-[13px] font-semibold text-sky-700 shadow-sm transition-all hover:-translate-y-px hover:bg-sky-500/20"}
+              onClick={() => setMode("camera")}
+            >
+              <Camera className="h-4 w-4" />Usar câmera
+            </button>
+          ) : (
+            <label className="action-pill-primary action-pill-blue cursor-pointer">
+              <Camera className="h-4 w-4" />Abrir câmera
+              <input
+                type="file"
+                className="sr-only"
+                accept="image/*"
+                capture="environment"
+                onChange={(event) => selectFile(event.target.files?.[0])}
+              />
+            </label>
+          )}
         </div>
         {mode === "upload" ? (
           <label className="flex min-h-40 cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/20 p-6 text-center">
@@ -392,11 +435,7 @@ function DocumentCaptureDialog({ open, row, onOpenChange, onSaved }) {
             <video ref={videoRef} muted playsInline className="max-h-[360px] w-full rounded-xl bg-black object-contain" />
             {cameraError && <p className="text-sm text-amber-700">{cameraError}</p>}
             <div className="flex flex-wrap gap-2">
-              <button type="button" className="action-pill-primary" onClick={capturePhoto}><Camera className="h-4 w-4" />Tirar foto</button>
-              <label className="action-pill-ghost cursor-pointer">
-                <Camera className="h-4 w-4" />Câmera do dispositivo
-                <input type="file" className="sr-only" accept="image/*" capture="environment" onChange={(event) => selectFile(event.target.files?.[0])} />
-              </label>
+              <button type="button" className="action-pill-primary action-pill-blue" onClick={capturePhoto}><Camera className="h-4 w-4" />Tirar foto</button>
             </div>
           </div>
         )}
@@ -410,9 +449,16 @@ function DocumentCaptureDialog({ open, row, onOpenChange, onSaved }) {
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         {success && <p role="status" className="flex items-center gap-2 text-sm text-primary"><CheckCircle2 className="h-4 w-4" />{success}</p>}
         <DialogFooter className="gap-2 sm:space-x-0">
-          <button type="button" className="action-pill-ghost" disabled={saving} onClick={() => close(false)}>Fechar</button>
+          <button
+            type="button"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-border bg-muted px-[18px] text-[13px] font-semibold text-foreground shadow-sm transition-all duration-200 hover:-translate-y-px hover:bg-muted/70 focus:outline-none focus:ring-4 focus:ring-muted-foreground/15 disabled:pointer-events-none disabled:opacity-45"
+            disabled={saving}
+            onClick={() => close(false)}
+          >
+            <X className="h-4 w-4" />Fechar
+          </button>
           <button type="button" className="action-pill-primary" disabled={!file || saving || Boolean(success)} onClick={saveDocument}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
             {saving ? "Salvando..." : "Salvar documento"}
           </button>
         </DialogFooter>
