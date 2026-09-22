@@ -768,7 +768,7 @@ export default function SalesContractSigning() {
               <Input id="signature-document" className="eloom-field" value={cpf} onChange={(event) => setCpf(documentMask(event.target.value))} placeholder="CPF ou CNPJ" inputMode="numeric" />
             </div>
             <div className="space-y-2">
-              <label htmlFor="signature-reference" className="block text-sm font-semibold">Pedido ou orçamento</label>
+              <label htmlFor="signature-reference" className="block text-sm font-semibold">Pedido, orçamento ou contrato</label>
               <Input id="signature-reference" className="eloom-field" value={reference} onChange={(event) => setReference(event.target.value.replace(/\D/g, "").slice(0, 18))} placeholder="Número de referência" inputMode="numeric" />
             </div>
             <button type="submit" className="action-pill-primary" disabled={state.loading}>
@@ -776,7 +776,7 @@ export default function SalesContractSigning() {
               {state.loading ? "Consultando..." : "Pesquisar"}
             </button>
           </form>
-          <p className="mt-3 text-xs text-muted-foreground">Use apenas um dos campos. A consulta lê somente contratos elegíveis no serviço de busca.</p>
+          <p className="mt-3 text-xs text-muted-foreground">Para localizar contratos Bom Corp, preencha o CNPJ da empresa e o número do contrato. Nos demais planos, informe o CPF/CNPJ ou a referência.</p>
         </CardContent>
       </Card>
 
