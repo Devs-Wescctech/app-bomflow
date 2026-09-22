@@ -28,6 +28,7 @@ export const CONTRACT_SIGNATURE_LAYOUTS = Object.freeze({
     placement(12, 121, 238, 76, 18),
   ],
   total_mais_bom_farma: [
+    placement(5, 128, 270, 74, 18),
     placement(12, 121, 237, 76, 18),
     placement(18, 121, 246, 76, 18),
     placement(20, 121, 246, 76, 18),
