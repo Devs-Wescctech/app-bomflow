@@ -164,8 +164,6 @@ const menuModules = [
       { title: "Dashboard NPS", url: createPageUrl("NPSDashboard"), icon: TrendingUp },
       { title: "Meus Tickets", url: createPageUrl("MyTickets"), icon: CheckSquare },
       { title: "Base de Conhecimento", url: createPageUrl("KnowledgeBase"), icon: BookOpen },
-      { title: "Impressão de Contratos - Recepção", url: createPageUrl("SalesContractPrinting"), icon: FileCheck, contractExclusive: true },
-      { title: "Assinatura de Contrato", url: createPageUrl("SalesContractSigning"), icon: FileSignature, contractExclusive: true },
     ]
   },
   {
@@ -233,6 +231,8 @@ const menuModules = [
       { title: "Automações", url: createPageUrl("LeadAutomations"), icon: Zap, supervisorOnly: true },
       { title: "Tarefas", url: createPageUrl("SalesTasks"), icon: CheckSquare },
       { title: "Templates", url: createPageUrl("ProposalTemplates"), icon: FileText, supervisorOnly: true },
+      { title: "Impressão de Contratos - Recepção", url: createPageUrl("SalesContractPrinting"), icon: FileCheck, contractExclusive: true },
+      { title: "Assinatura de Contrato", url: createPageUrl("SalesContractSigning"), icon: FileSignature, contractExclusive: true },
     ]
   },
   {
