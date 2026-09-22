@@ -266,9 +266,6 @@ function DisabledAction({ children, icon: Icon, explanation }) {
 
 function DocumentCaptureDialog({ open, row, onOpenChange, onSaved }) {
   const videoRef = useRef(null);
-  const liveCameraAvailable = typeof window !== "undefined"
-    && window.isSecureContext
-    && Boolean(navigator.mediaDevices?.getUserMedia);
   const [mode, setMode] = useState("upload");
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
@@ -279,8 +276,12 @@ function DocumentCaptureDialog({ open, row, onOpenChange, onSaved }) {
 
   useEffect(() => {
     if (!open || mode !== "camera") return undefined;
-    if (!liveCameraAvailable) {
-      setCameraError("Use o botão Abrir câmera para fotografar o documento neste dispositivo.");
+    if (!window.isSecureContext) {
+      setCameraError("A câmera precisa de uma conexão segura. Acesse pelo endereço local informado para usar a webcam.");
+      return undefined;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError("Este navegador não oferece acesso direto à câmera. Abra o sistema no Chrome ou Edge, ou envie um arquivo.");
       return undefined;
     }
     let stream;
@@ -302,7 +303,7 @@ function DocumentCaptureDialog({ open, row, onOpenChange, onSaved }) {
       cancelled = true;
       stream?.getTracks().forEach((track) => track.stop());
     };
-  }, [liveCameraAvailable, open, mode]);
+  }, [open, mode]);
 
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -319,6 +320,11 @@ function DocumentCaptureDialog({ open, row, onOpenChange, onSaved }) {
     setPreviewUrl(selected.type.startsWith("image/") ? URL.createObjectURL(selected) : "");
     setError("");
     setSuccess("");
+  };
+
+  const chooseFile = (event) => {
+    selectFile(event.target.files?.[0]);
+    event.target.value = "";
   };
 
   const capturePhoto = () => {
@@ -394,44 +400,29 @@ function DocumentCaptureDialog({ open, row, onOpenChange, onSaved }) {
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap gap-2">
+          <label className="action-pill-primary cursor-pointer" onClick={() => setMode("upload")}>
+            <Upload className="h-4 w-4" />Enviar arquivo
+            <input type="file" className="sr-only" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={chooseFile} />
+          </label>
           <button
             type="button"
-            className={mode === "upload"
-              ? "action-pill-primary"
-              : "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-border bg-muted px-[18px] text-[13px] font-semibold text-foreground shadow-sm transition-all hover:-translate-y-px hover:bg-muted/70"}
-            onClick={() => setMode("upload")}
+            className={mode === "camera"
+              ? "action-pill-primary action-pill-blue"
+              : "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-sky-500/30 bg-sky-500/10 px-[18px] text-[13px] font-semibold text-sky-700 shadow-sm transition-all hover:-translate-y-px hover:bg-sky-500/20"}
+            onClick={() => {
+              setCameraError("");
+              setMode("camera");
+            }}
           >
-            <Upload className="h-4 w-4" />Enviar arquivo
+            <Camera className="h-4 w-4" />Abrir câmera
           </button>
-          {liveCameraAvailable ? (
-            <button
-              type="button"
-              className={mode === "camera"
-                ? "action-pill-primary action-pill-blue"
-                : "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-sky-500/30 bg-sky-500/10 px-[18px] text-[13px] font-semibold text-sky-700 shadow-sm transition-all hover:-translate-y-px hover:bg-sky-500/20"}
-              onClick={() => setMode("camera")}
-            >
-              <Camera className="h-4 w-4" />Usar câmera
-            </button>
-          ) : (
-            <label className="action-pill-primary action-pill-blue cursor-pointer">
-              <Camera className="h-4 w-4" />Abrir câmera
-              <input
-                type="file"
-                className="sr-only"
-                accept="image/*"
-                capture="environment"
-                onChange={(event) => selectFile(event.target.files?.[0])}
-              />
-            </label>
-          )}
         </div>
         {mode === "upload" ? (
           <label className="flex min-h-40 cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/20 p-6 text-center">
             <Upload className="h-8 w-8 text-primary" />
             <span className="font-semibold">Escolher foto ou PDF</span>
             <span className="text-sm text-muted-foreground">JPG, PNG, WEBP ou PDF, até 10 MB</span>
-            <input type="file" className="sr-only" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => selectFile(event.target.files?.[0])} />
+            <input type="file" className="sr-only" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={chooseFile} />
           </label>
         ) : (
           <div className="space-y-3">
