@@ -1,3 +1,4 @@
+import { formatBrazilPhone, normalizePhone } from "@/utils/phone";
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -291,7 +292,7 @@ function SortableLeadCard({ lead, stage, pendingTasksCount, agentData, navigate,
               <div className="flex items-center gap-1.5 mt-1">
                 <Phone className="w-3 h-3 text-gray-400" />
                 <span className="text-gray-500 dark:text-gray-400 text-xs truncate">
-                  {lead.phone || 'Sem telefone'}
+                  {formatBrazilPhone(lead.phone) || 'Sem telefone'}
                 </span>
               </div>
               {(() => {
@@ -595,7 +596,7 @@ export default function LeadsKanban() {
   const { data: leads = [], isLoading } = useQuery({
     queryKey: leadsQueryKey,
     queryFn: async () => {
-      const allLeads = await base44.entities.Lead.list('-createdDate');
+      const allLeads = await base44.entities.Lead.listAllVisible('-createdDate');
 
       if (visibleAgentIds === null) {
         return allLeads.filter(l => !l.lost);
@@ -756,9 +757,11 @@ export default function LeadsKanban() {
   const filteredLeads = leads.filter(lead => {
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
+      const searchDigits = normalizePhone(filters.search);
+      const phoneMatches = searchDigits.length > 0 && normalizePhone(lead.phone).includes(searchDigits);
       if (
         !lead.name?.toLowerCase().includes(searchLower) &&
-        !lead.phone?.toLowerCase().includes(searchLower) &&
+        !phoneMatches &&
         !lead.email?.toLowerCase().includes(searchLower)
       ) {
         return false;
@@ -1514,7 +1517,7 @@ export default function LeadsKanban() {
                                 <div className="flex items-center gap-1.5 mt-1">
                                   <Phone className="w-3 h-3 text-gray-400" />
                                   <span className="text-gray-500 dark:text-gray-400 text-xs truncate">
-                                    {lead.phone || 'Sem telefone'}
+                                    {formatBrazilPhone(lead.phone) || 'Sem telefone'}
                                   </span>
                                 </div>
                               </div>
@@ -1634,7 +1637,7 @@ export default function LeadsKanban() {
                               <td className="px-4 py-3">
                                 <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                                   <Phone className="w-3 h-3" />
-                                  {lead.phone || '-'}
+                                  {formatBrazilPhone(lead.phone) || '-'}
                                 </div>
                               </td>
                               <td className="px-4 py-3">

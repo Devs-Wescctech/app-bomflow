@@ -1503,6 +1503,55 @@ router.get('/reports/sales-pf', authMiddleware, loadAgentMiddleware, async (req,
   }
 });
 
+// Paged Vendas PF lead list. Scope is enforced server-side before records
+// are returned, while large datasets can be traversed without the legacy 10k cap.
+router.get('/leads/visible', authMiddleware, loadAgentMiddleware, async (req, res) => {
+  try {
+    const rawLimit = Number.parseInt(req.query.limit, 10);
+    const rawOffset = Number.parseInt(req.query.offset, 10);
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 5000) : 2000;
+    const offset = Number.isFinite(rawOffset) ? Math.max(rawOffset, 0) : 0;
+    const sort = String(req.query.sort || '-createdDate');
+    const sortField = ['createdDate', 'createdAt', 'created_at'].includes(sort.replace(/^-/, ''))
+      ? 'created_at'
+      : 'created_at';
+    const sortDir = sort.startsWith('-') ? 'DESC' : 'ASC';
+    const agent = req.agent;
+    const agentType = String(agent?.agentType || '').toLowerCase();
+    const explicit = agent?.permissions || {};
+    const canViewAll = req.user?.role === 'admin' || agentType === 'admin' ||
+      explicit.can_view_all_leads === true ||
+      ['indicacoes_supervisor', 'indicacoes_admin', 'upsell_supervisor', 'upsell_admin'].includes(agentType);
+    const canViewTeam = explicit.can_view_team_leads === true ||
+      ['supervisor', 'sales_supervisor'].includes(agentType);
+
+    let scopeSql = '';
+    const params = [];
+    if (!canViewAll) {
+      if (!agent?.id) return res.json([]);
+      params.push(agent.id);
+      const ownParam = '$1';
+      if (canViewTeam) {
+        scopeSql = `WHERE (agent_id::text = ${ownParam} OR promoter_id::text = ${ownParam}
+          OR agent_id::text IN (SELECT id::text FROM agents WHERE supervisor_id::text = ${ownParam})
+          OR promoter_id::text IN (SELECT id::text FROM agents WHERE supervisor_id::text = ${ownParam}))`;
+      } else {
+        scopeSql = `WHERE (agent_id::text = ${ownParam} OR promoter_id::text = ${ownParam})`;
+      }
+    }
+
+    params.push(limit, offset);
+    const result = await query(
+      `SELECT * FROM leads ${scopeSql} ORDER BY ${sortField} ${sortDir} NULLS LAST, id ASC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params
+    );
+    res.json(result.rows.map(convertKeysToCamel));
+  } catch (error) {
+    console.error('Error fetching visible paged leads:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.get('/leads', authMiddleware, async (req, res) => {
   try {
     const { sort = '-created_at', limit = 10000 } = req.query;

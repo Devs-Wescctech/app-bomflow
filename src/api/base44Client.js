@@ -41,6 +41,16 @@ function createEntityClient(entityName) {
       const query = params.toString() ? `?${params.toString()}` : '';
       return fetchAPI(`${endpoint}${query}`);
     },
+    listAllVisible: async (sort = '-createdDate') => {
+      const pageSize = 5000;
+      const allItems = [];
+      for (let offset = 0; ; offset += pageSize) {
+        const params = new URLSearchParams({ sort, limit: String(pageSize), offset: String(offset) });
+        const page = await fetchAPI(`${endpoint}/visible?${params.toString()}`);
+        allItems.push(...page);
+        if (page.length < pageSize) return allItems;
+      }
+    },
     
     get: async (id) => {
       return fetchAPI(`${endpoint}/${id}`);

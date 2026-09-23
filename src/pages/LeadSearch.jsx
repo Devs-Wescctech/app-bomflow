@@ -1,3 +1,4 @@
+import { formatBrazilPhone, normalizePhone } from "@/utils/phone";
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -69,7 +70,7 @@ export default function LeadSearch() {
   const { data: allLeads = [], isLoading } = useQuery({
     queryKey: ['leads', isAdmin ? 'admin' : currentAgent?.id, needsTeamFilter ? allAgents.length : 0],
     queryFn: async () => {
-      const leads = await base44.entities.Lead.list('-createdDate');
+      const leads = await base44.entities.Lead.listAllVisible('-createdDate');
       
       if (isAdmin) {
         return leads;
@@ -140,7 +141,7 @@ export default function LeadSearch() {
 
       leads = leads.filter(lead => {
         if (searchType === 'all' || searchType === 'phone') {
-          const leadPhone = lead.phone?.replace(/\D/g, '') || '';
+          const leadPhone = normalizePhone(lead.phone);
           if (leadPhone.includes(queryNumbers) && queryNumbers) return true;
         }
         if (searchType === 'all' || searchType === 'cpf') {
@@ -190,7 +191,7 @@ export default function LeadSearch() {
     
     const rows = dataToExport.map(lead => [
       lead.name || '',
-      lead.phone || '',
+      formatBrazilPhone(lead.phone) || '',
       lead.cpf || '',
       lead.email || '',
       getOperationalSourceLabel(lead.source),
@@ -531,7 +532,7 @@ export default function LeadSearch() {
                           {lead.name || 'Sem nome'}
                         </td>
                         <td className="p-3 text-gray-600 dark:text-gray-400">
-                          {lead.phone || '-'}
+                          {formatBrazilPhone(lead.phone) || '-'}
                         </td>
                         <td className="p-3 text-gray-600 dark:text-gray-400 hidden lg:table-cell">
                           <span className="truncate max-w-[180px] inline-block">{lead.email || '-'}</span>
