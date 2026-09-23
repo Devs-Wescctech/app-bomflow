@@ -231,8 +231,8 @@ const menuModules = [
       { title: "Automações", url: createPageUrl("LeadAutomations"), icon: Zap, supervisorOnly: true },
       { title: "Tarefas", url: createPageUrl("SalesTasks"), icon: CheckSquare },
       { title: "Templates", url: createPageUrl("ProposalTemplates"), icon: FileText, supervisorOnly: true },
-      { title: "Impressão de Contratos - Recepção", url: createPageUrl("SalesContractPrinting"), icon: FileCheck, contractExclusive: true },
-      { title: "Assinatura de Contrato", url: createPageUrl("SalesContractSigning"), icon: FileSignature, contractExclusive: true },
+      { title: "Impressão de Contratos - Recepção", url: createPageUrl("SalesContractPrinting"), icon: FileCheck, requiredSubmenu: "SalesContractPrinting", requiresExplicitSubmenu: true },
+      { title: "Assinatura de Contrato", url: createPageUrl("SalesContractSigning"), icon: FileSignature, requiredSubmenu: "SalesContractSigning", requiresExplicitSubmenu: true },
     ]
   },
   {
@@ -878,11 +878,14 @@ function LayoutContent({ children, currentPageName }) {
       a.user_email === user?.email
     ) ||
     null;
-  const isContractExclusiveUser = user?.email?.trim().toLowerCase() === 'admin@wescctech.com';
-  const isRestrictedContractPage = [
-    createPageUrl("SalesContractPrinting"),
-    createPageUrl("SalesContractSigning"),
-  ].includes(location.pathname);
+  const contractPageSubmenu = location.pathname === createPageUrl("SalesContractPrinting")
+    ? 'SalesContractPrinting'
+    : location.pathname === createPageUrl("SalesContractSigning")
+      ? 'SalesContractSigning'
+      : null;
+  const isRestrictedContractPage = Boolean(contractPageSubmenu);
+  const canAccessRestrictedContractPage = isAdminUser(user, currentAgent) ||
+    (currentAgent?.allowedSubmenus || []).includes(contractPageSubmenu);
 
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
@@ -901,10 +904,10 @@ function LayoutContent({ children, currentPageName }) {
   }, [isRedirecting, isPublicPage, user]);
 
   useEffect(() => {
-    if (user && isRestrictedContractPage && !isContractExclusiveUser) {
+    if (user && isRestrictedContractPage && !canAccessRestrictedContractPage) {
       navigate(createPageUrl("Dashboard"), { replace: true });
     }
-  }, [user, isRestrictedContractPage, isContractExclusiveUser, navigate]);
+  }, [user, isRestrictedContractPage, canAccessRestrictedContractPage, navigate]);
 
   const toggleModule = (moduleId) => {
     setExpandedModules(prev =>
@@ -941,12 +944,7 @@ function LayoutContent({ children, currentPageName }) {
     }
   }, [location.pathname, isPublicPage, lastSalesModule]);
 
-  const menuModulesForUser = isContractExclusiveUser
-    ? menuModules
-    : menuModules.map((module) => module.items ? ({
-        ...module,
-        items: module.items.filter((item) => !item.contractExclusive),
-      }) : module);
+  const menuModulesForUser = menuModules;
   const filteredMenuModules = isAdminUser(user, currentAgent)
     ? filterMenuItems({ ...(currentAgent || {}), agent_type: 'admin' }, menuModulesForUser, user)
     : currentAgent
@@ -991,7 +989,7 @@ function LayoutContent({ children, currentPageName }) {
     return null;
   }
 
-  if (isRestrictedContractPage && !isContractExclusiveUser) {
+  if (isRestrictedContractPage && !canAccessRestrictedContractPage) {
     return null;
   }
 

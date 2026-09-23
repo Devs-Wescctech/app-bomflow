@@ -794,51 +794,27 @@ test('preserves the first legacy person for shared detail consumers without call
   );
 });
 
-test('temporarily restricts contract printing and signing to the designated admin email', () => {
+test('contract screens allow admins and require their individual explicit submenu grant', () => {
   const response = () => {
     const result = { statusCode: null, body: null };
     result.status = (statusCode) => { result.statusCode = statusCode; return result; };
     result.json = (body) => { result.body = body; return result; };
     return result;
   };
-  let allowed = false;
-  requireSalesContractPrinting(
-    { user: { role: 'admin', email: 'admin@wescctech.com' } },
-    response(),
-    () => { allowed = true; },
-  );
-  assert.equal(allowed, true);
-
-  const otherAdmin = response();
-  requireSalesContractPrinting(
-    { user: { role: 'admin', email: 'outro-admin@wescctech.com' } },
-    otherAdmin,
-    () => {},
-  );
-  assert.equal(otherAdmin.statusCode, 403);
-
-  const explicitlyGranted = response();
-  requireSalesContractPrinting(
-    {
-      user: { role: 'user', email: 'vendedor@wescctech.com' },
-      agent: {
-        agentType: 'sales',
-        modules: ['sales'],
-        allowedSubmenus: ['SalesContractPrinting'],
-      },
-    },
-    explicitlyGranted,
-    () => {},
-  );
-  assert.equal(explicitlyGranted.statusCode, 403);
-
-  allowed = false;
-  requireSalesContractPrinting(
-    { user: { role: 'user', email: ' ADMIN@WESCCTECH.COM ' } },
-    response(),
-    () => { allowed = true; },
-  );
-  assert.equal(allowed, true);
+  const invoke = (req) => {
+    let allowed = false;
+    const res = response();
+    requireSalesContractPrinting(req, res, () => { allowed = true; });
+    return { allowed, res };
+  };
+  assert.equal(invoke({ user: { role: 'admin', email: 'admin-one@example.com' }, path: '/contracts/search' }).allowed, true);
+  assert.equal(invoke({ user: { role: 'user' }, agent: { agentType: 'admin' }, path: '/contracts/signature' }).allowed, true);
+  assert.equal(invoke({ user: { role: 'user' }, agent: { agentType: 'sales', allowedSubmenus: ['SalesContractPrinting'] }, path: '/contracts/search' }).allowed, true);
+  assert.equal(invoke({ user: { role: 'user' }, agent: { agentType: 'sales', allowedSubmenus: ['SalesContractPrinting'] }, path: '/contracts/signature' }).res.statusCode, 403);
+  assert.equal(invoke({ user: { role: 'user' }, agent: { agentType: 'sales', allowedSubmenus: ['SalesContractSigning'] }, path: '/contracts/document' }).allowed, true);
+  assert.equal(invoke({ user: { role: 'user' }, agent: { agentType: 'sales', allowedSubmenus: ['SalesContractSigning'] }, path: '/contracts/generate' }).res.statusCode, 403);
+  assert.equal(invoke({ user: { role: 'user' }, path: '/contracts/search' }).res.statusCode, 403);
+  assert.equal(invoke({ path: '/contracts/search' }).res.statusCode, 401);
 });
 
 test('search uses only the canonical pedido holder and UI renders validation details', () => {

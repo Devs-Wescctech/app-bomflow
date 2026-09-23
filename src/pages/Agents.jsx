@@ -114,6 +114,7 @@ const MENU_MODULES = [
       { id: "SalesTasks", title: "Tarefas" },
       { id: "ProposalTemplates", title: "Templates" },
       { id: "SalesContractPrinting", title: "Impressão de Contratos - Recepção" },
+      { id: "SalesContractSigning", title: "Assinatura de Contrato" },
     ]
   },
   {

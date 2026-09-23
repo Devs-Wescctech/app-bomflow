@@ -177,10 +177,11 @@ export function requireDashboardAccess(submenuId) {
 // permissivo de supervisores. A concessão precisa existir no tipo do agente.
 export function requireSalesContractPrinting(req, res, next) {
   if (!req.user) return res.status(401).json({ message: 'Autenticação necessária' });
-  if (String(req.user.email || '').trim().toLowerCase() === 'admin@wescctech.com') return next();
-  return res.status(403).json({
-    message: 'Impressão e assinatura de contratos estão temporariamente indisponíveis para este usuário',
-  });
+  if (req.user.role === 'admin' || req.agent?.agentType === 'admin') return next();
+  const isSigningEndpoint = req.path.startsWith('/contracts/signature') || req.path.startsWith('/contracts/document');
+  const requiredSubmenu = isSigningEndpoint ? 'SalesContractSigning' : 'SalesContractPrinting';
+  if ((req.agent?.allowedSubmenus || []).includes(requiredSubmenu)) return next();
+  return res.status(403).json({ message: 'Esta tela de contratos não está liberada para este perfil' });
 }
 
 export function requireRole(...roles) {
