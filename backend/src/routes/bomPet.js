@@ -49,6 +49,7 @@ import {
   syncErpAtendimentoOutboxItem,
 } from '../services/erpAtendimentoService.js';
 import { normalizeValidBrazilPhoneNational } from '../utils/phone.js';
+import { formatMonthlyAttendanceProtocol } from '../utils/attendanceProtocol.js';
 
 const router = Router();
 
@@ -1183,15 +1184,25 @@ router.post('/atendimentos', authMiddleware, bomPetAuth, (req, res, next) => {
       const partner = snapshotActivePartner(partnerResult.rows[0]);
       if (!partner) throw partnerError('O parceiro selecionado não existe ou foi inativado. Selecione um parceiro ativo.');
 
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext('bom_pet_protocolo'))`);
+      const sequenceResult = await client.query(
+        `SELECT TO_CHAR(CURRENT_DATE, 'YYMM') AS year_month`
+      );
+      const { year_month: yearMonth } = sequenceResult.rows[0];
+      let sequence = 1;
+      let protocolo;
+      while (true) {
+        protocolo = formatMonthlyAttendanceProtocol('BP', yearMonth, sequence);
+        const collision = await client.query(
+          'SELECT 1 FROM bom_pet_atendimentos WHERE protocolo = $1 LIMIT 1',
+          [protocolo]
+        );
+        if (collision.rows.length === 0) break;
+        sequence += 1;
+      }
+
       const inserted = await client.query(
-        `WITH lock AS (SELECT pg_advisory_xact_lock(hashtext('bom_pet_protocolo'))),
-        next_seq AS (
-          SELECT COALESCE(MAX(CASE
-            WHEN protocolo LIKE 'BP' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || '%'
-            THEN CAST(RIGHT(protocolo, 4) AS INTEGER) ELSE 0 END), 0) + 1 AS seq
-          FROM bom_pet_atendimentos, lock
-        )
-        INSERT INTO bom_pet_atendimentos
+        `INSERT INTO bom_pet_atendimentos
          (protocolo, origem, documento_cliente, nome_cliente, pet_nome, pet_descricao, pet_contrato_id,
           erp_pet_pessoa_id, erp_pet_pessoa_codigo, erp_pet_identity_status, erp_pet_identity_error,
           contratos_servicos, situacao_financeira, comprovante_pagamento_recebido, comprovante_pagamento_obs,
@@ -1200,13 +1211,13 @@ router.post('/atendimentos', authMiddleware, bomPetAuth, (req, res, next) => {
           cliente_data_nascimento, cliente_email, cliente_endereco, cliente_cidade,
           consentimento_comercial, consentimento_comercial_em)
         VALUES (
-          'BP' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || LPAD((SELECT seq FROM next_seq)::text, 4, '0'),
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-          $17, $18, $19, $20, $21, $22, $23, $24, 'Pendente', $25, $26, $27, $28, $29, $30, $31,
-          CASE WHEN $31 THEN CURRENT_TIMESTAMP ELSE NULL END
+          $1,
+          $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+          $18, $19, $20, $21, $22, $23, $24, $25, 'Pendente', $26, $27, $28, $29, $30, $31, $32,
+          CASE WHEN $32 THEN CURRENT_TIMESTAMP ELSE NULL END
         ) RETURNING *`,
         [
-          origem, cpfFormatted, resolvedName, resolvedPetName, resolvedPetDescription,
+          protocolo, origem, cpfFormatted, resolvedName, resolvedPetName, resolvedPetDescription,
           resolvedPetContractId, erpPetIdentity?.pessoaId || null, erpPetIdentity?.pessoaCodigo || null,
           erpPetIdentityStatus, erpPetIdentityError,
           resolvedServices, situacaoFinanceira, comprovanteFlag, comprovanteObs,

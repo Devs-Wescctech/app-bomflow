@@ -11,6 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { normalizeValidBrazilPhoneNational } from '../utils/phone.js';
+import { formatMonthlyAttendanceProtocol } from '../utils/attendanceProtocol.js';
 
 const router = Router();
 
@@ -214,23 +215,29 @@ router.post('/atendimentos', authMiddleware, async (req, res) => {
     const sanitizedTelefone = normalizeValidBrazilPhoneNational(telefone_contato) || null;
 
     const created = await withTransaction(async (client) => {
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext('bom_auto_protocolo'))`);
+      const sequenceResult = await client.query(
+        `SELECT TO_CHAR(CURRENT_DATE, 'YYMM') AS year_month`
+      );
+      const { year_month: yearMonth } = sequenceResult.rows[0];
+      let sequence = 1;
+      let protocolo;
+      while (true) {
+        protocolo = formatMonthlyAttendanceProtocol('BA', yearMonth, sequence);
+        const collision = await client.query(
+          'SELECT 1 FROM bom_auto_atendimentos WHERE protocolo = $1 LIMIT 1',
+          [protocolo]
+        );
+        if (collision.rows.length === 0) break;
+        sequence += 1;
+      }
+
       const result = await client.query(
-        `WITH lock AS (SELECT pg_advisory_xact_lock(hashtext('bom_auto_protocolo'))),
-        next_seq AS (
-        SELECT COALESCE(MAX(
-          CASE WHEN protocolo LIKE 'BA' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || '%'
-          THEN CAST(RIGHT(protocolo, 4) AS INTEGER) ELSE 0 END
-        ), 0) + 1 AS seq
-         FROM bom_auto_atendimentos, lock
-        )
-        INSERT INTO bom_auto_atendimentos
+        `INSERT INTO bom_auto_atendimentos
          (protocolo, documento_cliente, nome_cliente, placa, descricao_veiculo, tipo_servico, observacoes, usuario, status_atendimento, telefone_contato, contratos_servicos)
-         VALUES (
-           'BA' || TO_CHAR(CURRENT_DATE, 'YYMMDD') || LPAD((SELECT seq FROM next_seq)::text, 4, '0'),
-           $1, $2, $3, $4, $5, $6, $7, 'Pendente', $8, $9
-         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pendente', $9, $10)
          RETURNING *`,
-        [documento_cliente, nome_cliente, placa, descricao_veiculo || null, tipo_servico, sanitizedObs, usuario, sanitizedTelefone, contratos_servicos || null]
+        [protocolo, documento_cliente, nome_cliente, placa, descricao_veiculo || null, tipo_servico, sanitizedObs, usuario, sanitizedTelefone, contratos_servicos || null]
       );
       const atendimento = result.rows[0];
       const outboxId = await enqueueErpAtendimento(client, 'bom_auto', atendimento);
